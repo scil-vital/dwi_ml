@@ -54,7 +54,7 @@ setup(
     ],
 
     # What does your project relate to?
-    keywords='dwi-ml','ML', 'DWI', 'tractography'
+    keywords={'dwi-ml','ML', 'DWI', 'tractography'},
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
@@ -77,8 +77,7 @@ setup(
     # If there are data files included in your packages that need to be
     # installed, specify them here.  If using Python 2.6 or less, then these
     # have to be included in MANIFEST.in as well.
-    package_data={
-    },
+    package_data={},
 
     # Although 'package_data' is the preferred approach, in some case you may
     # need to place data files outside of your packages. See:
@@ -86,10 +85,11 @@ setup(
     # In this case, 'data_file' will be installed into '<sys.prefix>/my_data'
     data_files=[],
 
-    # To provide executable scripts_python, use entry points in preference to the
-    # "scripts_python" keyword. Entry points provide cross-platform support and allow
+    # To provide executable scripts, use entry points in preference to the
+    # "scripts" keyword. Entry points provide cross-platform support and allow
     # pip to create the appropriate form of executable for the target platform.
-    entry_points={
-    },
-    scripts=glob.glob("scripts_python/*.py")
+    # Note Emma: We could eventually use entry points. See discussion here:
+    # https://stackoverflow.com/questions/18787036/difference-between-entry-points-console-scripts-and-scripts-in-setup-py
+    entry_points={},
+    scripts=glob.glob("scripts_python/*/*.py") + glob.glob("scripts_bash/*/*.sh")
 )

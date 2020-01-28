@@ -1,1 +1,29 @@
 tqdm==4.34.0
+dipy==1.1.1  # You probably have dipy==1.0.0 installed with scilpy, but that's not enough here.
+nibabel>=3.0.0 # You probably have nibabel==2.4.0 installed with scilpy, but that's not compatible with dipy 1.1.1
+
+
+
+## Necessary but should be installed with scilpy (01/2020):
+future==0.17.1
+numpy==1.16.2
+scipy==1.0.1
+h5py==2.9.0
+
+
+
+## Not used here but installed with scilpy (01/2020):
+# bz2file==0.98
+# cycler==0.10.0
+# Cython==0.29.12
+# fury==0.2.0
+# kiwisolver==1.0.1
+# matplotlib==2.2.2
+# Pillow==6.2.0
+# pybids==0.9.1
+# pyparsing==2.2.0
+# python-dateutil==2.7.2
+# pytz==2018.4
+# setuptools==39.0.1
+# six==1.11.0
+# coloredlogs==10.0

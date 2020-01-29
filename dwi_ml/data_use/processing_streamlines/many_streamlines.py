@@ -75,42 +75,6 @@ def remove_similar_streamlines(streamlines: List[np.ndarray],
     return streamlines
 
 
-def resample_streamlines(streamlines: Iterable, step_size: float,
-                         convert_mm_to_vox: bool = False,
-                         affine: np.ndarray = None) -> List[np.ndarray]:
-    """Resample streamlines to fit a constant step size from a list of
-    streamlines. See also the equivalent for tractograms in sft.
-
-    Parameters
-    ----------
-    streamlines : nib.streamlines.ArraySequence or list of np.ndarray
-        Streamlines to resample.
-    step_size : float
-        Step size that all streamlines should have.
-    convert_mm_to_vox: bool
-        If set, we consider that the streamlines are in voxel space and
-        convert the step_size first. [False]
-    affine: np.ndarray
-        Needed if convert_noise_space is True. Ex : affine_vox2rasmm
-
-    Returns
-    -------
-    streamlines_resampled : list of np.ndarray
-        Resampled streamlines.
-    """
-
-    # Convert RASmm step size to iso VOX space
-    if convert_mm_to_vox:
-        step_size = convert_mm2vox(step_size, affine)
-
-    # Resample
-    lengths = length(streamlines)
-    nb_points = np.ceil(lengths / step_size).astype(int)
-    streamlines_resampled = [set_number_of_points(s, n) for s, n in
-                             zip(streamlines, nb_points)]
-    return streamlines_resampled
-
-
 def apply_transform_to_streamlines(streamlines: Iterable, affine: np.ndarray)\
         -> nib.streamlines.ArraySequence:
     """Apply an affine transformation on a set of streamlines

@@ -25,13 +25,13 @@ Here, we define:
 We expect these classes to be used in a file such as create_dataset.
 """
 
-from __future__ import annotations
+# from __future__ import annotations
 
 import json
 import logging
 import pathlib
 import re
-from typing import Dict, IO, List, Tuple, Union
+from typing import Dict, IO, List, Union
 
 import nibabel as nib
 import numpy as np
@@ -122,7 +122,7 @@ class TractoDatasetCreatorGeneric(object):
 
     @classmethod
     def creator_from_json(cls, json_file: Union[str, IO], raw_path: str,
-                          *args, **kwargs) -> TractoDatasetCreatorGeneric:
+                          *args, **kwargs):
         """ Create a DatasetConfigAbstract object from a json file.
 
         Parameters
@@ -227,15 +227,15 @@ class TractoDatasetCreatorGeneric(object):
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
                                 gradient_table: GradientTable,
                                 wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path) -> np.ndarray:
+                                output_path: pathlib.Path):
         """ Abstract method for processing a DWI volume for a specific
-        dataset."""
+        dataset.
+        Returns: np.ndarray """
         raise NotImplementedError
 
     def load_process_and_merge_bundles(self,
                                        bundles_path: pathlib.Path,
-                                       dwi_ref: nib.Nifti1Image)\
-            -> Tuple[StatefulTractogram, List[float]]:
+                                       dwi_ref: nib.Nifti1Image):
         """Load and process a group of bundles and merge all streamlines
         together.
 
@@ -246,11 +246,11 @@ class TractoDatasetCreatorGeneric(object):
         dwi_ref : np.ndarray
             Reference used to load and send the streamlines in voxel space.
 
-        Returns
+        Returns:
         -------
         output_tractogram : StatefulTractogram
             All streamlines in voxel space.
-        output_lengths : list of floats
+        output_lengths : List[float]
             The euclidean length of each streamline
         """
                                                                                                         # ToDo Antoine: with Timer("Processing streamlines", newline=True):
@@ -419,7 +419,7 @@ class TractoDatasetLoaderDWI(TractoDatasetCreatorGeneric):
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
                                 gradient_table: GradientTable,
                                 wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path) -> np.ndarray:
+                                output_path: pathlib.Path):
         """Process a volume for raw DWI dataset, optionally resampling the
         gradient directions.
 
@@ -478,7 +478,7 @@ class TractoDatasetLoaderDWISH(TractoDatasetCreatorGeneric):
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
                                 gradient_table: GradientTable,
                                 wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path) -> np.ndarray:
+                                output_path: pathlib.Path):
         """Process a volume for a DWI-SH dataset. Fits spherical harmonics to
         the diffusion signal.
 
@@ -531,7 +531,7 @@ class TractoDatasetLoaderFODFSH(TractoDatasetCreatorGeneric):
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
                                 gradient_table: GradientTable,
                                 wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path) -> np.ndarray:
+                                output_path: pathlib.Path):
         """Process a volume for a fODF-SH dataset. Compute a response function,
          fit fODFs and return the corresponding SH coeffs.
 
@@ -607,7 +607,7 @@ class TractoDatasetLoaderFODFPeaks(TractoDatasetCreatorGeneric):
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
                                 gradient_table: GradientTable,
                                 wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path) -> np.ndarray:
+                                output_path: pathlib.Path):
         """Process a volume for a fODF-peaks dataset.
 
         Compute a response function, fit fODFs,

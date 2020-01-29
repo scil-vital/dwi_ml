@@ -10,15 +10,13 @@
 
 #                                                                                                       ToDO À ajouter! Prise en charge des bids
 
-from __future__ import annotations
-
 import argparse
 import datetime
 import logging
 import os
 import shutil
 from pathlib import Path
-from typing import List, Tuple
+from typing import List
 
 import h5py
 import nibabel as nib
@@ -175,7 +173,7 @@ def main():
 def _generate_dataset(path: str, name: str,
                       dataset_creator: TractoDatasetCreatorGeneric,
                       save_intermediate: bool = False,
-                      force: bool = False) -> None:
+                      force: bool = False):
     """Generate a dataset from a group of dMRI subjects with multiple bundles.
     All bundles are merged as a single whole-brain dataset in voxel space.
     All intermediate steps are saved on disk in a separate "processed" folder.
@@ -295,8 +293,7 @@ def _generate_dataset(path: str, name: str,
 def _process_subject(subject_id: str, subject_data_path: Path,
                      output_path: Path,
                      dataset_creator: TractoDatasetCreatorGeneric,
-                     save_intermediate: bool = False)\
-        -> Tuple[nib.Nifti1Image, nib.streamlines.ArraySequence, List[float]]:
+                     save_intermediate: bool = False):
     """Process a subject to extract normalized input data and all streamlines.
 
     Parameters
@@ -319,7 +316,7 @@ def _process_subject(subject_id: str, subject_data_path: Path,
         Processed model input data normalized along every modality (last axis).
     streamlines : nib.streamlines.ArraySequence
         All subject streamlines in voxel space.
-    streamlines_lengths : list of float
+    streamlines_lengths : List[float]
         Euclidean length of each streamline.
     """
                                                                                                     # ANTOINE: with Timer("Fitting SH to DWI", newline=True):

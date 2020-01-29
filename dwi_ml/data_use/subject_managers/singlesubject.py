@@ -2,7 +2,6 @@
 
 We expect the classes here to be used in multisubject.py
 """
-from __future__ import annotations
 
 import h5py
 import nibabel as nib
@@ -16,14 +15,18 @@ class MRIDataVolume(object):
 
     def __init__(self, data: np.ndarray, affine_vox2rasmm: np.ndarray,
                  subject_id: str = None):
-        self._data = torch.as_tensor(data, dtype=torch.float)
+        self.data = torch.as_tensor(data, dtype=torch.float)
         self.affine_vox2rasmm = torch.as_tensor(affine_vox2rasmm,
                                                 dtype=torch.float)
         self.subject_id = subject_id
 
     @classmethod
-    def create_from_hdf_group(cls, hdf_group: h5py.Group) -> MRIDataVolume:
-        """Create an MRIDataVolume from an HDF group object."""
+    def create_from_hdf_group(cls, hdf_group: h5py.Group):
+        """Create an MRIDataVolume from an HDF group object.
+        Returns
+        -------
+        volume: MRIDataVolume
+        """
 
         data = np.array(hdf_group['data'], dtype=np.float32)
         affine_vox2rasmm = np.array(hdf_group.attrs['vox2rasmm'],
@@ -34,13 +37,14 @@ class MRIDataVolume(object):
                    subject_id=subject_id)
 
     @property
-    def data(self) -> torch.Tensor:
-        return self._data
-
-    @property
-    def shape(self) -> np.ndarray:
-        """Return the shape of the data."""
-        return np.array(self._data.shape)
+    def shape(self):
+        """
+        Returns
+        -------
+        Shape: np.ndarray
+            The shape of the data.
+        """
+        return np.array(self.data.shape)
 
 
 class LazyMRIDataVolume(object):
@@ -56,8 +60,12 @@ class LazyMRIDataVolume(object):
         self.subject_id = subject_id
 
     @classmethod
-    def create_from_hdf_group(cls, hdf_group: h5py.Group) -> LazyMRIDataVolume:
-        """Create an MRIDataVolume from an HDF group object."""
+    def create_from_hdf_group(cls, hdf_group: h5py.Group):
+        """Create an MRIDataVolume from an HDF group object.
+        Returns
+        -------
+        Voluem: LazyMRIDataVolume
+        """
 
         data = hdf_group['data']
         affine_vox2rasmm = np.array(hdf_group.attrs['vox2rasmm'],
@@ -68,13 +76,23 @@ class LazyMRIDataVolume(object):
                    subject_id=subject_id)
 
     @property
-    def data(self) -> torch.Tensor:
+    def data(self):
+        """
+        Returns
+        -------
+        data: torch.Tensor
+        """
         return torch.as_tensor(np.array(self._data, dtype=np.float32),
                                dtype=torch.float)
 
     @property
-    def shape(self) -> np.ndarray:
-        """Return the shape of the data."""
+    def shape(self):
+        """
+        Returns
+        -------
+        shape: np.ndarray
+            The shape of the data.
+        """
 
         return self._data.shape
 

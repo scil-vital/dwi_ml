@@ -17,8 +17,6 @@ Here, we define:
     class BatchSampler: extends torch's sampler class
 """
 
-from __future__ import annotations
-
 import logging
 import os
 from collections import OrderedDict, defaultdict

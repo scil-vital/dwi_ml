@@ -31,8 +31,12 @@ from nibabel.streamlines import ArraySequence
 from torch.nn.utils.rnn import PackedSequence, pack_sequence
 from torch.utils.data import Dataset, Sampler
 
-from scil_vital.shared.code.data.singlesubject import (
+from scilpy.tracking.tools import resample_streamlines
+
+from dwi_ml.data_use.subject_managers.singlesubject import (
     LazySubjectData, SubjectData)
+
+# À ARRANGER
 from scil_vital.shared.code.io.cache_manager import (
     SingleThreadCacheManager)
 from scil_vital.shared.code.signal.interpolation import (
@@ -41,8 +45,7 @@ from scil_vital.shared.code.signal.interpolation import (
 from scil_vital.shared.code.transformation.streamline import (
     flip_streamline)
 from scil_vital.shared.code.transformation.streamlines import (
-    add_noise_to_streamlines, cut_random_streamlines,
-    resample_streamlines)
+    add_noise_to_streamlines, cut_random_streamlines)
 
 
 class _MultiSubjectDataManager(object):
@@ -424,11 +427,10 @@ class MultiSubjectDataset(Dataset):
                 self.get_subject_data(subj).dmri_volume.affine_vox2rasmm
 
             # Resample streamlines to a fixed step size
+            vox_space_stepSize = (need to convert mm_to_vox, self._step_size, affine=affine_vox2rasmm)          # on va sûrement mettre ça dans scilpy??
             if self._step_size:
                 subject_streamlines = resample_streamlines(
-                    subject_streamlines, self._step_size,
-                    convert_mm_to_vox=True,
-                    affine=affine_vox2rasmm)
+                    subject_streamlines, step_size=vox_space_stepSize)
 
             # Add noise to coordinates
                                                                                                 # ToDo: add a variance in the distribution of noise between epoques.

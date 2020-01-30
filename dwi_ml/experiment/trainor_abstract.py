@@ -9,19 +9,16 @@ import time
 import numpy as np
 import torch
 
-from VITALabAI import VITALabAiAbstract
-from scil_vital.shared.code.data.multisubject import \
+from dwi_ml.data_use.subject_managers.multisubject import \
     (MultiSubjectDataset, LazyMultiSubjectDataset)
+
+# À ARRANGER
 from scil_vital.shared.code.utils.timer import Timer
 from scil_vital.shared.code.utils.experiment_utils import ValueMonitor
 
 
-class TractoMLAbstractLocal(VITALabAiAbstract):
+class TractoMLAbstractLocal:
     def __init__(self):
-        super().__init__(dataset=None)
-        raise NotImplementedError
-
-    def get_backend(self):
         raise NotImplementedError
 
     def build_model(self):
@@ -30,26 +27,14 @@ class TractoMLAbstractLocal(VITALabAiAbstract):
     def train(self, **kwargs):
         raise NotImplementedError
 
-    def predict(self, **kwargs):
-        raise NotImplementedError
-
-    def predict_on_batch(self, batch):
-        raise NotImplementedError
-
-    def evaluate(self, **kwargs):
-        raise NotImplementedError
-
     def save(self):
         raise NotImplementedError
 
     def load_model(self, filepath, **kwargs):
         raise NotImplementedError
 
-    def load_weights(self, filepath, **kwargs):
-        raise NotImplementedError
 
-
-class TractoMLAbstractSequences(VITALabAiAbstract):
+class TractoMLAbstractSequences:
     def __init__(self,
                  train_database_path: str = None,
                  valid_database_path: str = None,
@@ -273,34 +258,16 @@ class TractoMLAbstractSequences(VITALabAiAbstract):
         self.valid_loss_monitor = ValueMonitor("Validation loss")
         self.grad_norm_monitor = ValueMonitor("Grad Norm")                                          # ToDo Est-ce que tout le monde utilise grad norm??
 
-    def get_backend(self):
-        raise NotImplementedError
-
-    def build_model(self):
-        raise NotImplementedError
-
     def train(self, **kwargs):
         raise NotImplementedError
                                                                                                 # ToDo: "train" depends on each user, but can we define
                                                                                                 #  sub-functions here that could encapsulate some sub-tasks that
                                                                                                 #  everybody uses? One day we could compare our codes.
 
-    def predict(self, **kwargs):
-        raise NotImplementedError
-
-    def predict_on_batch(self, batch):
-        raise NotImplementedError
-
-    def evaluate(self, **kwargs):
-        raise NotImplementedError
-
     def save(self):
         raise NotImplementedError
 
     def load_model(self, filepath, **kwargs):
-        raise NotImplementedError
-
-    def load_weights(self, filepath, **kwargs):
         raise NotImplementedError
 
     def load_dataset(self):
@@ -346,6 +313,3 @@ class TractoMLAbstractSequences(VITALabAiAbstract):
         self.taskman_report.update(updates)
         self.taskman_report['time'] = time.time()
         print('!taskman' + json.dumps(self.taskman_report), flush=True)
-
-    def model_summarize(self):
-        raise NotImplementedError

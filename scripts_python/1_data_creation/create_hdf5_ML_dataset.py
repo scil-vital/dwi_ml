@@ -23,15 +23,18 @@ import nibabel as nib
 import numpy as np
 from dipy.io.streamline import save_tractogram
 
+from dwi_ml.data_creation.hdf5_creator import (
+    TractoDatasetCreatorGeneric,
+    TractoDatasetCreatorDWI,
+    TractoDatasetCreatorDwiSH,
+    TractoDatasetCreatorFODFPeaks,
+    TractoDatasetCreatorFodfSH)
+                                                                                                            # toDO NOTE. Creators.load_and_process have changed. We need to use bval and bvecs now
+                                                                                                            #  instead of gradient table. So we need to load things a bit differently from the beginnig.
+# À ARRANGER
 from scil_vital.shared.code.data.description_data_structure import (
     FOLDER_DESCRIPTION,
     CONFIG_DECRIPTION)
-from scil_vital.shared.code.data.hdf5_creator import (
-    TractoDatasetCreatorGeneric,
-    TractoDatasetLoaderDWI,
-    TractoDatasetLoaderDWISH,
-    TractoDatasetLoaderFODFPeaks,
-    TractoDatasetLoaderFODFSH)
 from scil_vital.shared.code.io.io_utils import (
     load_dwi_and_gradients,
     load_volume_with_ref)
@@ -144,10 +147,10 @@ def main():
     logging.info(args)
 
     # Choose processor class based on user's model choice
-    cls_choice = {"dwi": TractoDatasetLoaderDWI,
-                  "dwi-sh": TractoDatasetLoaderDWISH,
-                  "fodf-sh": TractoDatasetLoaderFODFSH,
-                  "fodf-peaks": TractoDatasetLoaderFODFPeaks}
+    cls_choice = {"dwi": TractoDatasetCreatorDWI,
+                  "dwi-sh": TractoDatasetCreatorDwiSH,
+                  "fodf-sh": TractoDatasetCreatorFodfSH,
+                  "fodf-peaks": TractoDatasetCreatorFODFPeaks}
     dataset_cls = cls_choice[args.model_input]
 
     # Prepare other parameters
@@ -344,8 +347,8 @@ def _process_subject(subject_id: str, subject_data_path: Path,
 
     # Load and process data based on model choice
     model_input_volume = \
-        dataset_creator.load_and_process_volume(dwi_image, gradient_table,
-                                                wm_mask_image, output_path)                             # à arranger. wm_mask pas utilisé dans load_and_process!
+        dataset_creator.load_and_process_volume(dwi_image, bvals, bvecs, frf,
+                                wm_mask_image, output_path)
 
     # Free some memory, we don't need the data anymore
     dwi_image.uncache()

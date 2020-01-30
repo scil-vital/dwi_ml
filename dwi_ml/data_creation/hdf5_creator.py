@@ -26,7 +26,6 @@ We expect these classes to be used in a file such as create_dataset.
 """
 
 # from __future__ import annotations
-
 import json
 import logging
 import pathlib
@@ -35,18 +34,22 @@ from typing import Dict, IO, List, Union
 
 import nibabel as nib
 import numpy as np
-from dipy.core.gradients import GradientTable
+
+from dipy.core.gradients import (gradient_table)
 from dipy.io.stateful_tractogram import Space, StatefulTractogram
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.utils import length
 
+from scilpy.reconst.fodf import compute_fodf
+from scilpy.reconst.frf import compute_ssst_frf
 
-from scil_vital.shared.code.validation.subjects_validation import \
-    list_equals
-from dwi_ml.data_creation import validate_subject_list
+from dwi_ml.data_creation.subjects_validation import (
+    list_equals, validate_subject_list)
+
+## À RÉARRANGER
 from scil_vital.shared.code.signal.signal_utils import (
-    compute_fodf, compute_sh_coefficients,
-    compute_ssst_frf, resample_dwi)
+     compute_sh_coefficients,
+    , resample_dwi)
 from scil_vital.shared.code.transformation.sft import (
     compress_sft, remove_short_streamlines_from_sft,
     subsample_sft, resample_sft)
@@ -83,14 +86,13 @@ class TractoDatasetCreatorGeneric(object):
         """
         Parameters
         ----------
+        final_subjects:
         bval : int
             Filter the dMRI image to keep only this b-value (and b0s).
         minimum_length_mm : float
             Remove streamlines shorter than this length.
         step_size_mm : float
             Resample streamlines to this step size.
-        subject_ids : list of str
-            Subjects to include in this dataset.
         bundles : dict
             Bundle-wise parameters; these should include the name and
             subsampling parameters OR If empty, datasets will be treated as
@@ -225,12 +227,29 @@ class TractoDatasetCreatorGeneric(object):
                 [b.name for b in self._bundles] if self._bundles else ""}
 
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                gradient_table: GradientTable,
+                                bvals, bvecs, frf,
                                 wm_mask_image: nib.Nifti1Image,
                                 output_path: pathlib.Path):
         """ Abstract method for processing a DWI volume for a specific
         dataset.
-        Returns: np.ndarray """
+
+        Parameters
+        ----------
+        dwi_image : nib.Nifti1Image
+            Diffusion-weighted images (4D)
+        bvals:
+        bvecs:
+        frf:
+        wm_mask_image : nib.Nifti1Image
+            Binary white matter mask.
+        output_path : str
+            Path to the output folder.
+
+        Returns
+        -------
+        output : np.ndarray
+            The processed output volume.
+        """
         raise NotImplementedError
 
     def load_process_and_merge_bundles(self,
@@ -246,7 +265,7 @@ class TractoDatasetCreatorGeneric(object):
         dwi_ref : np.ndarray
             Reference used to load and send the streamlines in voxel space.
 
-        Returns:
+        Returns
         -------
         output_tractogram : StatefulTractogram
             All streamlines in voxel space.
@@ -394,7 +413,7 @@ class TractoDatasetCreatorGeneric(object):
         return bundle, bundle_original_count
 
 
-class TractoDatasetLoaderDWI(TractoDatasetCreatorGeneric):
+class TractoDatasetCreatorDWI(TractoDatasetCreatorGeneric):
     """Class containing all configuration options for creating a new DWI
     dataset."""
 
@@ -417,32 +436,18 @@ class TractoDatasetLoaderDWI(TractoDatasetCreatorGeneric):
         return state_dict
 
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                gradient_table: GradientTable,
+                                bvals, bvecs, frf,
                                 wm_mask_image: nib.Nifti1Image,
                                 output_path: pathlib.Path):
-        """Process a volume for raw DWI dataset, optionally resampling the
+        """
+        Process a volume for raw DWI dataset, optionally resampling the
         gradient directions.
-
-        Parameters
-        ----------
-        dwi_image : nib.Nifti1Image
-            Diffusion-weighted images (4D)
-        gradient_table : dipy.io.gradients.GradientTable
-            Dipy object that contains all bvals and bvecs.
-        wm_mask_image : nib.Nifti1Image
-            Binary white matter mask.
-        output_path : str
-            Path to the output folder.
-
-        Returns
-        -------
-        output : np.ndarray
-            The processed output volume.
         """
         if self.resample:
             # Load and resample:
             # Brings to SH and then back to directions.
-            output = resample_dwi(dwi_image, gradient_table, sh_order=6)
+            gtab = gradient_table(bvals, bvecs, b0_threshold=bvals.min())
+            output = resample_dwi(dwi_image, gtab, sh_order=6)
         else:
             # Load:
             output = dwi_image.get_fdata(dtype=np.float32)
@@ -450,7 +455,7 @@ class TractoDatasetLoaderDWI(TractoDatasetCreatorGeneric):
         return output
 
 
-class TractoDatasetLoaderDWISH(TractoDatasetCreatorGeneric):
+class TractoDatasetCreatorDwiSH(TractoDatasetCreatorGeneric):
     """Class containing all configuration options for creating a new DWI-SH
     dataset."""
 
@@ -476,34 +481,20 @@ class TractoDatasetLoaderDWISH(TractoDatasetCreatorGeneric):
         return state_dict
 
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                gradient_table: GradientTable,
+                                bvals, bvecs, frf,
                                 wm_mask_image: nib.Nifti1Image,
                                 output_path: pathlib.Path):
-        """Process a volume for a DWI-SH dataset. Fits spherical harmonics to
-        the diffusion signal.
-
-        Parameters
-        ----------
-        dwi_image : nib.Nifti1Image
-            Diffusion-weighted images (4D)
-        gradient_table : dipy.io.gradients.GradientTable
-            Dipy object that contains all bvals and bvecs.
-        wm_mask_image : nib.Nifti1Image
-            Binary white matter mask.
-        output_path : str
-            Path to the output folder.
-
-        Returns
-        -------
-        output : np.ndarray
-            The processed output volume.
         """
-        output = compute_sh_coefficients(dwi_image, gradient_table,                                 # toDo Antoine: get_pams. J'ai pas checké ce que ça fait.
+        Process a volume for a DWI-SH dataset. Fits spherical harmonics to
+        the diffusion signal.
+        """
+        gtab = gradient_table(bvals, bvecs, b0_threshold=bvals.min())
+        output = compute_sh_coefficients(dwi_image, gtab,                                 # toDo Antoine: get_pams. J'ai pas checké ce que ça fait.
                                          sh_order=self.sh_order)
         return output
 
 
-class TractoDatasetLoaderFODFSH(TractoDatasetCreatorGeneric):
+class TractoDatasetCreatorFodfSH(TractoDatasetCreatorGeneric):
     """Class containing all configuration options for creating a new fODF-SH
     dataset."""
 
@@ -529,27 +520,12 @@ class TractoDatasetLoaderFODFSH(TractoDatasetCreatorGeneric):
         return state_dict
 
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                gradient_table: GradientTable,
+                                bvals, bvecs, frf,
                                 wm_mask_image: nib.Nifti1Image,
                                 output_path: pathlib.Path):
-        """Process a volume for a fODF-SH dataset. Compute a response function,
-         fit fODFs and return the corresponding SH coeffs.
-
-        Parameters
-        ----------
-        dwi_image : nib.Nifti1Image
-            Diffusion-weighted images (4D)
-        gradient_table : dipy.io.gradients.GradientTable
-            Dipy object that contains all bvals and bvecs.
-        wm_mask_image : nib.Nifti1Image
-            Binary white matter mask.
-        output_path : str
-            Path to the output folder.
-
-        Returns
-        -------
-        output : np.ndarray
-            The processed output volume.
+        """
+        Process a volume for a fODF-SH dataset. Compute a response function,
+        fit fODFs and return the corresponding SH coeffs.
         """
 
         # Don't provide a wm mask, instead rely on FA threshold
@@ -562,14 +538,18 @@ class TractoDatasetLoaderFODFSH(TractoDatasetCreatorGeneric):
         return_sh = True
 
         # Computing fODF only inside WM mask
-        pam = compute_fodf(dwi_image, gradient_table, frf, self.sh_order,
-                           n_peaks, wm_mask_image, return_sh)
+        peaks = compute_fodf(dwi_image.get_data(), bvals, bvecs, frf,
+                             sh_order=self.sh_order,
+                             nbr_processes=None,
+                             mask=wm_mask_image, sh_basis='tournier07',
+                             return_sh=return_sh,
+                             n_peaks=n_peaks)
 
-        output = pam.shm_coeff.astype(np.float32)
+        output = peaks.shm_coeff.astype(np.float32)
         return output
 
 
-class TractoDatasetLoaderFODFPeaks(TractoDatasetCreatorGeneric):
+class TractoDatasetCreatorFODFPeaks(TractoDatasetCreatorGeneric):
     """Class containing all configuration options for creating a new fODF-peaks
     dataset."""
 
@@ -605,35 +585,20 @@ class TractoDatasetLoaderFODFPeaks(TractoDatasetCreatorGeneric):
         return state_dict
 
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                gradient_table: GradientTable,
+                                bvals, bvecs, frf,
                                 wm_mask_image: nib.Nifti1Image,
                                 output_path: pathlib.Path):
-        """Process a volume for a fODF-peaks dataset.
+        """
+        Process a volume for a fODF-peaks dataset.
 
         Compute a response function, fit fODFs,
         extract the main peaks and return a 4D volume, where the last axis
         is each peak (3D vector) with its value (scalar), all flattened into
         a single dimension.
-
-        Parameters
-        ----------
-        dwi_image : nib.Nifti1Image
-            Diffusion-weighted images (4D)
-        gradient_table : dipy.io.gradients.GradientTable
-            Dipy object that contains all bvals and bvecs.
-        wm_mask_image : nib.Nifti1Image
-            Binary white matter mask.
-        output_path : str
-            Path to the output folder.
-
-        Returns
-        -------
-        output : np.ndarray
-            The processed output volume.
         """
 
         # Don't provide a wm mask, instead rely on FA threshold
-        frf = compute_ssst_frf(dwi_image, gradient_table)
+        frf = compute_ssst_frf(dwi_image, bvals, bvecs)
 
         # Save frf to file
         np.savetxt(str(output_path.joinpath("frf.txt")), frf)
@@ -641,8 +606,11 @@ class TractoDatasetLoaderFODFPeaks(TractoDatasetCreatorGeneric):
         return_sh = False
 
         # Computing fODF only inside WM mask
-        pam = compute_fodf(dwi_image, gradient_table, frf, self.sh_order,
-                           self.n_peaks, wm_mask_image, return_sh)
+        pam = compute_fodf(dwi_image.get_data(), bvals, bvecs, frf,
+                           sh_order=self.sh_order,
+                           nbr_processes=None, mask=wm_mask_image,
+                           sh_basis='tournier07', return_sh=return_sh,
+                           n_peaks=self.n_peaks)
 
         # Peaks directions are scaled by the normalized peaks values
         fodf_peaks_dirs = pam.peak_dirs.astype(np.float32)

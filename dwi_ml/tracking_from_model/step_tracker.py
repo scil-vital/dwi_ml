@@ -8,9 +8,10 @@ import numpy as np
 import torch
 from nibabel.streamlines import Tractogram
 
-# from shared
-from scil_vital.shared.code.data.singlesubject import (
+from dwi_ml.data_use.subject_managers.singlesubject import (
     MRIDataVolume)
+
+# À ARRANGER
 from scil_vital.shared.code.signal.interpolation import (
     torch_trilinear_interpolation)
 from scil_vital.shared.code.transformation.streamlines import (

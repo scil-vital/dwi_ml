@@ -1,6 +1,8 @@
 import sys
 import time
 from time import time
+import timeit
+from collections import deque
 
 """
 A timer class printing elapsed time in color.

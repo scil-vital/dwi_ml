@@ -1,8 +1,13 @@
-"""
-Functions:
-    add_noise_to_streamlines
-    cut_random_streamlines
-"""
+from typing import List, Union
+
+import nibabel as nib
+import numpy as np
+
+from scipy.stats import truncnorm
+from dwi_ml.data.processing.space.convert_world_to_vox import (
+    convert_world_to_vox)
+from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths
+
 
 def add_noise_to_streamlines(
         streamlines: Union[nib.streamlines.ArraySequence, np.ndarray],
@@ -37,7 +42,7 @@ def add_noise_to_streamlines(
 
     # Dealing with spaces: putting noise in the streamline's space
     if convert_mm_to_vox:
-        noise_sigma = convert_mm2vox(noise_sigma, affine)
+        noise_sigma = convert_world_to_vox(noise_sigma, affine)
 
     # Performing noise addition
     if isinstance(streamlines, nib.streamlines.ArraySequence):

@@ -271,3 +271,40 @@ def filter_bvalue(dwi_image: nib.Nifti1Image, gradient_table: GradientTable,
                                                     filtered_bvecs)
 
     return filtered_image, filtered_gradient_table
+
+
+def remove_short_streamlines_from_sft(tractogram: StatefulTractogram,
+                                      min_length_mm: float):
+    # When ready for python 3.7: -> StatefulTractogram:
+    """Remove all streamlines shorter than the minimum length in mm.
+
+    Parameters
+    ----------
+    tractogram : StatefulTractogram
+        Tractogram to filter.
+    min_length_mm : float
+        Streamlines shorter than this length will be removed.
+
+    Returns
+    -------
+    tractogram : StatefulTractogram
+        A tractogram without short streamlines.
+    """
+    # Make sure we are in world space
+    orig_space = tractogram.space
+    tractogram.to_rasmm()
+
+    lengths = length(tractogram.streamlines)
+    filtered_streamlines = [s for (s, l) in zip(tractogram.streamlines, lengths)
+                            if l > min_length_mm]
+    output_tractogram = StatefulTractogram(
+        filtered_streamlines, tractogram, Space.RASMM,
+        shifted_origin=tractogram.shifted_origin)
+
+    # Return to original space
+    if orig_space == Space.VOX:
+        output_tractogram.to_vox()
+    elif orig_space == Space.VOXMM:
+        output_tractogram.to_voxmm()
+
+    return output_tractogram

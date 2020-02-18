@@ -1,17 +1,16 @@
 
-from scilpy import convert_mm2vox # Fait partie des trucs qu'on veut envoyer sur scilpy. À voir.
-
 import numpy as np
 import itertools
 
 
-# If you know your radius in mm only, use convert_mm_to_vox (should be sent to
-# scilpy from dwi_ml soon). Ex:
-# radius_vox = convert_mm2vox(radius_mm, affine_mm_to_vox)
 def get_interp_neighborhood_vectors(radius_vox, method: str = "6axes") \
         -> np.ndarray:
     """
     Returns a neighbourhood based on the method choice.
+
+    Hint: If you know your radius in mm only, use
+    dwi_ml.data.processing.space.convert_world_to_vox.convert_world_to_vox
+    Ex: radius_vox = convert_mm2vox(radius_mm, affine_mm_to_vox)
 
     Parameters
     ----------

@@ -12,12 +12,7 @@ import numpy as np
 from typing import List
 
 
-def flip_streamline(streamline):
-    return streamline[::-1]
-
-
-def split_array_at_lengths(array: np.ndarray, lengths: List[int])\
-        -> List[np.ndarray]:
+def split_array_at_lengths(array: np.ndarray, lengths: List[int]):
     """Split an array into sub-arrays, provided the length of each segment.
 
     Parameters

@@ -97,3 +97,6 @@ def cut_random_streamlines(
         output_streamlines.extend(segments)
 
     return output_streamlines
+
+def flip_streamlines():
+    #TODO!!

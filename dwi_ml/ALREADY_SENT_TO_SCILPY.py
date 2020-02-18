@@ -78,7 +78,6 @@ def compute_ssst_frf(dwi_image: nib.Nifti1Image, gradient_table: GradientTable,
     return full_response
 
 
-
 def compute_fodf(dwi_image: nib.Nifti1Image, gradient_table: GradientTable,
                  full_frf: np.ndarray, sh_order: int, n_peaks: int = 3,
                  mask_image: nib.Nifti1Image = None, return_sh: bool = True):
@@ -231,3 +230,44 @@ def resample_streamlines(streamlines: Iterable, step_size: float,
     streamlines_resampled = [set_number_of_points(s, n) for s, n in
                              zip(streamlines, nb_points)]
     return streamlines_resampled
+
+
+def filter_bvalue(dwi_image: nib.Nifti1Image, gradient_table: GradientTable,
+                  bval_filter: int) -> Tuple[nib.Nifti1Image, GradientTable]:
+    """Filter a Nifti image and a GradientTable for the given b-value (and keep
+    the b0).
+
+    Parameters
+    ----------
+    dwi_image : nib.Nifti1Image
+        The input image.
+    gradient_table : dipy.io.gradients.GradientTable
+        The input GradientTable.
+    bval_filter : int
+        The b-value to use as filter.
+
+    Returns
+    -------
+    filtered_image : nib.Nifti1Image
+        The filtered weights as a Nifti image.
+    filtered_gradient_table : dipy.io.gradients.GradientTable
+        The filtered gradient table.
+    """
+    eps = 10.
+    bvals = gradient_table.bvals
+    bvecs = gradient_table.bvecs
+
+    bvals_mask = np.logical_and(bvals > (bval_filter - eps),
+                                bvals < (bval_filter + eps))
+    bvals_and_b0_mask = np.logical_or(gradient_table.b0s_mask, bvals_mask)
+    filtered_bvals = bvals[bvals_and_b0_mask]
+    filtered_bvecs = bvecs[bvals_and_b0_mask]
+    filtered_weights = \
+        dwi_image.get_fdata(dtype=np.float32)[..., bvals_and_b0_mask]
+
+    filtered_image = nib.Nifti1Image(filtered_weights, dwi_image.affine,
+                                     dwi_image.header)
+    filtered_gradient_table = create_gradient_table(filtered_bvals,
+                                                    filtered_bvecs)
+
+    return filtered_image, filtered_gradient_table

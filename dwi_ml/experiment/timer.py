@@ -50,3 +50,30 @@ class Timer:
             print(self.txt + " done in ", end="")
 
         print("{:.2f} sec.".format(time() - self.start))
+
+class IterTimer(object):
+    """
+    Description to do
+    """
+    def __init__(self, history_len=5):
+        self.history = deque(maxlen=history_len)
+        self.iterable = None
+        self.start_time = None
+
+    def __call__(self, iterable):
+        self.iterable = iter(iterable)
+        return self
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.start_time is not None:
+            elapsed = timeit.default_timer() - self.start_time
+            self.history.append(elapsed)
+        self.start_time = timeit.default_timer()
+        return next(self.iterable)
+
+    @property
+    def mean(self):
+        return np.mean(self.history) if len(self.history) > 0 else 0

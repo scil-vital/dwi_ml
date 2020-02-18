@@ -28,7 +28,7 @@ FOLDER_DESCRIPTION = (
 """)
 
 BIDS_DESCRIPTION = (
-    """=== Expected BIDS structure:                                                             # POUR COMMENCER À SE PRÉPARER AUX BIDS
+    """=== Expected BIDS structure:                                                             
 {dataset_name}
 | raw
     | {subject_id1}_dwi.nii.gz
@@ -44,7 +44,7 @@ BIDS_DESCRIPTION = (
     """
 )
 
-CONFIG_DECRIPTION = (
+CONFIG_DESCRIPTION = (
     """=== Expected json config file structure:
 {
     "bval": 1000,
@@ -65,7 +65,7 @@ CONFIG_DECRIPTION = (
 ** Config file parameters:
 - sh_order: Order of the spherical harmonics to fit onto the signal.
   If zero, use only the b0-attenuated dwi signal.
-- bval: If provided, keep only the given b-value (and b0s). (+/- 50)                                                # Copié le (+/- 50) de ANTOINE. Vérifier si vrai dans tous les codes
+- bval: If provided, keep only the given b-value (and b0s).
 - minimum_length_mm: Discard streamlines shorter than this length (in mm).
 - step_size_mm: Resample streamlines to have the given step size between
   every point (in mm). *Important: Note that if no step size is defined, the 

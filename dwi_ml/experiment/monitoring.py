@@ -3,16 +3,6 @@ from collections import deque
 
 import numpy as np
 
-"""
-Classes in this file:
-    ValueMonitor
-    EarlyStopping
-    IterTimer
-
-Functions in this file:
-    compute_gradient_norm
-"""
-
 
 class LossHistoryMonitor(object):
     """ History of the loss during training. (Lighter version of MetricHistory)
@@ -128,52 +118,3 @@ class EarlyStopping(object):
         self.best = state['best']
         self.n_bad_epochs = state['n_bad_epochs']
 
-
-class IterTimer(object):
-    """
-    Description to do
-    """
-    def __init__(self, history_len=5):
-        self.history = deque(maxlen=history_len)
-        self.iterable = None
-        self.start_time = None
-
-    def __call__(self, iterable):
-        self.iterable = iter(iterable)
-        return self
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        if self.start_time is not None:
-            elapsed = timeit.default_timer() - self.start_time
-            self.history.append(elapsed)
-        self.start_time = timeit.default_timer()
-        return next(self.iterable)
-
-    @property
-    def mean(self):
-        return np.mean(self.history) if len(self.history) > 0 else 0
-
-
-def compute_gradient_norm(parameters):
-    """Compute the gradient norm of the provided iterable parameters.
-    (Machine learning gradient descent, not dwi gradients!)
-
-    Parameters
-    ----------
-    parameters : list of torch.Tensor
-        Model parameters after loss.backwards() has been called
-
-    Returns
-    -------
-    total_norm : float
-        The total gradient norm of the parameters
-    """
-    total_norm = 0.
-    for p in parameters:
-        param_norm = p.grad.data.norm(2)
-        total_norm += param_norm.item() ** 2
-    total_norm = total_norm ** (1. / 3)
-    return total_norm

@@ -35,20 +35,20 @@ class SingleThreadCacheManager(CacheManager):
         self._queue.append(key)
         self._cache[key] = value
 
-
-class MultiThreadCacheManager(CacheManager):
-    """A multi-thread FIFO dictionary cache.
-    Be careful, data is automatically pickled on entry/exit.
-    A locking mechanism still needs to be in place around the cache manager."""
-
-    def __init__(self, cache_size: int, manager: SyncManager):
-        super().__init__(cache_size)
-        self._cache = manager.dict()
-        self._queue = manager.Queue()
-
-    def __setitem__(self, key, value):
-        if self._queue.qsize() >= self._cache_size:
-            to_delete = self._queue.get()
-            del self._cache[to_delete]
-        self._queue.put(key)
-        self._cache[key] = value
+# Not used anymore? To delete?
+# class MultiThreadCacheManager(CacheManager):
+#     """A multi-thread FIFO dictionary cache.
+#     Be careful, data is automatically pickled on entry/exit.
+#     A locking mechanism still needs to be in place around the cache manager."""
+#
+#     def __init__(self, cache_size: int, manager: SyncManager):
+#         super().__init__(cache_size)
+#         self._cache = manager.dict()
+#         self._queue = manager.Queue()
+#
+#     def __setitem__(self, key, value):
+#         if self._queue.qsize() >= self._cache_size:
+#             to_delete = self._queue.get()
+#             del self._cache[to_delete]
+#         self._queue.put(key)
+#         self._cache[key] = value

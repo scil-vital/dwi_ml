@@ -4,8 +4,7 @@ import torch
 from scil_vital.shared.code.transformation.space import convert_mm2vox
 
 
-def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor) \
-        -> torch.Tensor:
+def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
     """Evaluates the data volume at given coordinates using trilinear
     interpolation on a torch tensor.
 

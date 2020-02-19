@@ -231,3 +231,134 @@ def resample_streamlines(streamlines: Iterable, step_size: float,
     streamlines_resampled = [set_number_of_points(s, n) for s, n in
                              zip(streamlines, nb_points)]
     return streamlines_resampled
+
+def remove_short_streamlines_from_sft(tractogram: StatefulTractogram,
+                                      min_length_mm: float):
+    # When ready for python 3.7: -> StatefulTractogram:
+    """Remove all streamlines shorter than the minimum length in mm.
+
+    Parameters
+    ----------
+    tractogram : StatefulTractogram
+        Tractogram to filter.
+    min_length_mm : float
+        Streamlines shorter than this length will be removed.
+
+    Returns
+    -------
+    tractogram : StatefulTractogram
+        A tractogram without short streamlines.
+    """
+    # Make sure we are in world space
+    orig_space = tractogram.space
+    tractogram.to_rasmm()
+
+    lengths = length(tractogram.streamlines)
+    filtered_streamlines = [s for (s, l) in zip(tractogram.streamlines, lengths)
+                            if l > min_length_mm]
+    output_tractogram = StatefulTractogram(
+        filtered_streamlines, tractogram, Space.RASMM,
+        shifted_origin=tractogram.shifted_origin)
+
+    # Return to original space
+    if orig_space == Space.VOX:
+        output_tractogram.to_vox()
+    elif orig_space == Space.VOXMM:
+        output_tractogram.to_voxmm()
+
+    return output_tractogram
+
+
+def resample_sft(tractogram: StatefulTractogram,
+                 step_size: float) -> StatefulTractogram:
+    """Resample streamlines to have a constant step size, from a stateful
+    tractogram. See also: resample_streamlines_step_size.
+
+    Parameters
+    ----------
+    tractogram : dipy.io.stateful_tractogram.StatefulTractogram
+        Tractogram to resample.
+    step_size : float
+        Step size that all streamlines should have.
+    Returns
+    -------
+    output_tractogram : dipy.io.stateful_tractogram.StatefulTractogram
+        Tractogram with all streamlines resampled with a constant step size.
+    """
+    # Make sure we are in world space
+    orig_space = tractogram.space
+    tractogram.to_rasmm()
+
+    # Resample streamlines
+    lengths = length(tractogram.streamlines)
+    nb_points = np.ceil(lengths / step_size).astype(int)
+    if np.any(nb_points == 1):
+        # Some streamlines are too short;
+        # make sure there is always at least 2 points
+        logging.warning("Some streamlines are shorter than the provided "
+                        "step size...")
+        nb_points[nb_points == 1] = 2
+    streamlines_resampled = [set_number_of_points(s, n) for s, n in
+                             zip(tractogram.streamlines, nb_points)]
+    output_tractogram = StatefulTractogram(streamlines_resampled, tractogram,
+                                           Space.RASMM,
+                                           tractogram.shifted_origin)
+    # Return to original space
+    if orig_space == Space.VOX:
+        tractogram.to_vox()
+    elif orig_space == Space.VOXMM:
+        tractogram.to_voxmm()
+
+    return output_tractogram
+
+
+def compress_sft(tractogram: StatefulTractogram):
+    # When ready for python 3.7: -> StatefulTractogram:
+    """Compress the streamlines of a stateful tractogram
+
+    Parameters
+    ----------
+    tractogram : StatefulTractogram
+
+    Returns
+    -------
+    output_tractogram : StatefulTractogram
+    """
+    orig_space = tractogram.space
+    tractogram.to_rasmm()
+    compressed_streamlines = compress_streamlines(tractogram.streamlines)
+
+    output_tractogram = StatefulTractogram(compressed_streamlines, tractogram,
+                                           tractogram.space,
+                                           tractogram.shifted_origin)
+
+    if orig_space == Space.VOXMM:
+        output_tractogram.to_voxmm()
+    elif orig_space == Space.VOX:
+        output_tractogram.to_vox()
+    elif orig_space == Space.RASMM:
+        pass
+    else:
+        raise ValueError
+
+    return output_tractogram
+
+
+def apply_transform_to_streamlines(streamlines: Iterable, affine: np.ndarray):
+    """Apply an affine transformation on a set of streamlines
+
+    Parameters
+    ----------
+    streamlines : nib.streamlines.ArraySequence or List of np.ndarray
+        Streamlines to transform.
+    affine : np.ndarray with shape (4,4)
+        Affine tranformation to apply on the streamlines.
+
+    Returns
+    -------
+    nib.streamlines.ArraySequence
+        Transformed streamlines.
+    """
+    tractogram = nib.streamlines.Tractogram(streamlines)
+    tractogram.apply_affine(affine)
+    return tractogram.streamlines

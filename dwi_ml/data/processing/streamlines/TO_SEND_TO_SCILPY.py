@@ -9,29 +9,16 @@ Functions:
 """
 
 import logging
+from typing import List
 
 import numpy as np
+
 from dipy.io.stateful_tractogram import Space, StatefulTractogram
 from dipy.segment.clustering import QuickBundlesX
 from dipy.segment.featurespeed import ResampleFeature
 from dipy.segment.metricspeed import AveragePointwiseEuclideanMetric
-from dipy.tracking.streamlinespeed import (
-    compress_streamlines, length, set_number_of_points)
-from scil_vital.shared.code.transformation.streamlines import \
-    remove_similar_streamlines
-from __future__ import annotations
-
-from typing import Iterable, List, Union
-
-import nibabel as nib
-import numpy as np
 from dipy.align.bundlemin import distance_matrix_mdf
 from dipy.tracking.streamlinespeed import length, set_number_of_points
-from scipy.stats import truncnorm
-from scil_vital.shared.code.transformation.space import \
-    convert_mm2vox
-from scil_vital.shared.code.transformation.streamline import \
-    split_array_at_lengths
 
 
 def subsample_sft(tractogram: StatefulTractogram,

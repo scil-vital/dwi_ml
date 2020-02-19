@@ -1,5 +1,4 @@
 """Signal and anatomy related utilities."""
-from __future__ import annotations
 
 import logging
 from typing import Optional, Tuple
@@ -17,8 +16,7 @@ from dipy.segment.mask import applymask
 
 
 def compute_sh_coefficients(dwi: nib.Nifti1Image, gradient_table: GradientTable,
-                            sh_order: int = 8, regul_coeff: float = 0.006)\
-        -> np.ndarray:
+                            sh_order: int = 8, regul_coeff: float = 0.006):
     """Fit a diffusion signal with spherical harmonics coefficients.
 
     Parameters
@@ -80,8 +78,7 @@ def compute_sh_coefficients(dwi: nib.Nifti1Image, gradient_table: GradientTable,
     return data
 
 
-def compute_dwi_attenuation(dwi_weights: np.ndarray, b0: np.ndarray)\
-        -> np.ndarray:
+def compute_dwi_attenuation(dwi_weights: np.ndarray, b0: np.ndarray):
     """ Compute signal attenuation by dividing the dwi signal with the b0.
 
     Parameters:
@@ -114,8 +111,7 @@ def compute_dwi_attenuation(dwi_weights: np.ndarray, b0: np.ndarray)\
     return dwi_attenuation
 
 
-def normalize_data_volume(data: np.ndarray, mask: Optional[np.ndarray] = None)\
-        -> np.ndarray:
+def normalize_data_volume(data: np.ndarray, mask: Optional[np.ndarray] = None):
     """Apply classic data standardization (zero-centering and variance
     normalization) to every modality (last axis), restricted to a mask if
     provided.
@@ -154,50 +150,9 @@ def normalize_data_volume(data: np.ndarray, mask: Optional[np.ndarray] = None)\
     return normalized_data
 
 
-def filter_bvalue(dwi_image: nib.Nifti1Image, gradient_table: GradientTable,
-                  bval_filter: int) -> Tuple[nib.Nifti1Image, GradientTable]:
-    """Filter a Nifti image and a GradientTable for the given b-value (and keep
-    the b0).
-
-    Parameters
-    ----------
-    dwi_image : nib.Nifti1Image
-        The input image.
-    gradient_table : dipy.io.gradients.GradientTable
-        The input GradientTable.
-    bval_filter : int
-        The b-value to use as filter.
-
-    Returns
-    -------
-    filtered_image : nib.Nifti1Image
-        The filtered weights as a Nifti image.
-    filtered_gradient_table : dipy.io.gradients.GradientTable
-        The filtered gradient table.
-    """
-    eps = 10.
-    bvals = gradient_table.bvals
-    bvecs = gradient_table.bvecs
-
-    bvals_mask = np.logical_and(bvals > (bval_filter - eps),
-                                bvals < (bval_filter + eps))
-    bvals_and_b0_mask = np.logical_or(gradient_table.b0s_mask, bvals_mask)
-    filtered_bvals = bvals[bvals_and_b0_mask]
-    filtered_bvecs = bvecs[bvals_and_b0_mask]
-    filtered_weights = \
-        dwi_image.get_fdata(dtype=np.float32)[..., bvals_and_b0_mask]
-
-    filtered_image = nib.Nifti1Image(filtered_weights, dwi_image.affine,
-                                     dwi_image.header)
-    filtered_gradient_table = create_gradient_table(filtered_bvals,
-                                                    filtered_bvecs)
-
-    return filtered_image, filtered_gradient_table
-
-
 def resample_dwi(dwi_image: nib.Nifti1Image, gradient_table: GradientTable,
                  directions: Sphere = None, sh_order: int = 8,
-                 regul_coeff: float = 0.006) -> np.ndarray:
+                 regul_coeff: float = 0.006):
     """Resample a diffusion signal according to a set of directions using
     spherical harmonics.
 

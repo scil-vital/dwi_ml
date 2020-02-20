@@ -17,7 +17,9 @@ from scil_vital.shared.code.utils.timer import Timer
 from scil_vital.shared.code.utils.experiment_utils import ValueMonitor
 
 
-class TractoMLAbstractLocal:
+class DWIMLAbstractLocal:
+    """ Meant for projects working on learning local information in the
+    voxel. Information will be X = a voxel. """
     def __init__(self):
         raise NotImplementedError
 
@@ -34,10 +36,12 @@ class TractoMLAbstractLocal:
         raise NotImplementedError
 
 
-class TractoMLAbstractSequences:
+class DWIMLAbstractSequences:
+    """ Meant for projects working on learning tractography. Information will
+    be X = sequences."""
     def __init__(self,
-                 train_database_path: str = None,
-                 valid_database_path: str = None,
+                 train_database_path,
+                 valid_database_path,
                  name: str = None,
                  # Concerning the choice of inputs:
                  nb_degree_angles: int = 128,
@@ -71,9 +75,10 @@ class TractoMLAbstractSequences:
 
         ====> Concerning the choice of inputs:
         nb_degree_angles: int
-            Precision for angles: nb of directions on the sphere. If previous
-            direction is added to input, we need to know how many that is. But
-            we manage the output with output_model, not with this option. [128]
+            Precision for angles: number of directions on the sphere. If
+            previous direction is added to input, we need to know how many that
+            is. But we manage the output with output_model, not with this
+            option. [128]
         add_streamline_noise : bool
             If set, add random gaussian noise to streamline coordinates
             on-the-fly. Noise variance is 0.1 * step-size, or 0.1mm if no step

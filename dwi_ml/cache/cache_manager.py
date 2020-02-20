@@ -1,5 +1,4 @@
 from collections import deque
-from multiprocessing.managers import SyncManager
 
 
 class CacheManager(object):
@@ -35,11 +34,14 @@ class SingleThreadCacheManager(CacheManager):
         self._queue.append(key)
         self._cache[key] = value
 
+
 # Not used anymore? To delete?
+# from multiprocessing.managers import SyncManager
 # class MultiThreadCacheManager(CacheManager):
 #     """A multi-thread FIFO dictionary cache.
 #     Be careful, data is automatically pickled on entry/exit.
-#     A locking mechanism still needs to be in place around the cache manager."""
+#     A locking mechanism still needs to be in place around the cache manager.
+#     """
 #
 #     def __init__(self, cache_size: int, manager: SyncManager):
 #         super().__init__(cache_size)

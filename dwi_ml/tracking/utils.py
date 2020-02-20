@@ -7,8 +7,8 @@ from dipy.tracking.utils import length as length_generator
 from nibabel.affines import apply_affine
 
 # Flags enum
-from scil_vital.shared.code.signal.interpolation import (
-    interpolate_volume_at_coordinates)
+from dwi_ml.data.processing.dwi.interpolation import
+    interpolate_volume_at_coordinates
 
 
 class StoppingFlags(Enum):

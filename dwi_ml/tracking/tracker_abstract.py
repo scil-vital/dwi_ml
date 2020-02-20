@@ -15,17 +15,14 @@ from dipy.tracking.streamline import length as slength
 from nibabel.affines import apply_affine
 from nibabel.streamlines import ArraySequence, Tractogram
 
-from dwi_ml.data_use.subject_managers.singlesubject import (
+from dwi_ml.data.dataset.single_subject_containers import (
     MRIDataVolume, SubjectData)
-
-# from shared
-from scil_vital.shared.code.tracking.step_tracker import (
+from dwi_ml.tracking.step_tracker import (
     StepTracker, PreInitializedStepTracker)
-from scil_vital.shared.code.transformation.streamlines import (
+from dwi_ml.data.processing.space.utils import (
     convert_mm2vox)
-from scil_vital.shared.code.utils.timer import Timer
-from scil_vital.shared.code.tracking.tracking_utils import (
-    StoppingFlags, count_flags,)
+from dwi_ml.experiment.timer import Timer
+from dwi_ml.tracking.utils import StoppingFlags, count_flags
 
 
 class TrackerAbstract(object):

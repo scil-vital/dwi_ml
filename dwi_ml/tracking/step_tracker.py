@@ -8,17 +8,15 @@ import numpy as np
 import torch
 from nibabel.streamlines import Tractogram
 
-from dwi_ml.data_use.subject_managers.singlesubject import (
+from dwi_ml.data.dataset.single_subject_containers import (
     MRIDataVolume)
-
-# À ARRANGER
-from scil_vital.shared.code.signal.interpolation import (
+from dwi_ml.data.processing.dwi.interpolation import (
     torch_trilinear_interpolation)
-from scil_vital.shared.code.transformation.streamlines import (
+from dwi_ml.data.processing.space.utils import (
     convert_mm2vox)
-from scil_vital.shared.code.signal.interpolation import (
+from dwi_ml.data.processing.dwi.neighbourhood import  (
     get_interp_neighborhood_vectors)
-from scil_vital.shared.code.tracking.tracking_utils import (
+from dwi_ml.tracking.utils import (
     StoppingFlags,
     filter_stopping_streamlines,
     is_outside_mask,
@@ -26,7 +24,6 @@ from scil_vital.shared.code.tracking.tracking_utils import (
     is_too_long)
 
 
-                                                                                                        # ToDo. copié-collé de Philippe. Fitte pour tous?
 class StepTracker(object):
     """ Generate streamlines using a pretrained recurrent model.                                                # A comprendre si ça doit être a sequence model
         Streamlines will be stopped according to predefined criteria. """

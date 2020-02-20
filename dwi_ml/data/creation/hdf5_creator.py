@@ -1,31 +1,3 @@
-"""Dataset processing and configuration.
-
-For the expected config file structure, see
-dwi_ml.io.description_data_structure.py
-
-Here, we define:
-    class BundleConfig:
-        Keeping all its parameters public as this class is only meant to be used
-        here:
-            .name
-            .clustering_threshold_mm
-            .removal_distance_mm
-    class TractoDatasetCreatorGeneric:
-        Public variables and functions:
-            .subject_ids
-            .bval
-            .creator_from_json()
-            .get_state_dict()
-            .load_and_process_volume()
-            .load_process_and_merge_bundles()
-    class TractoDatasetLoaderDWI
-    class TractoDatasetLoaderDWISH
-    class TractoDatasetLoaderFODFSH
-    class TractoDatasetLoaderFODFPeaks
-We expect these classes to be used in a file such as create_dataset.
-"""
-
-# from __future__ import annotations
 import json
 import logging
 import pathlib
@@ -40,24 +12,21 @@ from dipy.io.stateful_tractogram import Space, StatefulTractogram
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.utils import length
 
-from scilpy.reconst.fodf import compute_fodf
+# Should be added in scilpy soon when all our PRs are accepted:
+from scilpy.reconst.fodf import (
+    compute_fodf, compute_sh_coefficients)
 from scilpy.reconst.frf import compute_ssst_frf
+from scilpy.tracking.tools import (
+    filter_streamlines_by_length, resample_streamlines_step_size)
+from scilpy.io.streamlines import compress_sft
+from scilpy.? import resample_dwi
+from scilpy.? import subsample_sft_francois
 
-from dwi_ml.data_creation.subjects_validation import (
-    list_equals, validate_subject_list)
+from dwi_ml.data.creation.subjects_validation import (
+    validate_subject_list, list_equals)                                                             # Ugly but this script will be modified and maybe we won't need it anymore.
+from dwi_ml.experiment.timer import Timer
 
-## À RÉARRANGER
-from scil_vital.shared.code.signal.signal_utils import (
-     compute_sh_coefficients,
-    , resample_dwi)
-from scil_vital.shared.code.transformation.sft import (
-    compress_sft, remove_short_streamlines_from_sft,
-    subsample_sft, resample_sft)
-from scil_vital.shared.code.validation.tractogram_validation import (
-    are_tractograms_in_same_space)
-
-
-class BundleConfig(object):
+class HDF5BundleConfig(object):
     """Bundle configuration parameters."""
 
     def __init__(self, name: str, clustering_threshold_mm: float = None,
@@ -77,7 +46,7 @@ class BundleConfig(object):
         self.removal_distance_mm = removal_distance_mm
 
 
-class TractoDatasetCreatorGeneric(object):
+class HDF5CreatorAbstract(object):
     """Base class for a dataset processor."""
 
     def __init__(self, final_subjects: List[str] = None, bval: int = None,
@@ -91,41 +60,41 @@ class TractoDatasetCreatorGeneric(object):
             Filter the dMRI image to keep only this b-value (and b0s).
         minimum_length_mm : float
             Remove streamlines shorter than this length.
-        step_size_mm : float
-            Resample streamlines to this step size.
+        step_size : float
+            Step size to resample streamlines (in mm).
         bundles : dict
             Bundle-wise parameters; these should include the name and
             subsampling parameters OR If empty, datasets will be treated as
             wholebrain tractograms.
         """
         self.bval = bval
-        self._minimum_length_mm = minimum_length_mm
-        self._step_size_mm = step_size_mm
+        self.minimum_length_mm = minimum_length_mm
+        self.step_size = step_size_mm
         self.final_subjs = final_subjects
 
         if bundles:
             # Bundle-specific options
-            self._bundles = []
+            self.bundles = []
             for name, config_dict in bundles.items():
                 try:
-                    bundle_config = BundleConfig(
+                    bundle_config = HDF5BundleConfig(
                         name,
                         config_dict["clustering_threshold_mm"],
                         config_dict["removal_distance_mm"]
                     )
-                    self._bundles.append(bundle_config)
+                    self.bundles.append(bundle_config)
                 except KeyError as e:
                     raise ValueError("Bundle {} is missing configuration "
                                      "parameters: {}".format(name, e))
         else:
             # Datasets will be treated as wholebrain tractograms in
             # load_and_process_streamlines
-            self._bundles = None
+            self.bundles = None
 
     @classmethod
-    def creator_from_json(cls, json_file: Union[str, IO], raw_path: str,
-                          *args, **kwargs):
-        """ Create a DatasetConfigAbstract object from a json file.
+    def from_json(cls, json_file: Union[str, IO], raw_path: str,
+                  *args, **kwargs):
+        """ Create a HDF5CreatorGeneric object from a json file.
 
         Parameters
         ----------
@@ -140,7 +109,7 @@ class TractoDatasetCreatorGeneric(object):
 
         Returns
         -------
-        dataset_creator : TractoDatasetCreatorGeneric
+        dataset_creator : HDF5CreatorAbstract
             A valid dataset configuration.
         """
 
@@ -153,9 +122,9 @@ class TractoDatasetCreatorGeneric(object):
 
         # Compare subject lists 1) defined by user 2) from json 3) whose files
         # are present in directory
-        final_subjects = cls._verify_subject_lists(raw_path,
-                                                   kwargs['subject_ids'],
-                                                   raw_config['subject_ids'])
+        final_subjects = cls.verify_subject_lists(raw_path,
+                                                  kwargs['subject_ids'],
+                                                  raw_config['subject_ids'])
 
         # Create the creator
         dataset_creator = cls(final_subjects, *args, **kwargs, **raw_config)
@@ -163,7 +132,7 @@ class TractoDatasetCreatorGeneric(object):
         return dataset_creator
 
     @staticmethod
-    def _verify_subject_lists(raw_path: str, chosen_subjs, json_subjs):
+    def verify_subject_lists(raw_path: str, chosen_subjs, json_subjs):
 
         # Find list of existing subjects from folders
         all_subjs = [str(f.name) for f in raw_path.iterdir()]
@@ -218,13 +187,13 @@ class TractoDatasetCreatorGeneric(object):
         return {'bval':
                 self.bval if self.bval else "",
                 'minimum_length_mm':
-                self._minimum_length_mm if self._minimum_length_mm else "",
+                self.minimum_length_mm if self.minimum_length_mm else "",
                 'step_size_mm':
-                self._step_size_mm if self._step_size_mm else "",
+                self.step_size if self.step_size else "",
                 'subject_ids':
                 self.final_subjs if self.final_subjs else "",
                 'bundles':
-                [b.name for b in self._bundles] if self._bundles else ""}
+                [b.name for b in self.bundles] if self.bundles else ""}
 
     def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
                                 bvals, bvecs, frf,
@@ -272,82 +241,79 @@ class TractoDatasetCreatorGeneric(object):
         output_lengths : List[float]
             The euclidean length of each streamline
         """
-                                                                                                        # ToDo Antoine: with Timer("Processing streamlines", newline=True):
-        # Initialize
-        output_tractogram = None
-        output_lengths = []
-        n_original_streamlines = 0
-        if not self._bundles:
-            # If no bundles described in the json file, we will treat the files
-            # found in bundles as wholebrain tractograms
-            chosen_bundles_config = [BundleConfig(p.stem) for p in
-                                     bundles_path.glob('*')]
-            if len(chosen_bundles_config) == 0:
-                raise ValueError("No bundles found in the boundles folder!")
-        else:
-            chosen_bundles_config = self._bundles
-        available_bundles = list(bundles_path.iterdir())
 
-        for bundle_config in chosen_bundles_config:
-                                                                                                            # ToDo Antoine:  with Timer(
-                                                                                                            #             "Processing tractogram: {}".format(tractogram_file),
-                                                                                                            #             newline=True,
-                                                                                                            #             color='green'
-                                                                                                            #         ):
-                                                                                                            #  Mais ici tractogram = bundle.
+        with Timer("Processing streamlines", newline=True):
 
-            bundle, bundle_original_count = self._load_and_process_one_bundle(
-                bundle_config, available_bundles, bundles_path, dwi_ref)
-            if bundle is None:
-                continue
-
-            # Keep track of original count
-            n_original_streamlines += bundle_original_count
-
-            # Compute euclidean lengths
-            output_lengths.extend(length(bundle.streamlines))
-
-            # Add processed bundle to output tractogram
-            if output_tractogram is None:
-                output_tractogram = bundle
+            # Initialize
+            output_tractogram = None
+            output_lengths = []
+            n_original_streamlines = 0
+            if not self.bundles:
+                # If no bundles described in the json file, we will treat the files
+                # found in bundles as wholebrain tractograms
+                chosen_bundles_config = [HDF5BundleConfig(p.stem) for p in
+                                         bundles_path.glob('*')]
+                if len(chosen_bundles_config) == 0:
+                    raise ValueError("No bundles found in the boundles folder!")
             else:
-                # Validate that tractograms are in the same space
-                assert are_tractograms_in_same_space(output_tractogram,
-                                                     bundle),\
-                    "Inconsistent tractogram space: {}".format(bundle)
-                output_tractogram.streamlines.extend(bundle.streamlines)
+                chosen_bundles_config = self.bundles
+            available_bundles = list(bundles_path.iterdir())
 
-        # Transfer the streamlines to the reference space before bringing them
-        # to VOX space. NOTE: This is done in case the streamlines were tracked
-        # in a different space than the provided dataset reference
-        if output_tractogram is None:
-            output_streamlines_rasmm = []
-        else:
-            output_streamlines_rasmm = output_tractogram.streamlines
-        output_tractogram = StatefulTractogram(output_streamlines_rasmm,
-                                               dwi_ref,
-                                               space=Space.RASMM)
+            for bundle_config in chosen_bundles_config:
+                bundle, bundle_original_count = self._load_and_process_one_bundle(
+                    bundle_config, available_bundles, bundles_path, dwi_ref)
+                if bundle is None:
+                    continue
 
-        # Internal validation check
-        output_tractogram.remove_invalid_streamlines()
-        logging.debug("Ran internal tractogram validation; "
-                      "Remaining: {}".format(len(output_tractogram)))
+                # Keep track of original count
+                n_original_streamlines += bundle_original_count
 
-        # Final nb of streamlines
-        logging.info("Final number of streamlines : "
-                     "{} / {}".format(len(output_tractogram),
-                                      n_original_streamlines))
+                # Compute euclidean lengths
+                output_lengths.extend(length(bundle.streamlines))
 
-        # Send to VOX space and make sure the origin is at the CENTER of the
-        # voxel. NOTE: This is really important, otherwise interpolation will
-        # be off by half a voxel.
-        output_tractogram.to_vox()
-        output_tractogram.to_center()
+                # Add processed bundle to output tractogram
+                if output_tractogram is None:
+                    output_tractogram = bundle
+                else:
+                    # Validate that tractograms are in the same space
+                    # Function doesnt exist anymore but should not be necessary
+                    # if we use SFT.
+                    assert are_tractograms_in_same_space(output_tractogram,
+                                                         bundle),\
+                        "Inconsistent tractogram space: {}".format(bundle)
+                    output_tractogram.streamlines.extend(bundle.streamlines)
+
+            # Transfer the streamlines to the reference space before bringing them
+            # to VOX space. NOTE: This is done in case the streamlines were tracked
+            # in a different space than the provided dataset reference
+            if output_tractogram is None:
+                output_streamlines_rasmm = []
+            else:
+                output_streamlines_rasmm = output_tractogram.streamlines
+            output_tractogram = StatefulTractogram(output_streamlines_rasmm,
+                                                   dwi_ref,
+                                                   space=Space.RASMM)
+
+            # Internal validation check
+            output_tractogram.remove_invalid_streamlines()
+            logging.debug("Ran internal tractogram validation; "
+                          "Remaining: {}".format(len(output_tractogram)))
+
+            # Final nb of streamlines
+            logging.info("Final number of streamlines : "
+                         "{} / {}".format(len(output_tractogram),
+                                          n_original_streamlines))
+
+            # Send to VOX space and make sure the origin is at the CENTER of the
+            # voxel. NOTE: This is really important, otherwise interpolation will
+            # be off by half a voxel.
+            output_tractogram.to_vox()
+            output_tractogram.to_center()
 
         return output_tractogram, output_lengths
 
-    def _load_and_process_one_bundle(self, bundle_config: BundleConfig,
-                                     available_bundles,                                                     # toDo available_bundles = List[str]?
+    def _load_and_process_one_bundle(self, bundle_config: HDF5BundleConfig,
+                                     available_bundles,
                                      bundles_path: pathlib.Path,
                                      dwi_ref: nib.Nifti1Image):
 
@@ -382,19 +348,19 @@ class TractoDatasetCreatorGeneric(object):
                       .format(bundle_original_count))
 
         # Remove streamlines that are too short
-        bundle = remove_short_streamlines_from_sft(bundle,
-                                                   self._minimum_length_mm)
+        bundle = filter_streamlines_by_length(bundle,                                                                           # toDo. Bundle has to be a sft.
+                                              self.minimum_length_mm)
         logging.debug("Removed streamlines under "                                                  
-                      "{}mm; Remaining: {}".format(self._minimum_length_mm,
+                      "{}mm; Remaining: {}".format(self.minimum_length_mm,
                                                    len(bundle)))
 
         # Subsample bundles to keep only the closest to centroid (only if we
         # have bundle information, i.e. not wholebrain)
         if (bundle_config.clustering_threshold_mm is not None
                 and bundle_config.removal_distance_mm is not None):
-            bundle = subsample_sft(bundle,
-                                      bundle_config.clustering_threshold_mm,
-                                      bundle_config.removal_distance_mm)
+            bundle = subsample_sft_francois(bundle,
+                                            bundle_config.clustering_threshold_mm,
+                                            bundle_config.removal_distance_mm)
             logging.debug("Subsampled bundle using clustering "
                           "threshold of  {}mm and a removal distance of "
                           "{}mm; Remaining: {}"
@@ -403,17 +369,17 @@ class TractoDatasetCreatorGeneric(object):
                                   len(bundle)))
 
         # Resample streamlines to have all the same step size
-        if self._step_size_mm:
-            bundle = resample_sft(bundle, self._step_size_mm)
+        if self.step_size:
+            bundle = resample_streamlines_step_size(bundle, self.step_size)
             logging.debug("Resampled streamlines' step size to {}mm"
-                          .format(self._step_size_mm))
+                          .format(self.step_size))
         else:  # If no step size is defined, compress the streamlines
             bundle = compress_sft(bundle)
 
         return bundle, bundle_original_count
 
 
-class TractoDatasetCreatorDWI(TractoDatasetCreatorGeneric):
+class HDF5CreatorDWI(HDF5CreatorAbstract):
     """Class containing all configuration options for creating a new DWI
     dataset."""
 
@@ -455,7 +421,7 @@ class TractoDatasetCreatorDWI(TractoDatasetCreatorGeneric):
         return output
 
 
-class TractoDatasetCreatorDwiSH(TractoDatasetCreatorGeneric):
+class HDF5CreatorDwiSH(HDF5CreatorAbstract):
     """Class containing all configuration options for creating a new DWI-SH
     dataset."""
 
@@ -494,7 +460,7 @@ class TractoDatasetCreatorDwiSH(TractoDatasetCreatorGeneric):
         return output
 
 
-class TractoDatasetCreatorFodfSH(TractoDatasetCreatorGeneric):
+class HDF5CreatorFodfSH(HDF5CreatorAbstract):
     """Class containing all configuration options for creating a new fODF-SH
     dataset."""
 
@@ -549,7 +515,7 @@ class TractoDatasetCreatorFodfSH(TractoDatasetCreatorGeneric):
         return output
 
 
-class TractoDatasetCreatorFODFPeaks(TractoDatasetCreatorGeneric):
+class HDF5CreatorFODFPeaks(HDF5CreatorAbstract):
     """Class containing all configuration options for creating a new fODF-peaks
     dataset."""
 

@@ -23,12 +23,12 @@ import nibabel as nib
 import numpy as np
 from dipy.io.streamline import save_tractogram
 
-from dwi_ml.data_creation.hdf5_creator import (
-    TractoDatasetCreatorGeneric,
-    TractoDatasetCreatorDWI,
-    TractoDatasetCreatorDwiSH,
-    TractoDatasetCreatorFODFPeaks,
-    TractoDatasetCreatorFodfSH)
+from dwi_ml.data.creation.hdf5_creator import (
+    HDF5CreatorAbstract,
+    HDF5CreatorDWI,
+    HDF5CreatorDwiSH,
+    HDF5CreatorFODFPeaks,
+    HDF5CreatorFodfSH)
                                                                                                             # toDO NOTE. Creators.load_and_process have changed. We need to use bval and bvecs now
                                                                                                             #  instead of gradient table. So we need to load things a bit differently from the beginnig.
 # À ARRANGER
@@ -147,10 +147,10 @@ def main():
     logging.info(args)
 
     # Choose processor class based on user's model choice
-    cls_choice = {"dwi": TractoDatasetCreatorDWI,
-                  "dwi-sh": TractoDatasetCreatorDwiSH,
-                  "fodf-sh": TractoDatasetCreatorFodfSH,
-                  "fodf-peaks": TractoDatasetCreatorFODFPeaks}
+    cls_choice = {"dwi": HDF5CreatorDWI,
+                  "dwi-sh": HDF5CreatorDwiSH,
+                  "fodf-sh": HDF5CreatorFodfSH,
+                  "fodf-peaks": HDF5CreatorFODFPeaks}
     dataset_cls = cls_choice[args.model_input]
 
     # Prepare other parameters
@@ -165,8 +165,8 @@ def main():
 
     # Create dataset from config and save
     raw_path = Path(args.path, "raw")
-    dataset_config = dataset_cls.creator_from_json(args.config_file, raw_path,
-                                                   **cls_args)
+    dataset_config = dataset_cls.from_json(args.config_file, raw_path,
+                                           **cls_args)
                                                                                                 # ToDo ANTOINE uses with Timer("Generating dataset", newline=True):
     _generate_dataset(args.path, args.name, dataset_config,
                       save_intermediate=args.save_intermediate,
@@ -174,7 +174,7 @@ def main():
 
 
 def _generate_dataset(path: str, name: str,
-                      dataset_creator: TractoDatasetCreatorGeneric,
+                      dataset_creator: HDF5CreatorAbstract,
                       save_intermediate: bool = False,
                       force: bool = False):
     """Generate a dataset from a group of dMRI subjects with multiple bundles.
@@ -295,7 +295,7 @@ def _generate_dataset(path: str, name: str,
 
 def _process_subject(subject_id: str, subject_data_path: Path,
                      output_path: Path,
-                     dataset_creator: TractoDatasetCreatorGeneric,
+                     dataset_creator: HDF5CreatorAbstract,
                      save_intermediate: bool = False):
     """Process a subject to extract normalized input data and all streamlines.
 
@@ -307,7 +307,7 @@ def _process_subject(subject_id: str, subject_data_path: Path,
         Path to the subject's data.
     output_path : pathlib.Path
         Path to the processed folder where intermediate data should be saved.
-    dataset_creator : TractoDatasetCreatorGeneric
+    dataset_creator : HDF5CreatorAbstract
         Processor for dataset volumes and streamlines.
     save_intermediate : bool
         Save intermediate processing files for each subject.

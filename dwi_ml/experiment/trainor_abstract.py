@@ -9,7 +9,7 @@ import time
 import numpy as np
 import torch
 
-from dwi_ml.data.dataset.data_lists_for_torch import \
+from dwi_ml.data.dataset.data_list import \
     (MultiSubjectDataset, LazyMultiSubjectDataset)
 
 # À ARRANGER

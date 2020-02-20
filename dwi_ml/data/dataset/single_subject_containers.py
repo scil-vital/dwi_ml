@@ -1,6 +1,6 @@
 """
 
-We expect the classes here to be used in data_lists_for_torch.py
+We expect the classes here to be used in data_list.py
 """
 
 import h5py

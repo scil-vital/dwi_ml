@@ -1,7 +1,7 @@
 import logging
 
 from torch.utils.data import Dataset, Sampler
-
+import numpy as np
 
 class BatchSampler(Sampler):
     """Samples sequences using a number of required timesteps, without

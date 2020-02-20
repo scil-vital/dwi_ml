@@ -15,18 +15,23 @@ import torch.multiprocessing
 import tqdm
 from nibabel.streamlines import ArraySequence
 from torch.nn.utils.rnn import pack_sequence
-from torch.utils.data import Dataset, Sampler
+from torch.utils.data import Dataset
 
-from scilpy.tracking.tools import resample_streamlines
+from scilpy.tracking.tools import resample_streamlines_step_size
 
-from dwi_ml.data.dataset.single_subject_containers import SubjectData
+from dwi_ml.cache.cache_manager import SingleThreadCacheManager
+from dwi_ml.data.dataset.single_subject_containers import (
+    SubjectData,
+    LazySubjectData)
+from dwi_ml.data.dataset.data_list import (
+    DataListForTorch,
+    LazyDataListForTorch)
 from dwi_ml.data.processing.dwi.neighbourhood import (
     get_interp_neighborhood_vectors)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     flip_streamlines,
     add_noise_to_streamlines,
     cut_random_streamlines)
-from dwi_ml.data.dataset.data_lists_for_torch import DataListForTorch
 from dwi_ml.data.dataset.parameter_description import PARAMETER_DESCRIPTION
 
 class MultiSubjectDataset(Dataset):
@@ -72,7 +77,7 @@ class MultiSubjectDataset(Dataset):
         self.taskman_managed = taskman_managed
 
         # Preparing the dataset
-        self.data_list = None  # type: DataListForTorch
+        self.data_list = None  # type will be DataListForTorch or, in lazy version, LazyDataListForTorch
         self.subjID_to_streamlineID = None
         self.total_streamlines = None
         self.streamline_timesteps = None
@@ -98,7 +103,7 @@ class MultiSubjectDataset(Dataset):
             for subject_key in tqdm.tqdm(keys, ncols=100,
                                          disable=self.taskman_managed):
                 # Add subject's data to the list
-                subj_data = self.add_subject_from_hdf(hdf_file, subject_key)
+                subj_data = self.create_subject_from_hdf(hdf_file, subject_key)
                 subjid = self.data_list.add_subject(subj_data)
 
                 # Gestion of streamline is different for lazy or not so
@@ -118,41 +123,45 @@ class MultiSubjectDataset(Dataset):
                 self.add_neighborhood_mm, nb_axes=self.nb_neighborhood_axes,
                 convert_mm_to_vox=True, affine=affine_vox2rasmm)
 
-    def arrange_streamlines(self, subj_data, subjid, streamline_timesteps_list):
+    def arrange_streamlines(self, subj_data, subjid, streamline_timesteps_list,
+                            hdf_file=None):
+        """hdf_file not used. But added to keep same signature as lazy version. """
+
         # Assign a unique ID to every streamline
         n_streamlines = len(subj_data.streamlines)
         self.subjID_to_streamlineID[subjid] = (
-            self.total_streamlines,
-            self.total_streamlines + n_streamlines)
+            self.total_streamlines, self.total_streamlines + n_streamlines)
 
         # Update total nb of streamlines in the dataset
         self.total_streamlines += n_streamlines
 
         # Get number of timesteps per streamline
-        # ACCESS TO PROTECTED _lengths! See if dipy changes it one day
         streamline_timesteps_list.append(
-            np.array(subj_data.streamlines._lengths, dtype=np.int16))
+            np.array(subj_data.streamlines.get_lengths(), dtype=np.int16))
 
         return streamline_timesteps_list
 
     def get_subject_data(self, subj_id):
-        """Contains both dMRI data and streamlines."""
+        """Contains both dMRI data and streamlines. Different in lazy version"""
         return self.data_list[subj_id]
 
     def get_subject_dmri_data(self, subj_id):
+        """Different in lazy version"""
         return self.get_subject_data(subj_id).dmri_data.as_tensor
 
     def get_subject_streamlines_subset(self, subj_id, ids):
+        """Same in lazy version"""
         return self.get_subject_data(subj_id).streamlines[ids]
 
     @staticmethod
     def build_data_list(hdf_file):
-        # hdf_file not used. But this is used by load, and the lazy version used this
-        # parameter. Keeping the same function definition.
+        # hdf_file not used. But this is used by load, and the lazy version uses
+        # this parameter. Keeping the same signature.
         return DataListForTorch()
 
     @staticmethod
-    def add_subject_from_hdf(hdf_file, subject_id):
+    def create_subject_from_hdf(hdf_file, subject_id):
+        """Different in lazy version"""
         return SubjectData.create_from_hdf(hdf_file[subject_id])
 
     def __len__(self):
@@ -176,29 +185,27 @@ class MultiSubjectDataset(Dataset):
                              "from idx: {}".format(idx))
 
     def get_batch_x_y_and_target(self, batch_ids: List[Tuple[int, int]]):
-        """ Torch uses this function to process the data with the
-        dataloader workers = COLLATE_FN. It means that this part is ran on CPU.
-        Particularly interesting for interpolation: we don't need to send the
-        DWI data to GPU. Interpolation is done on CPU and interpolated data is
-        send to GPU for the model_and_training.
+        """ COLLATE_FN.
 
-        With interpolation:
-            Gets the list of (X, target) examples for the model_and_training/validation
-            set, with
-            - X = the dwi data under each point of the streamlines
-            (- Y = the streamlines coordinates. Not returned)
-            - target = the "ground truth" direction between each point Y.
-            The definition of "dwi data" depends on the chosen model (ex, raw,
-            sh, peak, etc.), with interpolation or not, with neighborhood or
-            not, with previous direction or not.
-        Without interpolation:
-            Only gets the list of Y streamlines coordinates. The rest will be
-            done by the model_and_training script directly on GPU.                                                ToDo? Make cleaner code? Voir avec Philippe:
-                                                                                                         Il m'a expliqué un truc du genre: pour HCP c'est plus efficace comme ça.
-                                                                                                         Pour les petits dataset non alors il a laissé l'option.
-                                                                                                         Mais on pourrait faire ça par défaut.
-                                                                                                         Mettons que je comprends l'explication pour les X data. Mais pourquoi
-                                                                                                         le target est géré différemment selon le case???
+        PURPOSE: Torch uses this function to process the data with the
+        dataloader workers.
+
+        CPU: It means that this part is ran on CPU. Particularly interesting
+        for interpolation: we don't need to send the DWI data to GPU.
+        Interpolation is done on CPU and interpolated data is send to GPU for
+        the model_and_training.
+
+        FUNCTIONNING:
+            - With interpolation: Gets the list of (X, target) examples for the
+            model_and_training/validation set, where
+                X = the dwi data under each point of the streamlines
+                Y = the streamlines coordinates.
+                Target = the "ground truth" direction between each point Y.
+            Should be used with big data.
+            - Without interpolation: Only gets the list of Y streamlines
+            coordinates. The rest will be done by the model_and_training script
+            directly on GPU.
+            Can be used with smaller data.
 
         Parameters
         ----------
@@ -207,7 +214,7 @@ class MultiSubjectDataset(Dataset):
 
         Returns
         -------
-        If self._do_interpolation is False:
+        If self.do_interpolation is False:
             voxel_streamlines : List of np.ndarray with shape (N_i,3)
                 The streamlines coordinates in voxel space.
                 The streamlines are ordered by tractodata.
@@ -246,7 +253,8 @@ class MultiSubjectDataset(Dataset):
 
             # Now, normalize targets. If the step size is always the same,
             # shouldn't make any difference. If compressed.... discutable
-            # choice.                                                                                               # toDo à discuter en groupe
+            # choice.
+            #                                                                                               toDo à discuter en groupe
             targets = [s / torch.sqrt(torch.sum(s ** 2, dim=-1, keepdim=True))
                        for s in batch_directions]
 
@@ -283,11 +291,9 @@ class MultiSubjectDataset(Dataset):
                 self.get_subject_data(subj).dmri_data.affine_vox2rasmm
 
             # Resample streamlines to a fixed step size
-            vox_space_stepSize = (need
-                                  to convert mm_to_vox, self._step_size, affine=affine_vox2rasmm)  # on va sûrement mettre ça dans scilpy??
             if self.step_size:
-                subject_streamlines = resample_streamlines(
-                    subject_streamlines, step_size=vox_space_stepSize)
+                subject_streamlines = resample_streamlines_step_size(
+                    subject_streamlines, step_size=self.step_size)
 
             # Add noise to coordinates
             # ToDo: add a variance in the distribution of noise between epoques.
@@ -338,7 +344,7 @@ class MultiSubjectDataset(Dataset):
 
     @staticmethod
     def _get_batch_target(batch_streamlines: List[np.ndarray],
-                          device: torch.device = None):  # toDo pourquoi device est utile? Pourquoi pas utiliser self.device?
+                          device: torch.device = None):                                                         # toDo pourquoi device est utile? Pourquoi pas utiliser self.device?
         """
         Get the direction between two adjacent points for each streamlines.
         """
@@ -423,5 +429,89 @@ class MultiSubjectDataset(Dataset):
 
         return batch_x_data
 
+
+class LazyMultiSubjectDataset(MultiSubjectDataset):
+    """Lazy dataset containing multiple TractographyData objects."""
+
+    def __init__(self, *args, cache_size: int = 0, **kwargs):
+        # Most parameters are the same as non-lazy
+        super().__init__(*args, **kwargs)
+
+        # In case `None` was passed explicitly, change cache_size:
+        self.cache_size = cache_size or 0
+
+        # This is important. HDF5 file opening should be done in the
+        # __get_item__ method or similar, AFTER the worker sub-processes
+        # have started. This way, all sub-processes will have their own
+        # HDF handle. Otherwise, there may be data corruption because
+        # h5py is not thread-safe.
+        self.hdf_handle = None
+        if self.cache_size > 0:
+            self.volume_cache_manager = None
+
+    def arrange_streamlines(self, subj_data, subjid, streamline_timesteps_list,
+                            hdf_file=None):
+        # Find his streamlines information
+        tmp_subj_data_loaded = self.data_list[(subjid, hdf_file)]
+
+        # Assign a unique ID to every streamline
+        n_streamlines = len(tmp_subj_data_loaded.streamlines)
+        self.subjID_to_streamlineID[subjid] = (
+            self.total_streamlines, self.total_streamlines + n_streamlines)
+
+        # Get number of timesteps per streamlines
+        streamline_timesteps_list.append(
+            np.array(tmp_subj_data_loaded.streamlines.get_lengths(), dtype=np.int16))
+
+        return streamline_timesteps_list
+
+    def get_subject_data(self, item):
+        """Contains both dMRI data and streamlines."""
+        if self.hdf_handle is None:
+            self.hdf_handle = h5py.File(self.path, 'r')
+        return self.data_list[(item, self.hdf_handle)]
+
+    def get_subject_dmri_data(self, subj_id):
+        if self.cache_size > 0:
+            # Parallel workers each build a local cache
+            # (data is duplicated across workers, but there is no need to
+            # serialize/deserialize everything)
+            if self.volume_cache_manager is None:
+                self.volume_cache_manager = SingleThreadCacheManager(self.cache_size)
+
+            try:
+                # General case: Data is already cached
+                volume_data = self.volume_cache_manager[subj_id]
+            except KeyError:
+                # volume_data isn't cached; fetch and cache it
+                volume_data = self.get_subject_data(subj_id).dmri_data.as_tensor
+
+                # Send volume_data on device and keep it there while it's cached
+                volume_data = volume_data.to(self.device)
+
+                self.volume_cache_manager[subj_id] = volume_data
+            return volume_data
+        else:
+            # No cache is used
+            return self.get_subject_data(subj_id).dmri_data.as_tensor
+
+    @staticmethod
+    def build_data_list(hdf_file):
+        assert hdf_file is not None
+        return LazyDataListForTorch(hdf_file)
+
+    @staticmethod
+    def create_subject_from_hdf(hdf_file, subject_id):
+        return LazySubjectData(subject_id=subject_id)
+
+    def __del__(self):
+        if self.hdf_handle is not None:
+            self.hdf_handle.close()
+
+    # Functions usign super's:
+    # get_subject_streamlines_subset
+    # __len__
+    # __getitem__
+    # get_batch_x_y_and_target (=COLLATE_FN)
 
 

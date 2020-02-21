@@ -47,7 +47,7 @@ def add_noise_to_streamlines(
     # Performing noise addition
     if isinstance(streamlines, nib.streamlines.ArraySequence):
         # Access to dipy protected. See if they change that.
-        streamlines._data += truncnorm.rvs(-2, 2, size=streamlines.data.shape,
+        streamlines._data += truncnorm.rvs(-2, 2, size=streamlines.as_tensor.shape,
                                            scale=noise_sigma,
                                            random_state=noise_rng)
     elif isinstance(streamlines, np.ndarray):

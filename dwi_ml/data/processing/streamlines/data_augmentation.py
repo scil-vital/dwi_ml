@@ -5,6 +5,7 @@ import numpy as np
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 from scipy.stats import truncnorm
+
 from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths
 
 
@@ -27,7 +28,9 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
     Returns
     -------
     noisy_sft : StatefulTractogram
-        Noisy streamlines.
+        Noisy streamlines. Note. Adding noise may create invalid streamlines
+        (i.e. out of the box in voxel space). If you want to save noisy_sft,
+        please perform noisy_sft.remove_invalid_streamlines() first.
     """
     # Go to world space
     orig_space = sft.space

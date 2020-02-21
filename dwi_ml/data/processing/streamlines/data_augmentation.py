@@ -3,73 +3,57 @@ from typing import List, Union
 import nibabel as nib
 import numpy as np
 
+from dipy.io.stateful_tractogram import StatefulTractogram
 from scipy.stats import truncnorm
-from dwi_ml.data.processing.space.convert_world_to_vox import (
-    convert_world_to_vox)
 from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths
 
 
-def add_noise_to_streamlines(
-        streamlines: Union[nib.streamlines.ArraySequence, np.ndarray],
-        noise_sigma: float, noise_rng: np.random.RandomState,
-        convert_mm_to_vox: bool = False, affine: np.ndarray = None)\
-        -> Union[nib.streamlines.ArraySequence, np.ndarray]:
+# Checked!
+def add_noise_to_streamlines(sft: StatefulTractogram,
+                             noise_sigma: float,
+                             noise_rng: np.random.RandomState):
     """Add gaussian noise (truncated to +/- 2*std) to streamlines coordinates
-     *in-place*
 
     Parameters
     ----------
-    streamlines : nib.streamlines.ArraySequence
+    sft : StatefulTractogram
         Streamlines.
     noise_sigma : float
-        Standard deviation of the gaussian noise to add to the streamlines.
-        NOTE: This value should be in the same space as the streamlines
-        (assuming the space is isometric)
+        Standard deviation of the gaussian noise to add to the streamlines (in
+        mm)
     noise_rng : np.random.RandomState object
         Random number generator.
-    convert_mm_to_vox: bool
-        If true, will convert noise from mm to vox_iso using affine first.
-        Note that we don't support vox to mm yet, nor mm to vox_noniso.
-        [False]
-    affine: np.ndarray
-        Needed if convert_noise_space is True. Ex : affine_vox2rasmm
 
     Returns
     -------
-    streamlines : nib.streamlines.ArraySequence
+    noisy_sft : StatefulTractogram
         Noisy streamlines.
     """
+    # Go to world space
+    orig_space = sft.space
+    sft.to_rasmm()
 
-    # Dealing with spaces: putting noise in the streamline's space
-    if convert_mm_to_vox:
-        noise_sigma = convert_world_to_vox(noise_sigma, affine)
+    # Perform noise addition (flattening before to go faster)
+    flattened_coords = np.concatenate(sft.streamlines, axis=0)
+    flattened_coords += truncnorm.rvs(-2, 2, size=flattened_coords.shape,
+                                      scale=noise_sigma,
+                                      random_state=noise_rng)
+    noisy_streamlines = split_array_at_lengths(
+        flattened_coords, [len(s) for s in sft.streamlines])
 
-    # Performing noise addition
-    if isinstance(streamlines, nib.streamlines.ArraySequence):
-        # Access to dipy protected. See if they change that.
-        streamlines._data += truncnorm.rvs(-2, 2, size=streamlines.as_tensor.shape,
-                                           scale=noise_sigma,
-                                           random_state=noise_rng)
-    elif isinstance(streamlines, np.ndarray):
-        # Flattening to go faster
-        flattened_coords = np.concatenate(streamlines, axis=0)
+    # Create output tractogram
+    noisy_sft = StatefulTractogram.from_sft(
+        noisy_streamlines, sft, data_per_point=sft.data_per_point,
+        data_per_streamline=sft.data_per_streamline)
+    noisy_sft.to_space(orig_space)
 
-        # Add noise
-        flattened_coords += truncnorm.rvs(-2, 2, size=flattened_coords.shape,
-                                          scale=noise_sigma,
-                                          random_state=noise_rng)
-
-        # Unflatten
-        streamlines = split_array_at_lengths(flattened_coords,
-                                             [len(s) for s in streamlines])
-
-    return streamlines
+    return noisy_sft
 
 
 def cut_random_streamlines(
         streamlines: Union[List, nib.streamlines.ArraySequence],
         split_percentage: float, rng: np.random.RandomState):
-    """Cut a percentage of streamlines in 2 random segments.
+    """Cut a percentage of streamlines into 2 random segments.
     Returns both segments as independent streamlines, so the number of
     output streamlines is higher than the input.
 
@@ -103,5 +87,6 @@ def cut_random_streamlines(
 
     return output_streamlines
 
+
 def flip_streamlines():
-    #TODO!!
+    raise NotImplementedError

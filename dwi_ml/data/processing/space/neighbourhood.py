@@ -1,79 +1,85 @@
+#!/usr/bin/env python
 
-import numpy as np
 import itertools
 
+import numpy as np
 
-def get_interp_neighborhood_vectors(radius_vox, method: str = "6axes") \
-        -> np.ndarray:
+
+# checked!
+def get_neighborhood_vectors_axes(radius):
     """
-    Returns a neighbourhood based on the method choice.
+    This neighborhood definition lies on a sphere. Returns a list of 6 positions
+    (up, down, left, right, behind, in front) at exactly `radius` length
+    (+ 0,0,0, the origin). Good for RNN, for example.
+    If radius is a list of floats, returns a multi-radius neighborhood.
 
     Hint: If you know your radius in mm only, use
     dwi_ml.data.processing.space.convert_world_to_vox.convert_world_to_vox
     Ex: radius_vox = convert_mm2vox(radius_mm, affine_mm_to_vox)
 
+    Note: We only support isometric voxels! Adding isometry would also require
+    remembering where the x,y,z directions are.
+
     Parameters
     ----------
-    radius_vox : float or list of floats.
-        Distance to neighbors (in voxel space. Ex: 2 neighbours distance).
-        See the "6axes" method for the list of floats usage. With the "grid"
-        method, only a single float is accepted.
-    method: str
-        Choice of neigbhoorhood definition. Choices:
-        "6axes": Returns a list of 6+1 positions. Up, down, left, right, behind,
-                 in front at exactly `radius` length (+ 0,0,0).
-                 If radius is a list of floats, returns a multi-radius
-                 neighborhood, with 6 positions per radius (+ 0,0,0).
-                 Good for RNN, for example.
-        "grid":  Returns a 3D volume similar to the original voxel grid,
-                 around (0,0,0,). Dimension 2*radius x 2*radius x 2*radius.
-                 Good for CNN, for example.
+    radius : number (int or float) or list or np.ndarray.
+        Distance to each neighbor sphere (in voxel space).
 
     Returns
     -------
-    directions : np.ndarray with last dimension = 3 (x,y,z coordinate for each
-                 neighbour).
-                 Coordinates are in voxel-space around the (0,0,0) coordinate.
-                 You will need to interpolate the dwi in each direction around
-                 your point of interest to get your neighbourhood.
+    neighborhood : np.ndarray[float]
+        A list of vectors with last dimension = 3 (x,y,z coordinate for each
+        neighbour per respect to the origin). Hint: You can now interpolate your
+        DWI data in each direction around your point of interest to get your
+        neighbourhood.
     """
-    # toDo: This only works with iso voxels! We might have to change this one day
-    #  with radius_vox_x, radius_vox_y, radius_vox_z. But we need to check how
-    #  to find where the x dimension is.
-    #
-    # toDo: add method "n_axes"
 
-    if method == "6axes":
-        unit_axes = _get_6_unit_axes()
+    tmp_axes = np.identity(3)
+    unit_axes = np.concatenate((tmp_axes, -tmp_axes))
 
-        if type(radius_vox) == float:
-            neighborhood = unit_axes * radius_vox
-            neighborhood = np.concatenate(([[0, 0, 0]], neighborhood))
-        else:
-            neighborhood = [[0, 0, 0]]
-            for r in radius_vox:
-                neighborhood = np.concatenate((unit_axes*r, neighborhood))
-    elif method == "grid":
-        if type(radius_vox) == float:
-            neighborhood = []
-            the_range = range(-radius_vox, radius_vox+1)
-            for x, y, z in itertools.product(the_range, the_range, the_range):
-                neighborhood.extend([[x, y, z]])
-            neighborhood = np.asarray(neighborhood)
-        else:
-            raise ValueError("You can't use a list of floats as radius_vox arg"
-                             "together with the grid method.")
+    if type(radius) == list or type(radius) == np.ndarray:
+        neighborhood = [[0, 0, 0]]
+        for r in radius:
+            neighborhood = np.concatenate((unit_axes*r, neighborhood))
     else:
-        raise NotImplementedError
+        neighborhood = unit_axes * radius
+        neighborhood = np.concatenate(([[0, 0, 0]], neighborhood))
 
     return neighborhood
 
 
-def _get_6_unit_axes():
-    tmp_axes = np.identity(3)
-    unit_axes = np.concatenate((tmp_axes, -tmp_axes))
+# checked!
+def get_neighborhood_vectors_grid(radius: int):
+    """Returns a list of points similar to the original voxel grid. Ex: with
+    radius 1, this is 27 points. With radius 2, that's 125 points. Good for CNN,
+    for example.
 
-    return unit_axes
+    Note: We only support isometric voxels! Adding isometry would also require
+    remembering where the x,y,z directions are.
+
+    Parameters
+    ----------
+    radius : int
+        Size of the neighborhood in each direction, in voxel space. Final
+        neighboorhood will be of dimension 2*radius x 2*radius x 2*radius.
+
+    Returns
+    -------
+    neighborhood : np.ndarray[float]
+        A list of vectors with last dimension = 3 (x,y,z coordinate for each
+        neighbour per respect to the origin). Hint: You can now interpolate your
+        DWI data in each direction around your point of interest to get your
+        neighbourhood.
+    """
+    assert type(radius) == int
+
+    neighborhood = []
+    the_range = range(-radius, radius + 1)
+    for x, y, z in itertools.product(the_range, the_range, the_range):
+        neighborhood.extend([[x, y, z]])
+    neighborhood = np.asarray(neighborhood)
+
+    return neighborhood
 
 
 def extend_with_interp_neighborhood(list_points: np.ndarray,

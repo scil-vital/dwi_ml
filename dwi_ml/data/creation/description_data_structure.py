@@ -1,8 +1,8 @@
 
 FOLDER_DESCRIPTION = """
-=== Expected folder structure. This structure should hold wether you 
+=== Expected folder structure. This structure should hold wether you
     work with hdf5 or BIDS.
-    
+
 {database_name}
 | original      ==========> Your original data folder. Necessary for tractoflow
     | {subject_id}
@@ -10,7 +10,7 @@ FOLDER_DESCRIPTION = """
         | bval
         | bvec
         | t1.nii.gz
-| preprocessed  ======> No matter how you preprocess your data, keep results 
+| preprocessed  ======> No matter how you preprocess your data, keep results
                    here. Ex: tractoflow + any other technique to get your
                    bundles.
     | Ex: Tractoflow
@@ -37,7 +37,7 @@ FOLDER_DESCRIPTION = """
                 OR
                 | {subject_id}_{bundle1}_heads.nii.gz
                 | {subject_id}_{bundle1}_tails.nii.gz
-    | ...   
+    | ...
 | processed_{experiment_name}
     (depends if hdf5 or BIDS. see PROCESSED_DESCRIPTION_HDF5)
 """
@@ -70,7 +70,7 @@ TRACTOFLOW = """
     | Segment_Tissues
     | Tracking (wholebrain)
 """
-PROCESSED_DESCRIPTION_HDF5 = """ 
+PROCESSED_DESCRIPTION_HDF5 = """
 | processed_{experiment_name}  ===========> Created by your create_dataset.sh
                                       (only saved if option --save_intermediate)
     | {subject_id}
@@ -108,11 +108,11 @@ CONFIG_DESCRIPTION = (
 - bval: If provided, keep only the given b-value (and b0s).
 - minimum_length_mm: Discard streamlines shorter than this length (in mm).
 - step_size_mm: Resample streamlines to have the given step size between
-  every point (in mm). *Important: Note that if no step size is defined, the 
+  every point (in mm). *Important: Note that if no step size is defined, the
   streamlines will be compressed.
 - subject_ids: List of subjects to include in the dataset.
 - bundles: List of bundles to include in the dataset. If none is given, we will
-  still look into the `bundles` folder, but we will be looking for wholebrain 
+  still look into the `bundles` folder, but we will be looking for wholebrain
   tractograms.
 
 ** Bundle-specific subsampling parameters

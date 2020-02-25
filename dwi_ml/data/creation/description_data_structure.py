@@ -1,48 +1,88 @@
 
-FOLDER_DESCRIPTION = (
-    """=== Expected folder structure:
-{dataset_name}
-| data                  ==========> Your original data folder
+FOLDER_DESCRIPTION = """
+=== Expected folder structure. This structure should hold wether you 
+    work with hdf5 or BIDS.
+    
+{database_name}
+| original      ==========> Your original data folder. Necessary for tractoflow
     | {subject_id}
-        | data.nii.gz
-        | bvals
-        | bvecs
-        | nodif_brain_mask.nii.gz
-| raw                  ==========> Created by 1_convert_original_to_raw.sh
+        | dwi.nii.gz
+        | bval
+        | bvec
+        | t1.nii.gz
+| preprocessed  ======> No matter how you preprocess your data, keep results 
+                   here. Ex: tractoflow + any other technique to get your
+                   bundles.
+    | Ex: Tractoflow
+    | Ex: Bundles from Recobundles
+| dwi_ml_ready  =====> If you used tractoflow, you can use organize_dwi_ml_ready.sh
+                       to arrange your data.
     | {subject_id}
+        | anat
+            | {subject_id}_t1.nii.gz
+            | {subject_id}_wm_map.nii.gz
         | dwi
-            | {subject_id}_dwi.nii.gz
-            | {subject_id}_dwi.bvals
-            | {subject_id}_dwi.bvecs
-            | {subject_id}_fa.nii.gz              # NOT USED HERE
+            | {subject_id}_dwi_preprocessed.nii.gz
+            | {subject_id}_bval_preprocessed
+            | {subject_id}_bvec_preprocessed
+            | {subject_id}_fa.nii.gz
         | bundles
-            | {subject_id}_bundle_1.tck
-            | ...
-            | {subject_id}_bundle_{N}.tck
-            *OR*
-            | {subject_id}_wholebrain.tck
+            | {subject_id}_{bundle1}.tck
         | masks
-            | {subject_id}_normalization.nii.gz
-    | ...
+            | {subject_id}_wm.nii.gz
+            | bundles
+                | {subject_id}_{bundle1}.nii.gz
+            | endpoints
+                | {subject_id}_{bundle1}.nii.gz
+                OR
+                | {subject_id}_{bundle1}_heads.nii.gz
+                | {subject_id}_{bundle1}_tails.nii.gz
+    | ...   
+| processed_{experiment_name}
+    (depends if hdf5 or BIDS. see PROCESSED_DESCRIPTION_HDF5)
+"""
 
-""")
-
-BIDS_DESCRIPTION = (
-    """=== Expected BIDS structure:                                                             
-{dataset_name}
-| raw
-    | {subject_id1}_dwi.nii.gz
-    | {subject_id2}_dwi.nii.gz
-    ...
-| derivatives_bundles1
-    | {subject_id1}_bundle_1.tck
-    | {subject_id2}_bundle_1.tck
-    ...
-| derivatives_mask
-    | {subject_id1}_wm.nii.gz
-    ...
-    """
-)
+TRACTOFLOW = """
+| subj
+    | Bet_DWI
+    | Bet_Prelim_DWI
+    | Bet_T1
+    | Compute_FRF
+    | Crop_DWI
+    | Crop_T1
+    | Denoise_DWI
+    | Denoise_T1
+    | DTI_Metrics
+    | Eddy
+    | Extract_B0
+    | Extract_DTI_Shell
+    | Extract_FODF_Shell
+    | FODF_Metrics
+    | N4_DWI
+    | N4_T1
+    | Normalize_DWI
+    | PFT_Maps
+    | Register_T1
+    | Resample_B0
+    | Resample_T1
+    | Resample_DWI
+    | Seeding_Mask
+    | Segment_Tissues
+    | Tracking (wholebrain)
+"""
+PROCESSED_DESCRIPTION_HDF5 = """ 
+| processed_{experiment_name}  ===========> Created by your create_dataset.sh
+                                      (only saved if option --save_intermediate)
+    | {subject_id}
+        | input
+            | {subject_id}_{input1}.nii.gz  # Ex: fODF (unnormalized)
+            ...
+            | {subject_id}_{inputN}.nii.gz
+            | {subject_id}_model_input.nii.gz   # Final input = all inputs,
+                                                #  normalized, concateanted.
+        | target
+            | {subject_id}_{target1}.tck  # Ex: bundle1
+"""
 
 CONFIG_DESCRIPTION = (
     """=== Expected json config file structure:

@@ -97,5 +97,33 @@ def cut_random_streamlines(
     return output_streamlines
 
 
-def flip_streamlines():
-    raise NotImplementedError
+# Checked!
+def reverse_streamlines(sft: StatefulTractogram, flip_ids: np.ndarray = None):
+    """Reverse streamlines, i.e. inverse the beginning and end
+
+    Parameters
+    ----------
+    sft: StatefulTractogram
+        Dipy object containing your streamlines
+    flip_ids: np.ndarray, optional
+        List of streamlines to reverse. If not provided, all streamlines are
+        reversed.
+
+    Returns
+    -------
+    new_sft: StatefulTractogram
+        Dipy object with reversed streamlines and data_per_point.
+    """
+    if flip_ids is None:
+        flip_ids = range(len(sft.streamlines))
+
+    new_streamlines = [s[::-1] if i in flip_ids else s for i, s in
+                       enumerate(sft.streamlines)]
+    new_data_per_point = [d[::-1] if i in flip_ids else d for i, d in
+                          enumerate(sft.data_per_point)]
+
+    new_sft = StatefulTractogram.from_sft(
+        new_streamlines, sft, data_per_point=new_data_per_point,
+        data_per_streamline=sft.data_per_streamline)
+
+    return new_sft

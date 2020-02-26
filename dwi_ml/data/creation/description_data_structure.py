@@ -42,34 +42,6 @@ FOLDER_DESCRIPTION = """
     (depends if hdf5 or BIDS. see PROCESSED_DESCRIPTION_HDF5)
 """
 
-TRACTOFLOW = """
-| subj
-    | Bet_DWI
-    | Bet_Prelim_DWI
-    | Bet_T1
-    | Compute_FRF
-    | Crop_DWI
-    | Crop_T1
-    | Denoise_DWI
-    | Denoise_T1
-    | DTI_Metrics
-    | Eddy
-    | Extract_B0
-    | Extract_DTI_Shell
-    | Extract_FODF_Shell
-    | FODF_Metrics
-    | N4_DWI
-    | N4_T1
-    | Normalize_DWI
-    | PFT_Maps
-    | Register_T1
-    | Resample_B0
-    | Resample_T1
-    | Resample_DWI
-    | Seeding_Mask
-    | Segment_Tissues
-    | Tracking (wholebrain)
-"""
 PROCESSED_DESCRIPTION_HDF5 = """
 | processed_{experiment_name}  ===========> Created by your create_dataset.sh
                                       (only saved if option --save_intermediate)

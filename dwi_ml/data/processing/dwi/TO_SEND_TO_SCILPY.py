@@ -111,45 +111,6 @@ def compute_dwi_attenuation(dwi_weights: np.ndarray, b0: np.ndarray):
     return dwi_attenuation
 
 
-def normalize_data_volume(data: np.ndarray, mask: Optional[np.ndarray] = None):
-    """Apply classic data standardization (zero-centering and variance
-    normalization) to every modality (last axis), restricted to a mask if
-    provided.
-
-    Parameters
-    ----------
-    data : np.ndarray with shape (X, Y, Z, #modalities)
-        Volume to normalize along each modality.
-    mask : binary np.ndarray with shape (X, Y, Z)
-        3D mask defining which voxels should be used for normalization. If None,
-        all non-zero voxels will be used.
-
-    Returns
-    -------
-    normalized_data : np.ndarray with shape (X, Y, Z, #modalities)
-        Normalized data volume, with zero-mean and unit variance along each
-        axis of the last dimension.
-    """
-    # Normalization in each direction (zero mean and unit variance)
-    if mask is None:
-        # If no mask is given, use non-zero data voxels
-        mask = np.zeros(data.shape[:3], dtype=np.int)
-        nonzero_idx = np.nonzero(data.sum(axis=-1))
-        mask[nonzero_idx] = 1
-    else:
-        # Mask resolution must fit DWI resolution
-        assert mask.shape == data.shape[:3], "Normalization mask resolution " \
-                                             "does not fit data..."
-
-    idx = np.nonzero(mask)
-    mean = np.mean(data[idx], axis=0)
-    std = np.std(data[idx], axis=0)
-
-    normalized_data = (data - mean) / (std + 1e-3)
-
-    return normalized_data
-
-
 def resample_dwi(dwi_image: nib.Nifti1Image, gradient_table: GradientTable,
                  directions: Sphere = None, sh_order: int = 8,
                  regul_coeff: float = 0.006):

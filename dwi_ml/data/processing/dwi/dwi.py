@@ -74,4 +74,3 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
     normalized_data[~mask] = np.nan
 
     return normalized_data
-

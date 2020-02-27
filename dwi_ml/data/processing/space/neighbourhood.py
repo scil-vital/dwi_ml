@@ -38,12 +38,10 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     if not isinstance(radius, Iterable):
         radius = [radius]
 
-    neighborhood = None
+    neighborhood = []
     for r in radius:
-        if neighborhood is None:
-            neighborhood = unit_axes * r
-        else:
-            neighborhood = np.concatenate((neighborhood, unit_axes * r))
+        neighborhood.append(unit_axes * r)
+    neighborhood = np.asarray(neighborhood)
 
     return neighborhood
 
@@ -76,7 +74,7 @@ def get_neighborhood_vectors_grid(radius: int):
     neighborhood = []
     the_range = range(-radius, radius + 1)
     for x, y, z in itertools.product(the_range, the_range, the_range):
-        neighborhood.extend([[x, y, z]])
+        neighborhood.append([x, y, z])
     neighborhood = np.asarray(neighborhood)
 
     return neighborhood

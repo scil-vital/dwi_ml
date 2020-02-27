@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
+
+from collections import defaultdict
 import logging
-from typing import List, Union
+from typing import Union
 
 from dipy.io.stateful_tractogram import StatefulTractogram
-import nibabel as nib
+from nibabel.streamlines.tractogram import (PerArrayDict, PerArraySequenceDict)
 import numpy as np
 from scipy.stats import truncnorm
 
@@ -59,42 +61,78 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
     return noisy_sft
 
 
-def cut_random_streamlines(
-        streamlines: Union[List, nib.streamlines.ArraySequence],
-        split_percentage: float, rng: np.random.RandomState):
-    """Cut a percentage of streamlines into 2 random segments.
-    Returns both segments as independent streamlines, so the number of
-    output streamlines is higher than the input.
+# Checked!
+def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
+                      split_ids: np.ndarray = None, min_nb_points: int = 6):
+    """Cut streamlines into 2 random segments. Returns both segments as
+    independent streamlines, so the number of output streamlines is higher than
+    the input.
 
-    Parameters
-    ----------
-    streamlines : nib.stramlines.ArraySequence or list
-        Streamlines to cut.
-    split_percentage : float
-        Percentage of streamlines to cut.
-    rng : np.random.RandomState
+    Params
+    ------
+    sft: StatefulTractogram
+        Dipy object containing your streamlines
+    rng: np.random.RandomState
         Random number generator.
+    flip_ids: np.ndarray, optional
+        List of streamlines to split. If not provided, all streamlines are
+        split.
+    min_nb_points: int
+        We only cut streamlines with at least min_nb_points. This means that the
+        minimal number of points in the final streamlines is
+        floor(min_nb_points/2). Default: 6.
 
     Returns
     -------
-    output_streamlines : nib.stramlines.ArraySequence or list
-        Result of cutting.
+    new_sft: StatefulTractogram
+        Dipy object with cut streamlines. Data_per_point is cut too.
+        Data_per_streamline is copied for each half.
     """
-    all_ids = np.arange(len(streamlines))
-    n_to_split = int(np.floor(len(streamlines) * split_percentage))
-    split_ids = rng.choice(all_ids, size=n_to_split, replace=False)
+    if split_ids is None:
+        split_ids = range(len(sft.streamlines))
 
-    output_streamlines = []
-    for i, s in enumerate(streamlines):
-        # Leave at least 6 points
-        if i in split_ids and len(s) > 6:
-            cut_idx = rng.randint(3, len(s) - 3)
-            segments = [s[:cut_idx], s[cut_idx:]]
+    min_index = np.floor(min_nb_points/2)
+
+    all_streamlines = []
+    all_dpp = defaultdict(lambda: [])
+    all_dps = defaultdict(lambda: [])
+    for i in range(len(sft.streamlines)):
+        old_streamline = sft.streamlines[i]
+        old_dpp = sft.data_per_point[i]
+        old_dps = sft.data_per_streamline[i]
+
+        # Leave at least min_nb_points
+        if i in split_ids and len(old_streamline) > min_nb_points:
+            cut_idx = rng.randint(min_index, len(old_streamline) - min_index)
+            segments_s = [old_streamline[:cut_idx], old_streamline[cut_idx:]]
+            segments_dpp = [old_dpp[:cut_idx], old_dpp[cut_idx:]]
+
+            all_streamlines.extend(segments_s)
+            all_dpp = _extend_dict(all_dpp, segments_dpp[0])
+            all_dpp = _extend_dict(all_dpp, segments_dpp[1])
+            all_dps = _extend_dict(all_dps, old_dps)
+            all_dps = _extend_dict(all_dps, old_dps)
         else:
-            segments = [s]
-        output_streamlines.extend(segments)
+            all_streamlines.extend(old_streamline)
+            all_dpp = _extend_dict(all_dpp, old_dpp)
+            all_dps = _extend_dict(all_dps, old_dps)
 
-    return output_streamlines
+    new_sft = StatefulTractogram.from_sft(all_streamlines, sft,
+                                          data_per_point=all_dpp,
+                                          data_per_streamline=all_dps)
+
+    return new_sft
+
+
+def _extend_dict(main_dict: Union[PerArraySequenceDict, PerArrayDict],
+                 added_dict: Union[PerArraySequenceDict, PerArrayDict]):
+    """
+    We can't do anything like main_dpp.extend(added_dpp).
+    Doing as in nibabel.streamlines.tests.test_tractogram.
+    """
+    for k, v in added_dict.items():
+        main_dict[k].append(v)
+    return main_dict
 
 
 def flip_streamlines():

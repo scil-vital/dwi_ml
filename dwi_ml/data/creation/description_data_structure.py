@@ -1,48 +1,60 @@
 
-FOLDER_DESCRIPTION = (
-    """=== Expected folder structure:
-{dataset_name}
-| data                  ==========> Your original data folder
+FOLDER_DESCRIPTION = """
+=== Expected folder structure. This structure should hold wether you
+    work with hdf5 or BIDS.
+
+{database_name}
+| original      ==========> Your original data folder. Necessary for tractoflow
     | {subject_id}
-        | data.nii.gz
-        | bvals
-        | bvecs
-        | nodif_brain_mask.nii.gz
-| raw                  ==========> Created by 1_convert_original_to_raw.sh
+        | dwi.nii.gz
+        | bval
+        | bvec
+        | t1.nii.gz
+| preprocessed  ======> No matter how you preprocess your data, keep results
+                   here. Ex: tractoflow + any other technique to get your
+                   bundles.
+    | Ex: Tractoflow
+    | Ex: Bundles from Recobundles
+| dwi_ml_ready  =====> If you used tractoflow, you can use organize_dwi_ml_ready.sh
+                       to arrange your data.
     | {subject_id}
+        | anat
+            | {subject_id}_t1.nii.gz
+            | {subject_id}_wm_map.nii.gz
         | dwi
-            | {subject_id}_dwi.nii.gz
-            | {subject_id}_dwi.bvals
-            | {subject_id}_dwi.bvecs
-            | {subject_id}_fa.nii.gz              # NOT USED HERE
+            | {subject_id}_dwi_preprocessed.nii.gz
+            | {subject_id}_bval_preprocessed
+            | {subject_id}_bvec_preprocessed
+            | {subject_id}_fa.nii.gz
         | bundles
-            | {subject_id}_bundle_1.tck
-            | ...
-            | {subject_id}_bundle_{N}.tck
-            *OR*
-            | {subject_id}_wholebrain.tck
+            | {subject_id}_{bundle1}.tck
         | masks
-            | {subject_id}_normalization.nii.gz
+            | {subject_id}_wm.nii.gz
+            | bundles
+                | {subject_id}_{bundle1}.nii.gz
+            | endpoints
+                | {subject_id}_{bundle1}.nii.gz
+                OR
+                | {subject_id}_{bundle1}_heads.nii.gz
+                | {subject_id}_{bundle1}_tails.nii.gz
     | ...
+| processed_{experiment_name}
+    (depends if hdf5 or BIDS. see PROCESSED_DESCRIPTION_HDF5)
+"""
 
-""")
-
-BIDS_DESCRIPTION = (
-    """=== Expected BIDS structure:                                                             
-{dataset_name}
-| raw
-    | {subject_id1}_dwi.nii.gz
-    | {subject_id2}_dwi.nii.gz
-    ...
-| derivatives_bundles1
-    | {subject_id1}_bundle_1.tck
-    | {subject_id2}_bundle_1.tck
-    ...
-| derivatives_mask
-    | {subject_id1}_wm.nii.gz
-    ...
-    """
-)
+PROCESSED_DESCRIPTION_HDF5 = """
+| processed_{experiment_name}  ===========> Created by your create_dataset.sh
+                                      (only saved if option --save_intermediate)
+    | {subject_id}
+        | input
+            | {subject_id}_{input1}.nii.gz  # Ex: fODF (unnormalized)
+            ...
+            | {subject_id}_{inputN}.nii.gz
+            | {subject_id}_model_input.nii.gz   # Final input = all inputs,
+                                                #  normalized, concateanted.
+        | target
+            | {subject_id}_{target1}.tck  # Ex: bundle1
+"""
 
 CONFIG_DESCRIPTION = (
     """=== Expected json config file structure:
@@ -68,11 +80,11 @@ CONFIG_DESCRIPTION = (
 - bval: If provided, keep only the given b-value (and b0s).
 - minimum_length_mm: Discard streamlines shorter than this length (in mm).
 - step_size_mm: Resample streamlines to have the given step size between
-  every point (in mm). *Important: Note that if no step size is defined, the 
+  every point (in mm). *Important: Note that if no step size is defined, the
   streamlines will be compressed.
 - subject_ids: List of subjects to include in the dataset.
 - bundles: List of bundles to include in the dataset. If none is given, we will
-  still look into the `bundles` folder, but we will be looking for wholebrain 
+  still look into the `bundles` folder, but we will be looking for wholebrain
   tractograms.
 
 ** Bundle-specific subsampling parameters

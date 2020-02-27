@@ -4,7 +4,7 @@ import numpy as np
 class LossHistoryMonitor(object):
     """ History of the loss during training. (Lighter version of MetricHistory)
     Usage:
-        monitor = LossHistory()
+        monitor = LossHistoryMonitor()
         ...
         # Call update at each iteration
         monitor.update(2.3)
@@ -18,48 +18,49 @@ class LossHistoryMonitor(object):
 
     def __init__(self, name):
         self.name = name
-        self.history = []
-        self.epochs = []
-        self.sum = 0.0
-        self.count = 0
-        self._avg = 0.0
-        self.num_iter = 0
-        self.num_epochs = 0
+        self.history = []  # The list of loss values
+        self.epochs = []  # The list of averaged loss values per epoch
+        self.current_history = [] # The list of loss values in current epoch
+
+    @property
+    def total_iter_count(self):
+        return len(self.history)
+
+    @property
+    def num_epochs(self):
+        return len(self.epochs)
 
     def update(self, value):
+        """
+        Note. Does not save the update if value is inf.
+
+        Parameters
+        ----------
+        value: The value of the loss
+        """
         if np.isinf(value):
             return
 
         self.history.append(value)
-        self.sum += value
-        self.count += 1
-        self._avg = self.sum / self.count
-        self.num_iter += 1
-
-    @property
-    def avg(self):
-        return self._avg
+        self.current_history.append(value)
 
     def end_epoch(self):
-        self.epochs.append(self._avg)
-        self.sum = 0.0
-        self.count = 0
-        self._avg = 0.0
-        self.num_epochs += 1
+        """
+        Reset the current epoch.
+        Append the average of this epoch's losses.
+        """
+        self.epochs.append(np.mean(self.current_history))
+        self.current_history = []
 
     def get_state(self):
         return {'name': self.name,
                 'history': self.history,
-                'epochs': self.epochs,
-                'num_iter': self.num_iter,
-                'num_epochs': self.num_epochs}
+                'epochs': self.epochs}
 
     def set_state(self, state):
         self.name = state['name']
         self.history = state['history']
         self.epochs = state['epochs']
-        self.num_iter = state['num_iter']
-        self.num_epochs = state['num_epochs']
 
 
 class EarlyStopping(object):

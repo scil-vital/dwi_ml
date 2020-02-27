@@ -9,12 +9,10 @@ import time
 import numpy as np
 import torch
 
-from dwi_ml.data.dataset.data_list import \
-    (MultiSubjectDataset, LazyMultiSubjectDataset)
-
-# À ARRANGER
-from scil_vital.shared.code.utils.timer import Timer
-from scil_vital.shared.code.utils.experiment_utils import ValueMonitor
+from dwi_ml.data.dataset.data_list import (DataListForTorch,
+                                           LazyDataListForTorch)
+from dwi_ml.experiment.timer import Timer
+from dwi_ml.experiment.monitoring import LossHistoryMonitor
 
 
 class DWIMLAbstractLocal:
@@ -259,9 +257,9 @@ class DWIMLAbstractSequences:
         self.model = None       # Will be defined by the main user
 
         # Setup monitors
-        self.train_loss_monitor = ValueMonitor("Training loss")
-        self.valid_loss_monitor = ValueMonitor("Validation loss")
-        self.grad_norm_monitor = ValueMonitor("Grad Norm")                                          # ToDo Est-ce que tout le monde utilise grad norm??
+        self.train_loss_monitor = LossHistoryMonitor("Training loss")
+        self.valid_loss_monitor = LossHistoryMonitor("Validation loss")
+        self.grad_norm_monitor = LossHistoryMonitor("Grad Norm")                                          # ToDo Est-ce que tout le monde utilise grad norm??
 
     def train(self, **kwargs):
         raise NotImplementedError

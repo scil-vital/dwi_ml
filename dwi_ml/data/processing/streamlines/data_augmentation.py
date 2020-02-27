@@ -1,3 +1,4 @@
+import logging
 from typing import List, Union
 
 import nibabel as nib
@@ -20,8 +21,9 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
     sft : StatefulTractogram
         Streamlines.
     noise_sigma : float
-        Standard deviation of the gaussian noise to add to the streamlines (in
-        mm)
+        Standard deviation of the gaussian noise to add to the streamlines.
+        CAREFUL. With do not deal with space. Make sure your noise is in the
+        same space as your sft.
     noise_rng : np.random.RandomState object
         Random number generator.
 
@@ -32,10 +34,9 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
         (i.e. out of the box in voxel space). If you want to save noisy_sft,
         please perform noisy_sft.remove_invalid_streamlines() first.
     """
-    # Go to world space
-    orig_space = sft.space
-    sft.to_rasmm()
-
+    logging.info("Please note your sft space is in {}. We suppose that the "
+                 "noise, {}, fits.".format(sft.space, noise_sigma))
+    
     # Perform noise addition (flattening before to go faster)
     flattened_coords = np.concatenate(sft.streamlines, axis=0)
     flattened_coords += truncnorm.rvs(-2, 2, size=flattened_coords.shape,
@@ -48,7 +49,6 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
     noisy_sft = StatefulTractogram.from_sft(
         noisy_streamlines, sft, data_per_point=sft.data_per_point,
         data_per_streamline=sft.data_per_streamline)
-    noisy_sft.to_space(orig_space)
 
     return noisy_sft
 

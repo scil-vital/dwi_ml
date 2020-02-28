@@ -1,15 +1,13 @@
+# -*- coding: utf-8 -*-
 import logging
 
 import torch
 
-"""
-Functions in this file:
-    log_gpu_memory_usage
-"""
 
 BYTES_IN_GB = 1024 ** 3
 
 
+# checked!
 def log_gpu_memory_usage():
     logging.debug("GPU: "
                   "ALLOCATED: {:>6.3f}GB (max: {:>6.3f}GB);  "

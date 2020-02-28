@@ -1,13 +1,11 @@
+# -*- coding: utf-8 -*-
 import sys
 import time
 from time import time
 import timeit
 from collections import deque
 
-"""
-A timer class printing elapsed time in color.
-(Could it be useful in vitalabai? Would others use it??)
-"""
+import numpy as np
 
 
 COLOR_CODES = {
@@ -23,12 +21,26 @@ COLOR_CODES = {
 }
 
 
+# Checked!
 class Timer:
     """
-    Times code within a `with` statement, optionally adding color.
-    """
+    Example of usage:
+    with Timer("TimedFunction", newline=True, color='blue'):
+        ... # do something
 
-    def __init__(self, txt, newline=False, color=None):
+    """
+    def __init__(self, txt: str, newline: bool = False, color: str = None):
+        """
+        Parameters
+        ----------
+        txt: str
+            Name of this timer.
+        newline: bool
+            Wheter you want prints to end with newlines.
+        color: str
+            One of 'black', 'red', 'green', 'yellow', 'blue', 'magenta',
+            'cyan', or 'white'.
+        """
         try:
             prepend = (COLOR_CODES[color] if color else '')
             append = (COLOR_CODES['reset'] if color else '')
@@ -40,6 +52,10 @@ class Timer:
         self.newline = newline
 
     def __enter__(self):
+        """
+        Used at the beginning of the section inside "With Timer()".
+        Prints txt and starts time.
+        """
         self.start = time()
         if not self.newline:
             print(self.txt + "... ", end="")
@@ -48,10 +64,15 @@ class Timer:
             print(self.txt + "... ")
 
     def __exit__(self, type, value, tb):
+        """
+        Used at the end of the section inside "With Timer()".
+        Prints 'done' and the final time.
+        """
         if self.newline:
             print(self.txt + " done in ", end="")
 
         print("{:.2f} sec.".format(time() - self.start))
+
 
 class IterTimer(object):
     """

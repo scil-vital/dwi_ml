@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 
 
+# Checked!
 class LossHistoryMonitor(object):
     """ History of the loss during training. (Lighter version of MetricHistory)
     Usage:
@@ -63,6 +65,7 @@ class LossHistoryMonitor(object):
         self.epochs = state['epochs']
 
 
+# Checked!
 class EarlyStopping(object):
     """
     Object to stop training early if the loss doesn't improve after a given

@@ -64,17 +64,28 @@ class LossHistoryMonitor(object):
 
 
 class EarlyStopping(object):
-    """ Object to stop training early if the loss doesn't improve after a given
-    number of epochs. """
+    """
+    Object to stop training early if the loss doesn't improve after a given
+    number of epochs ("patience").
+    """
 
     def __init__(self, patience: int, min_eps: float = 1e-6):
+        """
+        Parameters
+        -----------
+        patience: int
+            Maximal number of bad epochs we allow.
+        min_eps: float, optional
+            Precision term to define what we consider as "improving": when the
+            loss is at least min_eps smaller than the previous best loss.
+        """
         self.patience = patience
         self.min_eps = min_eps
 
         self.best = None
         self.n_bad_epochs = 0
 
-    def step(self, loss):
+    def should_stop(self, loss):
         """ Manage a loss step. Returns True if training should stop.
 
         Parameters

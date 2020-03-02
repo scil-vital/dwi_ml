@@ -3,26 +3,28 @@ import numpy as np
 
 
 # Checked!
-class LossHistoryMonitor(object):
-    """ History of the loss during training. (Lighter version of MetricHistory)
-    Usage:
-        monitor = LossHistoryMonitor()
+class ValueHistoryMonitor(object):
+    """ History of some value for each iteration during training, and mean
+    value for each epoch.
+
+    Example of usage: History of the loss during training.
+        loss_monitor = ValueHistoryMonitor()
         ...
         # Call update at each iteration
-        monitor.update(2.3)
+        loss_monitor.update(2.3)
         ...
-        monitor.avg  # returns the average loss
+        loss_monitor.avg  # returns the average loss
         ...
-        monitor.end_epoch()  # call at epoch end
+        loss_monitor.end_epoch()  # call at epoch end
         ...
-        monitor.epochs  # returns the loss curve as a list
+        loss_monitor.epochs  # returns the loss curve as a list
     """
 
     def __init__(self, name):
         self.name = name
         self.history = []  # The list of loss values
         self.epochs = []  # The list of averaged loss values per epoch
-        self.current_history = [] # The list of loss values in current epoch
+        self.current_epoch_history = []  # The list of loss values in current epoch
 
     @property
     def total_iter_count(self):
@@ -44,24 +46,26 @@ class LossHistoryMonitor(object):
             return
 
         self.history.append(value)
-        self.current_history.append(value)
+        self.current_epoch_history.append(value)
 
     def end_epoch(self):
         """
         Reset the current epoch.
         Append the average of this epoch's losses.
         """
-        self.epochs.append(np.mean(self.current_history))
-        self.current_history = []
+        self.epochs.append(np.mean(self.current_epoch_history))
+        self.current_epoch_history = []
 
     def get_state(self):
         return {'name': self.name,
                 'history': self.history,
+                'current_epoch_history': self.current_epoch_history,
                 'epochs': self.epochs}
 
     def set_state(self, state):
         self.name = state['name']
         self.history = state['history']
+        self.current_epoch_history = state['current_epoch_history']
         self.epochs = state['epochs']
 
 

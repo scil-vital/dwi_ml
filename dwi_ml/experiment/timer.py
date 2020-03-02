@@ -2,10 +2,6 @@
 import sys
 import time
 from time import time
-import timeit
-from collections import deque
-
-import numpy as np
 
 
 COLOR_CODES = {

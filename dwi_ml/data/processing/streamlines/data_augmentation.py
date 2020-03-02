@@ -14,7 +14,8 @@ from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths
 def add_noise_to_streamlines(sft: StatefulTractogram,
                              noise_sigma: float,
                              noise_rng: np.random.RandomState):
-    """Add gaussian noise (truncated to +/- 2*std) to streamlines coordinates
+    """Add gaussian noise (truncated to +/- 2*noise_sigma) to streamlines
+    coordinates.
 
     Parameters
     ----------
@@ -22,8 +23,13 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
         Streamlines.
     noise_sigma : float
         Standard deviation of the gaussian noise to add to the streamlines.
-        CAREFUL. With do not deal with space. Make sure your noise is in the
+        CAREFUL. We do not deal with space. Make sure your noise is in the
         same space as your sft.
+        CAREFUL. Keep in mind that you need to choose noise_sigma<step_size/4.
+        Then, the maximum noise would be <step_size/2. So in the worst case,
+        the starting point of a segment may advance of step_size/2 while the
+        ending point rewinds of step_size/2, but not further, so the direction
+        of the segment won't flip.
     noise_rng : np.random.RandomState object
         Random number generator.
 

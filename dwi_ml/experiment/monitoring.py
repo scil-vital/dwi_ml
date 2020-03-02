@@ -22,17 +22,17 @@ class ValueHistoryMonitor(object):
 
     def __init__(self, name):
         self.name = name
-        self.history = []  # The list of loss values
-        self.epochs = []  # The list of averaged loss values per epoch
-        self.current_epoch_history = []  # The list of loss values in current epoch
+        self.all_updates_history = []  # The list of values
+        self.epochs_means_history = []  # The list of averaged values per epoch
+        self.current_epoch_history = []  # The list of values in current epoch
 
     @property
-    def total_iter_count(self):
-        return len(self.history)
+    def num_updates(self):
+        return len(self.all_updates_history)
 
     @property
     def num_epochs(self):
-        return len(self.epochs)
+        return len(self.epochs_means_history)
 
     def update(self, value):
         """
@@ -45,7 +45,7 @@ class ValueHistoryMonitor(object):
         if np.isinf(value):
             return
 
-        self.history.append(value)
+        self.all_updates_history.append(value)
         self.current_epoch_history.append(value)
 
     def end_epoch(self):
@@ -53,20 +53,20 @@ class ValueHistoryMonitor(object):
         Reset the current epoch.
         Append the average of this epoch's losses.
         """
-        self.epochs.append(np.mean(self.current_epoch_history))
+        self.epochs_means_history.append(np.mean(self.current_epoch_history))
         self.current_epoch_history = []
 
     def get_state(self):
         return {'name': self.name,
-                'history': self.history,
+                'all_updates_history': self.all_updates_history,
                 'current_epoch_history': self.current_epoch_history,
-                'epochs': self.epochs}
+                'epochs_means_history': self.epochs_means_history}
 
     def set_state(self, state):
         self.name = state['name']
-        self.history = state['history']
+        self.all_updates_history = state['all_updates_history']
         self.current_epoch_history = state['current_epoch_history']
-        self.epochs = state['epochs']
+        self.epochs_means_history = state['epochs_means_history']
 
 
 # Checked!

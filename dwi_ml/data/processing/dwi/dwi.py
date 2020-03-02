@@ -1,27 +1,16 @@
-
-from dipy.data import get_sphere
-from scilpy.reconst.raw_signal import compute_sh_coefficients
+# -*- coding: utf-8 -*-
 import numpy as np
 
 
-def compute_sh_coefficients_resampled(dwi, gradient_table, sh_order=8,
-                                      basis_type='descoteaux07', smooth=0.006,
-                                      use_attenuation=False,
-                                      force_b0_threshold=False, mask=None,
-                                      sphere=None):
-    """Just a small function to remember our default sphere for SH resampling
-    on raw DWI. By default, we use "repulsion100".
-    """
-    if sphere is None:
-        sphere = get_sphere("repulsion100")
-
-    compute_sh_coefficients(dwi, gradient_table, sh_order, basis_type, smooth,
-                            use_attenuation, force_b0_threshold, mask,
-                            sphere=sphere)
+# Note. If you want to resample DWI: you may use
+# from scilpy.reconst.raw_signal import compute_sh_coefficients
+# with the sphere
+# from dipy.data import get_sphere
+# sphere = get_sphere("repulsion100")
 
 
 def standardize_data(data: np.ndarray, mask: np.ndarray = None,
-                     independant: bool = False):
+                     independent: bool = False):
     """Apply classic data standardization (centralized, normalized = zero-
     centering and variance to 1).
 
@@ -33,14 +22,14 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
         3D mask defining which voxels should be used for normalization. If None,
         all non-zero voxels will be used. Voxels outside mask will be set to
         nan.
-    independant: bool
-        If true, will normalize each modality independantly (last axis). Else,
+    independent: bool
+        If true, will normalize each modality independently (last axis). Else,
         will normalize with the mean and variance of all data. There is a
         big reflexion to have here. Typical approach in machine learning is to
         normalize each input X separately (each modality). But our data is not
-        independant. Ex, with peaks, the peak in one direction and the peak in
+        independent. Ex, with peaks, the peak in one direction and the peak in
         another must probably belong to the same distribution to mean something.
-        We recommand using independant = False for your dwi data.
+        We recommend using independent = False for your dwi data.
 
     Returns
     -------
@@ -60,7 +49,7 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
     # Also dealing with extreme cases where std=0. Shouldn't happen. It means
     # that this data is meaningless for your model. Here, we won't divide the
     # data, just move its mean = value in all voxels will now be 0.
-    if independant:
+    if independent:
         mean = np.mean(data[mask], axis=0)
         std = np.std(data[mask], axis=0)
         std[std == 0] = 1

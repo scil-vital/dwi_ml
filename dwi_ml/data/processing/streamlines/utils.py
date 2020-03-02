@@ -1,12 +1,3 @@
-"""Streamline transformation utilities. All functions should take a single
-streamline as input and manage the streamline space.
-
-Functions:
-    flip_streamline
-    split_array_at_lengths
-"""
-
-from __future__ import annotations
 
 import numpy as np
 from typing import List

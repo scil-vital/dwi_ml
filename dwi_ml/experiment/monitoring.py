@@ -1,79 +1,98 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 
 
-class LossHistoryMonitor(object):
-    """ History of the loss during training. (Lighter version of MetricHistory)
-    Usage:
-        monitor = LossHistory()
+# Checked!
+class ValueHistoryMonitor(object):
+    """ History of some value for each iteration during training, and mean
+    value for each epoch.
+
+    Example of usage: History of the loss during training.
+        loss_monitor = ValueHistoryMonitor()
         ...
         # Call update at each iteration
-        monitor.update(2.3)
+        loss_monitor.update(2.3)
         ...
-        monitor.avg  # returns the average loss
+        loss_monitor.avg  # returns the average loss
         ...
-        monitor.end_epoch()  # call at epoch end
+        loss_monitor.end_epoch()  # call at epoch end
         ...
-        monitor.epochs  # returns the loss curve as a list
+        loss_monitor.epochs  # returns the loss curve as a list
     """
 
     def __init__(self, name):
         self.name = name
-        self.history = []
-        self.epochs = []
-        self.sum = 0.0
-        self.count = 0
-        self._avg = 0.0
-        self.num_iter = 0
-        self.num_epochs = 0
+        self.all_updates_history = []  # The list of values
+        self.epochs_means_history = []  # The list of averaged values per epoch
+        self.current_epoch_history = []  # The list of values in current epoch
+
+    @property
+    def num_updates(self):
+        return len(self.all_updates_history)
+
+    @property
+    def num_epochs(self):
+        return len(self.epochs_means_history)
 
     def update(self, value):
+        """
+        Note. Does not save the update if value is inf.
+
+        Parameters
+        ----------
+        value: The value of the loss
+        """
         if np.isinf(value):
             return
 
-        self.history.append(value)
-        self.sum += value
-        self.count += 1
-        self._avg = self.sum / self.count
-        self.num_iter += 1
-
-    @property
-    def avg(self):
-        return self._avg
+        self.all_updates_history.append(value)
+        self.current_epoch_history.append(value)
 
     def end_epoch(self):
-        self.epochs.append(self._avg)
-        self.sum = 0.0
-        self.count = 0
-        self._avg = 0.0
-        self.num_epochs += 1
+        """
+        Reset the current epoch.
+        Append the average of this epoch's losses.
+        """
+        self.epochs_means_history.append(np.mean(self.current_epoch_history))
+        self.current_epoch_history = []
 
     def get_state(self):
         return {'name': self.name,
-                'history': self.history,
-                'epochs': self.epochs,
-                'num_iter': self.num_iter,
-                'num_epochs': self.num_epochs}
+                'all_updates_history': self.all_updates_history,
+                'current_epoch_history': self.current_epoch_history,
+                'epochs_means_history': self.epochs_means_history}
 
     def set_state(self, state):
         self.name = state['name']
-        self.history = state['history']
-        self.epochs = state['epochs']
-        self.num_iter = state['num_iter']
-        self.num_epochs = state['num_epochs']
+        self.all_updates_history = state['all_updates_history']
+        self.current_epoch_history = state['current_epoch_history']
+        self.epochs_means_history = state['epochs_means_history']
 
 
+# Checked!
 class EarlyStopping(object):
-    """ Object to stop training early if the loss doesn't improve after a given
-    number of epochs. """
+    """
+    Object to stop training early if the loss doesn't improve after a given
+    number of epochs ("patience").
+    """
 
     def __init__(self, patience: int, min_eps: float = 1e-6):
+        """
+        Parameters
+        -----------
+        patience: int
+            Maximal number of bad epochs we allow.
+        min_eps: float, optional
+            Precision term to define what we consider as "improving": when the
+            loss is at least min_eps smaller than the previous best loss.
+        """
         self.patience = patience
         self.min_eps = min_eps
 
         self.best = None
         self.n_bad_epochs = 0
 
-    def step(self, loss):
+    def should_stop(self, loss):
         """ Manage a loss step. Returns True if training should stop.
 
         Parameters

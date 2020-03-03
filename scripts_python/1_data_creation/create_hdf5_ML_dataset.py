@@ -23,12 +23,12 @@ import nibabel as nib
 import numpy as np
 from dipy.io.streamline import save_tractogram
 
-from dwi_ml.data.creation.hdf5_creator import (
-    HDF5CreatorAbstract,
-    HDF5CreatorDWI,
-    HDF5CreatorDwiSH,
-    HDF5CreatorFODFPeaks,
-    HDF5CreatorFodfSH)
+from dwi_ml.data.creation.dataset_creator import (
+    CreatorAbstract,
+    CreatorDWI,
+    CreatorDwiSH,
+    CreatorFODFPeaks,
+    CreatorFodfSH)
                                                                                                             # toDO NOTE. Creators.load_and_process have changed. We need to use bval and bvecs now
                                                                                                             #  instead of gradient table. So we need to load things a bit differently from the beginnig.
 # À ARRANGER
@@ -147,10 +147,10 @@ def main():
     logging.info(args)
 
     # Choose processor class based on user's model choice
-    cls_choice = {"dwi": HDF5CreatorDWI,
-                  "dwi-sh": HDF5CreatorDwiSH,
-                  "fodf-sh": HDF5CreatorFodfSH,
-                  "fodf-peaks": HDF5CreatorFODFPeaks}
+    cls_choice = {"dwi": CreatorDWI,
+                  "dwi-sh": CreatorDwiSH,
+                  "fodf-sh": CreatorFodfSH,
+                  "fodf-peaks": CreatorFODFPeaks}
     dataset_cls = cls_choice[args.model_input]
 
     # Prepare other parameters
@@ -167,14 +167,13 @@ def main():
     raw_path = Path(args.path, "raw")
     dataset_config = dataset_cls.from_json(args.config_file, raw_path,
                                            **cls_args)
-                                                                                                # ToDo ANTOINE uses with Timer("Generating dataset", newline=True):
     _generate_dataset(args.path, args.name, dataset_config,
                       save_intermediate=args.save_intermediate,
                       force=args.force)
 
 
 def _generate_dataset(path: str, name: str,
-                      dataset_creator: HDF5CreatorAbstract,
+                      dataset_creator: CreatorAbstract,
                       save_intermediate: bool = False,
                       force: bool = False):
     """Generate a dataset from a group of dMRI subjects with multiple bundles.
@@ -219,19 +218,9 @@ def _generate_dataset(path: str, name: str,
         if force:
             print("Deleting existing processed data folder: {}"
                   .format(processed_path))
-            shutil.rmtree(str(processed_path))                                                              # toDo We should probably avoid removing stuff that
-                                                                                                            #  the person could have placed in the processed_... folder.
-                                                                                                            #  ex: maybe the user created images or notes and want to keep them
+            shutil.rmtree(str(processed_path))
 
-                                                                                                            # NOTE. Antoine's version was:
-                                                                                                            #  Remove processed subjects
-                                                                                                            #  for subject_id in os.listdir(processed_path):
-                                                                                                            #    if subject_id in subject_ids:
-                                                                                                            #        subject_path = pjoin(processed_path, subject_id)
-                                                                                                            #        shutil.rmtree(subject_path)
-                                                                                                            #  but you also want to remove all other subjects event if they are not in
-                                                                                                            #  subject_ids: you don't want to subjects processed with different parameters
-                                                                                                            #  in processed_path.
+
         else:
             raise FileExistsError("Processed data folder already exists: {}. "
                                   "Use force to allow overwrite"
@@ -242,42 +231,41 @@ def _generate_dataset(path: str, name: str,
     dataset_file = processed_path.joinpath("{}.hdf5".format(dataset_name))
     with h5py.File(dataset_file, 'w') as hdf_file:
         # Save version and configuration
-        hdf_file.attrs['version'] = 3                                                                   # ToDo ANTOINE's version was 2. Any difference?
-        hdf_file.attrs.update(dataset_creator.get_state_dict())                                         #  ANTOINE a aussi ["bundles"].
-                                                                                                        #  et hdf_file.attrs.update({k: v for k, v in config_dict.items()
-                                                                                                        #     if v is not None})
+        hdf_file.attrs['version'] = 1
+        hdf_file.attrs.update(dataset_creator.get_state_dict())                                         #  ANTOINE a aussi ["bundles"]. Voir aussi last version Philippe
+
 
         # Starting the subjects processing
         logging.info("Processing {} subjects : {}"
                      .format(len(dataset_creator.final_subjs),
                              dataset_creator.final_subjs))
-        raw_path = Path(path, "raw")                                                            # toDo Antoine used pjoin. Any difference?
+        raw_path = Path(path, "raw")
         for subject_id in dataset_creator.final_subjs:
-                                                                                                # toDO ANTOINE A:
-                                                                                                #  with Timer(
-                                                                                                #        "Processing subject {}".format(
-                                                                                                #            subject_id),
-                                                                                                #        newline=True,
-                                                                                                #        color='blue'
-                                                                                                #  ):
             subject_data_path = raw_path.joinpath(subject_id)
 
             # Create subject's processed data folder
             subject_output_path = processed_path.joinpath(subject_id)
             subject_output_path.mkdir()
             logging.info("Processing subject: {}".format(subject_id))
-            model_input, streamlines, lengths = \
+            _, streamlines, lengths = \
                 _process_subject(subject_id, subject_data_path,
                                  subject_output_path, dataset_creator,
                                  save_intermediate=save_intermediate)
 
             # Add subject to hdf database
             hdf_subject = hdf_file.create_group(subject_id)
-            hdf_input_volume = hdf_subject.create_group('input_volume')                                             # ANTOINE a un group input_volume, peaks_volume, odfs_volume
-            hdf_input_volume.attrs['vox2rasmm'] = model_input.affine
-            hdf_input_volume.create_dataset(
-                'data', data=model_input.get_fdata(dtype=np.float32))
+
+            # LIRE LES GROUPES DANS LE JSON
+            # AJOUTER LA DÉFINITION DES GROUPES DANS LES ATTRIBUTS POUR S'EN SOUVENIR
+
+            for group in json:
+                for fichiers in json:
+                    data = concatenate(file)
+                hdf_subject.create_dataset(group, data=data)
+
+
             if streamlines is not None:
+                streamlines_group = AJOUTER LES SPACE ATTRIBUTES
                 streamlines_group = hdf_subject.create_group('streamlines')
                 # Accessing private Dipy values, but necessary
                 streamlines_group.create_dataset('data',
@@ -288,41 +276,44 @@ def _generate_dataset(path: str, name: str,
                                                  data=streamlines._lengths)
                 streamlines_group.create_dataset('euclidean_lengths',
                                                  data=lengths)
-                                                                                                                # À AJOUTER POUR ANTOINE:
-                                                                                                 # streamlines_group.create_dataset('rewards', data=streamlines_data['rewards'])
+                                                                                                    # Antoine aura d'autres attributs, ex, reward, mis
+                                                                                                    # dans data_per_streamline. S'assurer que c'est
+                                                                                                    # gardé partout
     print("Saved dataset : {}".format(dataset_file))
 
 
 def _process_subject(subject_id: str, subject_data_path: Path,
                      output_path: Path,
-                     dataset_creator: HDF5CreatorAbstract,
+                     dataset_creator: CreatorAbstract,
                      save_intermediate: bool = False):
-    """Process a subject to extract normalized input data and all streamlines.
+                                                                                            # ALL PROCESSED
+                                                                                            # Check that files are there.
+                                                                                            """Process a subject to extract normalized input data and all streamlines.
 
-    Parameters
-    ----------
-    subject_id : str
-        Subject unique identifier.
-    subject_data_path : pathlib.Path
-        Path to the subject's data.
-    output_path : pathlib.Path
-        Path to the processed folder where intermediate data should be saved.
-    dataset_creator : HDF5CreatorAbstract
-        Processor for dataset volumes and streamlines.
-    save_intermediate : bool
-        Save intermediate processing files for each subject.
+                                                                                            Parameters
+                                                                                            ----------
+                                                                                            subject_id : str
+                                                                                                Subject unique identifier.
+                                                                                            subject_data_path : pathlib.Path
+                                                                                                Path to the subject's data.
+                                                                                            output_path : pathlib.Path
+                                                                                                Path to the processed folder where intermediate data should be saved.
+                                                                                            dataset_creator : CreatorAbstract
+                                                                                                Processor for dataset volumes and streamlines.
+                                                                                            save_intermediate : bool
+                                                                                                Save intermediate processing files for each subject.
 
 
-    Returns
-    -------
-    model_input : nib.Nifti1Image
-        Processed model input data normalized along every modality (last axis).
-    streamlines : nib.streamlines.ArraySequence
-        All subject streamlines in voxel space.
-    streamlines_lengths : List[float]
-        Euclidean length of each streamline.
-    """
-                                                                                                    # ANTOINE: with Timer("Fitting SH to DWI", newline=True):
+                                                                                            Returns
+                                                                                            -------
+                                                                                            model_input : nib.Nifti1Image
+                                                                                                Processed model input data normalized along every modality (last axis).
+                                                                                            streamlines : nib.streamlines.ArraySequence
+                                                                                                All subject streamlines in voxel space.
+                                                                                            streamlines_lengths : List[float]
+                                                                                                Euclidean length of each streamline.
+                                                                                            """
+
     # Get diffusion data
     dwi_file = subject_data_path.joinpath("dwi",
                                           "{}_dwi.nii.gz".format(subject_id))

@@ -26,7 +26,7 @@ from dwi_ml.data.creation.subjects_validation import (
     validate_subject_list, list_equals)                                                             # Ugly but this script will be modified and maybe we won't need it anymore.
 from dwi_ml.experiment.timer import Timer
 
-class HDF5BundleConfig(object):
+class BundleConfig(object):
     """Bundle configuration parameters."""
 
     def __init__(self, name: str, clustering_threshold_mm: float = None,
@@ -46,7 +46,7 @@ class HDF5BundleConfig(object):
         self.removal_distance_mm = removal_distance_mm
 
 
-class HDF5CreatorAbstract(object):
+class CreatorAbstract(object):
     """Base class for a dataset processor."""
 
     def __init__(self, final_subjects: List[str] = None, bval: int = None,
@@ -77,7 +77,7 @@ class HDF5CreatorAbstract(object):
             self.bundles = []
             for name, config_dict in bundles.items():
                 try:
-                    bundle_config = HDF5BundleConfig(
+                    bundle_config = BundleConfig(
                         name,
                         config_dict["clustering_threshold_mm"],
                         config_dict["removal_distance_mm"]
@@ -109,7 +109,7 @@ class HDF5CreatorAbstract(object):
 
         Returns
         -------
-        dataset_creator : HDF5CreatorAbstract
+        dataset_creator : CreatorAbstract
             A valid dataset configuration.
         """
 
@@ -251,7 +251,7 @@ class HDF5CreatorAbstract(object):
             if not self.bundles:
                 # If no bundles described in the json file, we will treat the files
                 # found in bundles as wholebrain tractograms
-                chosen_bundles_config = [HDF5BundleConfig(p.stem) for p in
+                chosen_bundles_config = [BundleConfig(p.stem) for p in
                                          bundles_path.glob('*')]
                 if len(chosen_bundles_config) == 0:
                     raise ValueError("No bundles found in the boundles folder!")
@@ -312,7 +312,7 @@ class HDF5CreatorAbstract(object):
 
         return output_tractogram, output_lengths
 
-    def _load_and_process_one_bundle(self, bundle_config: HDF5BundleConfig,
+    def _load_and_process_one_bundle(self, bundle_config: BundleConfig,
                                      available_bundles,
                                      bundles_path: pathlib.Path,
                                      dwi_ref: nib.Nifti1Image):
@@ -379,7 +379,7 @@ class HDF5CreatorAbstract(object):
         return bundle, bundle_original_count
 
 
-class HDF5CreatorDWI(HDF5CreatorAbstract):
+class CreatorDWI(CreatorAbstract):
     """Class containing all configuration options for creating a new DWI
     dataset."""
 
@@ -421,7 +421,7 @@ class HDF5CreatorDWI(HDF5CreatorAbstract):
         return output
 
 
-class HDF5CreatorDwiSH(HDF5CreatorAbstract):
+class CreatorDwiSH(CreatorAbstract):
     """Class containing all configuration options for creating a new DWI-SH
     dataset."""
 
@@ -460,7 +460,7 @@ class HDF5CreatorDwiSH(HDF5CreatorAbstract):
         return output
 
 
-class HDF5CreatorFodfSH(HDF5CreatorAbstract):
+class CreatorFodfSH(CreatorAbstract):
     """Class containing all configuration options for creating a new fODF-SH
     dataset."""
 
@@ -515,7 +515,7 @@ class HDF5CreatorFodfSH(HDF5CreatorAbstract):
         return output
 
 
-class HDF5CreatorFODFPeaks(HDF5CreatorAbstract):
+class CreatorFODFPeaks(CreatorAbstract):
     """Class containing all configuration options for creating a new fODF-peaks
     dataset."""
 

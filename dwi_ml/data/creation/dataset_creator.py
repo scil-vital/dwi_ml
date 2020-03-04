@@ -1,29 +1,20 @@
-import json
 import logging
 import pathlib
 import re
-from typing import Dict, IO, List, Union
-
-import nibabel as nib
-import numpy as np
+from typing import Dict, List
 
 from dipy.core.gradients import (gradient_table)
 from dipy.io.stateful_tractogram import Space, StatefulTractogram
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.utils import length
-
-# Should be added in scilpy soon when all our PRs are accepted:
-from scilpy.reconst.fodf import (
-    compute_fodf, compute_sh_coefficients)
-from scilpy.reconst.frf import compute_ssst_frf
-from scilpy.tracking.tools import (
-    filter_streamlines_by_length, resample_streamlines_step_size)
+import nibabel as nib
+import numpy as np
+from scilpy.tracking.tools import (filter_streamlines_by_length,
+                                   resample_streamlines_step_size)
 from scilpy.io.streamlines import compress_sft
-from scilpy.? import resample_dwi
 from scilpy.? import subsample_sft_francois
 
-from dwi_ml.data.creation.subjects_validation import (
-    validate_subject_list, list_equals)                                                             # Ugly but this script will be modified and maybe we won't need it anymore.
+from dwi_ml.data.creation.subjects_validation import validate_subject_list
 from dwi_ml.experiment.timer import Timer
 
 class BundleConfig(object):
@@ -37,7 +28,8 @@ class BundleConfig(object):
         name : str
             The name of the bundle.
         clustering_threshold_mm : float
-            The clustering threshold applied before removing similar streamlines.
+            The clustering threshold applied before removing similar
+            streamlines.
         removal_distance_mm : float
             The removal threshold used to remove similar streamlines.
         """
@@ -46,18 +38,21 @@ class BundleConfig(object):
         self.removal_distance_mm = removal_distance_mm
 
 
-class CreatorAbstract(object):
-    """Base class for a dataset processor."""
-
-    def __init__(self, final_subjects: List[str] = None, bval: int = None,
+class DatasetCreator(object):
+    def __init__(self, training_subjects: List[str],
+                 validation_subjects: List[str], dwi_ml_folder: pathlib.Path,
                  minimum_length_mm: float = None, step_size_mm: float = None,
                  bundles: Dict = None):
         """
         Parameters
         ----------
-        final_subjects:
-        bval : int
-            Filter the dMRI image to keep only this b-value (and b0s).
+        training_subjects: List[str]
+            List of the subjects in the training set.
+        validation_subjects: List[str]
+            List of the subjects in the validation set.
+        dwi_ml_folder: pathlib.Path
+            Path to your dwi_ml_ready folder. Folders should follow description
+            in dwi_ml.data.creation.description_data_structure.py.
         minimum_length_mm : float
             Remove streamlines shorter than this length.
         step_size : float
@@ -67,10 +62,15 @@ class CreatorAbstract(object):
             subsampling parameters OR If empty, datasets will be treated as
             wholebrain tractograms.
         """
-        self.bval = bval
         self.minimum_length_mm = minimum_length_mm
         self.step_size = step_size_mm
-        self.final_subjs = final_subjects
+        self.train_subjs = training_subjects
+        self.valid_subjs = validation_subjects
+        self.dwi_ml_folder = dwi_ml_folder
+
+        # Check if chosen subjects exist in dwi_ml folder.
+        self.chosen_subjs = training_subjects + validation_subjects
+        self.verify_subject_lists()
 
         if bundles:
             # Bundle-specific options
@@ -91,135 +91,48 @@ class CreatorAbstract(object):
             # load_and_process_streamlines
             self.bundles = None
 
-    @classmethod
-    def from_json(cls, json_file: Union[str, IO], raw_path: str,
-                  *args, **kwargs):
-        """ Create a HDF5CreatorGeneric object from a json file.
-
-        Parameters
-        ----------
-        raw_path: str
-            Directory of folders.
-        json_file : str or IO
-            The input configuration file, wither as a string or an input stream.
-        args: (...)
-            #ToDo
-        kwargs: (...)
-            #ToDo
-
-        Returns
-        -------
-        dataset_creator : CreatorAbstract
-            A valid dataset configuration.
+    def verify_subject_lists(self):
         """
+        Raises error if some subjects in training set or validation set don't
+        exist.
 
-        # If json_file is a string, create the IO json_file
-        if isinstance(json_file, str):
-            json_file = open(json_file, 'r')
-
-        # Load the json_file data
-        raw_config = json.load(json_file)
-
-        # Compare subject lists 1) defined by user 2) from json 3) whose files
-        # are present in directory
-        final_subjects = cls.verify_subject_lists(raw_path,
-                                                  kwargs['subject_ids'],
-                                                  raw_config['subject_ids'])
-
-        # Create the creator
-        dataset_creator = cls(final_subjects, *args, **kwargs, **raw_config)
-
-        return dataset_creator
-
-    @staticmethod
-    def verify_subject_lists(raw_path: str, chosen_subjs, json_subjs):
-
+        Prints logging info if some subjects in dwi_ml folder were not chosen
+        in training set nor validation set.
+        """
         # Find list of existing subjects from folders
-        all_subjs = [str(f.name) for f in raw_path.iterdir()]
+        all_subjs = [str(f.name) for f in self.dwi_ml_folder.iterdir()]
         if len(all_subjs) == 0:
-            raise ValueError('No subject folders found!')
-
-        if json_subjs is None and chosen_subjs is None:
-            raise ValueError('You must provide subject list. Either when '
-                             'calling the script or from the json file!')
-
-        # Checking json_subjs
-        if json_subjs is not None:
-            non_existing, good_json_subjs, ignored = \
-                validate_subject_list(all_subjs, json_subjs)
-            if len(non_existing) > 0:
-                raise ValueError('Following subjects are in your json file '
-                                 'but their folders were not found: {}'
-                                 .format(non_existing))
-            if len(ignored) > 0:
-                logging.info("Careful! NOT processing subjects {} "
-                             "because they were not included in your json "
-                             "file!".format(ignored))
-            if chosen_subjs is None:
-                return good_json_subjs
+            raise ValueError('No subject found in dwi_ml folder!')
 
         # Checking chosen_subjs
-        if chosen_subjs is not None:
-            non_existing, good_chosen_subjs, ignored = \
-                validate_subject_list(all_subjs, json_subjs)
-            if len(non_existing) > 0:
-                raise ValueError('Following subjects were chosen in option '
-                                 '--subject_ids but their folders were not '
-                                 'found: {}'.format(non_existing))
-            if len(ignored) > 0:
-                logging.info("Careful! NOT processing subjects {} "
-                             "because they were not included in in option "
-                             "--subject_ids!".format(ignored))
-            if json_subjs is None:
-                return good_chosen_subjs
-
-        # Both json_subjs and chosen_subjs are not None.
-        # Comparing both lists
-        if not list_equals(good_chosen_subjs, good_json_subjs):
-            raise ValueError('TRIED TO DEAL WITH OPTION --subject_ids AS'
-                             'WAS ADDED BY (ANTOINE?). WHAT TO DO IN THE '
-                             'CASE WHERE JSON INFO AND OPTION INFOS ARE NOT'
-                             ' THE SAME?')
-        return json_subjs
+        non_existing_subjs, good_chosen_subjs, ignored_subj = \
+                validate_subject_list(all_subjs, self.chosen_subjs)
+        if len(non_existing_subjs) > 0:
+            raise ValueError('Following subjects were chosen either for '
+                             'training set or validation set but their folders '
+                             'were not found in dwi_ml: '
+                             '{}'.format(non_existing_subjs))
+        if len(ignored_subj) > 0:
+            logging.info("Careful! NOT processing subjects {} "
+                         "because they were not included in training set nor "
+                         "validation set!".format(ignored_subj))
 
     def get_state_dict(self):
-        """ Get a dictionary representation to store in the HDF file."""
-        return {'bval':
-                self.bval if self.bval else "",
+        """
+        Get a dictionary representation. Useful if this object is used to
+        create a HDF file (see
+        dwi_ml.scripts_python.1_data_creation.create_hdf5_ML_dataset.py)
+        """
+        return {'training_subject_ids':
+                self.train_subjs,
+                'validation_subject_ids':
+                self.valid_subjs,
                 'minimum_length_mm':
                 self.minimum_length_mm if self.minimum_length_mm else "",
                 'step_size_mm':
                 self.step_size if self.step_size else "",
-                'subject_ids':
-                self.final_subjs if self.final_subjs else "",
                 'bundles':
                 [b.name for b in self.bundles] if self.bundles else ""}
-
-    def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                bvals, bvecs, frf,
-                                wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path):
-        """ Abstract method for processing a DWI volume for a specific
-        dataset.
-
-        Parameters
-        ----------
-        dwi_image : nib.Nifti1Image
-            Diffusion-weighted images (4D)
-        bvals:
-        bvecs:
-        frf:
-        wm_mask_image : nib.Nifti1Image
-            Binary white matter mask.
-        output_path : str
-            Path to the output folder.
-
-        Returns
-        -------
-        output : np.ndarray
-            The processed output volume.
-        """
-        raise NotImplementedError
 
     def load_process_and_merge_bundles(self,
                                        bundles_path: pathlib.Path,
@@ -378,209 +291,3 @@ class CreatorAbstract(object):
 
         return bundle, bundle_original_count
 
-
-class CreatorDWI(CreatorAbstract):
-    """Class containing all configuration options for creating a new DWI
-    dataset."""
-
-    def __init__(self, resample: bool, *args, **kwargs):
-        """
-        Parameters
-        ----------
-        resample : int
-            Optional; resample the signal to this number of directions on the
-            sphere.
-        """
-        super().__init__(*args, **kwargs)
-        self.resample = resample
-
-    def get_state_dict(self):
-        """Get a dictionary representation to store in the HDF file."""
-        state_dict = super().get_state_dict()
-        state_dict['resample'] = self.resample
-
-        return state_dict
-
-    def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                bvals, bvecs, frf,
-                                wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path):
-        """
-        Process a volume for raw DWI dataset, optionally resampling the
-        gradient directions.
-        """
-        if self.resample:
-            # Load and resample:
-            # Brings to SH and then back to directions.
-            gtab = gradient_table(bvals, bvecs, b0_threshold=bvals.min())
-            output = resample_dwi(dwi_image, gtab, sh_order=6)
-        else:
-            # Load:
-            output = dwi_image.get_fdata(dtype=np.float32)
-
-        return output
-
-
-class CreatorDwiSH(CreatorAbstract):
-    """Class containing all configuration options for creating a new DWI-SH
-    dataset."""
-
-    def __init__(self, sh_order: int = None, *args, **kwargs):
-        """
-        Parameters
-        ----------
-        sh_order : int
-            The SH order used to fit the signal
-        """
-        super().__init__(*args, **kwargs)
-        self.sh_order = sh_order
-        if self.sh_order is None:
-            raise ValueError("SH order must be provided")
-        if self.sh_order not in [2, 4, 6, 8]:
-            raise ValueError("SH order must be one of [2,4,6,8]")
-
-    def get_state_dict(self):
-        """Get a dictionary representation to store in the HDF file."""
-        state_dict = super().get_state_dict()
-        state_dict['sh_order'] = self.sh_order
-
-        return state_dict
-
-    def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                bvals, bvecs, frf,
-                                wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path):
-        """
-        Process a volume for a DWI-SH dataset. Fits spherical harmonics to
-        the diffusion signal.
-        """
-        gtab = gradient_table(bvals, bvecs, b0_threshold=bvals.min())
-        output = compute_sh_coefficients(dwi_image, gtab,                                 # toDo Antoine: get_pams. J'ai pas checké ce que ça fait.
-                                         sh_order=self.sh_order)
-        return output
-
-
-class CreatorFodfSH(CreatorAbstract):
-    """Class containing all configuration options for creating a new fODF-SH
-    dataset."""
-
-    def __init__(self, sh_order: int = None, *args, **kwargs):
-        """
-        Parameters
-        ----------
-        sh_order : int
-            The SH order used to fit the signal
-        """
-        super().__init__(*args, **kwargs)
-        self.sh_order = sh_order
-        if self.sh_order is None:
-            raise ValueError("SH order must be provided")
-        if self.sh_order not in [2, 4, 6, 8]:
-            raise ValueError("SH order must be one of [2,4,6,8]")
-
-    def get_state_dict(self):
-        """Get a dictionary representation to store in the HDF file."""
-        state_dict = super().get_state_dict()
-        state_dict['sh_order'] = self.sh_order
-
-        return state_dict
-
-    def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                bvals, bvecs, frf,
-                                wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path):
-        """
-        Process a volume for a fODF-SH dataset. Compute a response function,
-        fit fODFs and return the corresponding SH coeffs.
-        """
-
-        # Don't provide a wm mask, instead rely on FA threshold
-        frf = compute_ssst_frf(dwi_image, gradient_table)
-
-        # Save frf to file
-        np.savetxt(str(output_path.joinpath("frf.txt")), frf)
-
-        n_peaks = 1  # Cannot use 0 peaks, so we use only 1
-        return_sh = True
-
-        # Computing fODF only inside WM mask
-        peaks = compute_fodf(dwi_image.get_data(), bvals, bvecs, frf,
-                             sh_order=self.sh_order,
-                             nbr_processes=None,
-                             mask=wm_mask_image, sh_basis='tournier07',
-                             return_sh=return_sh,
-                             n_peaks=n_peaks)
-
-        output = peaks.shm_coeff.astype(np.float32)
-        return output
-
-
-class CreatorFODFPeaks(CreatorAbstract):
-    """Class containing all configuration options for creating a new fODF-peaks
-    dataset."""
-
-    def __init__(self, sh_order: int = None, n_peaks: int = None, *args,
-                 **kwargs):
-        """
-        Parameters
-        ----------
-        sh_order : int
-            The SH order used to fit the signal
-        n_peaks : int
-            The number of peaks to use as input to the model
-        """
-        super().__init__(*args, **kwargs)
-        self.sh_order = sh_order
-        self.n_peaks = n_peaks
-        if self.sh_order is None:
-            raise ValueError("SH order must be provided")
-        if self.sh_order not in [2, 4, 6, 8]:
-            raise ValueError("SH order must be one of [2,4,6,8]")
-
-        if self.n_peaks is None:
-            raise ValueError("n_peaks must be provided")
-        if self.n_peaks not in [1, 2, 3]:
-            raise ValueError("n_peaks must be one of [1,2,3]")
-
-    def get_state_dict(self):
-        """Get a dictionary representation to store in the HDF file."""
-        state_dict = super().get_state_dict()
-        state_dict['sh_order'] = self.sh_order
-        state_dict['n_peaks'] = self.n_peaks
-
-        return state_dict
-
-    def load_and_process_volume(self, dwi_image: nib.Nifti1Image,
-                                bvals, bvecs, frf,
-                                wm_mask_image: nib.Nifti1Image,
-                                output_path: pathlib.Path):
-        """
-        Process a volume for a fODF-peaks dataset.
-
-        Compute a response function, fit fODFs,
-        extract the main peaks and return a 4D volume, where the last axis
-        is each peak (3D vector) with its value (scalar), all flattened into
-        a single dimension.
-        """
-
-        # Don't provide a wm mask, instead rely on FA threshold
-        frf = compute_ssst_frf(dwi_image, bvals, bvecs)
-
-        # Save frf to file
-        np.savetxt(str(output_path.joinpath("frf.txt")), frf)
-
-        return_sh = False
-
-        # Computing fODF only inside WM mask
-        pam = compute_fodf(dwi_image.get_data(), bvals, bvecs, frf,
-                           sh_order=self.sh_order,
-                           nbr_processes=None, mask=wm_mask_image,
-                           sh_basis='tournier07', return_sh=return_sh,
-                           n_peaks=self.n_peaks)
-
-        # Peaks directions are scaled by the normalized peaks values
-        fodf_peaks_dirs = pam.peak_dirs.astype(np.float32)
-
-        new_shape = wm_mask_image.shape + (-1,)
-        output = fodf_peaks_dirs.reshape(new_shape)
-        return output

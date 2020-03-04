@@ -24,7 +24,7 @@ import numpy as np
 from dipy.io.streamline import save_tractogram
 
 from dwi_ml.data.creation.dataset_creator import (
-    CreatorAbstract,
+    DatasetCreator,
     CreatorDWI,
     CreatorDwiSH,
     CreatorFODFPeaks,
@@ -165,15 +165,15 @@ def main():
 
     # Create dataset from config and save
     raw_path = Path(args.path, "raw")
-    dataset_config = dataset_cls.from_json(args.config_file, raw_path,
-                                           **cls_args)
+    dataset_config = dataset_cls.create(args.config_file, raw_path,
+                                        **cls_args)
     _generate_dataset(args.path, args.name, dataset_config,
                       save_intermediate=args.save_intermediate,
                       force=args.force)
 
 
 def _generate_dataset(path: str, name: str,
-                      dataset_creator: CreatorAbstract,
+                      dataset_creator: DatasetCreator,
                       save_intermediate: bool = False,
                       force: bool = False):
     """Generate a dataset from a group of dMRI subjects with multiple bundles.
@@ -237,10 +237,10 @@ def _generate_dataset(path: str, name: str,
 
         # Starting the subjects processing
         logging.info("Processing {} subjects : {}"
-                     .format(len(dataset_creator.final_subjs),
-                             dataset_creator.final_subjs))
+                     .format(len(dataset_creator.train_subjs),
+                             dataset_creator.train_subjs))
         raw_path = Path(path, "raw")
-        for subject_id in dataset_creator.final_subjs:
+        for subject_id in dataset_creator.train_subjs:
             subject_data_path = raw_path.joinpath(subject_id)
 
             # Create subject's processed data folder
@@ -284,7 +284,7 @@ def _generate_dataset(path: str, name: str,
 
 def _process_subject(subject_id: str, subject_data_path: Path,
                      output_path: Path,
-                     dataset_creator: CreatorAbstract,
+                     dataset_creator: DatasetCreator,
                      save_intermediate: bool = False):
                                                                                             # ALL PROCESSED
                                                                                             # Check that files are there.
@@ -298,7 +298,7 @@ def _process_subject(subject_id: str, subject_data_path: Path,
                                                                                                 Path to the subject's data.
                                                                                             output_path : pathlib.Path
                                                                                                 Path to the processed folder where intermediate data should be saved.
-                                                                                            dataset_creator : CreatorAbstract
+                                                                                            dataset_creator : DatasetCreator
                                                                                                 Processor for dataset volumes and streamlines.
                                                                                             save_intermediate : bool
                                                                                                 Save intermediate processing files for each subject.
@@ -336,10 +336,8 @@ def _process_subject(subject_id: str, subject_data_path: Path,
         raise ValueError("WM mask is required! : {}".format(wm_mask_file))
     wm_mask_image = load_volume_with_ref(str(wm_mask_file), dwi_image)
 
-    # Load and process data based on model choice
-    model_input_volume = \
-        dataset_creator.load_and_process_volume(dwi_image, bvals, bvecs, frf,
-                                wm_mask_image, output_path)
+    # Load data. Your data should be already preprocessed.
+    model_input_volume = dwi_image.get_fdata(dtype=np.float32)
 
     # Free some memory, we don't need the data anymore
     dwi_image.uncache()

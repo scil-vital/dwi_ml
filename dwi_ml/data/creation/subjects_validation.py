@@ -1,10 +1,4 @@
 
-
-########### NE SERA PLUS UTILE SI ON GERE COMME IL FAUT LES dataset_creation (hdf5).
-########### A GERER AVANT DE MODIFIER CE FICHIER
-
-
-
 def list_intersection(list1, list2):  # or list(set(a) & set(b))
     """Values both in list1 and list2"""
     list3 = [value for value in list1 if value in list2]
@@ -19,7 +13,7 @@ def list_difference(list1, list2):
 
 def list_equals(list1, list2):
     """Compares two lists"""
-    list1.sort()                                                                                # might bug if some subjs are numeric, other alpha numeric. We suppose all alphanumeric?
+    list1.sort()
     list2.sort()
     return list1 == list2
 

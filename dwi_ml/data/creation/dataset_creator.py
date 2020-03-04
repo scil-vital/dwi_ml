@@ -14,10 +14,9 @@ from scilpy.tracking.tools import (filter_streamlines_by_length,
 from scilpy.io.streamlines import compress_sft
 from scilpy.? import subsample_sft_francois
 
-from dwi_ml.data.creation.subjects_validation import validate_subject_list
 from dwi_ml.experiment.timer import Timer
 
-class BundleConfig(object):
+class BundleConfig:
     """Bundle configuration parameters."""
 
     def __init__(self, name: str, clustering_threshold_mm: float = None,
@@ -38,7 +37,7 @@ class BundleConfig(object):
         self.removal_distance_mm = removal_distance_mm
 
 
-class DatasetCreator(object):
+class DatasetCreator:
     def __init__(self, training_subjects: List[str],
                  validation_subjects: List[str], dwi_ml_folder: pathlib.Path,
                  minimum_length_mm: float = None, step_size_mm: float = None,
@@ -67,10 +66,7 @@ class DatasetCreator(object):
         self.train_subjs = training_subjects
         self.valid_subjs = validation_subjects
         self.dwi_ml_folder = dwi_ml_folder
-
-        # Check if chosen subjects exist in dwi_ml folder.
         self.chosen_subjs = training_subjects + validation_subjects
-        self.verify_subject_lists()
 
         if bundles:
             # Bundle-specific options
@@ -90,32 +86,6 @@ class DatasetCreator(object):
             # Datasets will be treated as wholebrain tractograms in
             # load_and_process_streamlines
             self.bundles = None
-
-    def verify_subject_lists(self):
-        """
-        Raises error if some subjects in training set or validation set don't
-        exist.
-
-        Prints logging info if some subjects in dwi_ml folder were not chosen
-        in training set nor validation set.
-        """
-        # Find list of existing subjects from folders
-        all_subjs = [str(f.name) for f in self.dwi_ml_folder.iterdir()]
-        if len(all_subjs) == 0:
-            raise ValueError('No subject found in dwi_ml folder!')
-
-        # Checking chosen_subjs
-        non_existing_subjs, good_chosen_subjs, ignored_subj = \
-                validate_subject_list(all_subjs, self.chosen_subjs)
-        if len(non_existing_subjs) > 0:
-            raise ValueError('Following subjects were chosen either for '
-                             'training set or validation set but their folders '
-                             'were not found in dwi_ml: '
-                             '{}'.format(non_existing_subjs))
-        if len(ignored_subj) > 0:
-            logging.info("Careful! NOT processing subjects {} "
-                         "because they were not included in training set nor "
-                         "validation set!".format(ignored_subj))
 
     def get_state_dict(self):
         """

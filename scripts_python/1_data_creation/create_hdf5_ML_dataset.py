@@ -5,19 +5,16 @@ import datetime
 import json
 import logging
 import shutil
-import os
 from pathlib import Path
 from typing import Dict
 
 import h5py
 import nibabel as nib
-import numpy as np
-from dipy.io.streamline import save_tractogram
 
-from dwi_ml.data.creation.dataset_creator import DatasetCreator
-from dwi_ml.data.processing.dwi.dwi import standardize_data
-from dwi_ml.data.creation.subjects_validation import validate_subject_list
-
+from dwi_ml.data.creation.create_hdf5_utils import (
+    verify_subject_lists,
+    process_group,
+    process_streamlines)
 
 DESCRIPTION = """Script to combine multiple diffusion MRI volumes and their 
 streamlines into a single .hdf5 file.
@@ -73,34 +70,6 @@ def _parse_args():
 
     return arguments
 
-
-def verify_subject_lists(dwi_ml_folder, chosen_subjs):
-    """
-    Raises error if some subjects in training set or validation set don't
-    exist.
-
-    Prints logging info if some subjects in dwi_ml folder were not chosen
-    in training set nor validation set.
-    """
-    # Find list of existing subjects from folders
-    all_subjs = [str(f.name) for f in dwi_ml_folder.iterdir()]
-    if len(all_subjs) == 0:
-        raise ValueError('No subject found in dwi_ml folder!')
-
-    # Checking chosen_subjs
-    non_existing_subjs, good_chosen_subjs, ignored_subj = \
-            validate_subject_list(all_subjs, chosen_subjs)
-    if len(non_existing_subjs) > 0:
-        raise ValueError('Following subjects were chosen either for '
-                         'training set or validation set but their folders '
-                         'were not found in dwi_ml: '
-                         '{}'.format(non_existing_subjs))
-    if len(ignored_subj) > 0:
-        logging.info("Careful! NOT processing subjects {} "
-                     "because they were not included in training set nor "
-                     "validation set!".format(ignored_subj))
-
-
 def main():
     """Parse arguments, generate hdf5 dataset and save it on disk."""
     args = _parse_args()
@@ -120,100 +89,11 @@ def main():
     groups_config = json.load(json_file)
 
     # Create dataset from config and save
-    dataset_config = DatasetCreator(args.training_subj_ids, args.valid_subj_ids,
-                                    dwi_ml_folder,
-                                    EVERYTHING_CONCERNING_BUNDLES)
-    _generate_dataset(args.path, args.name, dataset_config, groups_config,
+    _generate_dataset(args.path, args.name, chosen_subjs, groups_config,
                       args.mask, save_intermediate=args.save_intermediate,
                       force=args.force)
 
-
-def load_and_check_data(data_file):
-    """Load nibabel data, and perform some checks:
-    - Data must be Nifti
-    - Data must be at least 3D
-    Final data will most probably be 4D (3D + features). Sending loaded data to
-    4D if it is 3D.
-    """
-    _, ext = os.path.splitext(data_file)
-    if ext != '.gz' and ext != '.nii':
-        raise ValueError('All data files should be nifti (.nii or .nii.gz) but '
-                         'you provided {}. Please check again your config '
-                         'file.'.format(data_file))
-
-    img = nib.load(data_file)
-    data = img.get_fdata(dtype=np.float32)
-    affine = img.affine
-    img.uncache()
-
-    if len(data.shape)<3:
-        raise NotImplementedError('Why would a data be less than 3D? We did '
-                                  'not plan this, you will have to change the'
-                                  'code to use this data.')
-    elif len(data.shape)==3:
-        # Adding a fourth dimension
-        data = data.reshape((*data.shape, 1))
-
-    return data, affine
-
-
-def process_group(group, file_list, save_intermediate, subj_input_path,
-                  subj_output_path, subj_mask_data):
-    """Process each group from the json config file:
-     - Load data from each file of the group and combine them.
-     - Standardize data
-    """
-    # First file will define data dimension and affine
-    first_file = subj_input_path.joinpath(file_list[0])
-    group_data, group_affine = load_and_check_data(first_file)
-
-    # Other files must fit
-    for data_file in file_list[1:]:
-        data, _ = load_and_check_data(data_file)
-        try:
-            group_data = np.append(group_data, data, axis=-1)
-        except:
-            raise ImportError('Data file {} could not be added to'
-                              'data group {}. Wrong dimensions?'
-                              ''.format(data_file, group))
-
-    # Save unnormalized data
-    if save_intermediate:
-        group_image = nib.Nifti1Image(group_data, group_affine)
-        output_fname = "{}_unnormalized.nii.gz".format(group)
-        nib.save(group_image,
-                 str(subj_output_path.joinpath(output_fname)))
-
-    # Standardize data
-    standardized_group_data = standardize_data(group_data, subj_mask_data)
-
-    # Save standardized data
-    if save_intermediate:
-        standardized_img = nib.Nifti1Image(standardized_group_data,
-                                           group_affine)
-        output_fname = "{}_normalized.nii.gz".format(group)
-        nib.save(standardized_img,
-                 str(subj_output_path.joinpath(output_fname)))
-
-    return standardized_group_data
-
-
-def process_streamlines(subject_id: str, subject_data_path: Path,
-                     output_path: Path,
-                     dataset_creator: DatasetCreator,
-                     save_intermediate: bool = False):
-
-    tractogram, lengths = dataset_creator.load_process_and_merge_bundles(
-        subject_data_path.joinpath("bundles"), dwi_image)
-    if save_intermediate:
-        save_tractogram(tractogram, str(output_path.joinpath(
-            "{}_all_streamlines.tck".format(subject_id))))
-
-    return tractogram.streamlines, lengths
-
-
-def _generate_dataset(path: str, name: str,
-                      dataset_creator: DatasetCreator, groups_config: Dict,
+def _generate_dataset(path: str, name: str, chosen_subjs, groups_config: Dict,
                       mask: str, save_intermediate: bool = False,
                       force: bool = False):
     """
@@ -265,14 +145,15 @@ def _generate_dataset(path: str, name: str,
     with h5py.File(dataset_file, 'w') as hdf_file:
         # Save version and configuration
         hdf_file.attrs['version'] = 1
-        hdf_file.attrs.update(dataset_creator.get_state_dict())
-        hdf_file.attrs.update(groups_config)
+        hdf_file.attrs['chosen_subjs'] = chosen_subjs
+        hdf_file.attrs['groups'] = groups_config
+        hdf_file.attrs['step_size_mm'] = step_size
+        hdf_file.attrs['bundles'] = [b.name for b in bundles]
 
         # Starting the subjects processing
-        logging.info("Processing {} subjects : {}"
-                     .format(len(dataset_creator.chosen_subjs),
-                             dataset_creator.chosen_subjs))
-        for subj_id in dataset_creator.train_subjs:
+        logging.info("Processing {} subjects : {}".format(len(chosen_subjs),
+                                                          chosen_subjs))
+        for subj_id in chosen_subjs:
             logging.info("Processing subject: {}".format(subj_id))
             subj_input_path = dwi_ml_folder.joinpath(subj_id)
 

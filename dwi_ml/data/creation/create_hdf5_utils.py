@@ -1,23 +1,21 @@
 # -*- coding: utf-8 -*-
+import glob
 import logging
 import os
 import pathlib
-import re
-from typing import List
+from typing import List, Union
 
 from dipy.io.stateful_tractogram import Space, StatefulTractogram
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.utils import length
 import nibabel as nib
 import numpy as np
-from scilpy.tracking.tools import (filter_streamlines_by_length,
-                                   resample_streamlines_step_size)
-from scilpy.io.streamlines import compress_sft
-from scilpy.? import subsample_sft_francois
+from scilpy.tracking.tools import resample_streamlines_step_size
+from scilpy.utils.streamlines import compress_sft
 
 from dwi_ml.data.creation.subjects_validation import validate_subject_list
 from dwi_ml.data.processing.dwi.dwi import standardize_data
-from dwi_ml.experiment.timer import Timer
+
 
 def verify_subject_lists(dwi_ml_folder, chosen_subjs):
     """
@@ -46,7 +44,7 @@ def verify_subject_lists(dwi_ml_folder, chosen_subjs):
                      "validation set!".format(ignored_subj))
 
 
-def _load_and_check_4D_nii_data(data_file):
+def _load_and_check_4d_nii_data(data_file):
     """Load nibabel data, and perform some checks:
     - Data must be Nifti
     - Data must be at least 3D
@@ -62,6 +60,7 @@ def _load_and_check_4D_nii_data(data_file):
     img = nib.load(data_file)
     data = img.get_fdata(dtype=np.float32)
     affine = img.affine
+    header = img.header  # Note. affine is header.get_sform().
     img.uncache()
 
     if len(data.shape)<3:
@@ -72,7 +71,7 @@ def _load_and_check_4D_nii_data(data_file):
         # Adding a fourth dimension
         data = data.reshape((*data.shape, 1))
 
-    return data, affine
+    return data, affine, header
 
 
 def process_group(group: str, file_list: List[str], save_intermediate: bool,
@@ -107,11 +106,12 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
     """
     # First file will define data dimension and affine
     first_file = subj_input_path.joinpath(file_list[0])
-    group_data, group_affine = _load_and_check_4D_nii_data(first_file)
+    group_data, group_affine, group_header = \
+        _load_and_check_4d_nii_data(first_file)
 
     # Other files must fit
     for data_file in file_list[1:]:
-        data, _ = _load_and_check_4D_nii_data(data_file)
+        data, _, _ = _load_and_check_4d_nii_data(data_file)
         try:
             group_data = np.append(group_data, data, axis=-1)
         except:
@@ -137,125 +137,27 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
         nib.save(standardized_img,
                  str(subj_output_path.joinpath(output_fname)))
 
-    return standardized_group_data, group_affine
+    return standardized_group_data, group_affine, group_header
 
 
-class BundleConfig:
-    """Bundle configuration parameters."""
-
-    def __init__(self, name: str, clustering_threshold_mm: float = None,
-                 removal_distance_mm: float = None):
-        """
-        Parameters
-        ----------
-        name : str
-            The name of the bundle.
-        clustering_threshold_mm : float
-            The clustering threshold applied before removing similar
-            streamlines.
-        removal_distance_mm : float
-            The removal threshold used to remove similar streamlines.
-        """
-        self.name = name
-        self.clustering_threshold_mm = clustering_threshold_mm
-        self.removal_distance_mm = removal_distance_mm
-
-
-def _arrange_bundles(bundles):
-    """
-    ?
-    """
-    arranged_bundles = []
-    for name, config_dict in bundles.items():
-        try:
-            bundle_config = BundleConfig(name,
-                                         config_dict["clustering_threshold_mm"],
-                                         config_dict["removal_distance_mm"])
-            arranged_bundles.append(bundle_config)
-        except KeyError as e:
-            raise ValueError("Bundle {} is missing configuration "
-                             "parameters: {}".format(name, e))
-    return arranged_bundles
-
-
-def _load_and_process_one_bundle(bundle_config: BundleConfig,
-                                 available_bundles, bundles_path: pathlib.Path,
-                                 dwi_ref: nib.Nifti1Image, minimum_length_mm,
-                                 step_size):
-    """
-    ?
-    """
-    # Find the bundle
-    regex = re.compile(".*_{}.t([rc])k".format(bundle_config.name))
-    matches = [b for b in available_bundles if re.match(regex, str(b))]
-    if len(matches) == 0:
-        logging.warning("Bundle {} was not found in "
-                        "path: {}".format(bundle_config.name,
-                                          str(bundles_path)))
-        return None
-    if len(matches) > 1:
-        raise ValueError("Bundle {} has matched "
-                         "multiple files: {}"
-                         .format(bundle_config.name, matches))
-    bundle_file = matches[0]
-
-    # Load the bundle
-    logging.info("Processing bundle: {}".format(bundle_file))
-    bundle = load_tractogram(str(bundle_file), reference=dwi_ref,
-                             to_space=Space.RASMM,
-                             trk_header_check=False,
-                             bbox_valid_check=False)
-    if len(bundle) == 0:
-        logging.warning("Bundle {} contains 0 streamlines, "
-                        "skipping...".format(str(bundle_file)))
-        return None
-
-    # Keep count of the original number of streamlines
-    bundle_original_count = len(bundle)
-    logging.debug("Bundle contains {} streamlines"
-                  .format(bundle_original_count))
-
-    # Remove streamlines that are too short
-    bundle = filter_streamlines_by_length(bundle, minimum_length_mm)
-    logging.debug("Removed streamlines under "                                                  
-                  "{}mm; Remaining: {}".format(minimum_length_mm, len(bundle)))
-
-    # Subsample bundles to keep only the closest to centroid (only if we
-    # have bundle information, i.e. not wholebrain)
-    if (bundle_config.clustering_threshold_mm is not None
-            and bundle_config.removal_distance_mm is not None):
-        bundle = subsample_sft_francois(bundle,
-                                        bundle_config.clustering_threshold_mm,
-                                        bundle_config.removal_distance_mm)
-        logging.debug("Subsampled bundle using clustering "
-                      "threshold of  {}mm and a removal distance of "
-                      "{}mm; Remaining: {}"
-                      .format(bundle_config.clustering_threshold_mm,
-                              bundle_config.removal_distance_mm,
-                              len(bundle)))
-
-    # Resample streamlines to have all the same step size
-    if step_size:
-        bundle = resample_streamlines_step_size(bundle, step_size)
-        logging.debug("Resampled streamlines' step size to {}mm"
-                      .format(step_size))
-    else:  # If no step size is defined, compress the streamlines
-        bundle = compress_sft(bundle)
-
-    return bundle, bundle_original_count
-
-
-def process_streamlines(bundles_path: pathlib.Path, bundles,
-                        dwi_ref: nib.Nifti1Image):
+def process_streamlines(bundles_dir: pathlib.Path, bundles,
+                        header: nib.Nifti1Header, step_size: float,
+                        space: Space):
     """Load and process a group of bundles and merge all streamlines
     together.
 
     Parameters
     ----------
-    bundles_path : pathlib.Path
+    bundles_dir : pathlib.Path
         Path to bundles folder.
-    dwi_ref : np.ndarray
+    bundles: List[str]
+        List of the bundles filenames to load.
+    header : nib.Nifti1Header
         Reference used to load and send the streamlines in voxel space.
+    step_size: float
+        Step size to resample streamlines. If none, compress streamlines.
+    space: Space
+        Space to place the tractograms.
 
     Returns
     -------
@@ -268,26 +170,35 @@ def process_streamlines(bundles_path: pathlib.Path, bundles,
     # Initialize
     output_tractogram = None
     output_lengths = []
-    n_original_streamlines = 0
-    if not bundles:
-        # If no bundles described in the json file, we will treat the files
-        # found in bundles as wholebrain tractograms
-        chosen_bundles_config = [BundleConfig(p.stem) for p in
-                                 bundles_path.glob('*')]
-        if len(chosen_bundles_config) == 0:
-            raise ValueError("No bundles found in the boundles folder!")
-    else:
-        chosen_bundles_config = bundles
-    available_bundles = list(bundles_path.iterdir())
 
-    for bundle_config in chosen_bundles_config:
-        bundle, bundle_original_count = _load_and_process_one_bundle(
-            bundle_config, available_bundles, bundles_path, dwi_ref)
-        if bundle is None:
-            continue
+    # Find official bundles list
+    if bundles is None:
+        # Take everything found in subject bundle folder
+        bundles = [str(p) for p in bundles_dir.glob('*')]
+        if len(bundles) == 0:
+            raise ValueError("No bundle found in the boundles folder!")
 
-        # Keep track of original count
-        n_original_streamlines += bundle_original_count
+    for bundle_name in bundles:
+        # Load bundle
+        bundle_path = glob.glob(bundles_dir.joinpath(bundle_name + '*'))
+        if len(bundle_path) == 0:
+            raise ValueError('Bundle {} not found!'.format(bundle_name))
+        elif len(bundle_path) > 1:
+            raise ValueError(
+                'More than one file with name {}. Clean your bundles '
+                'folder.'.format(bundle_name + '*'))
+        bundle = load_tractogram(bundle_path, header)
+
+        # Send to wanted space
+        bundle.to_space(space)
+
+        # Resample or compress streamlines
+        if step_size:
+            bundle = resample_streamlines_step_size(bundle, step_size)
+            logging.debug("Resampled streamlines' step size to {}mm"
+                          .format(step_size))
+        else:
+            bundle = compress_sft(bundle)
 
         # Compute euclidean lengths
         output_lengths.extend(length(bundle.streamlines))
@@ -296,12 +207,6 @@ def process_streamlines(bundles_path: pathlib.Path, bundles,
         if output_tractogram is None:
             output_tractogram = bundle
         else:
-            # Validate that tractograms are in the same space
-            # Function doesnt exist anymore but should not be necessary
-            # if we use SFT.
-            assert are_tractograms_in_same_space(output_tractogram,
-                                                 bundle),\
-                "Inconsistent tractogram space: {}".format(bundle)
             output_tractogram.streamlines.extend(bundle.streamlines)
 
     # Transfer the streamlines to the reference space before bringing them
@@ -319,11 +224,6 @@ def process_streamlines(bundles_path: pathlib.Path, bundles,
     output_tractogram.remove_invalid_streamlines()
     logging.debug("Ran internal tractogram validation; "
                   "Remaining: {}".format(len(output_tractogram)))
-
-    # Final nb of streamlines
-    logging.info("Final number of streamlines : "
-                 "{} / {}".format(len(output_tractogram),
-                                  n_original_streamlines))
 
     # Send to VOX space and make sure the origin is at the CENTER of the
     # voxel. NOTE: This is really important, otherwise interpolation will

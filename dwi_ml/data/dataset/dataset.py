@@ -336,9 +336,10 @@ class MultiSubjectDataset(Dataset):
         ids = np.arange(len(batch_streamlines))
         self.rng.shuffle(ids)
         flip_ids = ids[:len(ids) // 2]
-        sft = reverse_streamlines(sft, flip_ids)
-        # was batch_streamlines = [flip_streamline(s) if i in flip_ids else s
-        #                     for i, s in enumerate(batch_streamlines)]
+        batch_streamlines = [flip_streamline(s) if i in flip_ids else s
+                             for i, s in enumerate(batch_streamlines)]
+        # ToDo
+        #  To change. See new function: sft = reverse_streamlines(sft, flip_ids)
 
         return batch_streamlines, batch_subj_to_y_ids_processed
 

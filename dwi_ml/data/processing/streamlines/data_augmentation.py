@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import copy
 import logging
 from typing import List, Union
 
@@ -119,8 +120,10 @@ def reverse_streamlines(sft: StatefulTractogram, flip_ids: np.ndarray = None):
 
     new_streamlines = [s[::-1] if i in flip_ids else s for i, s in
                        enumerate(sft.streamlines)]
-    new_data_per_point = [d[::-1] if i in flip_ids else d for i, d in
-                          enumerate(sft.data_per_point)]
+    new_data_per_point = copy.deepcopy(sft.data_per_point)
+    for key in sft.data_per_point:
+        new_data_per_point[key] = [d[::-1] if i in flip_ids else d for i, d in
+                                   enumerate(new_data_per_point[key])]
 
     new_sft = StatefulTractogram.from_sft(
         new_streamlines, sft, data_per_point=new_data_per_point,

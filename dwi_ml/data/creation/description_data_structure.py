@@ -54,11 +54,21 @@ PROCESSED_DESCRIPTION_HDF5 = """
             | {subject_id}_{target1}.tck  # Ex: bundle1
 """
 
-CONFIG_DESCRIPTION = (
+GROUPS_CONFIG_DESCRIPTION = (
     """=== Expected json config for the groups in your hdf5:
 {
     "group1": ["file1.nii.gz", "file2.nii.gz", ...],
     "group2": ["file1.nii.gz"]
+}
+
+For example, the group names could be 'input_volume', 'target_volume', etc. 
+Make sure your training script calls the same keys.""")
+
+BUNDLES_CONFIG_DESCRIPTION = (
+    """=== Expected json config for the bundles in your hdf5:
+{
+    "bundle1": [clustering_threshold_mm, removal_distance_mm],
+    "bundle2": []
 }
 
 For example, the group names could be 'input_volume', 'target_volume', etc. 

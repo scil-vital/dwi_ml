@@ -6,7 +6,7 @@ import re
 from typing import List
 
 from dipy.io.stateful_tractogram import Space, StatefulTractogram
-from dipy.io.streamline import (load_tractogram, save_tractogram)
+from dipy.io.streamline import load_tractogram
 from dipy.tracking.utils import length
 import nibabel as nib
 import numpy as np
@@ -75,11 +75,35 @@ def _load_and_check_4D_nii_data(data_file):
     return data, affine
 
 
-def process_group(group, file_list, save_intermediate, subj_input_path,
-                  subj_output_path, subj_mask_data):
+def process_group(group: str, file_list: List[str], save_intermediate: bool,
+                  subj_input_path: pathlib.Path,
+                  subj_output_path: pathlib.Path,
+                  subj_mask_data: np.ndarray = None):
     """Process each group from the json config file:
-     - Load data from each file of the group and combine them.
-     - Standardize data
+    - Load data from each file of the group and combine them.
+    - Standardize data
+
+    Parameters
+    ----------
+    group: str
+        Group name.
+    file_list: List[str]
+        List of the files names that must be merged into a group.
+    save_intermediate: bool
+        If true, intermediate files will be saved.
+    subj_input_path: pathlib.Path
+        Path where the files from file_list should be found.
+    subj_output_path: pathlib.Path
+        Path where to save the intermediate files.
+    subj_mask_data: np.ndarray of bools, optional
+        Binary mask that will be used for data standardization.
+
+    Returns
+    -------
+    standardized_group_data: np.ndarray
+        Group data created by concatenating all files, standardized.
+    group_affine: np.ndarray
+        Affine for the group.
     """
     # First file will define data dimension and affine
     first_file = subj_input_path.joinpath(file_list[0])
@@ -113,7 +137,7 @@ def process_group(group, file_list, save_intermediate, subj_input_path,
         nib.save(standardized_img,
                  str(subj_output_path.joinpath(output_fname)))
 
-    return standardized_group_data
+    return standardized_group_data, group_affine
 
 
 class BundleConfig:
@@ -221,8 +245,8 @@ def _load_and_process_one_bundle(bundle_config: BundleConfig,
     return bundle, bundle_original_count
 
 
-def _load_process_and_merge_bundles(bundles_path: pathlib.Path, bundles,
-                                    dwi_ref: nib.Nifti1Image):
+def process_streamlines(bundles_path: pathlib.Path, bundles,
+                        dwi_ref: nib.Nifti1Image):
     """Load and process a group of bundles and merge all streamlines
     together.
 
@@ -241,85 +265,70 @@ def _load_process_and_merge_bundles(bundles_path: pathlib.Path, bundles,
         The euclidean length of each streamline
     """
 
-    with Timer("Processing streamlines", newline=True):
+    # Initialize
+    output_tractogram = None
+    output_lengths = []
+    n_original_streamlines = 0
+    if not bundles:
+        # If no bundles described in the json file, we will treat the files
+        # found in bundles as wholebrain tractograms
+        chosen_bundles_config = [BundleConfig(p.stem) for p in
+                                 bundles_path.glob('*')]
+        if len(chosen_bundles_config) == 0:
+            raise ValueError("No bundles found in the boundles folder!")
+    else:
+        chosen_bundles_config = bundles
+    available_bundles = list(bundles_path.iterdir())
 
-        # Initialize
-        output_tractogram = None
-        output_lengths = []
-        n_original_streamlines = 0
-        if not bundles:
-            # If no bundles described in the json file, we will treat the files
-            # found in bundles as wholebrain tractograms
-            chosen_bundles_config = [BundleConfig(p.stem) for p in
-                                     bundles_path.glob('*')]
-            if len(chosen_bundles_config) == 0:
-                raise ValueError("No bundles found in the boundles folder!")
-        else:
-            chosen_bundles_config = bundles
-        available_bundles = list(bundles_path.iterdir())
+    for bundle_config in chosen_bundles_config:
+        bundle, bundle_original_count = _load_and_process_one_bundle(
+            bundle_config, available_bundles, bundles_path, dwi_ref)
+        if bundle is None:
+            continue
 
-        for bundle_config in chosen_bundles_config:
-            bundle, bundle_original_count = _load_and_process_one_bundle(
-                bundle_config, available_bundles, bundles_path, dwi_ref)
-            if bundle is None:
-                continue
+        # Keep track of original count
+        n_original_streamlines += bundle_original_count
 
-            # Keep track of original count
-            n_original_streamlines += bundle_original_count
+        # Compute euclidean lengths
+        output_lengths.extend(length(bundle.streamlines))
 
-            # Compute euclidean lengths
-            output_lengths.extend(length(bundle.streamlines))
-
-            # Add processed bundle to output tractogram
-            if output_tractogram is None:
-                output_tractogram = bundle
-            else:
-                # Validate that tractograms are in the same space
-                # Function doesnt exist anymore but should not be necessary
-                # if we use SFT.
-                assert are_tractograms_in_same_space(output_tractogram,
-                                                     bundle),\
-                    "Inconsistent tractogram space: {}".format(bundle)
-                output_tractogram.streamlines.extend(bundle.streamlines)
-
-        # Transfer the streamlines to the reference space before bringing them
-        # to VOX space. NOTE: This is done in case the streamlines were tracked
-        # in a different space than the provided dataset reference
+        # Add processed bundle to output tractogram
         if output_tractogram is None:
-            output_streamlines_rasmm = []
+            output_tractogram = bundle
         else:
-            output_streamlines_rasmm = output_tractogram.streamlines
-        output_tractogram = StatefulTractogram(output_streamlines_rasmm,
-                                               dwi_ref,
-                                               space=Space.RASMM)
+            # Validate that tractograms are in the same space
+            # Function doesnt exist anymore but should not be necessary
+            # if we use SFT.
+            assert are_tractograms_in_same_space(output_tractogram,
+                                                 bundle),\
+                "Inconsistent tractogram space: {}".format(bundle)
+            output_tractogram.streamlines.extend(bundle.streamlines)
 
-        # Internal validation check
-        output_tractogram.remove_invalid_streamlines()
-        logging.debug("Ran internal tractogram validation; "
-                      "Remaining: {}".format(len(output_tractogram)))
+    # Transfer the streamlines to the reference space before bringing them
+    # to VOX space. NOTE: This is done in case the streamlines were tracked
+    # in a different space than the provided dataset reference
+    if output_tractogram is None:
+        output_streamlines_rasmm = []
+    else:
+        output_streamlines_rasmm = output_tractogram.streamlines
+    output_tractogram = StatefulTractogram(output_streamlines_rasmm,
+                                           dwi_ref,
+                                           space=Space.RASMM)
 
-        # Final nb of streamlines
-        logging.info("Final number of streamlines : "
-                     "{} / {}".format(len(output_tractogram),
-                                      n_original_streamlines))
+    # Internal validation check
+    output_tractogram.remove_invalid_streamlines()
+    logging.debug("Ran internal tractogram validation; "
+                  "Remaining: {}".format(len(output_tractogram)))
 
-        # Send to VOX space and make sure the origin is at the CENTER of the
-        # voxel. NOTE: This is really important, otherwise interpolation will
-        # be off by half a voxel.
-        output_tractogram.to_vox()
-        output_tractogram.to_center()
+    # Final nb of streamlines
+    logging.info("Final number of streamlines : "
+                 "{} / {}".format(len(output_tractogram),
+                                  n_original_streamlines))
+
+    # Send to VOX space and make sure the origin is at the CENTER of the
+    # voxel. NOTE: This is really important, otherwise interpolation will
+    # be off by half a voxel.
+    output_tractogram.to_vox()
+    output_tractogram.to_center()
 
     return output_tractogram, output_lengths
-
-
-def process_streamlines(subject_id: str, subject_data_path: pathlib.Path,
-                     output_path: pathlib.Path,
-                     save_intermediate: bool = False):
-
-    tractogram, lengths = _load_process_and_merge_bundles(
-        subject_data_path.joinpath("bundles"), dwi_image)
-    if save_intermediate:
-        save_tractogram(tractogram, str(output_path.joinpath(
-            "{}_all_streamlines.tck".format(subject_id))))
-
-    return tractogram.streamlines, lengths

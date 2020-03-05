@@ -11,6 +11,7 @@ from typing import Dict
 import h5py
 import nibabel as nib
 
+from dipy.io.streamline import save_tractogram
 from dwi_ml.data.creation.create_hdf5_utils import (
     verify_subject_lists,
     process_group,
@@ -173,15 +174,24 @@ def _generate_dataset(path: str, name: str, chosen_subjs, groups_config: Dict,
             # (inputs and others. All nifti)
             for group in groups_config:
                 file_list = groups_config[group]
-                group_data = process_group(group, file_list, save_intermediate,
-                                           subj_input_path, subj_output_path,
-                                           subj_mask_data)
+                group_data, group_affine = process_group(
+                    group, file_list, save_intermediate, subj_input_path,
+                    subj_output_path, subj_mask_data)
                 subj_hdf.create_dataset(group, data=group_data)
 
             # Add the streamlines data
-            streamlines, lengths = process_streamlines(subj_id, subj_input_path,
-                                 subj_output_path, dataset_creator,
-                                 save_intermediate=save_intermediate)
+            # Using the last group_affine
+            bundles = something that was read from json.
+            tractogram, lengths = process_streamlines(
+                subj_input_path.joinpath("bundles"), bundles, group_affine)
+            streamlines = tractogram.streamlines
+
+            # Save streamlines
+            if save_intermediate:
+                save_tractogram(tractogram, str(output_path.joinpath(
+                    "{}_all_streamlines.tck".format(subject_id))))
+
+
             if streamlines is not None:
                 streamlines_group = AJOUTER LES SPACE ATTRIBUTES
                 streamlines_group = subj_hdf.create_group('streamlines')

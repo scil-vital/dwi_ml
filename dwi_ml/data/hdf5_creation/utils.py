@@ -13,7 +13,7 @@ import numpy as np
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
-from dwi_ml.data.creation.subjects_validation import validate_subject_list
+from dwi_ml.data.hdf5_creation.subjects_validation import validate_subject_list
 from dwi_ml.data.processing.dwi.dwi import standardize_data
 
 

@@ -4,7 +4,7 @@
 # This script is used to reorganize tractoflow results into the dwi_ml_ready
 # folder. You should copy this script into your project and modify according to
 # your needs.
-# See dwi_ml.data.creation.description_data_structure.py for more information.
+# See dwi_ml.data.hdf5_creation.description_data_structure.py for more information.
 # We suppose that you have a "preprocess" folder that contains tractoflow's
 # results.
 # This script will create the dwi_ml_folder and subfolders and copy the main

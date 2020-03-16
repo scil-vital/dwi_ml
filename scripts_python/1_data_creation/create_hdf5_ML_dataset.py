@@ -5,7 +5,7 @@ Script to combine multiple diffusion MRI volumes and their streamlines into a
 single .hdf5 file.
 
 Your folders should follow organization described in
-dwi_ml.data.creation.description_data_structure.FOLDER_DESCRIPTION.
+dwi_ml.data.hdf5_creation.description_data_structure.FOLDER_DESCRIPTION.
 
 A hdf5 folder will be created alongside dwi_ml_ready. It will contain the .hdf5
 file and possibly intermediate files created during bundle processing.
@@ -24,7 +24,7 @@ import nibabel as nib
 from dipy.io.streamline import save_tractogram
 from dipy.io.stateful_tractogram import Space
 
-from dwi_ml.data.creation.create_hdf5_utils import (
+from dwi_ml.data.hdf5_creation.utils import (
     verify_subject_lists,
     process_group,
     process_streamlines)
@@ -41,7 +41,7 @@ def _parse_args():
     p.add_argument('config_file', type=str,
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. Should follow description in "
-                        "dwi_ml.data.creation.description_data_structure's "
+                        "dwi_ml.data.hdf5_creation.description_data_structure's "
                         "CONFIG_DESCRIPTION")
     p.add_argument('dwi', type=str,
                    help="Name of the DWI data that should be found inside "

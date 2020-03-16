@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from dipy.core.gradients import gradient_table
 import numpy as np
 
 # Note. If you want to resample DWI: you may use
@@ -7,26 +6,6 @@ import numpy as np
 # with the sphere
 # from dipy.data import get_sphere
 # sphere = get_sphere("repulsion100")
-
-# Example of tools that can be useful.
-from scilpy.reconst.fodf import compute_fodf
-from scilpy.reconst.raw_signal import compute_sh_coefficients
-from scilpy.reconst.frf import compute_ssst_frf
-from scilpy.tracking.tools import (
-    filter_streamlines_by_length, resample_streamlines_step_size)
-from scilpy.utils.streamlines import compress_sft
-from scilpy.image.resample_volume import resample_volume
-
-
-def resample_raw_dwi_from_sh(dwi_image, bvals, bvecs, sh_order):
-    # Brings to SH and then back to directions.
-    gtab = gradient_table(bvals, bvecs, b0_threshold=bvals.min())
-    output = compute_sh_coefficients(dwi_image, gtab, sh_order=sh_order)
-
-    # Then what?
-    raise NotImplementedError
-
-    return output
 
 
 def standardize_data(data: np.ndarray, mask: np.ndarray = None,

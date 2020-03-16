@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Script to count the number of streamlines in a processed dataset after
 subsampling. It accepts an arbitrary number of .hdf5 as input.;

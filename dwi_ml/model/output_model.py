@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from math import ceil
 from typing import Any, List, Tuple
 

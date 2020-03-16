@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 import torch
 import numpy as np
 from scipy.ndimage import map_coordinates

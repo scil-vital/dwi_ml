@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 
 We expect the classes here to be used in data_list.py

@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 # Main script for users
 # Creates a .hdf5 dataset.
 # Public functions:

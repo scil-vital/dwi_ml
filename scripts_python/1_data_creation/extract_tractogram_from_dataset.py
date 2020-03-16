@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""Script to extract tractograms from a generated .hdf5 dataset and save them as .tck files"""
+# -*- coding: utf-8 -*-
+"""Script to extract tractograms from a generated .hdf5 dataset and save
+them as .tck files"""
 import argparse
 import pathlib
 

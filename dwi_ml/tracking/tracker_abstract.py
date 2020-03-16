@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-
+# -*- coding: utf-8 -*-
 import os
 from math import ceil
 from typing import Any, Dict, List, Union
@@ -19,8 +18,7 @@ from dwi_ml.data.dataset.single_subject_containers import (
     MRIDataVolume, SubjectData)
 from dwi_ml.tracking.step_tracker import (
     StepTracker, PreInitializedStepTracker)
-from dwi_ml.data.processing.space.utils import (
-    convert_mm2vox)
+from dwi_ml.data.processing.space.world_to_vox import convert_world_to_vox
 from dwi_ml.experiment.timer import Timer
 from dwi_ml.tracking.utils import StoppingFlags, count_flags
 

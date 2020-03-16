@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
+from typing import List
 
 import numpy as np
-from typing import List
 
 
 def split_array_at_lengths(array: np.ndarray, lengths: List[int]):

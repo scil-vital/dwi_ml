@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from enum import Enum
 from typing import Callable, Dict, Tuple
 
@@ -6,9 +7,8 @@ import numpy as np
 from dipy.tracking.utils import length as length_generator
 from nibabel.affines import apply_affine
 
-# Flags enum
-from dwi_ml.data.processing.dwi.interpolation import
-    interpolate_volume_at_coordinates
+from dwi_ml.data.processing.volume.interpolation import (
+    interpolate_volume_at_coordinates)
 
 
 class StoppingFlags(Enum):

@@ -24,10 +24,9 @@ import nibabel as nib
 from dipy.io.streamline import save_tractogram
 from dipy.io.stateful_tractogram import Space
 
-from dwi_ml.data.hdf5_creation.utils import (
-    verify_subject_lists,
-    process_group,
-    process_streamlines)
+from dwi_ml.data.hdf5_creation.utils import (verify_subject_lists,
+                                             process_group,
+                                             process_streamlines)
 
 
 def _parse_args():
@@ -53,16 +52,16 @@ def _parse_args():
                    help="txt file containing the list of subjects ids to use "
                         "for validation.")
     p.add_argument('--step_size', type=float,
-                   help="Common step size to resample the data. Must be in the"
+                   help="Common step size to resample the data. Must be in the "
                         "same space as the streamlines. If none is given, we "
                         "will compress the streamlines instead of resampling. ")
     p.add_argument('--name', type=str,
                    help="Dataset name [Default uses date and time of "
                         "processing].")
     p.add_argument('--bundles', type=str, nargs='+',
-                   help="Bundles to concatenate as streamlines in the hdf5."
+                   help="Bundles to concatenate as streamlines in the hdf5. "
                         "Must be names of files that are present in each "
-                        "subject's 'bundles' folder in dwi_ml_ready. If none"
+                        "subject's 'bundles' folder in dwi_ml_ready. If none "
                         "is given, we will take all the files in the 'bundles'"
                         "folder. The bundles names will be guessed from the "
                         "filenames.")
@@ -72,7 +71,7 @@ def _parse_args():
                         "voxels will be used. mask should be the name of "
                         "the mask file inside dwi_ml_ready/{subj_id}/mask.")
     p.add_argument('--space', type=Space, default=Space.VOX,
-                   help="Default space to bring all the stateful tractograms."
+                   help="Default space to bring all the stateful tractograms. "
                         "All other measures (ex, step_size) should be provided "
                         "in that space.")
     p.add_argument('--logging', type=str,
@@ -113,6 +112,7 @@ def main():
                       args.mask, args.bundles, args.step_size, args.space,
                       save_intermediate=args.save_intermediate,
                       force=args.force)
+
 
 def _generate_dataset(database_dir: str, name: str, chosen_subjs: List[str],
                       groups_config: Dict, mask: str, bundles: List[str],

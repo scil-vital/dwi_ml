@@ -3,7 +3,7 @@ import glob
 import logging
 import os
 import pathlib
-from typing import List, Union
+from typing import List
 
 from dipy.io.stateful_tractogram import Space, StatefulTractogram
 from dipy.io.streamline import load_tractogram
@@ -32,7 +32,7 @@ def verify_subject_lists(dwi_ml_folder, chosen_subjs):
 
     # Checking chosen_subjs
     non_existing_subjs, good_chosen_subjs, ignored_subj = \
-            validate_subject_list(all_subjs, chosen_subjs)
+        validate_subject_list(all_subjs, chosen_subjs)
     if len(non_existing_subjs) > 0:
         raise ValueError('Following subjects were chosen either for '
                          'training set or validation set but their folders '
@@ -63,11 +63,11 @@ def _load_and_check_4d_nii_data(data_file):
     header = img.header  # Note. affine is header.get_sform().
     img.uncache()
 
-    if len(data.shape)<3:
+    if len(data.shape) < 3:
         raise NotImplementedError('Why would a data be less than 3D? We did '
                                   'not plan this, you will have to change the'
                                   'code to use this data.')
-    elif len(data.shape)==3:
+    elif len(data.shape) == 3:
         # Adding a fourth dimension
         data = data.reshape((*data.shape, 1))
 
@@ -114,7 +114,7 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
         data, _, _ = _load_and_check_4d_nii_data(data_file)
         try:
             group_data = np.append(group_data, data, axis=-1)
-        except:
+        except ImportError:
             raise ImportError('Data file {} could not be added to'
                               'data group {}. Wrong dimensions?'
                               ''.format(data_file, group))

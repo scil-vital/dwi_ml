@@ -61,7 +61,7 @@ GROUPS_CONFIG_DESCRIPTION = (
     "group2": ["file1.nii.gz"]
 }
 
-For example, the group names could be 'input_volume', 'target_volume', etc. 
+For example, the group names could be 'input_volume', 'target_volume', etc.
 Make sure your training script calls the same keys.""")
 
 BUNDLES_CONFIG_DESCRIPTION = (
@@ -71,5 +71,5 @@ BUNDLES_CONFIG_DESCRIPTION = (
     "bundle2": []
 }
 
-For example, the group names could be 'input_volume', 'target_volume', etc. 
+For example, the group names could be 'input_volume', 'target_volume', etc.
 Make sure your training script calls the same keys.""")

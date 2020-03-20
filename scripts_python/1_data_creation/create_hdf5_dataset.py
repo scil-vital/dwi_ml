@@ -24,9 +24,9 @@ import nibabel as nib
 from dipy.io.streamline import save_tractogram
 from dipy.io.stateful_tractogram import Space
 
-from dwi_ml.data.hdf5_creation.utils import (verify_subject_lists,
-                                             process_group,
-                                             process_streamlines)
+from dwi_ml.data.utils import (verify_subject_lists,
+                               process_group,
+                               process_streamlines)
 
 
 def _parse_args():

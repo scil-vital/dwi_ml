@@ -13,7 +13,6 @@ import numpy as np
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
-from dwi_ml.data.hdf5_creation.subjects_validation import validate_subject_list
 from dwi_ml.data.processing.dwi.dwi import standardize_data
 
 
@@ -31,18 +30,21 @@ def verify_subject_lists(dwi_ml_folder, chosen_subjs):
         raise ValueError('No subject found in dwi_ml folder!')
 
     # Checking chosen_subjs
-    non_existing_subjs, good_chosen_subjs, ignored_subj = \
-        validate_subject_list(all_subjs, chosen_subjs)
+    non_existing_subjs = [s for s in chosen_subjs if s not in all_subjs]
     if len(non_existing_subjs) > 0:
         raise ValueError('Following subjects were chosen either for '
                          'training set or validation set but their folders '
                          'were not found in dwi_ml: '
                          '{}'.format(non_existing_subjs))
+
+    ignored_subj = [s for s in all_subjs if s not in chosen_subjs]
     if len(ignored_subj) > 0:
         logging.info("Careful! NOT processing subjects {} "
                      "because they were not included in training set nor "
                      "validation set!".format(ignored_subj))
 
+    # P.S.
+    # good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
 
 def _load_and_check_4d_nii_data(data_file):
     """Load nibabel data, and perform some checks:
@@ -176,7 +178,7 @@ def process_streamlines(bundles_dir: pathlib.Path, bundles,
         # Take everything found in subject bundle folder
         bundles = [str(p) for p in bundles_dir.glob('*')]
         if len(bundles) == 0:
-            raise ValueError("No bundle found in the boundles folder!")
+            raise ValueError("No bundle found in the bundles folder!")
 
     for bundle_name in bundles:
         # Load bundle

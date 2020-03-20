@@ -1,0 +1,114 @@
+
+Folder structure
+================
+
+How you should organize your data beforehand
+********************************************
+
+This is how your data should be organized before trying to load your data as a hdf5 file. This structure should hold wether you work with hdf5 or BIDS.
+
+- Original: Your original data folder. This is facultative but you probably have already organized your data like that if you ran tractoflow. For more information on data organization for tractoflow, please check `Tractoflow's Input Structure <https://tractoflow-documentation.readthedocs.io/en/latest/pipeline/input.html>`_.
+
+- Preprocessed: No matter how you preprocess your data, please keep the results in a "preprocessed" folder. Ex: tractoflow + any other technique to get your bundles.
+
+- dwi_ml_ready: This folder is the most important one and must be organized in this exact way to be able to load the data as a hdf5 using our script create_hdf5_dataset.py. An example of use could be:
+
+    .. code-block:: bash
+
+        dataset_folder=YOUR_FOLDER
+        config_folder=YOUR_CONFIG_FILES
+
+        create_hdf5_dataset.py EXAMPLE TO FINISH WHEN SCRIPT IS READY
+
+  ** Note. If you used tractoflow and have kept the results in preprocessed, you can organize automatically the dwi_ml_ready folder. We have started to prepare a script for you: example_organizse_from_tractoflow.sh. We encourage you to modify this script in your own project depending on your needs.
+- A processed folder will be created automatically. See lower for description.
+
+Organization:
+
+.. code-block:: bash
+
+    {database_name}
+    | original
+        | {subject_id}
+            | dwi.nii.gz
+            | bval
+            | bvec
+            | t1.nii.gz
+    | preprocessed
+        | Ex: Tractoflow
+        | Ex: Bundles from Recobundles
+    | dwi_ml_ready  =====>
+        | {subject_id}
+            | anat
+                | {subject_id}_t1.nii.gz
+                | {subject_id}_wm_map.nii.gz
+            | dwi
+                | {subject_id}_dwi_preprocessed.nii.gz
+                | {subject_id}_bval_preprocessed
+                | {subject_id}_bvec_preprocessed
+                | {subject_id}_fa.nii.gz
+            | bundles
+                | {subject_id}_{bundle1}.tck
+            | masks
+                | {subject_id}_wm.nii.gz
+                | bundles
+                    | {subject_id}_{bundle1}.nii.gz
+                | endpoints
+                    | {subject_id}_{bundle1}.nii.gz
+                    OR
+                    | {subject_id}_{bundle1}_heads.nii.gz
+                    | {subject_id}_{bundle1}_tails.nii.gz
+        | ...
+
+
+The processed folder
+********************
+
+Once the hdf5 will be created (using create_hdf5_dataset.py), if you chose the --save_intermediate option, a processed folder with the following structure will be created:
+
+.. code-block:: bash
+
+    | processed_{experiment_name}  ===========>
+        | {subject_id}
+            | input
+                | {subject_id}_{input1}.nii.gz  # Ex: fODF (unnormalized)
+                ...
+                | {subject_id}_{inputN}.nii.gz
+                | {subject_id}_model_input.nii.gz   # Final input = all inputs,
+                                                    #  normalized, concateanted.
+            | target
+                | {subject_id}_{target1}.tck  # Ex: bundle1
+
+
+Config files
+============
+
+Group config file
+******************
+
+Expected json config for the groups in your hdf5:
+
+.. code-block:: bash
+
+    {
+        "group1": ["file1.nii.gz", "file2.nii.gz", ...],
+        "group2": ["file1.nii.gz"]
+    }
+
+For example, the group names could be 'input_volume', 'target_volume', etc.
+Make sure your training script calls the same keys.
+
+Bundles config file
+*******************
+
+Expected json config for the bundles in your hdf5:
+
+.. code-block:: bash
+
+    {
+        "bundle1": [clustering_threshold_mm, removal_distance_mm],
+        "bundle2": []
+    }
+
+For example, the group names could be 'input_volume', 'target_volume', etc.
+Make sure your training script calls the same keys.

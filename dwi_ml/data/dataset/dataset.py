@@ -10,8 +10,8 @@ from collections import OrderedDict, defaultdict
 from typing import Dict, List, Tuple, Union
 
 import h5py
-import numpy as np
 from nibabel.streamlines import ArraySequence
+import numpy as np
 from scilpy.tracking.tools import resample_streamlines_step_size
 import torch
 import torch.multiprocessing
@@ -19,19 +19,18 @@ from torch.nn.utils.rnn import pack_sequence
 from torch.utils.data import Dataset
 import tqdm
 
-
 from dwi_ml.cache.cache_manager import SingleThreadCacheManager
-from dwi_ml.data.dataset.single_subject_containers import (SubjectData,
-                                                           LazySubjectData)
 from dwi_ml.data.dataset.data_list import (DataListForTorch,
                                            LazyDataListForTorch)
+from dwi_ml.data.dataset.parameter_description import PARAMETER_DESCRIPTION
+from dwi_ml.data.dataset.single_subject_containers import (SubjectData,
+                                                           LazySubjectData)
 from dwi_ml.data.processing.space.neighbourhood import (
     get_neighborhood_vectors_axes)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     flip_streamlines,
     add_noise_to_streamlines,
     cut_random_streamlines)
-from dwi_ml.data.dataset.parameter_description import PARAMETER_DESCRIPTION
 
 
 class MultiSubjectDataset(Dataset):

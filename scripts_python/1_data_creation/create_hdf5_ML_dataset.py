@@ -20,10 +20,10 @@ import shutil
 from pathlib import Path
 from typing import List
 
+from dipy.io.streamline import save_tractogram
 import h5py
 import nibabel as nib
 import numpy as np
-from dipy.io.streamline import save_tractogram
 
 from dwi_ml.data.creation.hdf5_creator import (
     HDF5CreatorAbstract,

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+
 class DataListForTorch(object):
     """
     Remembers the list of subjects and their common properties, such as the size

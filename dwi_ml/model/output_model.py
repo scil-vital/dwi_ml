@@ -5,8 +5,8 @@ from typing import Any, List, Tuple
 import dipy.data
 import numpy as np
 import torch
-from torch.nn import (Linear, Dropout, ReLU, CosineSimilarity)
 from torch.distributions import Categorical, MultivariateNormal
+from torch.nn import (Linear, Dropout, ReLU, CosineSimilarity)
 from torch.nn.modules.distance import PairwiseDistance
 
 DESCRIPTION = """

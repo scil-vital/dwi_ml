@@ -5,11 +5,11 @@ them as .tck files"""
 import argparse
 import pathlib
 
+from dipy.io.stateful_tractogram import Space, StatefulTractogram
+from dipy.io.streamline import save_tractogram
 import h5py
 import nibabel as nib
 import numpy as np
-from dipy.io.stateful_tractogram import Space, StatefulTractogram
-from dipy.io.streamline import save_tractogram
 
 
 def parse_args():

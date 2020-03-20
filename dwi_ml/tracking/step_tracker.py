@@ -7,19 +7,14 @@ from nibabel.streamlines import Tractogram
 import numpy as np
 import torch
 
-from dwi_ml.data.dataset.single_subject_containers import (
-    MRIDataVolume)
+from dwi_ml.data.dataset.single_subject_containers import MRIDataVolume
+from dwi_ml.data.processing.space.neighbourhood import  (
+    get_neighborhood_vectors_axes)
+from dwi_ml.data.processing.space.world_to_vox import convert_world_to_vox
 from dwi_ml.data.processing.volume.interpolation import (
     torch_trilinear_interpolation)
-from dwi_ml.data.processing.space.world_to_vox import convert_world_to_vox
-from dwi_ml.data.processing.space.neighbourhood import  (
-    get_neighborhood_vectors_axes
-from dwi_ml.tracking.utils import (
-    StoppingFlags,
-    filter_stopping_streamlines,
-    is_outside_mask,
-    is_too_curvy,
-    is_too_long)
+from dwi_ml.tracking.utils import (StoppingFlags, filter_stopping_streamlines,
+                                   is_outside_mask, is_too_curvy, is_too_long)
 
 
 class StepTracker(object):

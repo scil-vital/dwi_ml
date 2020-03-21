@@ -7,23 +7,22 @@ How you should organize your data beforehand
 
 This is how your data should be organized before trying to load your data as a hdf5 file. This structure should hold wether you work with hdf5 or BIDS.
 
-- Original: Your original data folder. This is facultative but you probably have already organized your data like that if you ran tractoflow. For more information on data organization for tractoflow, please check `Tractoflow's Input Structure <https://tractoflow-documentation.readthedocs.io/en/latest/pipeline/input.html>`_.
+Original:
+    Your original data folder. This is facultative but you probably have already organized your data like that if you ran tractoflow. For more information on data organization for tractoflow, please check `Tractoflow's Input Structure <https://tractoflow-documentation.readthedocs.io/en/latest/pipeline/input.html>`_.
 
-- Preprocessed: No matter how you preprocess your data, please keep the results in a "preprocessed" folder. Ex: tractoflow + any other technique to get your bundles.
+Preprocessed:
+    No matter how you preprocess your data, please keep the results in a "preprocessed" folder. Ex: tractoflow + any other technique to get your bundles.
 
-- dwi_ml_ready: This folder is the most important one and must be organized in this exact way to be able to load the data as a hdf5 using our script create_hdf5_dataset.py. An example of use could be:
+    ** Note. If you used tractoflow and have kept the results in preprocessed, you can organize automatically the dwi_ml_ready folder. We have started to prepare a script for you, which you can find in please_copy_and_adapt/**01_organizse_from_tractoflow.sh**. We encourage you to modify this script in your own project depending on your needs.
 
-    .. code-block:: bash
+dwi_ml_ready
+    This folder is the most important one and must be organized in this exact way to be able to load the data as a hdf5 using our script create_hdf5_dataset.py. An example of use can be found in please_copy_and_adapt/**02_create_dataset.sh**.
 
-        dataset_folder=YOUR_FOLDER
-        config_folder=YOUR_CONFIG_FILES
+processed
+    A processed folder will be created automatically. See next section for description.
 
-        create_hdf5_dataset.py EXAMPLE TO FINISH WHEN SCRIPT IS READY
-
-  ** Note. If you used tractoflow and have kept the results in preprocessed, you can organize automatically the dwi_ml_ready folder. We have started to prepare a script for you: example_organizse_from_tractoflow.sh. We encourage you to modify this script in your own project depending on your needs.
-- A processed folder will be created automatically. See lower for description.
-
-Organization:
+Example
+*******
 
 .. code-block:: bash
 
@@ -35,8 +34,9 @@ Organization:
             | bvec
             | t1.nii.gz
     | preprocessed
-        | Ex: Tractoflow
-        | Ex: Bundles from Recobundles
+        | {subject_id}
+            | Ex: Tractoflow
+            | Ex: Bundles from Recobundles
     | dwi_ml_ready  =====>
         | {subject_id}
             | anat

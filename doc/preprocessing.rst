@@ -9,86 +9,43 @@ Preprocessing bundles
 
 Here is an example of steps that could be useful for you to preprocess bundles. We consider that tractoflow has already been ran.
 
-.. code-block:: bash
+Conversions
+    Here is how to convert from trk to tck:
 
-    # TO CLEAN:
+    .. code-block:: bash
 
-    echo "Processing bundles..."
-      bundlespath="$original_dataset/bundles/$subjid"
-      if [ ! -d "$bundlespath" ]; then
-        echo "ERROR! Bundles for subject $subjid not found!"
-      else
+        scil_convert_tractogram.py TRK_FILE TCK_OUT_NAME \
+            --reference processed/SUBJ/some_ref.nii.gz
 
-        tmp_folder="$dwi_ml_ready_folder/$subjid/bundles/tmp"
-        if [ -d "$tmp_folder" ]; then
-          rm -rf "$tmp_folder"
-        fi
-        mkdir "$tmp_folder"
+Bundle masks
+    Here is how to create a mask of voxels touched by a bundle:
 
-        ### Check if we need to run TractSeg
-        run_tractseg=false
-        for input_trk in "$bundlespath"/tracts/*.trk; do
-          bundlename=$(basename "$input_trk")
-          bundlename=$(echo "$bundlename" | cut -f 1 -d '.')
-          output_endpoints_head_mask="$dwi_ml_ready_folder/$subjid/masks/bundles/${subjid}_${bundlename}_head.nii.gz"
-          output_endpoints_tail_mask="$dwi_ml_ready_folder/$subjid/masks/bundles/${subjid}_${bundlename}_tail.nii.gz"
-          if [ ! -f "$output_endpoints_head_mask" ] || [ ! -f "$output_endpoints_tail_mask" ]; then
-            run_tractseg=true
-            break
-          fi
-        done
+    .. code-block:: bash
 
-        ### Run TractSeg to get enpoints masks ###
-        if [ "$run_tractseg" = true ]; then
-          echo "Running TractSeg..."
-          TractSeg -i "$subj_folder/data.nii.gz" -o "$tmp_folder" --bvals "$subj_folder/bvals" --bvecs "$subj_folder/bvecs" --raw_diffusion_input --brain_mask "$subj_folder/nodif_brain_mask.nii.gz" --output_type endings_segmentation --csd_type csd_msmt_5tt
-        fi
-        tractseg_endpoints="$tmp_folder/endings_segmentations"
+        scil_compute_density_map_from_streamlines.py BUNDLE.tck \
+            preprocessed/subj/DTI_Metrics/SUBJ__fa.nii.gz OUT_NAME --binary
 
-        ### Convert TRK to TCK ###
-        for input_trk in "$bundlespath"/tracts/*.trk; do
-          bundlename=$(basename "$input_trk")
-          bundlename=$(echo "$bundlename" | cut -f 1 -d '.')
-          output_tck="$dwi_ml_ready_folder/$subjid/bundles/${subjid}_${bundlename}.tck"
-          if [ ! -f "$output_tck" ]; then
-            echo "Processing $input_trk..."
-            scil_convert_tractogram.py "$input_trk" "$output_tck" --reference "$dwi_final"
-          else
-            echo "Bundle $(basename "$output_tck") already exists, skipping..."
-          fi
+Inverting endpoints masks
+    You can use mrtrix to invert masks.
 
-          output_bundle_mask="$dwi_ml_ready_folder/$subjid/masks/bundles/${subjid}_${bundlename}.nii.gz"
-          if [ ! -f "$output_bundle_mask" ]; then
-            # TODO: Fix this once the scripts have been moved to scilpy-public
-            deactivate
-            source ~/.virtualenvs/scilpy/bin/activate
+    .. code-block:: bash
 
-            # Compute bundle mask
-            ref_fa=$dwi_ml_ready_folder/$subjid/dwi/${subjid}_fa.nii.gz
-            scil_compute_density_map_from_streamlines.py "$output_tck" "$ref_fa" "$output_bundle_mask" --binary
+        # ?? TO CLEAN
+        mrconvert "$head_mask" "$output_endpoints_head_mask" -strides 1,2,3
 
-            deactivate
-            source ~/.virtualenvs/learn2track/bin/activate
-          fi
+Merge bundles
+    Here is how you can merge bundles together:
 
-          output_endpoints_head_mask="$dwi_ml_ready_folder/$subjid/masks/bundles/${subjid}_${bundlename}_head.nii.gz"
-          output_endpoints_tail_mask="$dwi_ml_ready_folder/$subjid/masks/bundles/${subjid}_${bundlename}_tail.nii.gz"
-          if [ ! -f "$output_endpoints_head_mask" ] || [ ! -f "$output_endpoints_tail_mask" ]; then
-            # Flip TractSeg endpoints maps (computed on the original LAS diffusion)
-            head_mask=$tractseg_endpoints/${bundlename}_b.nii.gz
-            tail_mask=$tractseg_endpoints/${bundlename}_e.nii.gz
-            mrconvert "$head_mask" "$output_endpoints_head_mask" -strides 1,2,3
-            mrconvert "$tail_mask" "$output_endpoints_tail_mask" -strides 1,2,3
-          fi
-        done
+    .. code-block:: bash
 
-        # Merge all bundle masks to use as a WM mask
-        wm_mask="$dwi_ml_ready_folder/$subjid/masks/${subjid}_wm.nii.gz"
-        if [ ! -f "$wm_mask" ]; then
-          echo "Merging all bundle masks to build a WM mask..."
-          all_bundles=$(find "$dwi_ml_ready_folder"/"$subjid"/masks/bundles/* -type f -not -name "*_head.nii.gz" -not -name "*_tail.nii.gz")
-          scil_mask_math.py union $all_bundles "$wm_mask"
-        fi
+        scil_mask_math.py union ALL_BUNDLES preprocessed/SUBJ/some_mask.nii.gz
 
-        rm -rf "$tmp_folder"
-      fi
+Tractseg
+    `Tractseg <https://github.com/MIC-DKFZ/TractSeg>`_ is one of the most used published techniques using machine learning for diffusion. If you want to compare your work with theirs, you might want to use their bundles. Here is how to use it:
+
+    .. code-block:: bash
+
+        TractSeg -i YOUR_DATA -o OUT_NAME --bvals original/SUBJ/bval \
+            --bvecs original/SUBJ/bvec --raw_diffusion_input \
+            --brain_mask preprocessed/SUBJ/some_mask \
+            --output_type endings_segmentation --csd_type csd_msmt_5tt

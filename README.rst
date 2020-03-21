@@ -20,6 +20,7 @@ Links
 =====
 
 * `Getting started <./doc/installation.rst>`_
+* `How to preprocess your data <./doc/preprocessing.rst>`_
 * `How to organize your data <./doc/description_data_structure.rst>`_
 * `Issue tracking <https://github.com/scil-vital/dwi_ml/issues>`_
 

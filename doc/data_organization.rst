@@ -13,7 +13,7 @@ Original:
 Preprocessed:
     No matter how you preprocess your data, please keep the results in a "preprocessed" folder. Ex: tractoflow + any other technique to get your bundles.
 
-    ** Note. If you used tractoflow and have kept the results in preprocessed, you can organize automatically the dwi_ml_ready folder. We have started to prepare a script for you, which you can find in please_copy_and_adapt/**01_organizse_from_tractoflow.sh**. We encourage you to modify this script in your own project depending on your needs.
+    ** Note. If you used tractoflow and have kept the results in preprocessed, you can organize automatically the dwi_ml_ready folder. We have started to prepare a script for you, which you can find in please_copy_and_adapt/**01_organizse_from_tractoflow.sh**, which creates symlinks between your tractoflow results and a dwi_ml_ready folder. We encourage you to modify this script in your own project depending on your needs. You can find `here <./reminder_tractoflow_output.rst>`_ a description of tractoflow's typical output.
 
 dwi_ml_ready
     This folder is the most important one and must be organized in this exact way to be able to load the data as a hdf5 using our script create_hdf5_dataset.py. An example of use can be found in please_copy_and_adapt/**02_create_dataset.sh**.
@@ -35,8 +35,8 @@ Example
             | t1.nii.gz
     | preprocessed
         | {subject_id}
-            | Ex: Tractoflow
-            | Ex: Bundles from Recobundles
+            | Ex: Tractoflow folders
+            | Ex: a folder Bundles with bundles from Recobundles
     | dwi_ml_ready  =====>
         | {subject_id}
             | anat

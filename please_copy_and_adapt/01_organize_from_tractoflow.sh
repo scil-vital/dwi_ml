@@ -1,21 +1,32 @@
 # checked!
 
 ################################################################################
-# This script is used to reorganize tractoflow results into the dwi_ml_ready
-# folder. You should copy this script into your project and modify according to
-# your needs.
-# See dwi_ml.data.hdf5_creation.description_data_structure.rst for more information.
-# We suppose that you have a "preprocess" folder that contains tractoflow's
-# results.
-# This script will create the dwi_ml_folder and subfolders and copy the main
-# data from tractoflow:
-#    - dwi_resample (the last dwi output from tractoflow. tractoflow.)
-#    - bval_eddy, bvec_eddy:  tractoflow bval and bvec.
-#    - The FA
-#    - t1_warp (the last T1: resampled, registered, tractoflow).
-#    - map_wm and mask_wm.
-# If you need something else for your model, you can modify this script.
+#                           What this script does                              #
+# This script will create the dwi_ml_ready folder and subfolders and copy the  #
+# main data from tractoflow:                                                   #
+#    - Resample/dwi_resample (which is the last dwi output from tractoflow.)   #
+#         Will be copied in dwi/dwi_tractoflow.                                #
+#    - Eddy/bval_eddy. Will be copied in dwi/bval_tractoflow. Same for bvec.   #
+#    - DTI_metrics/fa. Will be copied to dwi/fa.                               #
+#    - Register_T1/t1_warp (which is the last T1). Will be copied to anat/t1.  #
+#    - Segment_Tissues/map_wm. Will be copied to anat/wm_map                   #
+#    - Segment_Tissues/mask_wm. Will be copied to masks/wm                     #
+# If you need something else for your model, you can modify this script.       #
+# Last modification: 2020-03-26                                                #
 ################################################################################
+
+################################################################################
+#                     Getting prepared to run this script                      #
+# This script is used to reorganize tractoflow results into the dwi_ml_ready   #
+# folder. You should copy this script into your project and modify according   #
+# to your needs.                                                               #
+#                                                                              #
+# See our doc on Github for more information (doc/data_organization.rst). We   #
+# suppose that you have a "preprocess" folder that contains tractoflow's       #
+# results folders (for a reminder of Tractoflow's typical output, see again    #
+# our doc (doc/reminder_tractoflow_output.rst).                                #
+################################################################################
+
 
 # =====================================#
 #  VARIABLES TO BE DEFINED BY THE USER #
@@ -23,30 +34,27 @@
 # - database_folder = Path to the working folder that contains the original/
 #     folder. Will eventually contain dwi_ml_ready/.
 # - subjects = The list of ALL subjects. You may choose later which ones will be
-#     in your training set/validation set/testing set. Ex: "subj1 subj2"
-# - tractoflow_folder = Name of your tractoflow folder inside preprocessed.
+#     in your training set/validation set/testing set. One subject per line.
 database_folder=YOUR WORKING FOLDER
-subjects_list=SUBJECTS.txt
-tractoflow_folder=TRACTOFLOW
+subject_list=SUBJECTS.txt
 
 # =====================================#
 #            MAIN SCRIPT               #
 # =====================================#
 # Cleaning path name
 database_folder=$(realpath $database_folder)
-tractoflow_folder=$database_folder/$tractoflow_folder
 
 # Checking if inputs exist
 if [ ! -d $database_folder ]; then
-  echo "Invalid database_folder argument!"
+  echo "Database not found! ($database_folder)!"
   exit
 fi
-if [ ! -d $tractoflow_folder ]; then
-  echo "There is no tractoflow folder in your preprocess folder!"
+if [ ! -d $database_folder/preprocessed ]; then
+  echo "There is no preprocessed folder in your database! ($database_folder)"
   exit
 fi
-if [ ! -f $subjects_list ]; then
-  echo "Invalid subjects txt file!"
+if [ ! -f $subject_list ]; then
+  echo "Invalid subjects txt file! ($subject_list)"
   exit
 fi
 
@@ -60,33 +68,34 @@ else
 fi
 
 # Reorganizing all subjects
-for subjid in $(<"$subjects"); do
+echo "Checks passed. Now reorganizing subjects"
+while IFS= read -r subjid; do
   echo "Reorganizing subject $subjid"
+  subj_preprocessed_folder=$database_folder/preprocessed/$subjid
   subj_folder=$dwi_ml_ready_folder/$subjid
   mkdir $subj_folder
+  mkdir $subj_folder/anat
   mkdir $subj_folder/dwi
-  mkdir $subj_folder/bundles
   mkdir $subj_folder/masks
-  mkdir $subj_folder/masks/bundles
-  mkdir $subj_folder/masks/endpoints
 
   echo "creating symlinks"
   # dwi:
-  ln -s $tractoflow_folder/$subjid/Resample_DWI/${subjid}__dwi_resample.nii.gz $subj_folder/dwi/{subject_id}_dwi_tractoflow.nii.gz
-  ln -s $tractoflow_folder/$subjid/Eddy/${subjid}__bval_eddy $subj_folder/dwi/{subject_id}_bval_tractoflow
-  ln -s $tractoflow_folder/$subjid/Eddy/${subjid}__dwi_eddy_corrected.bvec $subj_folder/dwi/{subject_id}_bvec_tractoflow
-  ln -s $tractoflow_folder/$subjid/DTI_Metrics/${subjid}__fa.nii.gz $subj_folder/dwi/{subject_id}_fa.nii.gz
+  ln -s $subj_preprocessed_folder/Resample_DWI/${subjid}__dwi_resample.nii.gz $subj_folder/dwi/${subjid}_dwi_tractoflow.nii.gz
+  ln -s $subj_preprocessed_folder/Eddy/${subjid}__bval_eddy $subj_folder/dwi/${subjid}_bval_tractoflow
+  ln -s $subj_preprocessed_folder/Eddy/${subjid}__dwi_eddy_corrected.bvec $subj_folder/dwi/${subjid}_bvec_tractoflow
+  ln -s $subj_preprocessed_folder/DTI_Metrics/${subjid}__fa.nii.gz $subj_folder/dwi/${subjid}_fa.nii.gz
 
   # anat:
-  ln -s $tractoflow_folder/$subjid/Register_T1/${subjid}__t1_warped.nii.gz $subj_folder/anat/{subject_id}_t1.nii.gz
-  ln -s $tractoflow_folder/$subjid/Segment_Tissues/${subjid}__map_wm.nii.gz $subj_folder/anat/{subject_id}_wm_map.nii.gz
+  ln -s $subj_preprocessed_folder/Register_T1/${subjid}__t1_warped.nii.gz $subj_folder/anat/${subjid}_t1.nii.gz
+  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__map_wm.nii.gz $subj_folder/anat/${subjid}_wm_map.nii.gz
 
   # masks:
-  ln -s $tractoflow_folder/$subjid/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/{subject_id}_wm.nii.gz
+  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/${subjid}_wm.nii.gz
 
   # Bundles:
   echo "We have organized tractoflow results into dwi_ml (dwi, anat, masks)".
-  echo "We have not treated any bundles."
-  echo "Hint: As a next step, you could now run Recobundles and use example_organize_from_recobundles (to come)"
-
-done
+  echo "We do not raise warnings if one file is not found. Please check that all data was indeed found."
+  echo "Ex: 'for subj in dwi_ml_ready/*; do ls \$subj/dwi/*bvec*; done'"
+  echo "Hint: We have not treated any bundles."
+  echo "      As a next step, you could now run Recobundles and use 01_organize_from_recobundles (to come)"
+done < $subject_list

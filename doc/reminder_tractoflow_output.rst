@@ -1,9 +1,7 @@
+Tractoflow's output structure
+=============================
 
-
-Output structure
-================
-
-For one subject:
+Here is a description of tractoflow's typical output. For one subject:
 
 .. code-block:: bash
 

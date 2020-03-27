@@ -46,6 +46,7 @@ def verify_subject_lists(dwi_ml_folder, chosen_subjs):
     # P.S.
     # good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
 
+
 def _load_and_check_4d_nii_data(data_file):
     """Load nibabel data, and perform some checks:
     - Data must be Nifti
@@ -155,7 +156,8 @@ def process_streamlines(bundles_dir: pathlib.Path, bundles,
     bundles: List[str]
         List of the bundles filenames to load.
     header : nib.Nifti1Header
-        Reference used to load and send the streamlines in voxel space.
+        Reference used to load and send the streamlines in voxel space and to
+        create final merged SFT.
     step_size: float
         Step size to resample streamlines. If none, compress streamlines.
     space: Space
@@ -219,8 +221,7 @@ def process_streamlines(bundles_dir: pathlib.Path, bundles,
     else:
         output_streamlines_rasmm = output_tractogram.streamlines
     output_tractogram = StatefulTractogram(output_streamlines_rasmm,
-                                           dwi_ref,
-                                           space=Space.RASMM)
+                                           header, space=Space.RASMM)
 
     # Internal validation check
     output_tractogram.remove_invalid_streamlines()

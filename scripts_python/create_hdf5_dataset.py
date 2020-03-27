@@ -38,10 +38,10 @@ def _parse_args():
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. Should follow description in "
                         "our doc.")  # toDo. Add link when created.
-    p.add_argument('training_subj_ids',
+    p.add_argument('training_subjs',
                    help="txt file containing the list of subjects ids to use "
                         "for training.")
-    p.add_argument('validation_subj_ids',
+    p.add_argument('validation_subjs',
                    help="txt file containing the list of subjects ids to use "
                         "for validation.")
     p.add_argument('--step_size', type=float,
@@ -64,6 +64,7 @@ def _parse_args():
                         "voxels will be used. mask should be the name of "
                         "the mask file inside dwi_ml_ready/{subj_id}/mask.")
     p.add_argument('--space', type=Space, default=Space.VOX,
+                   choices=[Space.RASMM, Space.VOX, Space.VOXMM],
                    help="Default space to bring all the stateful tractograms. "
                         "All other measures (ex, step_size) should be provided "
                         "in that space.")
@@ -93,7 +94,7 @@ def main():
     dwi_ml_folder = Path(args.path, "dwi_ml_ready")
 
     # Verify that subjects exist and that no subjects are forgotten
-    chosen_subjs = args.training_subj_ids + args.validation_subj_ids
+    chosen_subjs = args.training_subjs + args.validation_subjs
     verify_subject_lists(dwi_ml_folder, chosen_subjs)
 
     # Read group information from the json file

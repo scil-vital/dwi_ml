@@ -43,7 +43,7 @@ FOLDER_DESCRIPTION = """
 """
 
 PROCESSED_DESCRIPTION_HDF5 = """
-| processed_{experiment_name}  ===========> Created by your create_dataset.sh
+| processed_{experiment_name}  ===========> Created by your run_project.sh
                                       (only saved if option --save_intermediate)
     | {subject_id}
         | input

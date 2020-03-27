@@ -32,10 +32,10 @@ tractography derivatives of dMRI.
     :maxdepth: 1
     :caption: Table of contents
 
-    doc/getting_started
-    doc/preprocessing
-    doc/data_organization
-    doc/creating_hdf5
+    getting_started
+    preprocessing
+    data_organization
+    creating_hdf5
 
 License
 =======
@@ -48,8 +48,8 @@ Citation
 If you use DWI_ML in your dMRI data analysis, please cite the toolkit and
 provide a link to it.
 
-
-Infos for developpers
-=====================
-
-To improve the doc and test it, you can run ``make html`` and check your local version of the doc in build/html/README.html.
+.. Links
+.. Involved labs
+.. _`Sherbrooke Connectivity Imaging Lab (SCIL)`: http://scil.dinf.usherbrooke.ca
+.. _`Videos & Images Theory and Analytics Laboratory (VITAL)`: http://vital.dinf.usherbrooke.ca
+.. _`Université de Sherbrooke`: https://www.usherbrooke.ca

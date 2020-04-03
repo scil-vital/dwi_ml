@@ -1,23 +1,18 @@
 """I/O related utilities."""
-from __future__ import annotations
 import pathlib
-from typing import Tuple
 
+from dipy.core.gradients import GradientTable, \
+    gradient_table as load_gradient_table
 import nibabel as nib
 import numpy as np
-from dipy.core.gradients import GradientTable, gradient_table as load_gradient_table
-
-from scil_vital.shared.code.transformation.volume import resample_volume
-
+from scilpy.image.resample_volume import resample_volume
 
 def load_dwi(dwi_file: str) -> nib.Nifti1Image:
     """Loads a dMRI Nifti file along with the bvals/bvecs.
-
     Parameters
     ----------
     dwi_file : str
         Path to the dwi file
-
     Returns
     -------
     dwi_image : nib.Nifti1Image object
@@ -42,7 +37,6 @@ def load_dwi(dwi_file: str) -> nib.Nifti1Image:
 def load_gradients_from_dwi_filename(dwi_fname: str) -> GradientTable:
     """Load bvals/bvecs from a given DWI filename by guessing the right
     extension.
-
     Parameters
     ----------
     dwi_fname : str
@@ -70,14 +64,12 @@ def load_gradients_from_dwi_filename(dwi_fname: str) -> GradientTable:
 def load_volume_with_ref(fname: str, ref: nib.Nifti1Image) -> nib.Nifti1Image:
     """Load a Nifti volume that should fit the shape of a reference volume,
     resampling if necessary.
-
     Parameters
     ----------
     fname : str
         Path to the volume to load.
     ref : nib.Nifti1Image or np.ndarray
         Reference volume.
-
     Returns
     -------
     output_volume : nib.Nifti1Image
@@ -85,8 +77,9 @@ def load_volume_with_ref(fname: str, ref: nib.Nifti1Image) -> nib.Nifti1Image:
         necessary.
     """
     volume_image = nib.load(fname)
-    ref_shape = ref.shape[:len(volume_image.shape)]                                             # See dipy.io.utils.is_reference_info_valid et
-                                                                                                #  get_reference_info
+    ref_shape = ref.shape[:len(
+        volume_image.shape)]  # See dipy.io.utils.is_reference_info_valid et
+    #  get_reference_info
 
     if volume_image.shape != ref_shape:
         output_volume = resample_volume(volume_image, ref,

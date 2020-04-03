@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 PARAMETER_DESCRIPTION = """
     path : str
         Path to the processed .hdf5 file.

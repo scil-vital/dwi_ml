@@ -1,13 +1,15 @@
 #!/usr/bin/env python
-"""Script to extract tractograms from a generated .hdf5 dataset and save them as .tck files"""
+# -*- coding: utf-8 -*-
+"""Script to extract tractograms from a generated .hdf5 dataset and save
+them as .tck files"""
 import argparse
 import pathlib
 
+from dipy.io.stateful_tractogram import Space, StatefulTractogram
+from dipy.io.streamline import save_tractogram
 import h5py
 import nibabel as nib
 import numpy as np
-from dipy.io.stateful_tractogram import Space, StatefulTractogram
-from dipy.io.streamline import save_tractogram
 
 
 def parse_args():

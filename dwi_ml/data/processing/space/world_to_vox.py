@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 import numpy as np
 
 
@@ -11,6 +11,9 @@ def convert_world_to_vox(length_mm: float, affine_vox2rasmm: np.ndarray):
     has as consequence that we need an isometric affine, which is not a
     general recommendation in scilpy, but is for us. So we keep this in
     dwi_ml.
+
+    Please try to deal with the sft space instead of the parameter space. I.e.
+    This function should not be very useful.
 
     Parameters
     ----------

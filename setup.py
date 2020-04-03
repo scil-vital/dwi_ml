@@ -9,7 +9,7 @@ import glob
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the relevant file
-with open(path.join(here, 'index.rst'), encoding='utf-8') as f:
+with open(path.join(here, 'doc/index.rst'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
@@ -91,5 +91,5 @@ setup(
     # Note Emma: We could eventually use entry points. See discussion here:
     # https://stackoverflow.com/questions/18787036/difference-between-entry-points-console-scripts-and-scripts-in-setup-py
     entry_points={},
-    scripts=glob.glob("scripts_python/*/*.py")
+    scripts=glob.glob("scripts_python/*/*.py") + glob.glob("scripts_python/*.py")
 )

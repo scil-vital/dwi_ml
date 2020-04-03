@@ -1,7 +1,7 @@
 Creating the hdf5 file
 ======================
 
-You will use the create_dataset.sh script to create a hdf5 file. You need to prepare config files to use this script.
+You will use the create_hdf5_dataset.py script to create a hdf5 file. You need to prepare config files to use this script (see lower). This is the first step found in please_copy_and_adapt/run_project.sh.
 
 Config files
 ************

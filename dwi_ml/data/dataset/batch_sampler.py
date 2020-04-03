@@ -1,7 +1,9 @@
+# -*- coding: utf-8 -*-
 import logging
 
-from torch.utils.data import Dataset, Sampler
 import numpy as np
+from torch.utils.data import Dataset, Sampler
+
 
 class BatchSampler(Sampler):
     """Samples sequences using a number of required timesteps, without

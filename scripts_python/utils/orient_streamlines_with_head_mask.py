@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """Script to orient streamlines according to a bundle head mask.
 Given a tractogram and a bundle head mask, this script will 1) remove streamlines
 without an endpoint in the mask, and 2) flip streamlines in order for the first

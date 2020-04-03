@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """Script to binarize a 3D or 4D Nifti volume."""
 import argparse
 import os

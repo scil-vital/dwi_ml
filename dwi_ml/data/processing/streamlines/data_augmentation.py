@@ -1,10 +1,10 @@
+# -*- coding: utf-8 -*-
 import logging
 from typing import List, Union
 
+from dipy.io.stateful_tractogram import StatefulTractogram
 import nibabel as nib
 import numpy as np
-
-from dipy.io.stateful_tractogram import StatefulTractogram
 from scipy.stats import truncnorm
 
 from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths

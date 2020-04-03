@@ -1,27 +1,20 @@
-#!/usr/bin/env python
-
+# -*- coding: utf-8 -*-
 import functools
 from typing import List, Tuple
 
 import nibabel as nib
+from nibabel.streamlines import Tractogram
 import numpy as np
 import torch
-from nibabel.streamlines import Tractogram
 
-from dwi_ml.data.dataset.single_subject_containers import (
-    MRIDataVolume)
-from dwi_ml.data.processing.dwi.interpolation import (
+from dwi_ml.data.dataset.single_subject_containers import MRIDataVolume
+from dwi_ml.data.processing.space.neighbourhood import s(
+    get_neighborhood_vectors_axes)
+from dwi_ml.data.processing.space.world_to_vox import convert_world_to_vox
+from dwi_ml.data.processing.volume.interpolation import (
     torch_trilinear_interpolation)
-from dwi_ml.data.processing.space.utils import (
-    convert_mm2vox)
-from dwi_ml.data.processing.dwi.neighbourhood import  (
-    get_interp_neighborhood_vectors)
-from dwi_ml.tracking.utils import (
-    StoppingFlags,
-    filter_stopping_streamlines,
-    is_outside_mask,
-    is_too_curvy,
-    is_too_long)
+from dwi_ml.tracking.utils import (StoppingFlags, filter_stopping_streamlines,
+                                   is_outside_mask, is_too_curvy, is_too_long)
 
 
 class StepTracker(object):

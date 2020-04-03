@@ -5,6 +5,7 @@ from dipy.data import get_sphere
 from dipy.reconst.shm import sph_harm_lookup
 import nibabel as nib
 import numpy as np
+from scilpy.io.utils import validate_sh_basis_choice
 from scilpy.reconst.raw_signal import compute_sh_coefficients
 
 
@@ -66,6 +67,7 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
 
 def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,
                              gradient_table: GradientTable,
+                             sh_basis: str = 'descoteaux07',
                              sphere: Sphere = None, sh_order: int = 8,
                              smooth: float = 0.006):
     """Resample a diffusion signal according to a set of directions using
@@ -77,6 +79,8 @@ def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,
         Diffusion signal as weighted images (4D).
     gradient_table : GradientTable
         Dipy object that contains all bvals and bvecs.
+    sh_basis: str
+        Either 'tournier07' or 'descoteaux07'
     sphere : dipy.core.sphere.Sphere, optional
         Directions the diffusion signal will be resampled to. Directions are
         assumed to be on the whole sphere, not the hemisphere like bvecs.
@@ -92,16 +96,17 @@ def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,
     resampled_dwi : np.ndarray (4D)
         Resampled "raw" diffusion signal.
     """
-    # Get SH fit
+    validate_sh_basis_choice(sh_basis)
+
+    # Get the "real" SH fit
+    # sphere = None, so it computes the sh coefficients based on the bvecs.
     data_sh = compute_sh_coefficients(dwi_image, gradient_table, sh_order,
-                                      basis_type='tournier07', smooth=smooth)
+                                      basis_type=sh_basis, smooth=smooth)
 
     # Get new directions
-    if sphere is not None:
-        sphere = sphere
-    else:
+    if sphere is None:
         sphere = get_sphere("repulsion100")
-    sh_basis = sph_harm_lookup.get("tournier07")
+    sh_basis = sph_harm_lookup.get(sh_basis)
 
     # Resample data
     # B : 2-D array; real harmonics sampled at (\theta, \phi)

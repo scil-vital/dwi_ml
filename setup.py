@@ -91,5 +91,5 @@ setup(
     # Note Emma: We could eventually use entry points. See discussion here:
     # https://stackoverflow.com/questions/18787036/difference-between-entry-points-console-scripts-and-scripts-in-setup-py
     entry_points={},
-    scripts=glob.glob("scripts_python/*/*.py") + glob.glob("scripts_bash/*/*.sh")
+    scripts=glob.glob("scripts_python/*/*.py")
 )

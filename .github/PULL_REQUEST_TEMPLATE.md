@@ -1,5 +1,5 @@
 ## Description
-A few sentences describing the overall goals of the pull request's commits.
+(A few sentences describing the overall goals of the pull request's commits.)
 
 ## Testing data and script
 (Add a link to data and possibly a script to test this PR manually)

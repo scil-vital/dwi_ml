@@ -1,8 +1,8 @@
 ## Description
-(A few sentences describing the overall goals of the pull request's commits.)
+<!-- A few sentences describing the overall goals of the pull request's commits. -->
 
 ## Testing data and script
-(Add a link to data and possibly a script to test this PR manually)
+<!-- Add a link to data and possibly a script to test this PR manually -->
 
 ## Have you
 - [ ] Added a description of the content of this PR above
@@ -13,5 +13,4 @@
 - [ ] Added unit tests to test the code you implemented
 
 ## People this PR concerns
-
-(@ mention them here)
+<!-- @ mention them here -->

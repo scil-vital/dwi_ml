@@ -63,6 +63,14 @@ Documentation
 DWI_ML uses `Sphinx`_ to generate documentation. The `DWI_ML Coding Style Guideline <./doc/devel/coding_style_guideline.rst>`_
 contains details about documenting the contributions.
 
+To build the documentation locally, you can build it running::
+
+    make html
+
+Unless otherwise stated the documentation is built under ``build/html/``. You
+can open the ``index.html`` file to view the documentation generated from your
+local copy.
+
 Commit Messages
 ===============
 

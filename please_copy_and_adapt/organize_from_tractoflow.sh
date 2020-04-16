@@ -93,9 +93,11 @@ while IFS= read -r subjid; do
   ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/${subjid}_wm.nii.gz
 
   # Bundles:
-  echo "We have organized tractoflow results into dwi_ml (dwi, anat, masks)".
-  echo "We do not raise warnings if one file is not found. Please check that all data was indeed found."
-  echo "Ex: 'for subj in dwi_ml_ready/*; do ls \$subj/dwi/*bvec*; done'"
-  echo "Hint: We have not treated any bundles."
-  echo "      As a next step, you could now run Recobundles and use 01_organize_from_recobundles (to come)"
+
 done < $subject_list
+
+echo "We have organized tractoflow results into dwi_ml (dwi, anat, masks)".
+echo "We do not raise warnings if one file is not found. Please check that all data was indeed found."
+echo "Ex: 'for subj in dwi_ml_ready/*; do ls \$subj/dwi/*bvec*; done'"
+echo "Hint: We have not treated any bundles."
+echo "      As a next step, you could now run Recobundles and use organize_from_recobundles (to come)"

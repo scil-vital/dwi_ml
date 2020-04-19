@@ -1,9 +1,6 @@
-# checked!
-
 ################################################################################
-#                           What this script does                              #
-# This script will create the dwi_ml_ready folder and subfolders and copy the  #
-# main data from tractoflow:                                                   #
+# This script will create symlinks in dwi_ml_ready, pointing to your data      #
+# from tractoflow for each subject:                                            #
 #    - Resample/dwi_resample (which is the last dwi output from tractoflow.)   #
 #         Will be copied in dwi/dwi_tractoflow.                                #
 #    - Eddy/bval_eddy. Will be copied in dwi/bval_tractoflow. Same for bvec.   #
@@ -11,22 +8,14 @@
 #    - Register_T1/t1_warp (which is the last T1). Will be copied to anat/t1.  #
 #    - Segment_Tissues/map_wm. Will be copied to anat/wm_map                   #
 #    - Segment_Tissues/mask_wm. Will be copied to masks/wm                     #
-# If you need something else for your model, you can modify this script.       #
-# Last modification: 2020-03-26                                                #
-################################################################################
-
-################################################################################
-#                     Getting prepared to run this script                      #
-# This script is used to reorganize tractoflow results into the dwi_ml_ready   #
-# folder. You should copy this script into your project and modify according   #
-# to your needs.                                                               #
 #                                                                              #
-# See our doc on Github for more information (doc/data_organization.rst). We   #
-# suppose that you have a "preprocess" folder that contains tractoflow's       #
-# results folders (for a reminder of Tractoflow's typical output, see again    #
-# our doc (doc/reminder_tractoflow_output.rst).                                #
+# If you need something else for your model, you can modify this script.       #
+#                                                                              #
+# See our doc for more information                                             #
+# (https://dwi-ml.readthedocs.io/en/latest/data_organization.html#ref-organization).
+# We suppose that you have a "preprocessed" folder that contains RecobundlesX  #
+# results folder for each subject.                                             #
 ################################################################################
-
 
 # =====================================#
 #  VARIABLES TO BE DEFINED BY THE USER #

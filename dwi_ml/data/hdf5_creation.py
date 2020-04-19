@@ -2,7 +2,7 @@
 import glob
 import logging
 import os
-import pathlib
+from pathlib import Path
 from typing import List
 
 from dipy.io.stateful_tractogram import Space, StatefulTractogram
@@ -16,7 +16,7 @@ from scilpy.utils.streamlines import compress_sft
 from dwi_ml.data.processing.dwi.dwi import standardize_data
 
 
-def verify_subject_lists(dwi_ml_folder, chosen_subjs):
+def verify_subject_lists(dwi_ml_folder: Path, chosen_subjs: List[str]):
     """
     Raises error if some subjects in training set or validation set don't
     exist.
@@ -24,10 +24,12 @@ def verify_subject_lists(dwi_ml_folder, chosen_subjs):
     Prints logging info if some subjects in dwi_ml folder were not chosen
     in training set nor validation set.
     """
+
     # Find list of existing subjects from folders
-    all_subjs = [str(f.name) for f in dwi_ml_folder.iterdir()]
+    all_subjs = [str(f.name) for f in dwi_ml_folder.iterdir() if f.is_dir()]
     if len(all_subjs) == 0:
-        raise ValueError('No subject found in dwi_ml folder!')
+        raise ValueError('No subject found in dwi_ml folder: '
+                         '{}'.format(dwi_ml_folder))
 
     # Checking chosen_subjs
     non_existing_subjs = [s for s in chosen_subjs if s not in all_subjs]
@@ -43,8 +45,7 @@ def verify_subject_lists(dwi_ml_folder, chosen_subjs):
                      "because they were not included in training set nor "
                      "validation set!".format(ignored_subj))
 
-    # P.S.
-    # good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
+    # Note. good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
 
 
 def _load_and_check_4d_nii_data(data_file):
@@ -78,8 +79,7 @@ def _load_and_check_4d_nii_data(data_file):
 
 
 def process_group(group: str, file_list: List[str], save_intermediate: bool,
-                  subj_input_path: pathlib.Path,
-                  subj_output_path: pathlib.Path,
+                  subj_input_path: Path, subj_output_path: Path,
                   subj_mask_data: np.ndarray = None):
     """Process each group from the json config file:
     - Load data from each file of the group and combine them.
@@ -93,9 +93,9 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
         List of the files names that must be merged into a group.
     save_intermediate: bool
         If true, intermediate files will be saved.
-    subj_input_path: pathlib.Path
+    subj_input_path: Path
         Path where the files from file_list should be found.
-    subj_output_path: pathlib.Path
+    subj_output_path: Path
         Path where to save the intermediate files.
     subj_mask_data: np.ndarray of bools, optional
         Binary mask that will be used for data standardization.
@@ -143,7 +143,7 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
     return standardized_group_data, group_affine, group_header
 
 
-def process_streamlines(bundles_dir: pathlib.Path, bundles,
+def process_streamlines(bundles_dir: Path, bundles,
                         header: nib.Nifti1Header, step_size: float,
                         space: Space):
     """Load and process a group of bundles and merge all streamlines
@@ -151,7 +151,7 @@ def process_streamlines(bundles_dir: pathlib.Path, bundles,
 
     Parameters
     ----------
-    bundles_dir : pathlib.Path
+    bundles_dir : Path
         Path to bundles folder.
     bundles: List[str]
         List of the bundles filenames to load.

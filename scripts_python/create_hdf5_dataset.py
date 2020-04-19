@@ -31,7 +31,7 @@ def _parse_args():
                                 formatter_class=argparse.RawTextHelpFormatter)
 
     # Positional arguments
-    p.add_argument('path',
+    p.add_argument('dwi_ml_ready_folder',
                    help="Path to database folder, which should contain a "
                         "dwi_ml_ready folder.")
     p.add_argument('config_file',
@@ -46,25 +46,25 @@ def _parse_args():
                         "for validation.")
     p.add_argument('--step_size', type=float,
                    help="Common step size to resample the data. Must be in the "
-                        "same space as the streamlines. If none is given, we "
+                        "same space as the streamlines.\nIf none is given, we "
                         "will compress the streamlines instead of resampling. ")
     p.add_argument('--name',
                    help="Dataset name [Default uses date and time of "
                         "processing].")
     p.add_argument('--bundles', nargs='+',
                    help="Bundles to concatenate as streamlines in the hdf5. "
-                        "Must be names of files that are present in each "
-                        "subject's 'bundles' folder in dwi_ml_ready. If none "
-                        "is given, we will take all the files in the 'bundles'"
-                        "folder. The bundles names will be guessed from the "
-                        "filenames.")
+                        "The bundles names will be guessed from the "
+                        "filenames.\nMust be names of files that are present "
+                        "in each subject's 'bundles' folder in dwi_ml_ready.\n"
+                        "If none is given, we will take all the files in the "
+                        "'bundles' folder.")
     p.add_argument('--mask',
                    help="Mask defining the voxels used for data "
-                        "standardization. If none is given, all non-zero "
-                        "voxels will be used. mask should be the name of "
-                        "the mask file inside dwi_ml_ready/{subj_id}/mask.")
-    p.add_argument('--space', type=Space, default=Space.VOX,
-                   choices=[Space.RASMM, Space.VOX, Space.VOXMM],
+                        "standardization.\nIf none is given, all non-zero "
+                        "voxels will be used. Should be the name of "
+                        "a file inside dwi_ml_ready/{subj_id}.")
+    p.add_argument('--space', type=str, default=Space.VOX,
+                   choices=['Space.RASMM', 'Space.VOX', 'Space.VOXMM'],
                    help="Default space to bring all the stateful tractograms. "
                         "All other measures (ex, step_size) should be provided "
                         "in that space.")
@@ -91,25 +91,33 @@ def main():
     logging.basicConfig(level=str(args.logging).upper())
     logging.info(args)
 
-    dwi_ml_folder = Path(args.path, "dwi_ml_ready")
+    # Verify that dwi_ml_ready folder is found
+    dwi_ml_ready_folder = Path(args.dwi_ml_ready_folder)
+    if not dwi_ml_ready_folder.is_dir():
+        raise ValueError('The dwi_ml_ready folder was not found: '
+                         '{}'.format(dwi_ml_ready_folder))
+
+    # Read training subjs and validation subjs
+    with open(args.training_subjs, 'r') as file:
+        training_subjs = file.read().splitlines()
+    with open(args.validation_subjs, 'r') as file:
+        validation_subjs = file.read().splitlines()
 
     # Verify that subjects exist and that no subjects are forgotten
-    chosen_subjs = args.training_subjs + args.validation_subjs
-    verify_subject_lists(dwi_ml_folder, chosen_subjs)
+    chosen_subjs = training_subjs + validation_subjs
+    verify_subject_lists(dwi_ml_ready_folder, chosen_subjs)
 
     # Read group information from the json file
     json_file = open(args.config_file, 'r')
     groups_config = json.load(json_file)
 
-    dwi_ml_dir = Path(args.path, "dwi_ml_ready")
-
     # Initialize database
-    hdf5_dir, hdf5_filename = initialize_hdf5_database(args.path, args.force,
-                                                       args.name)
+    # hdf5_dir, hdf5_filename = initialize_hdf5_database(dwi_ml_ready_folder, args.force,
+    #                                                   args.name)
 
     # Create dataset from config and save
-    add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
-                              hdf5_filename, dwi_ml_dir)
+    # add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
+    #                          hdf5_filename, dwi_ml_ready_folder)
 
 
 def initialize_hdf5_database(database_path, force, name):

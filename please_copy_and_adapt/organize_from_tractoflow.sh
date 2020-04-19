@@ -77,7 +77,7 @@ while IFS= read -r subjid; do
 
   echo "creating symlinks"
   # dwi:
-  ln -s $subj_preprocessed_folder/Resample_DWI/${subjid}__dwi_resample.nii.gz $subj_folder/dwi/dwi_tractoflow.nii.gz
+  ln -s $subj_preprocessed_folder/Resample_DWI/${subjid}__dwi_resampled.nii.gz $subj_folder/dwi/dwi_tractoflow.nii.gz
   ln -s $subj_preprocessed_folder/Eddy/${subjid}__bval_eddy $subj_folder/dwi/bval_tractoflow
   ln -s $subj_preprocessed_folder/Eddy/${subjid}__dwi_eddy_corrected.bvec $subj_folder/dwi/bvec_tractoflow
   ln -s $subj_preprocessed_folder/DTI_Metrics/${subjid}__fa.nii.gz $subj_folder/dwi/fa.nii.gz

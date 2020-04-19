@@ -2,7 +2,7 @@
 ########################
 # 1. Creating database #
 ########################
-dwi_ml_ready_folder="my_database"
+database_folder="my_database"
 config_file="my_config_groups.json"
 training_subjs="my_training_subjs.txt"
 validation_subjs="my_validation_subjs.txt"
@@ -14,7 +14,7 @@ space="Space.RASMM"  # {Space.RASMM,Space.VOX,Space.VOXMM}
 
 create_hdf5_dataset.py --name $name --bundles $bundles --mask $mask \
     --space $space --save_intermediate --logging debug \
-    $dwi_ml_ready_folder $config_file $training_subjs $validation_subjs
+    $database_folder $config_file $training_subjs $validation_subjs
 
 ########################
 # 2. Training          #

@@ -19,6 +19,7 @@ from typing import Dict, List
 
 import h5py
 import nibabel as nib
+import numpy as np
 from dipy.io.streamline import save_tractogram
 from dipy.io.stateful_tractogram import Space
 
@@ -31,7 +32,7 @@ def _parse_args():
                                 formatter_class=argparse.RawTextHelpFormatter)
 
     # Positional arguments
-    p.add_argument('dwi_ml_ready_folder',
+    p.add_argument('database_folder',
                    help="Path to database folder, which should contain a "
                         "dwi_ml_ready folder.")
     p.add_argument('config_file',
@@ -89,10 +90,9 @@ def main():
 
     # Initialize logger
     logging.basicConfig(level=str(args.logging).upper())
-    logging.info(args)
 
     # Verify that dwi_ml_ready folder is found
-    dwi_ml_ready_folder = Path(args.dwi_ml_ready_folder)
+    dwi_ml_ready_folder = Path(args.database_folder + '/dwi_ml_ready')
     if not dwi_ml_ready_folder.is_dir():
         raise ValueError('The dwi_ml_ready folder was not found: '
                          '{}'.format(dwi_ml_ready_folder))
@@ -111,27 +111,26 @@ def main():
     json_file = open(args.config_file, 'r')
     groups_config = json.load(json_file)
 
-    # Initialize database
-    # hdf5_dir, hdf5_filename = initialize_hdf5_database(dwi_ml_ready_folder, args.force,
-    #                                                   args.name)
+    # Check if hdf5 already exists and initialize database
+    hdf5_dir, hdf5_filename = _initialize_hdf5_database(args.database_folder,
+                                                        args.force, args.name)
 
     # Create dataset from config and save
-    # add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
-    #                          hdf5_filename, dwi_ml_ready_folder)
+    _add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
+                               hdf5_filename, dwi_ml_ready_folder)
 
 
-def initialize_hdf5_database(database_path, force, name):
+def _initialize_hdf5_database(database_path, force, name):
     # Create hdf5 dir or clean existing one
     hdf5_dir = Path(database_path, "hdf5")
     if hdf5_dir.is_dir():
         if force:
-            print("Deleting existing hdf5 data folder: {}"
-                  .format(hdf5_dir))
+            logging.info("Careful! Deleting existing hdf5 data folder: "
+                         "{}".format(hdf5_dir))
             shutil.rmtree(str(hdf5_dir))
         else:
-            raise FileExistsError("hdf5 data folder already exists: {}. "
-                                  "Use force to allow overwrite"
-                                  .format(hdf5_dir))
+            raise FileExistsError("hdf5 data folder already exists: {}. Use "
+                                  "force to allow overwrite.".format(hdf5_dir))
     hdf5_dir.mkdir()
 
     # Define dabase name
@@ -144,14 +143,21 @@ def initialize_hdf5_database(database_path, force, name):
     return hdf5_dir, hdf5_filename
 
 
-def add_all_subjs_to_database(args, chosen_subjs: List[str],
-                              groups_config: Dict, hdf5_dir, hdf5_filename,
-                              dwi_ml_dir):
+def _add_all_subjs_to_database(args, chosen_subjs: List[str],
+                               groups_config: Dict, hdf5_dir, hdf5_filename,
+                               dwi_ml_dir):
     """
     Generate a dataset from a group of dMRI subjects with multiple bundles.
     All bundles are merged as a single whole-brain dataset in voxel space.
     If wished, all intermediate steps are saved on disk in the hdf5 folder.
     """
+    # Cast space from str to Space
+    if args.space == 'Space.Vox':
+        space = Space.Vox
+    elif args.space == 'Space.RASMM':
+        space = Space.RASMM
+    else:
+        space = Space.VOXMM
 
     # Add data to database
     hdf5_file_path = hdf5_dir.joinpath("{}.hdf5".format(hdf5_filename))
@@ -159,8 +165,11 @@ def add_all_subjs_to_database(args, chosen_subjs: List[str],
         # Save version and configuration
         hdf_file.attrs['version'] = 1
         hdf_file.attrs['chosen_subjs'] = chosen_subjs
-        hdf_file.attrs['groups'] = groups_config
-        hdf_file.attrs['step_size'] = args.step_size
+        hdf_file.attrs['groups'] = str(groups_config)
+        if args.step_size is not None:
+            hdf_file.attrs['step_size'] = args.step_size
+        else:
+            hdf_file.attrs['step_size'] = 'Not defined by user'
         hdf_file.attrs['bundles'] = [b for b in args.bundles]
         hdf_file.attrs['space'] = args.space
 
@@ -168,7 +177,7 @@ def add_all_subjs_to_database(args, chosen_subjs: List[str],
         logging.info("Processing {} subjects : "
                      "{}".format(len(chosen_subjs), chosen_subjs))
         for subj_id in chosen_subjs:
-            logging.info("Processing subject: {}".format(subj_id))
+            logging.info("\n *Processing subject: {}".format(subj_id))
             subj_input_dir = dwi_ml_dir.joinpath(subj_id)
 
             # Add subject to hdf database
@@ -181,43 +190,54 @@ def add_all_subjs_to_database(args, chosen_subjs: List[str],
 
             # Find subject's mask
             if args.mask:
-                subj_mask_file = subj_input_dir.joinpath('masks/' + args.mask)
-                subj_mask_data = nib.load(subj_mask_file).get_fdata(type=bool)
+                subj_mask_file = subj_input_dir.joinpath(args.mask)
+                subj_mask_data = nib.load(subj_mask_file)
+                subj_mask_data = subj_mask_data.get_fdata().astype(np.bool)
 
             # Add the subj data based on groups in the json config file
             # (inputs and others. All nifti)
             for group in groups_config:
+                logging.debug('Processing group {}...'.format(group))
                 file_list = groups_config[group]
                 group_data, group_affine, group_header = process_group(
                     group, file_list, args.save_intermediate, subj_input_dir,
                     subj_intermediate_path, subj_mask_data)
+                logging.debug('...done. Now creating dataset from group.')
                 subj_hdf.create_dataset(group, data=group_data)
+                logging.debug('...done.')
+
+            # Reparing header. Should be arranged in Dipy 1.2.
+            group_header['srow_x'] = group_affine[0, :]
+            group_header['srow_y'] = group_affine[1, :]
+            group_header['srow_z'] = group_affine[2, :]
 
             # Taking any group (the last) to save space information.
             # All groups should technically have the same information.
             subj_hdf.attrs['affine'] = group_affine
-            subj_hdf.attrs['header'] = group_header
+            subj_hdf.attrs['header'] = str(group_header)
 
             # Add the streamlines data
+            logging.debug('Processing bundles...')
             tractogram, lengths = process_streamlines(
                 subj_input_dir.joinpath("bundles"), args.bundles, group_header,
-                args.step_size, args.space)
+                args.step_size, space)
             streamlines = tractogram.streamlines
 
             # Save streamlines
             if args.save_intermediate:
+                logging.debug('Saving intermediate tractogram.')
                 save_tractogram(tractogram,
                                 str(subj_intermediate_path.joinpath(
                                     "{}_all_streamlines.tck".format(subj_id))))
 
             if streamlines is None:
-                logging.info('Streamlines not added to hdf5 for subj {}. '
-                             'Bundle did not exist?'.format(subj_id))
+                logging.warning('Careful! Total tractogram for subject {} '
+                                'contained no streamlines!'.format(subj_id))
             else:
                 streamlines_group = subj_hdf.create_group('streamlines')
 
                 streamlines_group.attrs['space_attributes'] = \
-                    tractogram.space_attributes
+                    str(tractogram.space_attributes)
                 # Accessing private Dipy values, but necessary
                 streamlines_group.create_dataset('data',
                                                  data=streamlines._data)

@@ -45,18 +45,21 @@ if [ ! -f $subject_list ]; then
   exit
 fi
 
+echo "Checks passed. Now reorganizing subjects"
 # Reorganizing all subjects
 while IFS= read -r subjid; do
   echo "Reorganizing subject $subjid"
   subj_folder=$dwi_ml_ready_folder/$subjid
   recobundles_folder=$preprocessed_folder/$subjid/$recobundles_name
-  mkdir $subj_folder/bundles
+  if [ ! -d $subj_folder/bundles ]; then
+    mkdir $subj_folder/bundles
+  fi
 
   echo "creating symlinks"
   # bundles:
   cd $recobundles_folder
   for bundle in *.trk
   do
-    ln -s $recobundles_folder/$bundle $subj_folder/bundles/${subjid}_recobundlesX_$bundle
+    ln -s $recobundles_folder/$bundle $subj_folder/bundles/recobundlesX_$bundle
   done
-done
+done < $subject_list

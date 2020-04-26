@@ -80,7 +80,7 @@ def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,
     gradient_table : GradientTable
         Dipy object that contains all bvals and bvecs.
     sh_basis: str
-        Either 'tournier07' or 'descoteaux07'
+        Either 'tournier07' or 'descoteaux07'. Default: descoteaux07.
     sphere : dipy.core.sphere.Sphere, optional
         Directions the diffusion signal will be resampled to. Directions are
         assumed to be on the whole sphere, not the hemisphere like bvecs.
@@ -109,6 +109,7 @@ def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,
     sh_basis = sph_harm_lookup.get(sh_basis)
 
     # Resample data
+    # B.T contains the new sampling scheme and B*data_sh projects to the sphere.
     # B : 2-D array; real harmonics sampled at (\theta, \phi)
     # m : array; degree of the sampled harmonics.
     # l : array; order of the sampled harmonics.

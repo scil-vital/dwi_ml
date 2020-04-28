@@ -11,6 +11,15 @@ The development process
 
 When writing code, please pay attention to the following aspects:
 
+Git Hooks
+---------
+
+A number of git hooks have been developed to fire some actions when certain git
+actions occur. In order to set up these hooks, it is necessary to run::
+
+    utils/gitsetup/setup-hooks.sh
+
+
 Testing
 -------
 

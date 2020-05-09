@@ -64,9 +64,12 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
 # Checked!
 def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
                       split_ids: np.ndarray = None, min_nb_points: int = 6):
-    """Cut streamlines into 2 random segments. Returns both segments as
-    independent streamlines, so the number of output streamlines is higher than
-    the input.
+    """Splits (or cuts) streamlines into 2 random segments. Returns both
+    segments as independent streamlines, so the number of output streamlines is
+    higher than the input.
+
+    Note. Data_per_point is cut too. Data_per_streamline is copied for each
+    half.
 
     Params
     ------
@@ -74,19 +77,18 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
         Dipy object containing your streamlines
     rng: np.random.RandomState
         Random number generator.
-    flip_ids: np.ndarray, optional
+    split_ids: np.ndarray, optional
         List of streamlines to split. If not provided, all streamlines are
         split.
     min_nb_points: int
-        We only cut streamlines with at least min_nb_points. This means that the
-        minimal number of points in the final streamlines is
+        Only cut streamlines with at least min_nb_points. This means that the
+        minimal number of points in the final streamlines will be
         floor(min_nb_points/2). Default: 6.
 
     Returns
     -------
     new_sft: StatefulTractogram
-        Dipy object with cut streamlines. Data_per_point is cut too.
-        Data_per_streamline is copied for each half.
+        Dipy object with split streamlines.
     """
     if split_ids is None:
         split_ids = range(len(sft.streamlines))
@@ -119,7 +121,7 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
                 all_dps = _extend_dict(all_dps, old_dps)
                 all_dps = _extend_dict(all_dps, old_dps)
             else:
-                nb_streamlines_not_cut +=1
+                nb_streamlines_not_cut += 1
         else:
             all_streamlines.extend([old_streamline])
             all_dpp = _extend_dict(all_dpp, old_dpp)

@@ -310,13 +310,13 @@ class MultiSubjectDataset(Dataset):
             # streamline ids.
             if self.streamlines_cut_ratio:
                 all_ids = np.arange(len(subject_streamlines))
-                n_to_split = np.floor(len(subject_streamlines) *
-                                      self.streamlines_cut_ratio)
+                n_to_split = int(np.floor(len(subject_streamlines) *
+                                      self.streamlines_cut_ratio))
                 split_ids = self.rng.choice(all_ids, size=n_to_split,
                                             replace=False)
 
                 # ToDo: once everything is sft, use new function:
-                subject_streamlines = split_streamlines(sft, rng=self.rng,
+                subject_streamlines = split_streamlines(sft, self.rng,
                                                         split_ids)
 
             # Remember the indices of the Y sub-batch

@@ -91,32 +91,42 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
     if split_ids is None:
         split_ids = range(len(sft.streamlines))
 
-    min_index = np.floor(min_nb_points/2)
+    min_final_nb_points = np.floor(min_nb_points/2)
 
     all_streamlines = []
     all_dpp = defaultdict(lambda: [])
     all_dps = defaultdict(lambda: [])
+
+    logging.debug("Splitting {} streamlines out of {}."
+                  "".format(len(split_ids), len(sft.streamlines)))
+    nb_streamlines_not_cut = 0
     for i in range(len(sft.streamlines)):
         old_streamline = sft.streamlines[i]
         old_dpp = sft.data_per_point[i]
         old_dps = sft.data_per_streamline[i]
 
-        # Leave at least min_nb_points
-        if i in split_ids and len(old_streamline) > min_nb_points:
-            cut_idx = rng.randint(min_index, len(old_streamline) - min_index)
-            segments_s = [old_streamline[:cut_idx], old_streamline[cut_idx:]]
-            segments_dpp = [old_dpp[:cut_idx], old_dpp[cut_idx:]]
+        # Cut if at least min_nb_points
+        if i in split_ids:
+            if len(old_streamline) > min_nb_points:
+                cut_idx = rng.randint(min_final_nb_points,
+                                      len(old_streamline) - min_final_nb_points)
+                segments_s = [old_streamline[:cut_idx], old_streamline[cut_idx:]]
+                segments_dpp = [old_dpp[:cut_idx], old_dpp[cut_idx:]]
 
-            all_streamlines.extend(segments_s)
-            all_dpp = _extend_dict(all_dpp, segments_dpp[0])
-            all_dpp = _extend_dict(all_dpp, segments_dpp[1])
-            all_dps = _extend_dict(all_dps, old_dps)
-            all_dps = _extend_dict(all_dps, old_dps)
+                all_streamlines.extend(segments_s)
+                all_dpp = _extend_dict(all_dpp, segments_dpp[0])
+                all_dpp = _extend_dict(all_dpp, segments_dpp[1])
+                all_dps = _extend_dict(all_dps, old_dps)
+                all_dps = _extend_dict(all_dps, old_dps)
+            else:
+                nb_streamlines_not_cut +=1
         else:
-            all_streamlines.extend(old_streamline)
+            all_streamlines.extend([old_streamline])
             all_dpp = _extend_dict(all_dpp, old_dpp)
             all_dps = _extend_dict(all_dps, old_dps)
 
+    logging.info('{} streamlines to split were not split because they were too '
+                 'short (<{})'.format(nb_streamlines_not_cut, min_nb_points))
     new_sft = StatefulTractogram.from_sft(all_streamlines, sft,
                                           data_per_point=all_dpp,
                                           data_per_streamline=all_dps)

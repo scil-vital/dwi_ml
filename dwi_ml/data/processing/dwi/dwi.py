@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
+from dipy.core.gradients import GradientTable
+from dipy.core.sphere import Sphere
+from dipy.data import get_sphere
+from dipy.reconst.shm import sph_harm_lookup
+import nibabel as nib
 import numpy as np
-
-
-# Note. If you want to resample DWI: you may use
-# from scilpy.reconst.raw_signal import compute_sh_coefficients
-# with the sphere
-# from dipy.data import get_sphere
-# sphere = get_sphere("repulsion100")
+from scilpy.io.utils import validate_sh_basis_choice
+from scilpy.reconst.raw_signal import compute_sh_coefficients
 
 
 def standardize_data(data: np.ndarray, mask: np.ndarray = None,
@@ -63,3 +63,57 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
     normalized_data[~mask] = np.nan
 
     return normalized_data
+
+
+def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,
+                             gradient_table: GradientTable,
+                             sh_basis: str = 'descoteaux07',
+                             sphere: Sphere = None, sh_order: int = 8,
+                             smooth: float = 0.006):
+    """Resample a diffusion signal according to a set of directions using
+    spherical harmonics.
+
+    Parameters
+    ----------
+    dwi_image : nib.Nifti1Image object
+        Diffusion signal as weighted images (4D).
+    gradient_table : GradientTable
+        Dipy object that contains all bvals and bvecs.
+    sh_basis: str
+        Either 'tournier07' or 'descoteaux07'. Default: descoteaux07.
+    sphere : dipy.core.sphere.Sphere, optional
+        Directions the diffusion signal will be resampled to. Directions are
+        assumed to be on the whole sphere, not the hemisphere like bvecs.
+        If omitted, 100 directions evenly distributed on the sphere will be
+        used (Dipy's "repulsion100").
+    sh_order : int, optional
+        SH order to fit, by default 8.
+    smooth : float, optional
+        Lambda-regularization coefficient in the SH fit, by default 0.006.
+
+    Returns
+    -------
+    resampled_dwi : np.ndarray (4D)
+        Resampled "raw" diffusion signal.
+    """
+    validate_sh_basis_choice(sh_basis)
+
+    # Get the "real" SH fit
+    # sphere = None, so it computes the sh coefficients based on the bvecs.
+    data_sh = compute_sh_coefficients(dwi_image, gradient_table, sh_order,
+                                      basis_type=sh_basis, smooth=smooth)
+
+    # Get new directions
+    if sphere is None:
+        sphere = get_sphere("repulsion100")
+    sh_basis = sph_harm_lookup.get(sh_basis)
+
+    # Resample data
+    # B.T contains the new sampling scheme and B*data_sh projects to the sphere.
+    # B : 2-D array; real harmonics sampled at (\theta, \phi)
+    # m : array; degree of the sampled harmonics.
+    # l : array; order of the sampled harmonics.
+    B, m, l = sh_basis(sh_order, sphere.theta, sphere.phi)
+    data_resampled = np.dot(data_sh, B.T)
+
+    return data_resampled

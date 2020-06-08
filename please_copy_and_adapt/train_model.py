@@ -4,7 +4,7 @@
 ###########################
 # Remove or add parameters to fit your needs. You should change your yaml file
 # accordingly.
-# Change StreamlinesBasedModelAbstract for an implementation of your own model.
+# Change DWIMLAbstractSequences for an implementation of your own model.
 # It should be a child of this abstract class.
 ############################
 
@@ -16,7 +16,7 @@ from os import path
 import yaml
 
 from dwi_ml.training.scripts_utils import *
-from dwi_ml.training.trainer_abstract import StreamlinesBasedModelAbstract
+from dwi_ml.training.trainer_abstract import DWIMLAbstractSequences
 
 
 def parse_args():
@@ -144,7 +144,7 @@ def main():
     # Instantiate your class
     # (Change StreamlinesBasedModelAbstract for your class.)
     # Then load dataset, build model, train and save
-    experiment = StreamlinesBasedModelAbstract(organized_args)
+    experiment = DWIMLAbstractSequences(organized_args)
     experiment.load_dataset()
     experiment.build_model()
     experiment.train()

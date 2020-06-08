@@ -1,0 +1,132 @@
+#################
+#  Parameters
+#
+# Here is a choice of parameters for which verification is already coded in
+# dwi_ml. You can comment/delete parameters that are not necessary for your
+# project, and add new parameters.
+#
+# In train_model.py, you should adapt the script to define which parameters are
+# required or optional.
+#
+# Note: In most cases, you can keep the variable and set it to ~, to null or to
+#       an empty value (all are yaml's equivalent to python's None).
+# Tip:  To set a boolean in yaml, write either True/False or On/Off. Both
+#       choices correspond to python's True/False.
+##################
+
+logging:
+  # level: one of ['error', 'warning', 'info', 'debug']
+  #     Logging level. If null, default = warning.
+  level: warning
+
+experiment:
+  # name: str
+  #     If given, name for the experiment. Else, model will decide the name to
+  #     give.
+
+dataset:
+  # hdf5_filename: str
+  #     Path to the .hdf5 dataset. Should contain both your training subjects
+  #     and validation subjects.
+  hdf5_filename: my_file.hdf5
+  # training_subjs_filename: str
+  #     Txt file containing the list of subjects used for training. One
+  #     subject per line.
+  training_subjs_filename: training_subjs.txt
+  # validation_subjs_filename: str
+  #     Txt file containing the list of subjects used for validation. One
+  #     subject per line.
+  validation_subjs_filename: validation_subjs.txt
+
+preprocessing:
+  # step_size: float
+  #     Resample all streamlines to this step size (in mm). If null, train on
+  #     streamlines as they are (e.g. compressed).
+  step_size: null
+
+data_augmentation:
+  # add_noise: bool
+  #     Add random gaussian noise to streamline coordinates on-the-fly. Noise
+  #     variance is 0.1 * step-size, or 0.1mm if no step size is used.
+  # toDO!! Add variable for variance
+  add_noise: False
+  # split_ratio: float
+  #     Split a percentage of streamlines at a random point, in each batch. Null
+  #     is equivalent to 0.
+  split_ratio: null
+
+input:
+  neighborhood:
+    # sphere_radius: float
+    #     If not null, a neighborhood will be added to the input information.
+    #     This neighborhood definition lies on a sphere. It will be a list of 6
+    #     positions (up, down, left, right, behind, in front) at exactly given
+    #     radius around each point of the streamlines.
+    #     * Can't be used together with grid_radius.
+    sphere_radius: null
+    # grid_radius: int
+    #     If not null, a neighborhood will be added to the input information.
+    #     This neighborhood definition uses a list of points similar to the
+    #     original voxel grid around each point of the streamlines. Ex: with
+    #     radius 1, that's 27 points. With radius 2, that's 125 points.
+    #     * Can't be used together with sphere_radius.
+    grid_radius: null
+  # add_x_previous_dirs: int
+  #     Concatenate X previous streamline directions to the input vector. Null
+  #     is equivalent to 0.
+  add_x_previous_dirs: null
+
+model:
+  # Add your model's parameters
+
+epochs:
+  # max_epochs: int
+  #     Maximum number of epochs. Suggestion: 100.
+  max_epochs: null
+  # patience: int
+  #     Use early stopping. Defines the number of epochs after which the
+  #     model should stop if the loss hasn't improved. Suggestion: 20.
+  patience: null
+  batch:
+    # batch_size: int
+    #     Number of streamline points per batch. Suggestion: 20000.
+    size: null
+    # volumes_used: int
+    #     Limits the number of volumes used in a batch. If null, will use
+    #     true random sampling.
+    #     Hint: Will influence the cache size if memory:cache_manager is used.
+    volumes_used: None
+    # cycles_per_volume: int
+    #     Relevant only if epochs:batch:volumes_used is not null. Number of
+    #     cycles before changing to new volumes. (null is equivalent to
+    #     1).
+    cycles_per_volume: null
+
+memory:
+  # lazy: bool
+  #     If set, do not load all the dataset in memory at once. Load only what
+  #     is needed for a batch.
+  lazy: False
+  # cache_manager: bool
+  #     Relevant only if memory:lazy is used. If set, will cache volumes and
+  #     streamlines in memory instead of fetching from the disk everytime.
+  #     Cache size will depend on epochs:volumes_per_batch.
+  cache_manager: False
+  # use_gpu: bool
+  #     If set, train using the GPU. Else, stay on CPU.
+  use_gpu: True
+  # num_cpu_workers: int
+  #     Number of parallel CPU workers.
+  num_cpu_workers: None
+  # worker_interpolation: bool
+  #     If set, if using num_cpu_workers > 0, interpolation will be done on CPU
+  #     by the workers instead of on the main thread using the chosen device.
+  worker_interpolation: False
+  # taskman_managed: bool
+  #     If set, instead of printing progression, print taskman-relevant data.
+  taskman_managed: False
+
+randomisation:
+  # seed: int
+  #     Random experiment seed.
+  seed: 1234

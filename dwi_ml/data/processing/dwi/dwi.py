@@ -113,7 +113,7 @@ def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,
     # B : 2-D array; real harmonics sampled at (\theta, \phi)
     # m : array; degree of the sampled harmonics.
     # l : array; order of the sampled harmonics.
-    B, m, l = sh_basis(sh_order, sphere.theta, sphere.phi)
+    B, _, _ = sh_basis(sh_order, sphere.theta, sphere.phi)
     data_resampled = np.dot(data_sh, B.T)
 
     return data_resampled

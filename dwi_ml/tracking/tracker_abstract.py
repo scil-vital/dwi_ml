@@ -16,7 +16,6 @@ from nibabel.streamlines import ArraySequence, Tractogram
 
 from dwi_ml.data.dataset.single_subject_containers import (
     MRIDataVolume, SubjectData)
-from dwi_ml.data.processing.space.world_to_vox import convert_world_to_vox
 from dwi_ml.experiment.timer import Timer
 from dwi_ml.tracking.step_tracker import (StepTracker,
                                           PreInitializedStepTracker)

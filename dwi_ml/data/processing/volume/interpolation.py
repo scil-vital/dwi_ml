@@ -3,8 +3,6 @@ import torch
 import numpy as np
 from scipy.ndimage import map_coordinates
 
-from dwi_ml.data.processing.space.world_to_vox import convert_world_to_vox
-
 
 B1 = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
                [-1, 0, 0, 0, 1, 0, 0, 0],

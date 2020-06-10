@@ -4,7 +4,6 @@ import pathlib
 from dipy.core.gradients import GradientTable, \
     gradient_table as load_gradient_table
 import nibabel as nib
-import numpy as np
 from scilpy.image.resample_volume import resample_volume
 
 def load_dwi(dwi_file: str) -> nib.Nifti1Image:

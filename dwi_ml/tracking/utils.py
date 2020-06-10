@@ -4,7 +4,6 @@ from typing import Callable, Dict, Tuple
 
 from dipy.tracking.utils import length as length_generator
 import nibabel as nib
-from nibabel.affines import apply_affine
 import numpy as np
 
 from dwi_ml.data.processing.volume.interpolation import (

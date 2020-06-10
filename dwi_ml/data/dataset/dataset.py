@@ -57,8 +57,8 @@ class MultiSubjectDataset(Dataset):
         self.step_size = step_size
         self.streamlines_cut_ratio = streamlines_cut_ratio
         self.do_interpolation = do_interpolation
-        self.default_noise_mm = 0.1 # Default noise variance for compressed
-                                    # streamlines, otherwise 0.1 * step-size
+        self.default_noise_mm = 0.1  # Default noise variance for compressed
+                                     # streamlines, otherwise 0.1 * step-size
 
         # Concerning the choice of dMRI data
         self.sh_order = None  # Stored in the dataset file

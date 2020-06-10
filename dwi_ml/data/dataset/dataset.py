@@ -28,6 +28,8 @@ from dwi_ml.data.dataset.single_subject_containers import (SubjectData,
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines,
     cut_random_streamlines)
+from dwi_ml.data.processing.volume.interpolation import \
+    torch_trilinear_interpolation
 
 
 class MultiSubjectDataset(Dataset):

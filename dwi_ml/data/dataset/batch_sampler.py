@@ -4,6 +4,8 @@ import logging
 import numpy as np
 from torch.utils.data import Dataset, Sampler
 
+from dwi_ml.data.dataset import MultiSubjectDataset
+
 
 class BatchSampler(Sampler):
     """Samples sequences using a number of required timesteps, without

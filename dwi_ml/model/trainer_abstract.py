@@ -7,6 +7,7 @@ import time
 import numpy as np
 import torch
 
+from dwi_ml.data.dataset import (LazyMultiSubjectDataset, MultiSubjectDataset)
 from dwi_ml.experiment.timer import Timer
 from dwi_ml.experiment.monitoring import ValueHistoryMonitor
 

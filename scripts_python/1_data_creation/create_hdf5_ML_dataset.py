@@ -349,7 +349,7 @@ def _process_subject(subject_id: str, subject_data_path: Path,
     # Load and process data based on model choice
     model_input_volume = \
         dataset_creator.load_and_process_volume(dwi_image, bvals, bvecs, frf,
-                                wm_mask_image, output_path)
+                                                wm_mask_image, output_path)
 
     # Free some memory, we don't need the data anymore
     dwi_image.uncache()

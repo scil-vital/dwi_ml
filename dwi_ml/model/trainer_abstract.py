@@ -307,7 +307,7 @@ class DWIMLAbstractSequences:
         #   time remaining is less than one epoch + 30 seconds
         # exit training.
         return (self.hangup_time is not None and
-               time.time() + iter_timer.mean * 2.0 + 30 > self.hangup_time)
+                time.time() + iter_timer.mean * 2.0 + 30 > self.hangup_time)
 
     def _update_taskman_report(self, updates):
         self.taskman_report.update(updates)

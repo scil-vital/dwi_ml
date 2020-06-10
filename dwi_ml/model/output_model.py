@@ -484,7 +484,7 @@ class GaussianMixtureOutput(BaseTrackingOutputModel):
         gaussians_log_prob = -0.5 * ((3 * log_2pi) + square_m_distance)\
                              - log_det
         nll_losses = -torch.logsumexp(mixture_probs.log() + gaussians_log_prob,
-                                    dim=-1)
+                                      dim=-1)
         mean_loss = nll_losses.mean()
 
         return mean_loss

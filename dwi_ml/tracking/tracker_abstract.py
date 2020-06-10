@@ -242,24 +242,18 @@ class TrackerAbstract(object):
             forward_tracker_cls = PreInitializedStepTracker
         else:
             forward_tracker_cls = StepTracker
-        forward_step_tracker = forward_tracker_cls(model=self.model,
-                                              input_dv=self.tracto_data.input_dv,
-                                              mask_dv=self.tracking_dv,
-                                              step_size=step_size,
-                                              add_neighborhood=self.add_neighborhood,
-                                              add_previous_dir=self.add_previous_dir,
-                                              max_length=max_length,
-                                              max_angle=max_angle,
-                                              use_gpu=self.use_gpu)
-        backwards_step_tracker = PreInitializedStepTracker(model=self.model,
-                                                      input_dv=self.tracto_data.input_dv,
-                                                      mask_dv=self.tracking_dv,
-                                                      step_size=step_size,
-                                                      add_neighborhood=self.add_neighborhood,
-                                                      add_previous_dir=self.add_previous_dir,
-                                                      max_length=max_length,
-                                                      max_angle=max_angle,
-                                                      use_gpu=self.use_gpu)
+        forward_step_tracker = forward_tracker_cls(
+            model=self.model, input_dv=self.tracto_data.input_dv,
+            mask_dv=self.tracking_dv, step_size=step_size,
+            add_neighborhood=self.add_neighborhood,
+            add_previous_dir=self.add_previous_dir, max_length=max_length,
+            max_angle=max_angle, use_gpu=self.use_gpu)
+        backwards_step_tracker = PreInitializedStepTracker(
+            model=self.model, input_dv=self.tracto_data.input_dv,
+            mask_dv=self.tracking_dv, step_size=step_size,
+            add_neighborhood=self.add_neighborhood,
+            add_previous_dir=self.add_previous_dir, max_length=max_length,
+            max_angle=max_angle, use_gpu=self.use_gpu)
 
         if step_size:
             print("Tracking using a step size of {:.3f} mm "

@@ -24,7 +24,7 @@ PARAMETER_DESCRIPTION = """
         Nb of axes (directions) to get the neighborhood voxels. This is only
         used if do_interpolation is True. Currently, 6 is the default and
         only implemented version (left, right, front, behind, up, down).
-                                                                                                #ToDO. Raises notImplemented if not 6.
+        #ToDO. Raises notImplemented if not 6.
     streamlines_cut_ratio : float
         Percentage of streamlines to randomly cut in each batch. The reason
         for cutting is to help the ML algorithm to track from the middle of

@@ -18,7 +18,8 @@ def parse_args():
         description=__doc__,
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('dataset', type=str, help="Path to hdf5 dataset")
-    parser.add_argument('--prefix', type=str, help="Prefix for output tractograms")
+    parser.add_argument('--prefix', type=str, help="Prefix for output "
+                                                   "tractograms")
     parser.add_argument('--subject_ids', type=str, nargs='+',
                         help="List of subjects ids to extract")
 
@@ -42,8 +43,11 @@ def main():
             offsets = np.array(hdf_file[subject_id]['streamlines/offsets'])
             lengths = np.array(hdf_file[subject_id]['streamlines/lengths'])
 
-            vox2rasmm_affine = np.array(hdf_file[subject_id]['input_volume'].attrs['vox2rasmm'])
-            img = nib.Nifti1Image(np.array(hdf_file[subject_id]['input_volume/data']), vox2rasmm_affine)
+            vox2rasmm_affine = np.array(hdf_file[subject_id]['input_volume'].
+                                        attrs['vox2rasmm'])
+            img = nib.Nifti1Image(np.array(hdf_file[subject_id][
+                                               'input_volume/data']),
+                                  vox2rasmm_affine)
 
             streamlines_vox = nib.streamlines.ArraySequence()
             streamlines_vox._data = data
@@ -51,10 +55,12 @@ def main():
             streamlines_vox._lengths = lengths
 
             tractogram = StatefulTractogram(streamlines_vox, img,
-                                            space=Space.VOX, shifted_origin=True)
+                                            space=Space.VOX,
+                                            shifted_origin=True)
 
             # Save tractogram
-            fname = "{}_{}.tck".format(pathlib.Path(args.dataset).stem, subject_id)
+            fname = "{}_{}.tck".format(pathlib.Path(args.dataset).stem,
+                                       subject_id)
             if args.prefix:
                 fname = "{}_{}".format(args.prefix, fname)
             save_tractogram(tractogram, fname)

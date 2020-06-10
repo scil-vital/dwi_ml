@@ -17,11 +17,13 @@ def main():
             subjects = list(hdf_file.keys())
             total_streamlines = 0
             for subject_id in subjects:
-                streamlines_group = hdf_file["{}/streamlines".format(subject_id)]
+                streamlines_group = hdf_file["{}/streamlines".
+                    format(subject_id)]
                 subject_streamlines = len(streamlines_group['offsets'])
                 total_streamlines += subject_streamlines
 
-        print("Total number of streamlines: {} in file {}".format(total_streamlines, filepath))
+        print("Total number of streamlines: {} in file {}".
+              format(total_streamlines, filepath))
 
 
 if __name__ == '__main__':

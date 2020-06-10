@@ -22,8 +22,9 @@ from scilpy.io.streamlines import compress_sft
 from scilpy.? import resample_dwi
 from scilpy.? import subsample_sft_francois
 
+# Ugly but this script will be modified and maybe we won't need it anymore.
 from dwi_ml.data.creation.subjects_validation import (
-    validate_subject_list, list_equals)                                                             # Ugly but this script will be modified and maybe we won't need it anymore.
+    validate_subject_list, list_equals)
 from dwi_ml.experiment.timer import Timer
 
 
@@ -38,7 +39,8 @@ class HDF5BundleConfig(object):
         name : str
             The name of the bundle.
         clustering_threshold_mm : float
-            The clustering threshold applied before removing similar streamlines.
+            The clustering threshold applied before removing similar
+            streamlines.
         removal_distance_mm : float
             The removal threshold used to remove similar streamlines.
         """
@@ -250,19 +252,22 @@ class HDF5CreatorAbstract(object):
             output_lengths = []
             n_original_streamlines = 0
             if not self.bundles:
-                # If no bundles described in the json file, we will treat the files
-                # found in bundles as wholebrain tractograms
+                # If no bundles described in the json file, we will treat the
+                # files found in bundles as wholebrain tractograms
                 chosen_bundles_config = [HDF5BundleConfig(p.stem) for p in
                                          bundles_path.glob('*')]
                 if len(chosen_bundles_config) == 0:
-                    raise ValueError("No bundles found in the boundles folder!")
+                    raise ValueError("No bundles found in the boundles "
+                                     "folder!")
             else:
                 chosen_bundles_config = self.bundles
             available_bundles = list(bundles_path.iterdir())
 
             for bundle_config in chosen_bundles_config:
-                bundle, bundle_original_count = self._load_and_process_one_bundle(
-                    bundle_config, available_bundles, bundles_path, dwi_ref)
+                bundle, bundle_original_count = \
+                    self._load_and_process_one_bundle(
+                        bundle_config, available_bundles, bundles_path,
+                        dwi_ref)
                 if bundle is None:
                     continue
 
@@ -284,9 +289,10 @@ class HDF5CreatorAbstract(object):
                         "Inconsistent tractogram space: {}".format(bundle)
                     output_tractogram.streamlines.extend(bundle.streamlines)
 
-            # Transfer the streamlines to the reference space before bringing them
-            # to VOX space. NOTE: This is done in case the streamlines were tracked
-            # in a different space than the provided dataset reference
+            # Transfer the streamlines to the reference space before bringing
+            # them to VOX space. NOTE: This is done in case the streamlines
+            # were tracked in a different space than the provided dataset
+            # reference
             if output_tractogram is None:
                 output_streamlines_rasmm = []
             else:
@@ -305,9 +311,9 @@ class HDF5CreatorAbstract(object):
                          "{} / {}".format(len(output_tractogram),
                                           n_original_streamlines))
 
-            # Send to VOX space and make sure the origin is at the CENTER of the
-            # voxel. NOTE: This is really important, otherwise interpolation will
-            # be off by half a voxel.
+            # Send to VOX space and make sure the origin is at the CENTER of
+            # the voxel. NOTE: This is really important, otherwise
+            # interpolation will be off by half a voxel.
             output_tractogram.to_vox()
             output_tractogram.to_center()
 
@@ -349,9 +355,10 @@ class HDF5CreatorAbstract(object):
                       .format(bundle_original_count))
 
         # Remove streamlines that are too short
-        bundle = filter_streamlines_by_length(bundle,                                                                           # toDo. Bundle has to be a sft.
+        # toDo. Bundle has to be a sft.
+        bundle = filter_streamlines_by_length(bundle,
                                               self.minimum_length_mm)
-        logging.debug("Removed streamlines under "                                                  
+        logging.debug("Removed streamlines under "
                       "{}mm; Remaining: {}".format(self.minimum_length_mm,
                                                    len(bundle)))
 
@@ -359,9 +366,9 @@ class HDF5CreatorAbstract(object):
         # have bundle information, i.e. not wholebrain)
         if (bundle_config.clustering_threshold_mm is not None
                 and bundle_config.removal_distance_mm is not None):
-            bundle = subsample_sft_francois(bundle,
-                                            bundle_config.clustering_threshold_mm,
-                                            bundle_config.removal_distance_mm)
+            bundle = subsample_sft_francois(
+                bundle, bundle_config.clustering_threshold_mm,
+                bundle_config.removal_distance_mm)
             logging.debug("Subsampled bundle using clustering "
                           "threshold of  {}mm and a removal distance of "
                           "{}mm; Remaining: {}"
@@ -456,7 +463,8 @@ class HDF5CreatorDwiSH(HDF5CreatorAbstract):
         the diffusion signal.
         """
         gtab = gradient_table(bvals, bvecs, b0_threshold=bvals.min())
-        output = compute_sh_coefficients(dwi_image, gtab,                                 # toDo Antoine: get_pams. J'ai pas checké ce que ça fait.
+        # toDo Antoine: get_pams. J'ai pas checké ce que ça fait.
+        output = compute_sh_coefficients(dwi_image, gtab,
                                          sh_order=self.sh_order)
         return output
 

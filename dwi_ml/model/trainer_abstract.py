@@ -79,15 +79,15 @@ class DWIMLAbstractSequences:
             on-the-fly. Noise variance is 0.1 * step-size, or 0.1mm if no step
             size is used. [False]
         streamlines_cut_ratio : float
-            Percentage of streamlines to randomly cut in each batch. If None, do
-            not split streamlines. [None]
+            Percentage of streamlines to randomly cut in each batch. If None,
+            do not split streamlines. [None]
                 NOTE: Preprocessed .hdf5 file should contain resampled
                 streamlines; otherwise, cutting streamlines will be biased
                 towards long segments (less points)
         step_size : float
             Constant step size that every streamline should have between points
-            (in mm). If None, train on streamlines as they are (ex, compressed).
-            [None]
+            (in mm). If None, train on streamlines as they are (ex,
+            compressed). [None]
         neighborhood_dist_mm : float
             If given, add neighboring information to the input signal at the
             given distance in each axis (in mm). [None]
@@ -102,8 +102,8 @@ class DWIMLAbstractSequences:
 
         ====> Concerning the memory usage:
         batch_size : int
-            Number of time steps to use in a batch (the length of sequences vary
-            a lot, so we define the number of time steps to use a more
+            Number of time steps to use in a batch (the length of sequences
+            vary a lot, so we define the number of time steps to use a more
             consistent amount of memory) [20,000]
         volumes_per_batch : int
             Limit the number of sampled volumes inside a single batch.
@@ -200,7 +200,7 @@ class DWIMLAbstractSequences:
         self.rng = np.random.RandomState(self.seed)
         torch.manual_seed(self.seed)  # Set torch seed
         if self.use_gpu:
-            torch.cuda.manual_seed(self.seed)                                                           # toDo. Pourquoi ça dit error?
+            torch.cuda.manual_seed(self.seed)  # toDo. Pourquoi ça dit error?
 
         # If using worker_interpolation, data is processed on CPU
         self.dataset_device = torch.device(
@@ -259,7 +259,8 @@ class DWIMLAbstractSequences:
         # Setup monitors
         self.train_loss_monitor = ValueHistoryMonitor("Training loss")
         self.valid_loss_monitor = ValueHistoryMonitor("Validation loss")
-        self.grad_norm_monitor = ValueHistoryMonitor("Grad Norm")                                          # ToDo Est-ce que tout le monde utilise grad norm??
+        # ToDo Est-ce que tout le monde utilise grad norm??
+        self.grad_norm_monitor = ValueHistoryMonitor("Grad Norm")
 
     def train(self, **kwargs):
         raise NotImplementedError
@@ -290,7 +291,8 @@ class DWIMLAbstractSequences:
 
     def _compute_input_size(self):
         # Basic input size
-        expected_input_size = self.train_dataset.multisubject_manager.feature_size
+        expected_input_size = \
+            self.train_dataset.multisubject_manager.feature_size
 
         # + neighbors
         if self.neighborhood_dist_mm:

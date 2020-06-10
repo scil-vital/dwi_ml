@@ -17,7 +17,8 @@ def parse_args():
     parser.add_argument('input', type=str, help="Path to input volume.")
     parser.add_argument('-t', '--threshold', type=float, default=0.,
                         help="Values under the threshold will be set to 0, "
-                             "while values over the threshold will be set to 1.")
+                             "while values over the threshold will be set to "
+                             "1.")
     parser.add_argument('-o', '--output', type=str, default="output.nii.gz",
                         help="Output file. Default")
     parser.add_argument('-f', '--force', action="store_true",
@@ -34,7 +35,8 @@ def main():
         raise ValueError("Input does not exist: {}".format(str(input_file)))
     if output_file.exists():
         if not args.force:
-            raise ValueError("Output file exists: {}; use --force to overwrite".format(str(output_file)))
+            raise ValueError("Output file exists: {}; use --force to "
+                             "overwrite".format(str(output_file)))
         else:
             os.remove(str(output_file))
 
@@ -42,7 +44,8 @@ def main():
     input_data = input_img.get_fdata()
     output_data = np.zeros_like(input_data)
     output_data[input_data > args.threshold] = 1
-    output_img = nib.Nifti1Image(output_data, input_img.affine, input_img.header)
+    output_img = nib.Nifti1Image(output_data, input_img.affine,
+                                 input_img.header)
     nib.save(output_img, str(output_file))
 
 

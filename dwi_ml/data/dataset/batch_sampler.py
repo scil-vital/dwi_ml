@@ -25,8 +25,8 @@ class BatchSampler(Sampler):
             Dataset to sample from.
         batch_size : int
             Number of required points in a batch. This will be approximated as
-            the final batch size depends on data augmentation (streamline cutting
-            or resampling).
+            the final batch size depends on data augmentation (streamline
+            cutting or resampling).
         rng : np.random.RandomState
             Random number generator.
         n_volumes : int
@@ -34,10 +34,12 @@ class BatchSampler(Sampler):
             If None, always use all volumes.
         cycles : int
             Optional, but required if `n_volumes` is given.
-            Number of batches re-using the same volumes before sampling new ones.
+            Number of batches re-using the same volumes before sampling new
+            ones.
     """
 
-    def __init__(self, data_source: MultiSubjectDataset,  # Says error because it doesn't use super().__init__
+    # Says error because it doesn't use super().__init__
+    def __init__(self, data_source: MultiSubjectDataset,
                  batch_size: int, rng: np.random.RandomState,
                  n_volumes: int = None, cycles: int = None):
         if not isinstance(data_source, Dataset):
@@ -46,8 +48,8 @@ class BatchSampler(Sampler):
                              .format(data_source))
         if (not isinstance(batch_size, int) or isinstance(batch_size, bool)
                 or batch_size <= 0):
-            raise ValueError("batch_size should be a positive integeral value, "
-                             "but got batch_size={}".format(batch_size))
+            raise ValueError("batch_size should be a positive integeral "
+                             "value, but got batch_size={}".format(batch_size))
         if cycles and not n_volumes:
             raise ValueError("If `cycles_per_volume_batch` is defined, "
                              "`n_volumes` should be defined. Got: "
@@ -107,12 +109,13 @@ class BatchSampler(Sampler):
                 iterator = iter(int, 1)
 
             for _ in iterator:
-                # For each volume, randomly choose streamlines that haven't been
-                # chosen yet
+                # For each volume, randomly choose streamlines that haven't
+                # been chosen yet
                 batch = []
 
                 for tid in sampled_tids:
-                    # Get the global streamline ids corresponding to this volume
+                    # Get the global streamline ids corresponding to this
+                    # volume
                     start, end = self.data_source.subjID_to_streamlineID[tid]
                     volume_global_ids = global_streamlines_ids[start:end]
 
@@ -120,7 +123,8 @@ class BatchSampler(Sampler):
                     while True:
                         # Filter for available (unmasked) streamlines
                         available_streamline_ids = \
-                            volume_global_ids[global_streamlines_mask[start:end]]
+                            volume_global_ids[global_streamlines_mask[
+                                              start:end]]
 
                         # No streamlines remain for this volume
                         if len(available_streamline_ids) == 0:
@@ -130,7 +134,8 @@ class BatchSampler(Sampler):
                         sample_global_ids = \
                             self._rng.choice(available_streamline_ids, 256)
                         sample_timesteps = \
-                            self.data_source.streamline_timesteps[sample_global_ids]
+                            self.data_source.streamline_timesteps[
+                                sample_global_ids]
 
                         volume_batch_fulfilled = False
                         # Keep total volume length under the maximum
@@ -142,7 +147,8 @@ class BatchSampler(Sampler):
                             selected_mask = \
                                 cumulative_sum < (n_timesteps_per_volume -
                                                   total_volume_timesteps)
-                            sample_global_ids = sample_global_ids[selected_mask]
+                            sample_global_ids = sample_global_ids[
+                                selected_mask]
                             sample_timesteps = sample_timesteps[selected_mask]
                             volume_batch_fulfilled = True
 

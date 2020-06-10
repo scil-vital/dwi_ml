@@ -95,7 +95,8 @@ class SubjectData(object):
     def __init__(self, dmri_data: SubjectdMRIData = None, streamlines=None,
                  lengths_mm=None):
         self.dmri_data = dmri_data
-        self.streamlines = streamlines                                                      # toDo. Streamlines should be an sft???
+        # toDo. Streamlines should be an sft???
+        self.streamlines = streamlines
         self.lengths_mm = lengths_mm
 
     @classmethod
@@ -140,7 +141,8 @@ class LazySubjectData(object):
     def streamlines(self):
         """As a property, this is only computed if called by the user."""
         if self.hdf_handle is not None:
-            return LazyStreamlinesGetter(self.hdf_handle, self.subject_id)                  # toDo. Streamlines should be an sft???
+            # toDo. Streamlines should be an sft???
+            return LazyStreamlinesGetter(self.hdf_handle, self.subject_id)
         else:
             raise ValueError("No streamlines available without an HDF handle!")
 

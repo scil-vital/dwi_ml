@@ -41,7 +41,8 @@ class MultiSubjectDataset(Dataset):
                  use_streamline_noise: bool = False, step_size: float = None,
                  neighborhood_dist_mm: float = None, nb_neighborhood_axes=6,
                  streamlines_cut_ratio: float = None,
-                 add_previous_dir: bool = False, do_interpolation: bool = False,
+                 add_previous_dir: bool = False,
+                 do_interpolation: bool = False,
                  device: torch.device = torch.device('cpu'),
                  taskman_managed: bool = False):
 
@@ -75,7 +76,8 @@ class MultiSubjectDataset(Dataset):
         self.taskman_managed = taskman_managed
 
         # Preparing the dataset
-        self.data_list = None  # type will be DataListForTorch or, in lazy version, LazyDataListForTorch
+        self.data_list = None  # type will be DataListForTorch or, in lazy
+        # version, LazyDataListForTorch
         self.subjID_to_streamlineID = None
         self.total_streamlines = None
         self.streamline_timesteps = None
@@ -123,7 +125,8 @@ class MultiSubjectDataset(Dataset):
 
     def arrange_streamlines(self, subj_data, subjid, streamline_timesteps_list,
                             hdf_file=None):
-        """hdf_file not used. But added to keep same signature as lazy version. """
+        """hdf_file not used. But added to keep same signature as lazy
+        version. """
 
         # Assign a unique ID to every streamline
         n_streamlines = len(subj_data.streamlines)
@@ -140,7 +143,8 @@ class MultiSubjectDataset(Dataset):
         return streamline_timesteps_list
 
     def get_subject_data(self, subj_id):
-        """Contains both dMRI data and streamlines. Different in lazy version"""
+        """Contains both dMRI data and streamlines. Different in lazy
+        version"""
         return self.data_list[subj_id]
 
     def get_subject_dmri_data(self, subj_id):
@@ -153,8 +157,8 @@ class MultiSubjectDataset(Dataset):
 
     @staticmethod
     def build_data_list(hdf_file):
-        # hdf_file not used. But this is used by load, and the lazy version uses
-        # this parameter. Keeping the same signature.
+        # hdf_file not used. But this is used by load, and the lazy version
+        # uses this parameter. Keeping the same signature.
         return DataListForTorch()
 
     @staticmethod
@@ -252,7 +256,7 @@ class MultiSubjectDataset(Dataset):
             # Now, normalize targets. If the step size is always the same,
             # shouldn't make any difference. If compressed.... discutable
             # choice.
-            #                                                                                               toDo à discuter en groupe
+            # toDo à discuter en groupe
             targets = [s / torch.sqrt(torch.sum(s ** 2, dim=-1, keepdim=True))
                        for s in batch_directions]
 
@@ -304,11 +308,12 @@ class MultiSubjectDataset(Dataset):
                     subject_streamlines, noise_mm, self.rng,
                     convert_mm_to_vox=True, affine=affine_vox2rasmm)
 
-            # Cut streamlines in random positions, using the same ratio for each
+            # Cut streamlines in random positions, using the same ratio for
+            # each.
             # Cutting keeps both segments as two independent streamlines, and
             # increases the batch size (but does not change the number of
-            # timesteps). Need to do it subject per subject to keep track of the
-            # streamline ids.
+            # timesteps). Need to do it subject per subject to keep track of
+            # the streamline ids.
             if self.streamlines_cut_ratio:
                 subject_streamlines = cut_random_streamlines(
                     subject_streamlines, self.streamlines_cut_ratio,
@@ -325,10 +330,10 @@ class MultiSubjectDataset(Dataset):
 
         # Flip half of streamline batch
         # You could want to flip ALL your data and then use both the initial
-        # data and flipped data. But this would take twice the memory. Here, for
-        # each epoch, you have 50% chance to be flipped. If you train for enough
-        # epochs, high chance that you will have used both directions of your
-        # streamline at least once. A way to absolutely ensure using both
+        # data and flipped data. But this would take twice the memory. Here,
+        # for each epoch, you have 50% chance to be flipped. If you train for
+        # enough epochs, high chance that you will have used both directions of
+        # your streamline at least once. A way to absolutely ensure using both
         # directions the same number of time, we could use a flag and at each
         # epoch, flip those with unflipped flag. But that adds a bool for each
         # streamline in your dataset and probably not so useful.
@@ -342,7 +347,8 @@ class MultiSubjectDataset(Dataset):
 
     @staticmethod
     def _get_batch_target(batch_streamlines: List[np.ndarray],
-                          device: torch.device = None):                                                         # toDo pourquoi device est utile? Pourquoi pas utiliser self.device?
+                          device: torch.device = None):
+        # toDo pourquoi device est utile? Pourquoi pas utiliser self.device?
         """
         Get the direction between two adjacent points for each streamlines.
         """
@@ -459,7 +465,8 @@ class LazyMultiSubjectDataset(MultiSubjectDataset):
 
         # Get number of timesteps per streamlines
         streamline_timesteps_list.append(
-            np.array(tmp_subj_data_loaded.streamlines.get_lengths(), dtype=np.int16))
+            np.array(tmp_subj_data_loaded.streamlines.get_lengths(),
+                     dtype=np.int16))
 
         return streamline_timesteps_list
 
@@ -475,16 +482,19 @@ class LazyMultiSubjectDataset(MultiSubjectDataset):
             # (data is duplicated across workers, but there is no need to
             # serialize/deserialize everything)
             if self.volume_cache_manager is None:
-                self.volume_cache_manager = SingleThreadCacheManager(self.cache_size)
+                self.volume_cache_manager = SingleThreadCacheManager(
+                    self.cache_size)
 
             try:
                 # General case: Data is already cached
                 volume_data = self.volume_cache_manager[subj_id]
             except KeyError:
                 # volume_data isn't cached; fetch and cache it
-                volume_data = self.get_subject_data(subj_id).dmri_data.as_tensor
+                volume_data = \
+                    self.get_subject_data(subj_id).dmri_data.as_tensor
 
-                # Send volume_data on device and keep it there while it's cached
+                # Send volume_data on device and keep it there while it's
+                # cached
                 volume_data = volume_data.to(self.device)
 
                 self.volume_cache_manager[subj_id] = volume_data

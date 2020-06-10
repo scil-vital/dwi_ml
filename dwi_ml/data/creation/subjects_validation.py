@@ -18,7 +18,9 @@ def list_difference(list1, list2):
 
 def list_equals(list1, list2):
     """Compares two lists"""
-    list1.sort()                                                                                # might bug if some subjs are numeric, other alpha numeric. We suppose all alphanumeric?
+    # might bug if some subjs are numeric, other alpha numeric. We suppose all
+    # alphanumeric?
+    list1.sort()
     list2.sort()
     return list1 == list2
 

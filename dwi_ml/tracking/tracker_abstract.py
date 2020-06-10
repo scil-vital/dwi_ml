@@ -37,7 +37,8 @@ class TrackerAbstract(object):
         ----------
         model: torch.nn.Module
             Trained model that will generate the tracking directions.
-            MUST HAVE A sample_tracking_directions FUNCTION AND A eval FUNCTION.
+            MUST HAVE A sample_tracking_directions FUNCTION AND A eval
+            FUNCTION.
         dataset_file : str
             Path to dataset file (.hdf5).
         subject_id : str
@@ -52,14 +53,16 @@ class TrackerAbstract(object):
             Number of random seeds to be initialized in each voxel of the
             seeding mask.
         seeding_ref : str
-            Path to reference file neceserray if `seeding_file` is a tractogram.
+            Path to reference file neceserray if `seeding_file` is a
+            tractogram.
         use_gpu : bool
             If False, do not use the GPU for tracking.
         add_neighborhood : float (optional)
             If given, add neighboring information to the input signal at the
             given distance in each axis (in mm).
         add_previous_dir : bool (optional)
-            If given, add the streamline previous direction to the input signal.
+            If given, add the streamline previous direction to the input
+            signal.
         """
         self.rng = np.random.RandomState(seed=rng_seed)
         self.n_seeds_per_voxel = n_seeds_per_voxel
@@ -71,7 +74,8 @@ class TrackerAbstract(object):
                 "Subject {} not found in file: {}".format(subject_id,
                                                           dataset_file)
 
-            self.tracto_data = SubjectData.create_from_hdf(hdf_file[subject_id])
+            self.tracto_data = SubjectData.create_from_hdf(
+                hdf_file[subject_id])
             self.tracto_data.input_dv.subject_id = subject_id
 
         ext = os.path.splitext(seeding_file)[1]
@@ -101,7 +105,8 @@ class TrackerAbstract(object):
                 affine_vox2rasmm=tracking_image.affine)
 
         # Compute affine to bring seeds into DWI voxel space
-        # affine_seedsvox2dwivox : seeds voxel space => rasmm space => dwi voxel space
+        # affine_seedsvox2dwivox : seeds voxel space => rasmm space =>
+        # dwi voxel space
         affine_rasmm2dwivox = np.linalg.inv(
             self.tracto_data.input_dv.affine_vox2rasmm)
         self.affine_seedsvox2dwivox = np.dot(
@@ -159,10 +164,9 @@ class TrackerAbstract(object):
         return tractogram
 
     @staticmethod
-    def _get_tracking_seeds_from_mask(mask: np.ndarray,
-                                      affine_seedsvox2dwivox: np.ndarray,
-                                      n_seeds_per_voxel: int,
-                                      rng: np.random.RandomState) -> np.ndarray:
+    def _get_tracking_seeds_from_mask(
+            mask: np.ndarray, affine_seedsvox2dwivox: np.ndarray,
+            n_seeds_per_voxel: int, rng: np.random.RandomState) -> np.ndarray:
         """Given a binary seeding mask, get seeds in DWI voxel space using the
         provided affine.
 
@@ -186,10 +190,10 @@ class TrackerAbstract(object):
         seeds = []
         indices = np.array(np.where(mask)).T
         for idx in indices:
-            seeds_in_seeding_voxel = idx + rng.uniform(-0.5, 0.5,
-                                                       size=(n_seeds_per_voxel, 3))
-            seeds_in_dwi_voxel = nib.affines.apply_affine(affine_seedsvox2dwivox,
-                                                          seeds_in_seeding_voxel)
+            seeds_in_seeding_voxel = \
+                idx + rng.uniform(-0.5, 0.5, size=(n_seeds_per_voxel, 3))
+            seeds_in_dwi_voxel = nib.affines.apply_affine(
+                affine_seedsvox2dwivox, seeds_in_seeding_voxel)
             seeds.extend(seeds_in_dwi_voxel)
         seeds = np.array(seeds, dtype=np.float32)
         return seeds
@@ -257,7 +261,8 @@ class TrackerAbstract(object):
 
         if step_size:
             print("Tracking using a step size of {:.3f} mm "
-                  "({:.3f} voxels)".format(step_size, forward_step_tracker.step_size_vox))
+                  "({:.3f} voxels)".format(step_size,
+                                           forward_step_tracker.step_size_vox))
         else:
             print("Tracking using the model output without scaling")
         print("Tracking from {} seeds".format(len(seeds)))
@@ -279,10 +284,11 @@ class TrackerAbstract(object):
 
                     # Forward tracking
                     with Timer("Forward pass", newline=True, color='green'):
-                        batch_tractogram = self._run_tracker(forward_step_tracker,
-                                                             seeds[start:end])
+                        batch_tractogram = self._run_tracker(
+                            forward_step_tracker, seeds[start:end])
 
-                    stopping_flags = batch_tractogram.data_per_streamline['stopping_flags'].astype(np.uint8)
+                    stopping_flags = batch_tractogram.data_per_streamline[
+                            'stopping_flags'].astype(np.uint8)
 
                     print("Forward pass stopped because of - mask: {:,}\t "
                           "curvature: {:,}\t length: {:,}".
@@ -295,13 +301,15 @@ class TrackerAbstract(object):
 
                     # Backwards tracking
                     # Flip streamlines to initialize backwards tracker
-                    streamlines_init = [s[::-1] for s in batch_tractogram.streamlines]
+                    streamlines_init = \
+                        [s[::-1] for s in batch_tractogram.streamlines]
 
                     with Timer("Backwards pass", newline=True, color='green'):
-                        batch_tractogram = self._run_tracker(backwards_step_tracker,
-                                                             streamlines_init)
+                        batch_tractogram = self._run_tracker(
+                            backwards_step_tracker, streamlines_init)
 
-                    stopping_flags = batch_tractogram.data_per_streamline['stopping_flags'].astype(np.uint8)
+                    stopping_flags = batch_tractogram.data_per_streamline[
+                        'stopping_flags'].astype(np.uint8)
 
                     print("Backwards pass stopped because of - mask: {:,}\t "
                           "curvature: {:,}\t length: {:,}".
@@ -323,8 +331,8 @@ class TrackerAbstract(object):
                                 min_length))
 
                         # Make a copy because indexing an ArraySequence creates
-                        # a "view" with the same _data property, which causes problems
-                        # when extending tractograms
+                        # a "view" with the same _data property, which causes
+                        # problems when extending tractograms
                         batch_tractogram = batch_tractogram[to_keep].copy()
 
                     if tractogram is None:
@@ -334,7 +342,8 @@ class TrackerAbstract(object):
                 return tractogram
 
             except MemoryError:
-                print("Not enough memory for a batch size of {} streamlines".format(batch_size))
+                print("Not enough memory for a batch size of {} streamlines".
+                      format(batch_size))
                 batch_size = int(batch_size / 1.25)
                 if batch_size <= 0:
                     raise MemoryError("Not enough memory! You might need a "
@@ -342,11 +351,11 @@ class TrackerAbstract(object):
 
             except RuntimeError as e:
                 if "out of memory" in e.args[0] or "CuDNN error" in e.args[0]:
-                    print("Not enough memory for a batch size of {} streamlines"
-                          .format(batch_size))
+                    print("Not enough memory for a batch size of {} "
+                          "streamlines".format(batch_size))
                     batch_size = int(batch_size / 1.25)
                     if batch_size <= 0:
-                        raise MemoryError("Not enough memory! You might need a "
-                                          "bigger graphics card!")
+                        raise MemoryError("Not enough memory! You might need "
+                                          "a bigger graphics card!")
                 else:
                     raise e

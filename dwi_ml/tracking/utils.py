@@ -50,15 +50,16 @@ def is_outside_mask(streamlines: np.ndarray, mask: np.ndarray,
     # Use affine to map coordinates in mask space
     indices_mask = nib.affines.apply_affine(affine_vox2mask, indices_vox)
 
-    mask_values = interpolate_volume_at_coordinates(mask, indices_mask, mode='constant')
+    mask_values = interpolate_volume_at_coordinates(mask, indices_mask,
+                                                    mode='constant')
     outside = mask_values < threshold
     return outside
 
 
 def is_too_long(streamlines: np.ndarray, max_nb_steps: int = None,
                 max_length: float = None):
-    """Checks whether streamlines have exceeded the maximum number of steps or a
-    maximum length (not mutually exclusive).
+    """Checks whether streamlines have exceeded the maximum number of steps or
+    a maximum length (not mutually exclusive).
 
     Parameters
     ----------

@@ -15,7 +15,8 @@ from dwi_ml.tracking.utils import (StoppingFlags, filter_stopping_streamlines,
 
 
 class StepTracker(object):
-    """ Generate streamlines using a pretrained recurrent model.                                                # A comprendre si ça doit être a sequence model
+    # A comprendre si ça doit être a sequence model
+    """ Generate streamlines using a pretrained recurrent model.
         Streamlines will be stopped according to predefined criteria. """
 
     def __init__(self, model: torch.nn.Module, input_dv: MRIDataVolume,
@@ -43,7 +44,8 @@ class StepTracker(object):
             If given, add neighboring information to the input signal at the
             given distance in each axis (in mm).
         add_previous_dir : bool (optional)
-            If given, add the streamline previous direction to the input signal.
+            If given, add the streamline previous direction to the input
+            signal.
         max_angle : float (optional)
             Maximum angle in degrees that two consecutive segments can have
             between each other (corresponds to the maximum half-cone angle).
@@ -76,7 +78,8 @@ class StepTracker(object):
             mask_data = mask_dv.data.numpy()
             # Compute the affine to align dwi voxel coordinates with mask voxel
             # coordinates
-            # affine_dwivox2maskvox : dwi voxel space => rasmm space => mask voxel space
+            # affine_dwivox2maskvox : dwi voxel space => rasmm space =>
+            # mask voxel space
             affine_rasmm2maskvox = np.linalg.inv(mask_dv.affine_vox2rasmm)
             affine_dwivox2maskvox = np.dot(affine_rasmm2maskvox,
                                            input_dv.affine_vox2rasmm)
@@ -116,8 +119,8 @@ class StepTracker(object):
         # Convert neighborhood to voxel space
         self.add_neighborhood_vox = None
         if add_neighborhood:
-            self.add_neighborhood_vox = convert_mm2vox(add_neighborhood,
-                                                       input_dv.affine_vox2rasmm)
+            self.add_neighborhood_vox = convert_mm2vox(
+                add_neighborhood, input_dv.affine_vox2rasmm)
             self.neighborhood_directions = get_interp_neighborhood_vectors(
                 radius=self.add_neighborhood_vox)
 
@@ -196,9 +199,8 @@ class StepTracker(object):
 
         if self.step_size_vox:
             # Scale directions to step size
-            normalized_directions = directions / np.sqrt(np.sum(directions ** 2,
-                                                                axis=-1,
-                                                                keepdims=True))
+            normalized_directions = directions / np.sqrt(
+                np.sum(directions ** 2, axis=-1, keepdims=True))
             directions = normalized_directions * self.step_size_vox
 
         # Grow streamlines one step forward
@@ -227,7 +229,8 @@ class StepTracker(object):
         stopping_idx : np.ndarray
             Indices of the streamlines that should stop.
         stopping_flags : np.ndarray
-            `StoppingFlags` that triggered stopping for each stopping streamline.
+            `StoppingFlags` that triggered stopping for each stopping
+            streamline.
         """
         continue_idx, stopping_idx, stopping_flags = \
             filter_stopping_streamlines(streamlines, self.stopping_criteria)
@@ -255,8 +258,8 @@ class StepTracker(object):
         Returns
         -------
         stopping_idx : np.ndarray
-            The indices corresponding to the streamlines stopped by the provided
-            flag.
+            The indices corresponding to the streamlines stopped by the
+            provided flag.
         """
         _, stopping_idx, stopping_flags = self.is_stopping(self.streamlines)
         return stopping_idx[(stopping_flags & flag) != 0]
@@ -326,10 +329,11 @@ class PreInitializedStepTracker(StepTracker):
             Initial streamlines.
         """
         super().__init__(model, input_dv, max_length, mask_dv, step_size,
-                         add_neighborhood, add_previous_dir, max_angle, use_gpu)
+                         add_neighborhood, add_previous_dir, max_angle,
+                         use_gpu)
 
-        # Added None default for seeding but just to keep super's init order for
-        # the first arguments to avoid user's error.
+        # Added None default for seeding but just to keep super's init order
+        # for the first arguments to avoid user's error.
         if seeding_streamlines is None:
             raise ValueError
         self.seeding_streamlines = seeding_streamlines
@@ -367,7 +371,8 @@ class PreInitializedStepTracker(StepTracker):
         stopping_idx : np.ndarray
             Indices of the streamlines that should stop.
         stopping_flags : np.ndarray
-            `StoppingFlags` that triggered stopping for each stopping streamline
+            `StoppingFlags` that triggered stopping for each stopping
+            streamline
         """
         continue_idx, stopping_idx, stopping_flags = \
             super().is_stopping(streamlines)
@@ -382,7 +387,8 @@ class PreInitializedStepTracker(StepTracker):
         continue_idx = continue_idx.astype(int)
 
         # Streamlines that haven't finished initializing should not stop
-        is_really_stopping = np.logical_not(is_still_initializing[stopping_idx])
+        is_really_stopping = \
+            np.logical_not(is_still_initializing[stopping_idx])
         stopping_idx = stopping_idx[is_really_stopping]
         stopping_flags = stopping_flags[is_really_stopping]
 

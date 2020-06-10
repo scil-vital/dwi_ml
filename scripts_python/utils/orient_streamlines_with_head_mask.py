@@ -19,7 +19,9 @@ def _get_voxel(idx: np.ndarray) -> np.ndarray:
     return np.floor(idx)
 
 
-def _is_coords_valid(coord: np.ndarray, valid_voxels: Tuple[np.ndarray, np.ndarray, np.ndarray]):
+def _is_coords_valid(
+        coord: np.ndarray,
+        valid_voxels: Tuple[np.ndarray, np.ndarray, np.ndarray]):
     vox = _get_voxel(coord)
     for i in np.where(valid_voxels[0] == vox[0])[0]:
         if valid_voxels[1][i] == vox[1] and valid_voxels[2][i] == vox[2]:
@@ -31,7 +33,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=RawTextHelpFormatter)
     parser.add_argument('input', help="Input tractogram (.tck|.trk)")
-    parser.add_argument('ref', help="Reference to load the tractogram (.nii.gz)")
+    parser.add_argument('ref',
+                        help="Reference to load the tractogram (.nii.gz)")
     parser.add_argument('mask', help="Bundle head mask (.nii.gz)")
     parser.add_argument('output', help="Output tractogram (.tck|.trk)")
     parser.add_argument('-f', '--force', action="store_true",
@@ -70,7 +73,9 @@ def main():
         elif _is_coords_valid(s[-1], valid_voxels):
             valid_streamlines.append(s[::-1])
 
-    valid_sft = StatefulTractogram(valid_streamlines, args.ref, space=sft.space, shifted_origin=sft.shifted_origin)
+    valid_sft = StatefulTractogram(valid_streamlines, args.ref,
+                                   space=sft.space,
+                                   shifted_origin=sft.shifted_origin)
     save_tractogram(valid_sft, args.output)
 
 

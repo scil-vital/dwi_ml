@@ -19,10 +19,12 @@ MODELS:
                               Loss: Pairwise distance
                               
     CLASSIFICATION models: That means that the output is a probability over all
-    classes. We can decide how to sample the final direction. The classes depend 
+    classes. We can decide how to sample the final direction. The classes
+    depend 
     on the model.
         - SphereClassificationOutput: Model: a 2-layer NN *                                       
-                                      Classes: 100 discrete points on the sphere
+                                      Classes: 100 discrete points on the
+                                      sphere
                                       (dipy.data.get_sphere('symmetric724'))
                                       Loss: Negative log-likelyhood
 
@@ -36,18 +38,20 @@ MODELS:
         - SingleGaussianOutput: Model: a 2-layer NN for the mean and a 2-layer 
                                 NN for the variance.*
                                 Loss: Negative log-likelihood
-        - GaussianMixtureOutput: Model: (a 2-layer NN for the mean and a 2-layer 
-                                 NN for the variance.) for each of N Gaussians.*                  
-                                 Loss: Negative log-likelihood.
+        - GaussianMixtureOutput: Model: (a 2-layer NN for the mean and a
+                                 2-layer NN for the variance.) for each of N
+                                 Gaussians.* Loss: Negative log-likelihood.
 
-    FISHER VON MISES models: This model provides probabilistic outputs using the
-    Fisher - von Mises distribution, which resembles a gaussian on the sphere. 
-    As such, it does not require unit normalization when sampling, and should be
-    more stable while training.                                                                                          # toDo. Can we have a bit more (easy) explanation?
+    FISHER VON MISES models: This model provides probabilistic outputs using
+    the Fisher-von Mises distribution, which resembles a gaussian on the
+    sphere. As such, it does not require unit normalization when sampling, and
+    should be more stable while training.
+    # toDo. Can we have a bit more (easy) explanation?
 
 * p.s. Torch kind of does a softmax after although it is not explicit.
 
-INPUTS:  Def: Here, we call 'input' the output of your experiment model. Ex, RNN.
+INPUTS:  Def: Here, we call 'input' the output of your experiment model. Ex,
+         RNN.
          Type: torch.tensor
          Size:
              - Sequence models: [batch_size*seq_len, nb_features]
@@ -73,8 +77,8 @@ class BaseTrackingOutputModel(torch.nn.Module):
     """
     Default static class attribute, to be redefined by sub-classes.
 
-    Prepares the main functions. All models will be similar in the way that they
-    all define layers. Then, we always apply self.loop_on_layers()
+    Prepares the main functions. All models will be similar in the way that
+    they all define layers. Then, we always apply self.loop_on_layers()
 
     input  -->  layer_i --> ReLu --> dropout -->  last_layer --> output
                   |                     |
@@ -387,9 +391,8 @@ class SingleGaussianOutput(BaseTrackingOutputModel):
         mean_loss = nll_losses.mean()
         return mean_loss
 
-    def sample_tracking_directions(self,
-                                   outputs: Tuple[torch.Tensor, torch.Tensor]) \
-            -> torch.Tensor:
+    def sample_tracking_directions(
+            self, outputs: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         """
         From the gaussian parameters, sample a direction.
         """
@@ -449,7 +452,8 @@ class GaussianMixtureOutput(BaseTrackingOutputModel):
         """
         Run the inputs through the loop on layers.
         """
-        mixture_logits = self.loop_on_layers(inputs, self.layers_mixture_logits)
+        mixture_logits = self.loop_on_layers(inputs,
+                                             self.layers_mixture_logits)
 
         means = self.loop_on_layers(inputs, self.layers_mean)
 
@@ -467,7 +471,8 @@ class GaussianMixtureOutput(BaseTrackingOutputModel):
         """
         # Shape : [batch_size*seq_len, n_gaussians, 3] or
         # [batch_size, n_gaussians, 3}
-        mixture_logits, means, variances = self._get_gaussian_parameters(outputs)
+        mixture_logits, means, variances = \
+            self._get_gaussian_parameters(outputs)
 
         # Take softmax for the mixture parameters
         mixture_probs = torch.softmax(mixture_logits, dim=-1)
@@ -497,7 +502,8 @@ class GaussianMixtureOutput(BaseTrackingOutputModel):
         using the mixture probabilities, then sample a direction from the
         selected gaussian.
         """
-        mixture_logits, means, variances = self._get_gaussian_parameters(outputs)
+        mixture_logits, means, variances = \
+            self._get_gaussian_parameters(outputs)
 
         # Create probability distribution and sample a gaussian per point
         # (or per time step per sequence)
@@ -571,7 +577,8 @@ class FisherVonMisesOutput(BaseTrackingOutputModel):
 
         # Loss will be defined in compute_loss, using torch distribution
 
-    def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor,
+                                                     torch.Tensor]:
         """Run the inputs through the fully-connected layer.
 
         Returns

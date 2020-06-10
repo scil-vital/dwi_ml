@@ -3,8 +3,8 @@
 
 class DataListForTorch(object):
     """
-    Remembers the list of subjects and their common properties, such as the size
-    of the features for the dwi volume.
+    Remembers the list of subjects and their common properties, such as the
+    size of the features for the dwi volume.
     Everything is loaded into memory until it is needed.
     Will be used by multi_subjects_containers."""
 
@@ -84,7 +84,8 @@ class LazyDataListForTorch(DataListForTorch):
 
     def __getitem__(self, subject_item):
         """Overriding super's function"""
-        assert type(subject_item) == tuple, "Trying to get an item, but item should be a tuple."
+        assert type(subject_item) == tuple,\
+            "Trying to get an item, but item should be a tuple."
         subject_idx, subject_hdf_handle = subject_item
         partial_subjectdata = self.subjects_data_list[subject_idx]
         return partial_subjectdata.with_handle(subject_hdf_handle)

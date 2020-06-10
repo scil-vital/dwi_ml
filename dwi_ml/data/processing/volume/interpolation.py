@@ -148,5 +148,3 @@ def interpolate_volume_at_coordinates(volume: np.ndarray, coords: np.ndarray,
                                          mode=mode)
             values_4d.append(values_tmp)
         return np.ascontiguousarray(np.array(values_4d).T)
-
-

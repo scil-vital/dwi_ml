@@ -133,4 +133,3 @@ class EarlyStopping(object):
         self.min_eps = state['min_eps']
         self.best = state['best']
         self.n_bad_epochs = state['n_bad_epochs']
-

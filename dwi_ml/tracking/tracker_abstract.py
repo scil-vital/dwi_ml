@@ -347,4 +347,3 @@ class TrackerAbstract(object):
                                           "bigger graphics card!")
                 else:
                     raise e
-

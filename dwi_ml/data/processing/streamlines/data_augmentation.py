@@ -42,7 +42,7 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
     """
     logging.info("Please note your sft space is in {}. We suppose that the "
                  "noise, {}, fits.".format(sft.space, noise_sigma))
-    
+
     # Perform noise addition (flattening before to go faster)
     flattened_coords = np.concatenate(sft.streamlines, axis=0)
     flattened_coords += truncnorm.rvs(-2, 2, size=flattened_coords.shape,

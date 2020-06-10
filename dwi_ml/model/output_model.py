@@ -44,9 +44,9 @@ MODELS:
     Fisher - von Mises distribution, which resembles a gaussian on the sphere. 
     As such, it does not require unit normalization when sampling, and should be
     more stable while training.                                                                                          # toDo. Can we have a bit more (easy) explanation?
- 
+
 * p.s. Torch kind of does a softmax after although it is not explicit.
-                                                                         
+
 INPUTS:  Def: Here, we call 'input' the output of your experiment model. Ex, RNN.
          Type: torch.tensor
          Size:
@@ -60,7 +60,7 @@ OUTPUTS: Def: The model final outputs.
          Size: 
              - Sequence model: [batch_size*seq_len, 3]
              - Local models: [batch_size, 3]
-         
+
 TARGETS: Def: The target values (real Y) for the batch
          Type: Could be `PackedSequence.data`
          Size: 

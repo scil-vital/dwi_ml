@@ -49,7 +49,7 @@ structures:
 
 """ \
               + FOLDER_DESCRIPTION + CONFIG_DECRIPTION + """
-              
+
 ==== In this script (create_hdf5_ML_dataset.py), a `processed` folder will be created 
 alongside the `raw` folder in the dataset folder. It will contain the .hdf5 file 
 and the intermediate files.

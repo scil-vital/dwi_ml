@@ -285,10 +285,13 @@ class TrackerAbstract(object):
                     stopping_flags = batch_tractogram.data_per_streamline['stopping_flags'].astype(np.uint8)
 
                     print("Forward pass stopped because of - mask: {:,}\t "
-                          "curvature: {:,}\t length: {:,}".format(
-                        count_flags(stopping_flags, StoppingFlags.STOPPING_MASK),
-                        count_flags(stopping_flags, StoppingFlags.STOPPING_CURVATURE),
-                        count_flags(stopping_flags, StoppingFlags.STOPPING_LENGTH)))
+                          "curvature: {:,}\t length: {:,}".
+                        format(count_flags(stopping_flags,
+                                           StoppingFlags.STOPPING_MASK),
+                               count_flags(stopping_flags,
+                                           StoppingFlags.STOPPING_CURVATURE),
+                               count_flags(stopping_flags,
+                                           StoppingFlags.STOPPING_LENGTH)))
 
                     # Backwards tracking
                     # Flip streamlines to initialize backwards tracker
@@ -301,17 +304,23 @@ class TrackerAbstract(object):
                     stopping_flags = batch_tractogram.data_per_streamline['stopping_flags'].astype(np.uint8)
 
                     print("Backwards pass stopped because of - mask: {:,}\t "
-                          "curvature: {:,}\t length: {:,}".format(
-                        count_flags(stopping_flags, StoppingFlags.STOPPING_MASK),
-                        count_flags(stopping_flags, StoppingFlags.STOPPING_CURVATURE),
-                        count_flags(stopping_flags, StoppingFlags.STOPPING_LENGTH)))
+                          "curvature: {:,}\t length: {:,}".
+                          format(count_flags(stopping_flags,
+                                             StoppingFlags.STOPPING_MASK),
+                                 count_flags(stopping_flags,
+                                             StoppingFlags.STOPPING_CURVATURE),
+                                 count_flags(stopping_flags,
+                                             StoppingFlags.STOPPING_LENGTH)))
 
                     # Filter short streamlines
                     if min_length:
                         lengths_vox = slength(batch_tractogram.streamlines)
                         to_keep = np.where(lengths_vox > min_length_vox)
-                        print("Removing {} streamlines that were under {} mm".format(
-                            len(batch_tractogram) - len(to_keep[0]), min_length))
+                        print(
+                            "Removing {} streamlines that were under {} mm".
+                                format(
+                                len(batch_tractogram) - len(to_keep[0]),
+                                min_length))
 
                         # Make a copy because indexing an ArraySequence creates
                         # a "view" with the same _data property, which causes problems

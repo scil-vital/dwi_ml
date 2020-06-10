@@ -246,9 +246,11 @@ class DWIMLAbstractSequences:
 
         self.current_epoch = 0
 
-        self.experiment_dir = (self.name if self.name
-                               else datetime.datetime.now().strftime(
-            "%Y_%m_%d_%H%M%S")) + '_' + type(self).__name__
+        self.experiment_dir = \
+            (self.name
+             if self.name
+             else datetime.datetime.now().
+             strftime("%Y_%m_%d_%H%M%S")) + '_' + type(self).__name__
 
         self.optimizer = None   # Will be defined later with ADAM
         self.model = None       # Will be defined by the main user

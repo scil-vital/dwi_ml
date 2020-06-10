@@ -7,10 +7,10 @@
 # main
 
 
-#                                                                                                       ToDo Proposition. Ajouter la possibilité de loader des données
-#                                                                                                        preprocessed ailleurs pour les volumes au lieu de processer les volumes ici?
+# ToDo Proposition. Ajouter la possibilité de loader des données
+# preprocessed ailleurs pour les volumes au lieu de processer les volumes ici?
 
-#                                                                                                       ToDO À ajouter! Prise en charge des bids
+# ToDO À ajouter! Prise en charge des bids
 
 import argparse
 import datetime
@@ -30,8 +30,9 @@ from dwi_ml.data.creation.hdf5_creator import (
     HDF5CreatorDwiSH,
     HDF5CreatorFODFPeaks,
     HDF5CreatorFodfSH)
-                                                                                                            # toDO NOTE. Creators.load_and_process have changed. We need to use bval and bvecs now
-                                                                                                            #  instead of gradient table. So we need to load things a bit differently from the beginnig.
+# toDO NOTE. Creators.load_and_process have changed. We need to use bval and
+# bvecs now instead of gradient table. So we need to load things a bit
+# differently from the beginnig.
 # À ARRANGER
 from scil_vital.shared.code.data.description_data_structure import (
     FOLDER_DESCRIPTION,
@@ -114,11 +115,12 @@ def _parse_args():
                                                  "input to the model. [3]")
 
     # Other facultative arguments
+    # ToDo ANTOINE: was a positional argument
+    # PHILIPPE: did not exist.
     p.add_argument('--subject_ids', type=str, nargs='+',
                    help="List of subjects ids to use for training. Ex:"
                         "(EXAMPLE TO GIVE). If not given, we will process all "
-                        "the subjects in the raw folder.")                                              # ToDo ANTOINE: was a positional argument
-                                                                                                        #  PHILIPPE: did not exist.
+                        "the subjects in the raw folder.")
     p.add_argument('--name', type=str, help="Dataset name [Default uses "
                                             "date and time of processing].")
     p.add_argument('--logging', type=str,
@@ -140,8 +142,8 @@ def _parse_args():
 def main():
     """Parse arguments, generate hdf5 dataset and save it on disk."""
     args = _parse_args()
-                                                                                                # ToDo NOTE: OTHER VERIFICATIONS ARE MADE DIRECTLY IN data_loader. SHOULD BE
-                                                                                                #  DONE HERE INSTEAD??  (see all the validate_config methods)
+# ToDo NOTE: OTHER VERIFICATIONS ARE MADE DIRECTLY IN data_loader. SHOULD BE
+# DONE HERE INSTEAD??  (see all the validate_config methods)
 
     # Initialize logger
     logging.basicConfig(level=str(args.logging).upper())
@@ -168,7 +170,7 @@ def main():
     raw_path = Path(args.path, "raw")
     dataset_config = dataset_cls.from_json(args.config_file, raw_path,
                                            **cls_args)
-                                                                                                # ToDo ANTOINE uses with Timer("Generating dataset", newline=True):
+    # ToDo ANTOINE uses with Timer("Generating dataset", newline=True):
     _generate_dataset(args.path, args.name, dataset_config,
                       save_intermediate=args.save_intermediate,
                       force=args.force)
@@ -220,19 +222,20 @@ def _generate_dataset(path: str, name: str,
         if force:
             print("Deleting existing processed data folder: {}"
                   .format(processed_path))
-            shutil.rmtree(str(processed_path))                                                              # toDo We should probably avoid removing stuff that
-                                                                                                            #  the person could have placed in the processed_... folder.
-                                                                                                            #  ex: maybe the user created images or notes and want to keep them
+            # toDo We should probably avoid removing stuff that
+            # the person could have placed in the processed_... folder.
+            # ex: maybe the user created images or notes and want to keep them
 
-                                                                                                            # NOTE. Antoine's version was:
-                                                                                                            #  Remove processed subjects
-                                                                                                            #  for subject_id in os.listdir(processed_path):
-                                                                                                            #    if subject_id in subject_ids:
-                                                                                                            #        subject_path = pjoin(processed_path, subject_id)
-                                                                                                            #        shutil.rmtree(subject_path)
-                                                                                                            #  but you also want to remove all other subjects event if they are not in
-                                                                                                            #  subject_ids: you don't want to subjects processed with different parameters
-                                                                                                            #  in processed_path.
+            # NOTE. Antoine's version was:
+            # Remove processed subjects
+            # for subject_id in os.listdir(processed_path):
+            #    if subject_id in subject_ids:
+            #        subject_path = pjoin(processed_path, subject_id)
+            #        shutil.rmtree(subject_path)
+            # but you also want to remove all other subjects event if they are
+            # not in subject_ids: you don't want to subjects processed with
+            # different parameters in processed_path.
+            shutil.rmtree(str(processed_path))
         else:
             raise FileExistsError("Processed data folder already exists: {}. "
                                   "Use force to allow overwrite"
@@ -243,16 +246,19 @@ def _generate_dataset(path: str, name: str,
     dataset_file = processed_path.joinpath("{}.hdf5".format(dataset_name))
     with h5py.File(dataset_file, 'w') as hdf_file:
         # Save version and configuration
-        hdf_file.attrs['version'] = 3                                                                   # ToDo ANTOINE's version was 2. Any difference?
-        hdf_file.attrs.update(dataset_creator.get_state_dict())                                         #  ANTOINE a aussi ["bundles"].
-                                                                                                        #  et hdf_file.attrs.update({k: v for k, v in config_dict.items()
-                                                                                                        #     if v is not None})
+        # ToDo ANTOINE's version was 2. Any difference?
+        hdf_file.attrs['version'] = 3
+        hdf_file.attrs.update(dataset_creator.get_state_dict())
+        # ANTOINE a aussi ["bundles"].
+        # et hdf_file.attrs.update({k: v for k, v in config_dict.items()
+        #     if v is not None})
 
         # Starting the subjects processing
         logging.info("Processing {} subjects : {}"
                      .format(len(dataset_creator.final_subjs),
                              dataset_creator.final_subjs))
-        raw_path = Path(path, "raw")                                                            # toDo Antoine used pjoin. Any difference?
+        # toDo Antoine used pjoin. Any difference?
+        raw_path = Path(path, "raw")
         for subject_id in dataset_creator.final_subjs:
             # toDO ANTOINE A:
             #  with Timer(
@@ -274,7 +280,8 @@ def _generate_dataset(path: str, name: str,
 
             # Add subject to hdf database
             hdf_subject = hdf_file.create_group(subject_id)
-            hdf_input_volume = hdf_subject.create_group('input_volume')                                             # ANTOINE a un group input_volume, peaks_volume, odfs_volume
+            # ANTOINE a un group input_volume, peaks_volume, odfs_volume
+            hdf_input_volume = hdf_subject.create_group('input_volume')
             hdf_input_volume.attrs['vox2rasmm'] = model_input.affine
             hdf_input_volume.create_dataset(
                 'data', data=model_input.get_fdata(dtype=np.float32))
@@ -289,8 +296,9 @@ def _generate_dataset(path: str, name: str,
                                                  data=streamlines._lengths)
                 streamlines_group.create_dataset('euclidean_lengths',
                                                  data=lengths)
-                                                                                                                # À AJOUTER POUR ANTOINE:
-                                                                                                 # streamlines_group.create_dataset('rewards', data=streamlines_data['rewards'])
+                # À AJOUTER POUR ANTOINE:
+                # streamlines_group.create_dataset('rewards',
+                # data=streamlines_data['rewards'])
     print("Saved dataset : {}".format(dataset_file))
 
 
@@ -323,7 +331,7 @@ def _process_subject(subject_id: str, subject_data_path: Path,
     streamlines_lengths : List[float]
         Euclidean length of each streamline.
     """
-                                                                                                    # ANTOINE: with Timer("Fitting SH to DWI", newline=True):
+    # ANTOINE: with Timer("Fitting SH to DWI", newline=True):
     # Get diffusion data
     dwi_file = subject_data_path.joinpath("dwi",
                                           "{}_dwi.nii.gz".format(subject_id))
@@ -339,7 +347,9 @@ def _process_subject(subject_id: str, subject_data_path: Path,
             "Multiple b-values detected for subject {}, please use the " \
             "--bval-filter option".format(subject_id)
 
-    # Get WM mask                                                                                   # Does it have to be WM? Could rename to... what? Tracking mask? normalization mask?
+    # Get WM mask
+    # Does it have to be WM? Could rename to... what? Tracking mask?
+    # normalization mask?
     wm_mask_file = subject_data_path.joinpath(
         "masks", "{}_wm.nii.gz".format(subject_id))
     if not wm_mask_file.exists():
@@ -355,17 +365,21 @@ def _process_subject(subject_id: str, subject_data_path: Path,
     dwi_image.uncache()
 
     # Save unnormalized processed data
-    if save_intermediate:                                                                       # Est-ce que le nom pourrait refléter mieux le modèle?
+    if save_intermediate:
+        # Est-ce que le nom pourrait refléter mieux le modèle?
         model_input_image = nib.Nifti1Image(model_input_volume,
                                             dwi_image.affine)
         output_fname = "{}_model_input_unnormalized.nii.gz".format(subject_id)
-        nib.save(model_input_image, str(output_path.joinpath(output_fname)))                            # Antoine enregistrait dwi ET sh.
+        # Antoine enregistrait dwi ET sh.
+        nib.save(model_input_image, str(output_path.joinpath(output_fname)))
 
     # Create and save normalized volume (using WM mask)
-                                                                                                    # Antoine: with Timer("Normalizing input", newline=True):
+    # Antoine: with Timer("Normalizing input", newline=True):
+    # Antoine a WM mask et normalization mask qui sont différents.
+    # Erreur de type??
     normalized_volume = normalize_data_volume(model_input_volume,
-                                              wm_mask_image.get_fdata())                                    # Antoine a WM mask et normalization mask qui sont différents.
-                                                                                                        # Erreur de type??
+                                              wm_mask_image.get_fdata())
+
     normalized_image = nib.Nifti1Image(normalized_volume, dwi_image.affine)
     if save_intermediate:
         output_fname = "{}_model_input_normalized.nii.gz".format(subject_id)

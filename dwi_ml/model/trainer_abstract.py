@@ -150,11 +150,12 @@ class DWIMLAbstractSequences:
         self.streamlines_cut_ratio = streamlines_cut_ratio
         self.step_size = step_size
         self.neighborhood_dist_mm = neighborhood_dist_mm
-        self.nb_neighborhood_axes = nb_neighborhood_axes                                                # toDo. À voir!! Je vais peut-être devoir changer int pour str='method'
-                                                                                                        #  On aurait la méthode "6axes" et la méthode "mimicGrid" pour mon CNN
-                                                                                                        #  où je prendrais 27 axes, pas tous de la même longueur! Possiblement
-                                                                                                        #  le double d'axe pour avoir l'équivalent de 2 voxels autour de mon point
-                                                                                                        #  dans toutes les directions. Ça pourrait être [str|int]
+        # toDo. À voir!! Je vais peut-être devoir changer int pour str='method'
+        # On aurait la méthode "6axes" et la méthode "mimicGrid" pour mon CNN
+        # où je prendrais 27 axes, pas tous de la même longueur! Possiblement
+        # le double d'axe pour avoir l'équivalent de 2 voxels autour de mon
+        # point dans toutes les directions. Ça pourrait être [str|int]
+        self.nb_neighborhood_axes = nb_neighborhood_axes
         self.add_previous_dir = add_previous_dir
         self.lazy = lazy
 
@@ -262,9 +263,9 @@ class DWIMLAbstractSequences:
 
     def train(self, **kwargs):
         raise NotImplementedError
-                                                                                                # ToDo: "train" depends on each user, but can we define
-                                                                                                #  sub-functions here that could encapsulate some sub-tasks that
-                                                                                                #  everybody uses? One day we could compare our codes.
+        # ToDo: "train" depends on each user, but can we define
+        #  sub-functions here that could encapsulate some sub-tasks that
+        #  everybody uses? One day we could compare our codes.
 
     def save(self):
         raise NotImplementedError

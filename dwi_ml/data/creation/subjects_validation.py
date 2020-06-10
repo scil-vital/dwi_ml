@@ -1,7 +1,7 @@
 
-
-########### NE SERA PLUS UTILE SI ON GERE COMME IL FAUT LES dataset_creation (hdf5).
-########### A GERER AVANT DE MODIFIER CE FICHIER
+# Fixme
+# NE SERA PLUS UTILE SI ON GERE COMME IL FAUT LES dataset_creation (hdf5).
+# A GERER AVANT DE MODIFIER CE FICHIER
 
 
 def list_intersection(list1, list2):  # or list(set(a) & set(b))

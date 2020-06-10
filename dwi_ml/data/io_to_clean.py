@@ -6,6 +6,7 @@ from dipy.core.gradients import GradientTable, \
 import nibabel as nib
 from scilpy.image.resample_volume import resample_volume
 
+
 def load_dwi(dwi_file: str) -> nib.Nifti1Image:
     """Loads a dMRI Nifti file along with the bvals/bvecs.
     Parameters

@@ -26,6 +26,7 @@ from dwi_ml.data.creation.subjects_validation import (
     validate_subject_list, list_equals)                                                             # Ugly but this script will be modified and maybe we won't need it anymore.
 from dwi_ml.experiment.timer import Timer
 
+
 class HDF5BundleConfig(object):
     """Bundle configuration parameters."""
 

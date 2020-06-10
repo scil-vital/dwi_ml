@@ -254,13 +254,13 @@ def _generate_dataset(path: str, name: str,
                              dataset_creator.final_subjs))
         raw_path = Path(path, "raw")                                                            # toDo Antoine used pjoin. Any difference?
         for subject_id in dataset_creator.final_subjs:
-                                                                                                # toDO ANTOINE A:
-                                                                                                #  with Timer(
-                                                                                                #        "Processing subject {}".format(
-                                                                                                #            subject_id),
-                                                                                                #        newline=True,
-                                                                                                #        color='blue'
-                                                                                                #  ):
+            # toDO ANTOINE A:
+            #  with Timer(
+            #        "Processing subject {}".format(
+            #            subject_id),
+            #        newline=True,
+            #        color='blue'
+            #  ):
             subject_data_path = raw_path.joinpath(subject_id)
 
             # Create subject's processed data folder

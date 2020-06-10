@@ -156,7 +156,7 @@ class LazySubjectData(object):
 
 
 class LazyStreamlinesGetter(object):
-                                                                                        # toDo. Streamlines should be an sft???
+    # toDo. Streamlines should be an sft???
     def __init__(self, hdf_handle, subject_id):
         self.hdf_handle = hdf_handle
         self.subject_id = subject_id

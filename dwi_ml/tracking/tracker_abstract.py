@@ -142,8 +142,8 @@ class TrackerAbstract(object):
         length_stopping_criterion = \
             tracker.stopping_criteria[StoppingFlags.STOPPING_LENGTH]
         with torch.no_grad(), \
-             tqdm.tqdm(range(length_stopping_criterion.keywords['max_nb_steps'])
-                       ) as pbar:
+             tqdm.tqdm(range(
+                 length_stopping_criterion.keywords['max_nb_steps'])) as pbar:
             for _ in pbar:
                 tracker.grow_step()
 

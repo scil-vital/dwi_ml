@@ -295,9 +295,9 @@ class StepTracker(object):
 
         # Drop last point since it triggered the flag
         stopped_streamlines = self.streamlines[stopping_idx, :-1]
-        tractogram = Tractogram(streamlines=stopped_streamlines,
-                                data_per_streamline={"stopping_flags":
-                                                         stopping_flags})
+        tractogram = Tractogram(
+            streamlines=stopped_streamlines,
+            data_per_streamline={"stopping_flags": stopping_flags})
 
         # Keep only streamlines that should continue
         self._keep(continue_idx)
@@ -394,8 +394,8 @@ class PreInitializedStepTracker(StepTracker):
 
         # Do not update streamlines that are still initializing
         predicted_streamlines = self.streamlines
-        is_still_initializing = self.n_init_steps >=\
-                                predicted_streamlines.shape[1]
+        is_still_initializing = \
+            self.n_init_steps >= predicted_streamlines.shape[1]
         if np.any(is_still_initializing):
             # Replace the last point of the predicted streamlines
             # with the seeding streamlines at the same position

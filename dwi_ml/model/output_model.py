@@ -614,7 +614,7 @@ class FisherVonMisesOutput(BaseTrackingOutputModel):
         batch_dot_product = torch.sum(mu * targets, dim=1)
 
         nll_losses = -torch.log(kappa) + log_2pi + log_diff_exp_kappa - \
-                   (kappa * batch_dot_product)
+            (kappa * batch_dot_product)
 
         mean_loss = nll_losses.mean()
 

@@ -148,7 +148,7 @@ class LazySubjectData(object):
     def lengths_mm(self):
         """As a property, this is only computed if called by the user."""
         if self.hdf_handle is not None:
-            name='streamlines/euclidean_lengths'
+            name = 'streamlines/euclidean_lengths'
             return np.array(self.hdf_handle[self.subject_id][name])
 
     def with_handle(self, hdf_handle):
@@ -172,7 +172,7 @@ class LazyStreamlinesGetter(object):
             return streamlines
 
         if isinstance(item, slice):
-            name='streamlines'
+            name = 'streamlines'
             streamlines = []
             streamlines_dataset = self.hdf_handle[self.subject_id][name]
             offsets = streamlines_dataset['offsets'][item]

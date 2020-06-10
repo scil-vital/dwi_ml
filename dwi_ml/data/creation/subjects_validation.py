@@ -4,7 +4,6 @@
 ########### A GERER AVANT DE MODIFIER CE FICHIER
 
 
-
 def list_intersection(list1, list2):  # or list(set(a) & set(b))
     """Values both in list1 and list2"""
     list3 = [value for value in list1 if value in list2]

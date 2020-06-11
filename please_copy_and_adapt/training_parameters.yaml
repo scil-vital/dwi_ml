@@ -23,20 +23,21 @@ experiment:
   # name: str
   #     If given, name for the experiment. Else, model will decide the name to
   #     give.
+  name: null
 
 dataset:
   # hdf5_filename: str
   #     Path to the .hdf5 dataset. Should contain both your training subjects
   #     and validation subjects.
-  hdf5_filename: my_file.hdf5
+  hdf5_filename: test1.hdf5
   # training_subjs_filename: str
   #     Txt file containing the list of subjects used for training. One
   #     subject per line.
-  training_subjs_filename: training_subjs.txt
+  training_subjs_filename: training_subjects.txt
   # validation_subjs_filename: str
   #     Txt file containing the list of subjects used for validation. One
   #     subject per line.
-  validation_subjs_filename: validation_subjs.txt
+  validation_subjs_filename: validation_subjects.txt
 
 preprocessing:
   # step_size: float
@@ -71,31 +72,32 @@ input:
     #     radius 1, that's 27 points. With radius 2, that's 125 points.
     #     * Can't be used together with sphere_radius.
     grid_radius: null
-  # add_x_previous_dirs: int
+  # num_previous_dirs: int
   #     Concatenate X previous streamline directions to the input vector. Null
   #     is equivalent to 0.
-  add_x_previous_dirs: null
+  num_previous_dirs: null
 
 model:
   # Add your model's parameters
 
-epochs:
-  # max_epochs: int
-  #     Maximum number of epochs. Suggestion: 100.
-  max_epochs: null
-  # patience: int
-  #     Use early stopping. Defines the number of epochs after which the
-  #     model should stop if the loss hasn't improved. Suggestion: 20.
-  patience: null
+training:
+  epochs:
+    # max_epochs: int
+    #     Maximum number of epochs. Suggestion: 100.
+    max_epochs: null
+    # patience: int
+    #     Use early stopping. Defines the number of epochs after which the
+    #     model should stop if the loss hasn't improved. Suggestion: 20.
+    patience: null
   batch:
     # batch_size: int
     #     Number of streamline points per batch. Suggestion: 20000.
     size: null
-    # volumes_used: int
+    # volumes_per_batch: int
     #     Limits the number of volumes used in a batch. If null, will use
     #     true random sampling.
     #     Hint: Will influence the cache size if memory:cache_manager is used.
-    volumes_used: None
+    volumes_per_batch: null
     # cycles_per_volume: int
     #     Relevant only if epochs:batch:volumes_used is not null. Number of
     #     cycles before changing to new volumes. (null is equivalent to
@@ -117,7 +119,7 @@ memory:
   use_gpu: True
   # num_cpu_workers: int
   #     Number of parallel CPU workers.
-  num_cpu_workers: None
+  num_cpu_workers: null
   # worker_interpolation: bool
   #     If set, if using num_cpu_workers > 0, interpolation will be done on CPU
   #     by the workers instead of on the main thread using the chosen device.
@@ -126,7 +128,7 @@ memory:
   #     If set, instead of printing progression, print taskman-relevant data.
   taskman_managed: False
 
-randomisation:
+randomization:
   # seed: int
   #     Random experiment seed.
   seed: 1234

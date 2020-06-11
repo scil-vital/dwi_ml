@@ -2,7 +2,9 @@
 
 from os import path
 
-### Various arg_parser equivalents.
+
+# Various arg_parser equivalents.
+
 
 def check_similar_to_none(var, var_name: str):
     """
@@ -11,9 +13,10 @@ def check_similar_to_none(var, var_name: str):
     understood as a string.
     """
     if var == 'None':
-        raise ValueError("You have set {} to None! Possible confusion, "
+        raise ValueError("You have set {} to None in yaml! Possible confusion, "
                          "stopping here. If you want to set a variable to None "
-                         "with yaml, you should use ~ or null.".format(var_name))
+                         "with yaml, you should use ~ or "
+                         "null.".format(var_name))
     if var == 'null':
         raise ValueError("You have set {} to 'null'. Possible confusion, "
                          "stopping here. Did you mean null without quotes?")
@@ -46,8 +49,8 @@ def check_float_instance(var: float, var_name: str):
         if isinstance(var, int):
             var = float(var)
         else:
-            raise ValueError('A float value was expected for the variable {} but '
-                             '{} was received.'.format(var_name, var))
+            raise ValueError('A float value was expected for the variable {} '
+                             'but {} was received.'.format(var_name, var))
     return var
 
 
@@ -64,7 +67,8 @@ def check_str_instance(var: str, var_name: str):
         raise ValueError('The variable {} should be a string, but {} was '
                          'received'.format(var_name, var))
 
-### Checks for each parameters
+
+# Checks for each parameters
 
 
 def check_logging_level(level: str, required: bool = False):
@@ -126,7 +130,7 @@ def check_validation_subjs_filename(filename: str, required: bool = False):
 
 
 def check_step_size(step_size: float, required: bool = False):
-    check_similar_to_none(step_size, 'step size')
+    check_similar_to_none(step_size, 'step_size')
     check_required_was_given(step_size, 'step_size', required)
     step_size = check_float_instance(step_size, 'step_size')
 
@@ -177,14 +181,14 @@ def check_neighborhood(sphere_radius: float, grid_radius: int):
         return None, None
 
 
-def check_previous_dir(add_x_previous_dirs: int):
+def check_previous_dir(num_previous_dirs: int):
     # Not required. If not given, value is 0.
-    check_similar_to_none(add_x_previous_dirs, 'add_x_previous_dirs')
-    check_int_instance(add_x_previous_dirs, 'add_x_previous_dirs')
+    check_similar_to_none(num_previous_dirs, 'num_previous_dirs')
+    check_int_instance(num_previous_dirs, 'num_previous_dirs')
 
-    if add_x_previous_dirs is None:
-        add_x_previous_dirs = 0
-    return add_x_previous_dirs
+    if num_previous_dirs is None:
+        num_previous_dirs = 0
+    return num_previous_dirs
 
 
 def check_max_epochs(max_epochs: int, required: bool = False):
@@ -281,3 +285,95 @@ def check_seed(seed: int, required: bool = False):
     check_int_instance(seed, 'seed')
 
     return seed
+
+
+# Main check function
+
+
+def check_all_experiment_parameters(conf):
+    # Experiment:
+    name = check_experiment_name(
+        conf['experiment']['name'], required=False)
+
+    # Dataset:
+    hdf5_filename = check_hdf5_filename(
+        conf['dataset']['hdf5_filename'], required=True)
+    training_subjs_filename = check_training_subjs_filename(
+        conf['dataset']['training_subjs_filename'], required=True)
+    validation_subjs_filename = check_validation_subjs_filename(
+        conf['dataset']['validation_subjs_filename'], required=True)
+
+    # Preprocessing:
+    step_size = check_step_size(
+        conf['preprocessing']['step_size'], required=False)
+
+    # Data augmentation:
+    add_noise = check_add_noise(
+        conf['data_augmentation']['add_noise'])
+    split_ratio = check_split_ratio(
+        conf['data_augmentation']['split_ratio'])
+
+    # Input:
+    neighborhood_type, neighborhood_radius = check_neighborhood(
+        conf['input']['neighborhood']['sphere_radius'],
+        conf['input']['neighborhood']['grid_radius'])
+    num_previous_dirs = check_previous_dir(
+        conf['input']['num_previous_dirs'])
+
+    # Epochs:
+    max_epochs = check_max_epochs(
+        conf['training']['epochs']['max_epochs'], required=False)
+    patience = check_patience(
+        conf['training']['epochs']['patience'], required=False)
+    batch_size = check_batch_size(
+        conf['training']['batch']['size'], required=False)
+    volumes_per_batch = check_volumes_per_batch(
+        conf['training']['batch']['volumes_per_batch'], required=False)
+    cycles_per_volume = check_cycles_per_volume(
+        conf['training']['batch']['cycles_per_volume'], volumes_per_batch)
+
+    # Memory:
+    lazy = check_lazy(
+        conf['memory']['lazy'])
+    cache_manager = check_cache_manager(
+        conf['memory']['cache_manager'], lazy)
+    use_gpu = check_use_gpu(
+        conf['memory']['use_gpu'])
+    num_cpu_workers = check_num_cpu_workers(
+        conf['memory']['num_cpu_workers'], required=False)
+    worker_interpolation = check_worker_interpolation(
+        conf['memory']['worker_interpolation'])
+    taskman_managed = check_taskman_managed(
+        conf['memory']['taskman_managed'])
+
+    # Randomization:
+    seed = check_seed(
+        conf['randomization']['seed'])
+
+    # Final args:
+    arranged_conf = {
+        'name': name,
+        'hdf5_filename': hdf5_filename,
+        'training_subjs_filename': training_subjs_filename,
+        'validation_subjs_filename': validation_subjs_filename,
+        'step_size': step_size,
+        'add_noise': add_noise,
+        'split_ratio': split_ratio,
+        'neighborhood_type': neighborhood_type,
+        'neighborhood_radius': neighborhood_radius,
+        'num_previous_dirs': num_previous_dirs,
+        'max_epochs': max_epochs,
+        'patience': patience,
+        'batch_size': batch_size,
+        'volumes_per_batch': volumes_per_batch,
+        'cycles_per_volume': cycles_per_volume,
+        'lazy': lazy,
+        'cache_manager': cache_manager,
+        'use_gpu': use_gpu,
+        'num_cpu_workers': num_cpu_workers,
+        'worker_interpolation': worker_interpolation,
+        'taskman_managed': taskman_managed,
+        'seed': seed,
+    }
+
+    return arranged_conf

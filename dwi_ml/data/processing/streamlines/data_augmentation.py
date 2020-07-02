@@ -13,7 +13,6 @@ from scipy.stats import truncnorm
 from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths
 
 
-# Checked!
 def add_noise_to_streamlines(sft: StatefulTractogram,
                              noise_sigma: float,
                              noise_rng: np.random.RandomState):
@@ -62,7 +61,6 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
     return noisy_sft
 
 
-# Checked!
 def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
                       split_ids: np.ndarray = None, min_nb_points: int = 6):
     """Splits (or cuts) streamlines into 2 random segments. Returns both
@@ -148,7 +146,6 @@ def _extend_dict(main_dict: Union[PerArraySequenceDict, PerArrayDict],
     return main_dict
 
 
-# Checked!
 def reverse_streamlines(sft: StatefulTractogram, reverse_ids: np.ndarray = None):
     """Reverse streamlines, i.e. inverse the beginning and end
 

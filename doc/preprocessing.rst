@@ -22,9 +22,9 @@ Conversions
             --reference processed/SUBJ/some_ref.nii.gz
 
 Separating your tractogram into bundles
-    One possible technique to create bundle is to simply regroup the streamlines that are close. See `scil_compute_qbx.py <https://github.com/scilus/scilpy/blob/master/scripts/scil_compute_qbx.py>`_.
+    One possible technique to create bundles is to simply regroup the streamlines that are close. See `scil_compute_qbx.py <https://github.com/scilus/scilpy/blob/master/scripts/scil_compute_qbx.py>`_.
 
-    For a clustering based on atlases, Dipy offers Recobundles, or you can use scilpy's version RecobundlesX, which is a little different. You will need bundle models and their associated json file (here named hcp_models). You may check `scilpy's doc <https://scil-documentation.readthedocs.io/en/latest/our_tools/recobundles.html>`_ recobundles tab for a basic bash script example.
+    However, separating data into known bundles is a nice way to clean your tractogram by removing possibly false positive streamlines. For a clustering based on atlases, Dipy offers Recobundles, or you can use scilpy's version RecobundlesX, which is a little different. You will need bundle models and their associated json file. You may check `scilpy's doc <https://scil-documentation.readthedocs.io/en/latest/our_tools/recobundles.html>`_ RecobundlesX tab for a basic bash script example.
 
 Bundle masks
     Here is how to create a mask of voxels touched by a bundle:

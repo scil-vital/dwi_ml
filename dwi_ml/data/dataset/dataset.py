@@ -28,7 +28,7 @@ from dwi_ml.data.dataset.single_subject_containers import (SubjectData,
 from dwi_ml.data.processing.space.neighbourhood import (
     get_neighborhood_vectors_axes)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
-    flip_streamlines,
+    reverse_streamlines,
     add_noise_to_streamlines,
     cut_random_streamlines)
 
@@ -338,6 +338,8 @@ class MultiSubjectDataset(Dataset):
         flip_ids = ids[:len(ids) // 2]
         batch_streamlines = [flip_streamline(s) if i in flip_ids else s
                              for i, s in enumerate(batch_streamlines)]
+        # ToDo
+        #  To change. See new function: sft = reverse_streamlines(sft, flip_ids)
 
         return batch_streamlines, batch_subj_to_y_ids_processed
 

@@ -4,8 +4,7 @@ import logging
 from pathlib import Path
 from typing import List
 
-from dipy.io.stateful_tractogram import (set_sft_logger_level, Space,
-                                         StatefulTractogram)
+from dipy.io.stateful_tractogram import (set_sft_logger_level, Space)
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.utils import length
 import nibabel as nib
@@ -48,7 +47,7 @@ def verify_subject_lists(dwi_ml_folder: Path, chosen_subjs: List[str]):
     # Note. good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
 
 
-def _load_and_check_volume_to4d( data_file):
+def _load_and_check_volume_to4d(data_file):
     """Load nibabel data, and perform some checks:
     - Data must be Nifti
     - Data must be at least 3D
@@ -58,8 +57,8 @@ def _load_and_check_volume_to4d( data_file):
     ext = data_file.suffix
 
     if ext != '.gz' and ext != '.nii':
-        raise ValueError('All data files should be nifti (.nii or .nii.gz) but '
-                         'you provided {}. Please check again your config '
+        raise ValueError('All data files should be nifti (.nii or .nii.gz) '
+                         'but you provided {}. Please check again your config '
                          'file.'.format(data_file))
 
     img = nib.load(data_file)
@@ -122,8 +121,8 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
         try:
             group_data = np.append(group_data, data, axis=-1)
         except ImportError:
-            raise ImportError('Data file {} could not be added to data group {}'
-                              '. Wrong dimensions?'.format(data_file, group))
+            raise ImportError('Data file {} could not be added to data group '
+                              '{}. Wrong dimensions?'.format(data_file, group))
 
     # Save unnormalized data
     if save_intermediate:
@@ -143,7 +142,8 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
         standardized_img = nib.Nifti1Image(standardized_group_data,
                                            group_affine)
         output_fname = "{}_standardized.nii.gz".format(group)
-        nib.save(standardized_img, str(subj_output_path.joinpath(output_fname)))
+        nib.save(standardized_img,
+                 str(subj_output_path.joinpath(output_fname)))
 
     return standardized_group_data, group_affine, group_header
 
@@ -194,7 +194,8 @@ def process_streamlines(bundles_dir: Path, bundles,
         # Note. glob uses str. Other possibility: Path.cwd().glob but creates
         # a generator object.
         logging.debug('    Loading bundle {}'.format(bundle_name))
-        bundle_possible_name = str(bundles_dir.joinpath('*' + bundle_name + '*'))
+        bundle_possible_name = str(bundles_dir.joinpath('*' +
+                                                        bundle_name + '*'))
         bundle_real_name = glob.glob(bundle_possible_name)
         if len(bundle_real_name) == 0:
             raise ValueError('Bundle {} not found!'.format(bundle_name))

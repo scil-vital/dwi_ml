@@ -38,7 +38,8 @@ def _parse_args():
     p.add_argument('config_file',
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. Should follow description in "
-                        "our doc.")  # toDo. Add link when created.
+                        "our doc, here: "
+                        "https://dwi-ml.readthedocs.io/en/latest/data_organization.html")
     p.add_argument('training_subjs',
                    help="txt file containing the list of subjects ids to use "
                         "for training.")
@@ -46,9 +47,10 @@ def _parse_args():
                    help="txt file containing the list of subjects ids to use "
                         "for validation.")
     p.add_argument('--step_size', type=float,
-                   help="Common step size to resample the data. Must be in the "
-                        "same space as the streamlines.\nIf none is given, we "
-                        "will compress the streamlines instead of resampling. ")
+                   help="Common step size to resample the data. Must be in "
+                        "the same space as the streamlines.\nIf none is "
+                        "given, we will compress the streamlines instead of "
+                        "resampling.")
     p.add_argument('--name',
                    help="Dataset name [Default uses date and time of "
                         "processing].")
@@ -67,8 +69,8 @@ def _parse_args():
     p.add_argument('--space', type=str, default=Space.VOX,
                    choices=['Space.RASMM', 'Space.VOX', 'Space.VOXMM'],
                    help="Default space to bring all the stateful tractograms. "
-                        "All other measures (ex, step_size) should be provided "
-                        "in that space.")
+                        "All other measures (ex, step_size) should be "
+                        "provided in that space.")
     p.add_argument('--logging',
                    choices=['error', 'warning', 'info', 'debug'],
                    default='warning',

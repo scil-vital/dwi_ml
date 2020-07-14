@@ -164,6 +164,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
     with h5py.File(hdf5_file_path, 'w') as hdf_file:
         # Save version and configuration
         hdf_file.attrs['version'] = 1
+        now = datetime.datetime.now()
+        hdf_file.attrs['data_and_time'] = now.strftime('%d %B %Y %X')
         hdf_file.attrs['chosen_subjs'] = chosen_subjs
         hdf_file.attrs['groups'] = str(groups_config)
         if args.step_size is not None:
@@ -191,8 +193,9 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             # Find subject's mask
             if args.mask:
                 subj_mask_file = subj_input_dir.joinpath(args.mask)
-                subj_mask_data = nib.load(subj_mask_file)
-                subj_mask_data = subj_mask_data.get_fdata().astype(np.bool)
+                subj_mask_img = nib.load(subj_mask_file)
+                subj_mask_data = np.asanyarray(subj_mask_img.dataobj)
+                subj_mask_data = subj_mask_data.astype(np.bool)
 
             # Add the subj data based on groups in the json config file
             # (inputs and others. All nifti)
@@ -238,6 +241,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
 
                 streamlines_group.attrs['space_attributes'] = \
                     str(tractogram.space_attributes)
+                streamlines_group.attrs['space'] = space
+
                 # Accessing private Dipy values, but necessary
                 streamlines_group.create_dataset('data',
                                                  data=streamlines._data)

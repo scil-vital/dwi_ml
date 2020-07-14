@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import glob
 import logging
-import os
 from pathlib import Path
 from typing import List
 
@@ -49,14 +48,15 @@ def verify_subject_lists(dwi_ml_folder: Path, chosen_subjs: List[str]):
     # Note. good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
 
 
-def _load_and_check_volume_to4d(data_file):
+def _load_and_check_volume_to4d( data_file):
     """Load nibabel data, and perform some checks:
     - Data must be Nifti
     - Data must be at least 3D
     Final data will most probably be 4D (3D + features). Sending loaded data to
     4D if it is 3D.
     """
-    _, ext = os.path.splitext(data_file)
+    ext = data_file.suffix
+
     if ext != '.gz' and ext != '.nii':
         raise ValueError('All data files should be nifti (.nii or .nii.gz) but '
                          'you provided {}. Please check again your config '
@@ -205,10 +205,10 @@ def process_streamlines(bundles_dir: Path, bundles,
 
         # Loading bundle and sending to wanted space
         bundle = load_tractogram(bundle_real_name[0], header)
-        bundle.to_space(space)
         bundle.to_center()
 
         # Resample or compress streamlines
+        # Note. No matter the chosen space, resampling is done in mm.
         if step_size:
             logging.debug('  Resampling')
             bundle = resample_streamlines_step_size(bundle, step_size)
@@ -218,8 +218,12 @@ def process_streamlines(bundles_dir: Path, bundles,
             logging.debug('  Compressing')
             bundle = compress_sft(bundle)
 
-        # Compute euclidean lengths
+        # Compute euclidean lengths (rasmm space)
+        bundle.to_space(Space.RASMM)
         output_lengths.extend(length(bundle.streamlines))
+
+        # Sending to wanted space
+        bundle.to_space(space)
 
         # Add processed bundle to output tractogram
         if output_tractogram is None:
@@ -227,7 +231,7 @@ def process_streamlines(bundles_dir: Path, bundles,
         else:
             output_tractogram.streamlines.extend(bundle.streamlines)
 
-    # Internal validation check
+    # Removing invalid streamlines
     logging.debug('...Done. Total: {:,.0f} streamlines. Now removing invalid '
                   'streamlines.'.format(len(output_tractogram)))
     output_tractogram.remove_invalid_streamlines()

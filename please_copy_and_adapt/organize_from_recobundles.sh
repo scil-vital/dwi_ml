@@ -13,7 +13,7 @@
 # =====================================#
 #  VARIABLES TO BE DEFINED BY THE USER #
 # =====================================#
-# -dwi_ml_ready_folder = Path to the database, which should contain a
+# -database_folder = Path to the database, which should contain a
 #     preprocessed folder and a dwi_ml_ready folder.
 # -recobundles_name = Name of the recobundlesX folder for each
 #     subject. Ex: RecobundlesX/multi_bundles

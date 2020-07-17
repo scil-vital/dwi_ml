@@ -52,13 +52,13 @@ def main():
     organized_args = check_all_experiment_parameters(conf)
 
     # Instantiate your class
-    # (Change StreamlinesBasedModelAbstract for your class.)
+    # (Change DWIMLAbstractSequences for your class.)
     # Then load dataset, build model, train and save
-    #experiment = DWIMLAbstractSequences(organized_args)
-    #experiment.load_dataset()
-    #experiment.build_model()
-    #experiment.train()
-    #experiment.save()
+    experiment = DWIMLAbstractSequences(organized_args)
+    experiment.load_dataset()
+    experiment.build_model()
+    experiment.train()
+    experiment.save()
 
 
 if __name__ == '__main__':

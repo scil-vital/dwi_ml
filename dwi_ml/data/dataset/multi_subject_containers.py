@@ -22,13 +22,16 @@ import tqdm
 from dwi_ml.cache.cache_manager import SingleThreadCacheManager
 from dwi_ml.data.dataset.data_list import (DataListForTorch,
                                            LazyDataListForTorch)
-from dwi_ml.data.dataset.parameter_description import PARAMETER_DESCRIPTION
 from dwi_ml.data.dataset.single_subject_containers import (SubjectData,
                                                            LazySubjectData)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     reverse_streamlines,
     add_noise_to_streamlines,
     split_streamlines)
+
+# Note that we use default noise variance for compressed streamlines,
+# otherwise 0.1 * step-size
+DEFAULT_NOISE_MM = 0.1
 
 
 class MultiSubjectDataset(Dataset):
@@ -43,21 +46,66 @@ class MultiSubjectDataset(Dataset):
                  add_previous_dir: bool = False, do_interpolation: bool = False,
                  device: torch.device = torch.device('cpu'),
                  taskman_managed: bool = False):
-
-        # See parameters description
-        self.description = PARAMETER_DESCRIPTION
+        """
+        Parameters
+        ----------
+        path : str
+            Path to the processed .hdf5 file.
+        rng : np.random.RandomState
+            Random number generator.
+        name : str
+            Name of the dataset. If none, use the basename of the given .hdf5
+            file. [None]
+        use_streamline_noise : float
+            If set, add random gaussian noise to streamline coordinates
+            on-the-fly. Noise variance is 0.1 * step-size, or 0.1mm if no step
+            size is used. [False]
+        step_size : float
+            Constant step size that every streamline should have between points
+            (in mm). If None, train on streamlines as they are (ex,
+            compressed). Note that you probably already fixed a step size when
+            creating your dataset, but you could use a different one here if
+            you wish. [None]
+        neighborhood_dist_mm : float
+            Add neighborhood points at the given distance (in mm) in each
+            direction (nb_neighborhood_axes). [None] (None and 0 have the same
+            effect).
+        nb_neighborhood_axes: int
+            Nb of axes (directions) to get the neighborhood voxels. This is
+            only used if do_interpolation is True. Currently, 6 is the default
+            and only implemented version (left, right, front, behind, up,
+            down).
+        streamlines_cut_ratio : float
+            Percentage of streamlines to randomly cut in each batch. The reason
+            for cutting is to help the ML algorithm to track from the middle of
+            WM by having already seen half-streamlines. If you are using
+            interface seeding, this is not necessary. If None, do not split
+            streamlines. [None]
+        add_previous_dir : bool
+            If set, concatenate the previous streamline direction as input.
+            [False]
+        do_interpolation : bool
+            If True, do the interpolation in the collate_fn (worker function).
+            In this case, collate_fn returns PackedSequences ready for the
+            model. [False]
+        device : torch.device
+            Device on which to process data. ['cpu']
+        taskman_managed : bool
+            If True, taskman manages the experiment. Do not output progress bars
+            and instead output special messages for taskman. [False]
+        """
 
         # Dataset info
         self.path = path
         self.name = name if name else os.path.basename(self.path)
 
         # Concerning the choice of streamlines:
+        # Noise, resampling, cutting, interpolation.
         self.use_streamline_noise = use_streamline_noise
         self.step_size = step_size
         self.streamlines_cut_ratio = streamlines_cut_ratio
         self.do_interpolation = do_interpolation
-        self.default_noise_mm = 0.1 # Default noise variance for compressed
-                                    # streamlines, otherwise 0.1 * step-size
+        self.default_noise_mm = DEFAULT_NOISE_MM
 
         # Concerning the choice of dMRI data
         self.sh_order = None  # Stored in the dataset file
@@ -74,7 +122,9 @@ class MultiSubjectDataset(Dataset):
         self.taskman_managed = taskman_managed
 
         # Preparing the dataset
-        self.data_list = None  # type will be DataListForTorch or, in lazy version, LazyDataListForTorch
+        # type will be dwi_ml.data.dataset.data_lit.DataListForTorch or,
+        # in lazy version, LazyDataListForTorch
+        self.data_list = None
         self.subjID_to_streamlineID = None
         self.total_streamlines = None
         self.streamline_timesteps = None

@@ -1,3 +1,6 @@
+.. _ref_tractoflow_structure:
+
+
 Tractoflow's output structure
 =============================
 

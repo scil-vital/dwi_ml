@@ -1,3 +1,5 @@
+.. _ref_creating_hdf5:
+
 Creating the hdf5 file
 ======================
 

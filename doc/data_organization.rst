@@ -1,7 +1,7 @@
 .. _ref_organization:
 
-How to organize your data
-=========================
+Organizing your data
+====================
 
 Folder division
 ***************

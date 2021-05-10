@@ -1,7 +1,7 @@
 tqdm==4.34.0
-dipy==1.1.1  # You probably have dipy==1.0.0 installed with scilpy, but that's not enough here.
-nibabel>=3.0.0 # You probably have nibabel==2.4.0 installed with scilpy, but that's not compatible with dipy 1.1.1
-
+dipy==1.1.1
+nibabel>=3.0.0
+PyYAML==5.3.1
 
 
 ## Necessary but should be installed with scilpy (01/2020):

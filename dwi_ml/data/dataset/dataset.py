@@ -25,12 +25,10 @@ from dwi_ml.data.dataset.data_list import (DataListForTorch,
 from dwi_ml.data.dataset.parameter_description import PARAMETER_DESCRIPTION
 from dwi_ml.data.dataset.single_subject_containers import (SubjectData,
                                                            LazySubjectData)
-from dwi_ml.data.processing.space.neighbourhood import (
-    get_neighborhood_vectors_axes)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
-    flip_streamlines,
+    reverse_streamlines,
     add_noise_to_streamlines,
-    cut_random_streamlines)
+    split_streamlines)
 
 
 class MultiSubjectDataset(Dataset):
@@ -311,9 +309,15 @@ class MultiSubjectDataset(Dataset):
             # timesteps). Need to do it subject per subject to keep track of the
             # streamline ids.
             if self.streamlines_cut_ratio:
-                subject_streamlines = cut_random_streamlines(
-                    subject_streamlines, self.streamlines_cut_ratio,
-                    rng=self.rng)
+                all_ids = np.arange(len(subject_streamlines))
+                n_to_split = int(np.floor(len(subject_streamlines) *
+                                      self.streamlines_cut_ratio))
+                split_ids = self.rng.choice(all_ids, size=n_to_split,
+                                            replace=False)
+
+                # ToDo: once everything is sft, use new function:
+                subject_streamlines = split_streamlines(sft, self.rng,
+                                                        split_ids)
 
             # Remember the indices of the Y sub-batch
             subbatcht_start = len(batch_streamlines)
@@ -336,8 +340,10 @@ class MultiSubjectDataset(Dataset):
         ids = np.arange(len(batch_streamlines))
         self.rng.shuffle(ids)
         flip_ids = ids[:len(ids) // 2]
-        batch_streamlines = [flip_streamline(s) if i in flip_ids else s
+        batch_streamlines = [flip_streamlines(s) if i in flip_ids else s
                              for i, s in enumerate(batch_streamlines)]
+        # ToDo
+        #  To change. See new function: sft = reverse_streamlines(sft, flip_ids)
 
         return batch_streamlines, batch_subj_to_y_ids_processed
 

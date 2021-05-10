@@ -1,32 +1,28 @@
-# checked!
-
 ################################################################################
-#                           What this script does                              #
-# This script will create the dwi_ml_ready folder and subfolders and copy the  #
-# main data from tractoflow:                                                   #
-#    - Resample/dwi_resample (which is the last dwi output from tractoflow.)   #
+# This script will create symlinks in dwi_ml_ready, pointing to your data      #
+# from tractoflow for each subject:                                            #
+#    - Resample/dwi_resample                                                   #
+#         Last dwi output from tractoflow.                                     #
 #         Will be copied in dwi/dwi_tractoflow.                                #
-#    - Eddy/bval_eddy. Will be copied in dwi/bval_tractoflow. Same for bvec.   #
-#    - DTI_metrics/fa. Will be copied to dwi/fa.                               #
-#    - Register_T1/t1_warp (which is the last T1). Will be copied to anat/t1.  #
-#    - Segment_Tissues/map_wm. Will be copied to anat/wm_map                   #
-#    - Segment_Tissues/mask_wm. Will be copied to masks/wm                     #
-# If you need something else for your model, you can modify this script.       #
-# Last modification: 2020-03-26                                                #
-################################################################################
-
-################################################################################
-#                     Getting prepared to run this script                      #
-# This script is used to reorganize tractoflow results into the dwi_ml_ready   #
-# folder. You should copy this script into your project and modify according   #
-# to your needs.                                                               #
+#    - Eddy/bval_eddy / bvec_eddy                                              #
+#         Will be copied in dwi/bval_tractoflow.                               #
+#    - DTI_metrics/fa.                                                         #
+#         Will be copied to dwi/fa.                                            #
+#    - Register_T1/t1_warp                                                     #
+#        Last T1 from tractoflow.                                              #
+#        Will be copied to anat/t1.                                            #
+#    - Segment_Tissues/map_wm.                                                 #
+#        Will be copied to anat/wm_map                                         #
+#    - Segment_Tissues/mask_wm.                                                #
+#        Will be copied to masks/wm                                            #
 #                                                                              #
-# See our doc on Github for more information (doc/data_organization.rst). We   #
-# suppose that you have a "preprocess" folder that contains tractoflow's       #
-# results folders (for a reminder of Tractoflow's typical output, see again    #
-# our doc (doc/reminder_tractoflow_output.rst).                                #
+# If you need something else for your model, you can modify this script.       #
+#                                                                              #
+# See our doc for more information                                             #
+# (https://dwi-ml.readthedocs.io/en/latest/data_organization.html#ref-organization).
+# We suppose that you have a "preprocessed" folder that contains RecobundlesX  #
+# results folder for each subject.                                             #
 ################################################################################
-
 
 # =====================================#
 #  VARIABLES TO BE DEFINED BY THE USER #
@@ -77,25 +73,27 @@ while IFS= read -r subjid; do
   mkdir $subj_folder/anat
   mkdir $subj_folder/dwi
   mkdir $subj_folder/masks
+  mkdir $subj_folder/bundles
 
   echo "creating symlinks"
   # dwi:
-  ln -s $subj_preprocessed_folder/Resample_DWI/${subjid}__dwi_resample.nii.gz $subj_folder/dwi/${subjid}_dwi_tractoflow.nii.gz
-  ln -s $subj_preprocessed_folder/Eddy/${subjid}__bval_eddy $subj_folder/dwi/${subjid}_bval_tractoflow
-  ln -s $subj_preprocessed_folder/Eddy/${subjid}__dwi_eddy_corrected.bvec $subj_folder/dwi/${subjid}_bvec_tractoflow
-  ln -s $subj_preprocessed_folder/DTI_Metrics/${subjid}__fa.nii.gz $subj_folder/dwi/${subjid}_fa.nii.gz
+  ln -s $subj_preprocessed_folder/Resample_DWI/${subjid}__dwi_resampled.nii.gz $subj_folder/dwi/dwi_tractoflow.nii.gz
+  ln -s $subj_preprocessed_folder/Eddy/${subjid}__bval_eddy $subj_folder/dwi/bval_tractoflow
+  ln -s $subj_preprocessed_folder/Eddy/${subjid}__dwi_eddy_corrected.bvec $subj_folder/dwi/bvec_tractoflow
+  ln -s $subj_preprocessed_folder/DTI_Metrics/${subjid}__fa.nii.gz $subj_folder/dwi/fa.nii.gz
 
   # anat:
-  ln -s $subj_preprocessed_folder/Register_T1/${subjid}__t1_warped.nii.gz $subj_folder/anat/${subjid}_t1.nii.gz
-  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__map_wm.nii.gz $subj_folder/anat/${subjid}_wm_map.nii.gz
+  ln -s $subj_preprocessed_folder/Register_T1/${subjid}__t1_warped.nii.gz $subj_folder/anat/t1.nii.gz
+  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__map_wm.nii.gz $subj_folder/anat/wm_map.nii.gz
 
   # masks:
-  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/${subjid}_wm.nii.gz
+  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/wm.nii.gz
 
-  # Bundles:
-  echo "We have organized tractoflow results into dwi_ml (dwi, anat, masks)".
-  echo "We do not raise warnings if one file is not found. Please check that all data was indeed found."
-  echo "Ex: 'for subj in dwi_ml_ready/*; do ls \$subj/dwi/*bvec*; done'"
-  echo "Hint: We have not treated any bundles."
-  echo "      As a next step, you could now run Recobundles and use 01_organize_from_recobundles (to come)"
+  # bundles:
+  ln -s $subj_preprocessed_folder/Tracking/${subjid}__tracking.trk $subj_folder/bundles/tractoflow_wholebrain.trk
+
 done < $subject_list
+
+echo "We have organized tractoflow results into dwi_ml (dwi, anat, masks)".
+echo "We do not raise warnings if one file is not found. Please check that all data was indeed found."
+echo "Ex: 'for subj in dwi_ml_ready/*; do ls \$subj/dwi/*bvec*; done'"

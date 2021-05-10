@@ -33,8 +33,8 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
 
     Returns
     -------
-    normalized_data : np.ndarray with shape (X, Y, Z, #modalities)
-        Normalized data volume, with zero-mean and unit variance along each
+    standardized_data : np.ndarray with shape (X, Y, Z, #modalities)
+        Standardized data volume, with zero-mean and unit variance along each
         axis of the last dimension.
     """
     if mask is None:
@@ -59,10 +59,10 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
         if std == 0:
             std = 1
 
-    normalized_data = (data - mean) / std
-    normalized_data[~mask] = np.nan
+    standardized_data = (data - mean) / std
+    standardized_data[~mask] = np.nan
 
-    return normalized_data
+    return standardized_data
 
 
 def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,

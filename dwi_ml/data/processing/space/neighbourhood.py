@@ -5,7 +5,6 @@ from typing import Iterable, Union
 import numpy as np
 
 
-# checked!
 def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     """This neighborhood definition lies on a sphere. Returns a list of 6
     positions (up, down, left, right, behind, in front) at exactly `radius`
@@ -46,7 +45,6 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     return neighborhood
 
 
-# checked!
 def get_neighborhood_vectors_grid(radius: int):
     """Returns a list of points similar to the original voxel grid. Ex: with
     radius 1, this is 27 points. With radius 2, that's 125 points. Good for
@@ -80,7 +78,6 @@ def get_neighborhood_vectors_grid(radius: int):
     return neighborhood
 
 
-# checked!
 def extend_coordinates_with_neighborhood(coords: np.ndarray,
                                          neighborhood_translations: np.ndarray):
     """

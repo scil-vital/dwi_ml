@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
+
+from collections import defaultdict
+import copy
 import logging
-from typing import List, Union
+from typing import Union
 
 from dipy.io.stateful_tractogram import StatefulTractogram
-import nibabel as nib
+from nibabel.streamlines.tractogram import (PerArrayDict, PerArraySequenceDict)
 import numpy as np
 from scipy.stats import truncnorm
 
 from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths
 
 
-# Checked!
 def add_noise_to_streamlines(sft: StatefulTractogram,
                              noise_sigma: float,
                              noise_rng: np.random.RandomState):
@@ -59,43 +61,119 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
     return noisy_sft
 
 
-def cut_random_streamlines(
-        streamlines: Union[List, nib.streamlines.ArraySequence],
-        split_percentage: float, rng: np.random.RandomState):
-    """Cut a percentage of streamlines into 2 random segments.
-    Returns both segments as independent streamlines, so the number of
-    output streamlines is higher than the input.
+def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
+                      split_ids: np.ndarray = None, min_nb_points: int = 6):
+    """Splits (or cuts) streamlines into 2 random segments. Returns both
+    segments as independent streamlines, so the number of output streamlines is
+    higher than the input.
 
-    Parameters
-    ----------
-    streamlines : nib.stramlines.ArraySequence or list
-        Streamlines to cut.
-    split_percentage : float
-        Percentage of streamlines to cut.
-    rng : np.random.RandomState
+    Note. Data_per_point is cut too. Data_per_streamline is copied for each
+    half.
+
+    Params
+    ------
+    sft: StatefulTractogram
+        Dipy object containing your streamlines
+    rng: np.random.RandomState
         Random number generator.
+    split_ids: np.ndarray, optional
+        List of streamlines to split. If not provided, all streamlines are
+        split.
+    min_nb_points: int
+        Only cut streamlines with at least min_nb_points. This means that the
+        minimal number of points in the final streamlines will be
+        floor(min_nb_points/2). Default: 6.
 
     Returns
     -------
-    output_streamlines : nib.stramlines.ArraySequence or list
-        Result of cutting.
+    new_sft: StatefulTractogram
+        Dipy object with split streamlines.
     """
-    all_ids = np.arange(len(streamlines))
-    n_to_split = int(np.floor(len(streamlines) * split_percentage))
-    split_ids = rng.choice(all_ids, size=n_to_split, replace=False)
+    if split_ids is None:
+        split_ids = range(len(sft.streamlines))
 
-    output_streamlines = []
-    for i, s in enumerate(streamlines):
-        # Leave at least 6 points
-        if i in split_ids and len(s) > 6:
-            cut_idx = rng.randint(3, len(s) - 3)
-            segments = [s[:cut_idx], s[cut_idx:]]
+    min_final_nb_points = np.floor(min_nb_points/2)
+
+    all_streamlines = []
+    all_dpp = defaultdict(lambda: [])
+    all_dps = defaultdict(lambda: [])
+
+    logging.debug("Splitting {} streamlines out of {}."
+                  "".format(len(split_ids), len(sft.streamlines)))
+    nb_streamlines_not_cut = 0
+    for i in range(len(sft.streamlines)):
+        old_streamline = sft.streamlines[i]
+        old_dpp = sft.data_per_point[i]
+        old_dps = sft.data_per_streamline[i]
+
+        # Cut if at least min_nb_points
+        if i in split_ids:
+            if len(old_streamline) > min_nb_points:
+                cut_idx = rng.randint(min_final_nb_points,
+                                      len(old_streamline) - min_final_nb_points)
+                segments_s = [old_streamline[:cut_idx], old_streamline[cut_idx:]]
+                segments_dpp = [old_dpp[:cut_idx], old_dpp[cut_idx:]]
+
+                all_streamlines.extend(segments_s)
+                all_dpp = _extend_dict(all_dpp, segments_dpp[0])
+                all_dpp = _extend_dict(all_dpp, segments_dpp[1])
+                all_dps = _extend_dict(all_dps, old_dps)
+                all_dps = _extend_dict(all_dps, old_dps)
+            else:
+                nb_streamlines_not_cut += 1
         else:
-            segments = [s]
-        output_streamlines.extend(segments)
+            all_streamlines.extend([old_streamline])
+            all_dpp = _extend_dict(all_dpp, old_dpp)
+            all_dps = _extend_dict(all_dps, old_dps)
 
-    return output_streamlines
+    logging.info('{} streamlines to split were not split because they were too '
+                 'short (<{})'.format(nb_streamlines_not_cut, min_nb_points))
+    new_sft = StatefulTractogram.from_sft(all_streamlines, sft,
+                                          data_per_point=all_dpp,
+                                          data_per_streamline=all_dps)
+
+    return new_sft
 
 
-def flip_streamlines():
-    raise NotImplementedError
+def _extend_dict(main_dict: Union[PerArraySequenceDict, PerArrayDict],
+                 added_dict: Union[PerArraySequenceDict, PerArrayDict]):
+    """
+    We can't do anything like main_dpp.extend(added_dpp).
+    Doing as in nibabel.streamlines.tests.test_tractogram.
+    """
+    for k, v in added_dict.items():
+        main_dict[k].append(v)
+    return main_dict
+
+
+def reverse_streamlines(sft: StatefulTractogram, reverse_ids: np.ndarray = None):
+    """Reverse streamlines, i.e. inverse the beginning and end
+
+    Parameters
+    ----------
+    sft: StatefulTractogram
+        Dipy object containing your streamlines
+    reverse_ids: np.ndarray, optional
+        List of streamlines to reverse. If not provided, all streamlines are
+        reversed.
+
+    Returns
+    -------
+    new_sft: StatefulTractogram
+        Dipy object with reversed streamlines and data_per_point.
+    """
+    if reverse_ids is None:
+        reverse_ids = range(len(sft.streamlines))
+
+    new_streamlines = [s[::-1] if i in reverse_ids else s for i, s in
+                       enumerate(sft.streamlines)]
+    new_data_per_point = copy.deepcopy(sft.data_per_point)
+    for key in sft.data_per_point:
+        new_data_per_point[key] = [d[::-1] if i in reverse_ids else d for i, d
+                                   in enumerate(new_data_per_point[key])]
+
+    new_sft = StatefulTractogram.from_sft(
+        new_streamlines, sft, data_per_point=new_data_per_point,
+        data_per_streamline=sft.data_per_streamline)
+
+    return new_sft

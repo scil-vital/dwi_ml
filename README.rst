@@ -31,18 +31,13 @@ tractography derivatives of dMRI.
 
 **Here is the usual workflow for people using dwi_ml**:
 
-..
-    Titles are imported.
-    1 = Organizing your data.
-    2 = Preprocessing your data
+1. `Organize your data <https://dwi-ml.readthedocs.io/en/latest/data_organization.html>`_. If your data is organized as expected, the following steps will be much easier.
 
-1. :ref:`ref_organization`. If your data is organized as expected, the following steps will be much easier. See
-
-2. :ref:`ref_preprocessing`
+2. `Preprocess your data <https://dwi-ml.readthedocs.io/en/latest/preprocessing.html>`_.
    - Preprocess your diffusion data using Tractoflow
    - Preprocess your tractogram using RecoBundlesX
 
-3. :ref:`ref_processing`
+3. `Create your own project with DWI_ML <https://dwi-ml.readthedocs.io/en/latest/processing.html>`_.
    - Create your own repository for your project.
    - Copy our scripts from ``please_copy_and_adapt``. Adapt based on your needs.
    - Train your ML algorithm

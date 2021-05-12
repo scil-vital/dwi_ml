@@ -6,7 +6,11 @@ Preprocessing your data
 Preprocessing diffusion data
 ****************************
 
-See the `SCIL's documentation <https://scil-documentation.readthedocs.io/en/latest/?badge=latest>`_ for more information on how to preprocess your data using tractoflow. Then, see our :ref:`ref_organization` tab to learn to organize everything as we expect.
+See the `SCIL's documentation <https://scil-documentation.readthedocs.io/en/latest/?badge=latest>`_ for more information on how to preprocess your data using tractoflow. Then, see our :ref:`ref_organization` tab to learn to organize everything as we expect. If you need a reminder of tractoflow's outputs, you can check our page below.
+
+.. toctree::
+
+    reminder_tractoflow_output
 
 Preprocessing bundles
 *********************

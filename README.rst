@@ -18,8 +18,8 @@ toolkit !
 Links
 =====
 
-* `Getting started <./doc/getting_started.rst>`_
-* `Submit a patch <./CONTRIBUTING.rst>`_
+* `Getting started: installation and download <https://dwi-ml.readthedocs.io/en/latest/getting_started.html>`_
+* `Contribute/Submit a patch <https://github.com/scil-vital/dwi_ml/blob/master/CONTRIBUTING.rst>`_
 * `Issue tracking <https://github.com/scil-vital/dwi_ml/issues>`_
 
 About
@@ -31,17 +31,17 @@ tractography derivatives of dMRI.
 
 **Here is the usual workflow for people using dwi_ml**:
 
-#. Preprocess your diffusion data using Tractoflow (see :ref:``ref_preprocessing``).
-#. Preprocess your tractogram using RecoBundlesX (see :ref:``ref_preprocessing``).
-#. Create a new repository for your project. Create a ``scripts_bash`` folder
-   and copy our scripts from ``please_copy_and_adapt``. Adapt based on your
-   needs and run:
+1. `Organize your data <https://dwi-ml.readthedocs.io/en/latest/data_organization.html>`_. If your data is organized as expected, the following steps will be much easier.
 
- #. ``organize_from_tractoflow.sh``
- #. ``organize_from_recobundles.sh``
- #. ``create_dataset.sh``
- #. ``training.sh``
- #. ``tracking.sh``
+2. `Preprocess your data <https://dwi-ml.readthedocs.io/en/latest/preprocessing.html>`_.
+   - Preprocess your diffusion data using Tractoflow
+   - Preprocess your tractogram using RecoBundlesX
+
+3. `Create your own project with DWI_ML <https://dwi-ml.readthedocs.io/en/latest/processing.html>`_.
+   - Create your own repository for your project.
+   - Copy our scripts from ``please_copy_and_adapt``. Adapt based on your needs.
+   - Train your ML algorithm
+   - If needed, create your tracking algorithm based on your results.
 
 License
 =======

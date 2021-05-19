@@ -1,8 +1,14 @@
+database_folder="my_database"
+all_subjs="my_subjs.txt"
+recobundles_folder=RecobundlesX/multi_bundles
+
+# If you need to prepare your data:
+bash organize_from_tractoflow.sh $database_folder $all_subjs
+bash organize_from_recobundles.sh $database_folder $recobundles_folder $all_subjs
 
 ########################
 # 1. Creating database #
 ########################
-database_folder="my_database"
 config_file="my_config_groups.json"
 training_subjs="my_training_subjs.txt"
 validation_subjs="my_validation_subjs.txt"
@@ -20,12 +26,6 @@ create_hdf5_dataset.py --name $name --bundles $bundles --mask $mask \
 # 2. Training          #
 ########################
 
- create_hdf5_dataset.py [-h] [--step_size STEP_SIZE] [--name NAME]
-                              [--bundles BUNDLES [BUNDLES ...]] [--mask MASK]
-                              [--space {Space.RASMM,Space.VOX,Space.VOXMM}]
-                              [--logging {error,warning,info,debug}]
-                              [--save_intermediate] [-f]
-                              path config_file training_subjs validation_subjs
 
 
 ########################

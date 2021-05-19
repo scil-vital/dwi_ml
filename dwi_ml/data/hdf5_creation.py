@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import glob
 import logging
+import os
 from pathlib import Path
 from typing import List
 
@@ -40,17 +41,20 @@ def verify_subject_lists(dwi_ml_folder: Path, chosen_subjs: List[str]):
 
     ignored_subj = [s for s in all_subjs if s not in chosen_subjs]
     if len(ignored_subj) > 0:
-        logging.info("Careful! NOT processing subjects {} "
+        logging.info("    Careful! NOT processing subjects {} "
                      "because they were not included in training set nor "
                      "validation set!".format(ignored_subj))
 
     # Note. good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
 
 
-def _load_and_check_volume_to4d(data_file):
+def _load_and_check_volume_to4d(data_file, group_affine=None,
+                                group_header=None):
     """Load nibabel data, and perform some checks:
     - Data must be Nifti
     - Data must be at least 3D
+    - If group_affine and group_header are given, loaded data must have the
+    same affine and header.
     Final data will most probably be 4D (3D + features). Sending loaded data to
     4D if it is 3D.
     """
@@ -68,9 +72,7 @@ def _load_and_check_volume_to4d(data_file):
     img.uncache()
 
     if len(data.shape) < 3:
-        raise NotImplementedError('Why would a data be less than 3D? We did '
-                                  'not plan this, you will have to change the'
-                                  'code to use this data.')
+        raise NotImplementedError('Data less than 3D is not handled.')
     elif len(data.shape) == 3:
         # Adding a fourth dimension
         data = data.reshape((*data.shape, 1))
@@ -113,11 +115,12 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
     group_data, group_affine, group_header = \
         _load_and_check_volume_to4d(first_file)
 
-    # Other files must fit
+    # Other files must fit (data shape, header, affine)
     for data_name in file_list[1:]:
         data_file = subj_input_path.joinpath(data_name)
         logging.debug('    Loading {}'.format(data_file))
-        data, _, _ = _load_and_check_volume_to4d(data_file)
+        data, _, _ = _load_and_check_volume_to4d(data_file, group_affine,
+                                                 group_header)
         try:
             group_data = np.append(group_data, data, axis=-1)
         except ImportError:
@@ -149,6 +152,7 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
 
 
 def process_streamlines(bundles_dir: Path, bundles,
+                        enforce_bundles_presence: bool,
                         header: nib.Nifti1Header, step_size: float,
                         space: Space):
     """Load and process a group of bundles and merge all streamlines
@@ -159,7 +163,11 @@ def process_streamlines(bundles_dir: Path, bundles,
     bundles_dir : Path
         Path to bundles folder.
     bundles: List[str]
-        List of the bundles filenames to load.
+        List of the bundles filenames to load. If none, all bundles will be
+        used.
+    enforce_bundles_presence: bool
+        If true, the process will stop if one bundle is missing for one
+        subject.
     header : nib.Nifti1Header
         Reference used to load and send the streamlines in voxel space and to
         create final merged SFT.
@@ -194,15 +202,23 @@ def process_streamlines(bundles_dir: Path, bundles,
         # Note. glob uses str. Other possibility: Path.cwd().glob but creates
         # a generator object.
         logging.debug('    Loading bundle {}'.format(bundle_name))
-        bundle_possible_name = str(bundles_dir.joinpath('*' +
-                                                        bundle_name + '*'))
-        bundle_real_name = glob.glob(bundle_possible_name)
-        if len(bundle_real_name) == 0:
-            raise ValueError('Bundle {} not found!'.format(bundle_name))
+        bundle_name = str(bundles_dir.joinpath(bundle_name + '*'))
+        bundle_real_name = glob.glob(bundle_name)
+        if len(bundle_real_name) == 0 & enforce_bundles_presence:
+            raise FileNotFoundError('Bundle {} not found!'.format(bundle_name))
         elif len(bundle_real_name) > 1:
             raise ValueError(
                 'More than one file with name {}. Clean your bundles '
-                'folder.'.format(bundle_possible_name))
+                'folder.'.format(bundle_name))
+        else:
+            bundle_real_name = bundle_real_name[0]
+
+        # Check bundle extension
+        _, file_extension = os.path.splitext(bundle_real_name)
+        if file_extension not in ['.trk', '.tck']:
+            raise ValueError("We do not support bundle's type: {}. We "
+                             "only support .trk and .tck files."
+                             .format(bundle_real_name))
 
         # Loading bundle and sending to wanted space
         bundle = load_tractogram(bundle_real_name[0], header)

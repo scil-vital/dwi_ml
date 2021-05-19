@@ -19,4 +19,4 @@ Expected json config for the groups in your hdf5:
 
 The group names could be 'input_volume', 'target_volume', for example. Make sure your training script calls the same keys.
 
-The filenames could be 'anat/dwi_tractoflow.nii.gz' for example. Must exist in every subject folder inside dwi_ml_ready.
+The filenames could be 'dwi/dwi_tractoflow.nii.gz' for example. Must exist in every subject folder inside dwi_ml_ready.

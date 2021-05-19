@@ -44,5 +44,5 @@ setup(
     package_data={},
     data_files=[],
     entry_points={},
-    scripts=glob.glob("scripts_python/*/*.py")
+    scripts=glob.glob("scripts_python/*.py")
 )

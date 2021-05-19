@@ -56,18 +56,20 @@ def _parse_args():
                         "processing].")
     p.add_argument('--bundles', nargs='+',
                    help="Bundles to concatenate as streamlines in the hdf5. "
-                        "The bundles names will be guessed from the "
-                        "filenames.\nMust be names of files that are present "
+                        "Must correspond to the filenames present "
                         "in each subject's 'bundles' folder in dwi_ml_ready.\n"
                         "If none is given, we will take all the files in the "
                         "'bundles' folder.")
+    p.add_argument('--enforce_bundles_presence', type=bool, default=True,
+                   help='If true, the process will stop if one bundle is '
+                        'missing for a subject.')
     p.add_argument('--mask',
                    help="Mask defining the voxels used for data "
                         "standardization.\nIf none is given, all non-zero "
                         "voxels will be used. Should be the name of "
                         "a file inside dwi_ml_ready/{subj_id}.")
-    p.add_argument('--space', type=str, default=Space.VOX,
-                   choices=['Space.RASMM', 'Space.VOX', 'Space.VOXMM'],
+    p.add_argument('--space', type=str, default='vox',
+                   choices=['rasmm', 'vox', 'voxmm'],
                    help="Default space to bring all the stateful tractograms. "
                         "All other measures (ex, step_size) should be "
                         "provided in that space.")
@@ -96,14 +98,20 @@ def main():
     # Verify that dwi_ml_ready folder is found
     dwi_ml_ready_folder = Path(args.database_folder + '/dwi_ml_ready')
     if not dwi_ml_ready_folder.is_dir():
-        raise ValueError('The dwi_ml_ready folder was not found: '
-                         '{}'.format(dwi_ml_ready_folder))
+        raise argparse.ArgumentError('The dwi_ml_ready folder was not found: '
+                                     '{}'.format(dwi_ml_ready_folder))
+    else:
+        logging.info('***Creating hdf5 dataset')
+        logging.debug('   Creating hdf5 data from data in the following foler:'
+                      ' {}'.format(dwi_ml_ready_folder))
 
     # Read training subjs and validation subjs
     with open(args.training_subjs, 'r') as file:
-        training_subjs = file.read().splitlines()
+        training_subjs = file.read().split()
+        logging.debug('   Training subjs: {}'.format(training_subjs))
     with open(args.validation_subjs, 'r') as file:
-        validation_subjs = file.read().splitlines()
+        validation_subjs = file.read().split()
+        logging.debug('   Validation subjs: {}'.format(training_subjs))
 
     # Verify that subjects exist and that no subjects are forgotten
     chosen_subjs = training_subjs + validation_subjs
@@ -127,12 +135,13 @@ def _initialize_hdf5_database(database_path, force, name):
     hdf5_dir = Path(database_path, "hdf5")
     if hdf5_dir.is_dir():
         if force:
-            logging.info("Careful! Deleting existing hdf5 data folder: "
+            logging.info("    Careful! Deleting existing hdf5 data folder: "
                          "{}".format(hdf5_dir))
             shutil.rmtree(str(hdf5_dir))
         else:
             raise FileExistsError("hdf5 data folder already exists: {}. Use "
                                   "force to allow overwrite.".format(hdf5_dir))
+    logging.debug("   Creating hdf5 directory")
     hdf5_dir.mkdir()
 
     # Define dabase name
@@ -154,12 +163,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
     If wished, all intermediate steps are saved on disk in the hdf5 folder.
     """
     # Cast space from str to Space
-    if args.space == 'Space.Vox':
-        space = Space.Vox
-    elif args.space == 'Space.RASMM':
-        space = Space.RASMM
-    else:
-        space = Space.VOXMM
+    space = Space(args.space)
 
     # Add data to database
     hdf5_file_path = hdf5_dir.joinpath("{}.hdf5".format(hdf5_filename))
@@ -174,14 +178,17 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             hdf_file.attrs['step_size'] = args.step_size
         else:
             hdf_file.attrs['step_size'] = 'Not defined by user'
-        hdf_file.attrs['bundles'] = [b for b in args.bundles]
+        if args.bundles is not None:
+            hdf_file.attrs['bundles'] = [b for b in args.bundles]
+        else:
+            hdf_file.attrs['bundles'] = "All bundles in subjects's folders"
         hdf_file.attrs['space'] = args.space
 
         # Add data one subject at the time
-        logging.info("Processing {} subjects : "
+        logging.info("    Processing {} subjects : "
                      "{}".format(len(chosen_subjs), chosen_subjs))
         for subj_id in chosen_subjs:
-            logging.info("\n *Processing subject: {}".format(subj_id))
+            logging.info("      *Processing subject: {}".format(subj_id))
             subj_input_dir = dwi_ml_dir.joinpath(subj_id)
 
             # Add subject to hdf database
@@ -217,14 +224,14 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             group_header['srow_z'] = group_affine[2, :]
 
             # Taking any group (the last) to save space information.
-            # All groups should technically have the same information.
             subj_hdf.attrs['affine'] = group_affine
             subj_hdf.attrs['header'] = str(group_header)
 
             # Add the streamlines data
             logging.debug('Processing bundles...')
             tractogram, lengths = process_streamlines(
-                subj_input_dir.joinpath("bundles"), args.bundles, group_header,
+                subj_input_dir.joinpath("bundles"), args.bundles,
+                args.enforce_bundles_presence, group_header,
                 args.step_size, space)
             streamlines = tractogram.streamlines
 
@@ -243,7 +250,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
 
                 streamlines_group.attrs['space_attributes'] = \
                     str(tractogram.space_attributes)
-                streamlines_group.attrs['space'] = space
+                streamlines_group.attrs['space'] = space.value
 
                 # Accessing private Dipy values, but necessary
                 streamlines_group.create_dataset('data',

@@ -19,9 +19,9 @@
 #     subject. Ex: RecobundlesX/multi_bundles
 # -subjects = The list of ALL subjects. You may choose later which ones will be
 #     in your training set/validation set/testing set. One subject per line.
-database_folder=YOUR DATABASE FOLDER
-recobundles_name=RecobundlesX/multi_bundles
-subject_list=SUBJECTS.txt
+database_folder=$1  # The root folder
+recobundles_name=$2 # Something like RecobundlesX/multi_bundles
+subject_list=$3     # SUBJECTS.txt
 
 # =====================================#
 #            MAIN SCRIPT               #
@@ -47,7 +47,9 @@ fi
 
 echo "Checks passed. Now reorganizing subjects"
 # Reorganizing all subjects
-while IFS= read -r subjid; do
+subjects=$(<$subject_list)
+for subjid in $subjects
+do
   echo "Reorganizing subject $subjid"
   subj_folder=$dwi_ml_ready_folder/$subjid
   recobundles_folder=$preprocessed_folder/$subjid/$recobundles_name
@@ -55,11 +57,12 @@ while IFS= read -r subjid; do
     mkdir $subj_folder/bundles
   fi
 
-  echo "creating symlinks"
   # bundles:
   cd $recobundles_folder
   for bundle in *.trk
   do
     ln -s $recobundles_folder/$bundle $subj_folder/bundles/recobundlesX_$bundle
   done
-done < $subject_list
+done
+
+echo "We have organized RecobundlesX results into dwi_ml_ready (bundles)".

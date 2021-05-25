@@ -105,8 +105,8 @@ do
   ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/wm.nii.gz
 
   # bundles:
-  if [ ! -f $subj_preprocessed_folder/Tracking/${subjid}__tracking.trk ]; then echo "Subject's tractogram not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Tracking/${subjid}__tracking.trk $subj_folder/bundles/tractoflow_wholebrain.trk
+  if [ ! -f $subj_preprocessed_folder/*Tracking/${subjid}__*tracking*.trk ]; then echo "Subject's tractogram not found"; exit 1; fi
+  ln -s $subj_preprocessed_folder/*Tracking/${subjid}__*tracking*.trk $subj_folder/bundles/tractoflow_wholebrain.trk
 
 done
 

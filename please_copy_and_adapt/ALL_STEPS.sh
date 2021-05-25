@@ -16,9 +16,9 @@ name="test1"
 bundles="AF_left AF_right CC_1 CC_2 FX_left FX_right"
 # OR bundles=$(<bundles.txt) to read a list of bundles from a text file.
 mask="masks/wm_mask.nii.gz"
-space="Space.RASMM"  # {Space.RASMM,Space.VOX,Space.VOXMM}
+space="rasmm"
 
-create_hdf5_dataset.py --name $name --bundles $bundles --mask $mask \
+create_hdf5_dataset.py --name $name --bundles $bundles --std_mask $mask \
     --space $space --save_intermediate --logging debug \
     $database_folder $config_file $training_subjs $validation_subjs
 

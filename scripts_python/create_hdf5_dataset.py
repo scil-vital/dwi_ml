@@ -63,7 +63,7 @@ def _parse_args():
     p.add_argument('--enforce_bundles_presence', type=bool, default=True,
                    help='If true, the process will stop if one bundle is '
                         'missing for a subject.')
-    p.add_argument('--mask',
+    p.add_argument('--std_mask',
                    help="Mask defining the voxels used for data "
                         "standardization.\nIf none is given, all non-zero "
                         "voxels will be used. Should be the name of "
@@ -199,12 +199,12 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             if args.save_intermediate:
                 subj_intermediate_path.mkdir()
 
-            # Find subject's mask
-            if args.mask:
-                subj_mask_file = subj_input_dir.joinpath(args.mask)
-                subj_mask_img = nib.load(subj_mask_file)
-                subj_mask_data = np.asanyarray(subj_mask_img.dataobj)
-                subj_mask_data = subj_mask_data.astype(np.bool)
+            # Find subject's standardization mask
+            if args.std_mask:
+                subj_std_mask_file = subj_input_dir.joinpath(args.std_mask)
+                subj_std_mask_img = nib.load(subj_std_mask_file)
+                subj_std_mask_data = np.asanyarray(subj_std_mask_img.dataobj)
+                subj_std_mask_data = subj_std_mask_data.astype(np.bool)
 
             # Add the subj data based on groups in the json config file
             # (inputs and others. All nifti)
@@ -213,7 +213,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 file_list = groups_config[group]
                 group_data, group_affine, group_header = process_group(
                     group, file_list, args.save_intermediate, subj_input_dir,
-                    subj_intermediate_path, subj_mask_data)
+                    subj_intermediate_path, subj_std_mask_data)
                 logging.debug('...done. Now creating dataset from group.')
                 subj_hdf.create_dataset(group, data=group_data)
                 logging.debug('...done.')

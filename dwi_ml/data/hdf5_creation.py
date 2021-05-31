@@ -82,7 +82,7 @@ def _load_and_check_volume_to4d(data_file, group_affine=None,
 
 def process_group(group: str, file_list: List[str], save_intermediate: bool,
                   subj_input_path: Path, subj_output_path: Path,
-                  subj_mask_data: np.ndarray = None):
+                  subj_std_mask_data: np.ndarray = None):
     """Process each group from the json config file:
     - Load data from each file of the group and combine them.
     - Standardize data
@@ -99,7 +99,7 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
         Path where the files from file_list should be found.
     subj_output_path: Path
         Path where to save the intermediate files.
-    subj_mask_data: np.ndarray of bools, optional
+    subj_std_mask_data: np.ndarray of bools, optional
         Binary mask that will be used for data standardization.
 
     Returns
@@ -137,7 +137,7 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
 
     # Standardize data
     logging.debug('  Standardizing data')
-    standardized_group_data = standardize_data(group_data, subj_mask_data)
+    standardized_group_data = standardize_data(group_data, subj_std_mask_data)
 
     # Save standardized data
     if save_intermediate:

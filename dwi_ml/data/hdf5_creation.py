@@ -11,7 +11,7 @@ from dipy.tracking.utils import length
 import nibabel as nib
 import numpy as np
 from scilpy.tracking.tools import resample_streamlines_step_size
-from scilpy.utils.streamlines import compress_sft
+from scilpy.utils.streamlines import compress_sft, concatenate_sft
 
 from dwi_ml.data.processing.dwi.dwi import standardize_data
 
@@ -48,15 +48,12 @@ def verify_subject_lists(dwi_ml_folder: Path, chosen_subjs: List[str]):
     # Note. good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
 
 
-def _load_and_check_volume_to4d(data_file, group_affine=None,
-                                group_header=None):
+def _load_volume_to4d(data_file):
     """Load nibabel data, and perform some checks:
     - Data must be Nifti
     - Data must be at least 3D
-    - If group_affine and group_header are given, loaded data must have the
-    same affine and header.
     Final data will most probably be 4D (3D + features). Sending loaded data to
-    4D if it is 3D.
+    4D if it is 3D, with last dimension 1.
     """
     ext = data_file.suffix
 
@@ -65,11 +62,13 @@ def _load_and_check_volume_to4d(data_file, group_affine=None,
                          'but you provided {}. Please check again your config '
                          'file.'.format(data_file))
 
+    logging.debug('    Loading {}'.format(data_file))
     img = nib.load(data_file)
     data = img.get_fdata(dtype=np.float32)
     affine = img.affine
-    header = img.header  # Note. affine is header.get_sform().
+    header = img.header  # Note. affine is header.get_sform()
     img.uncache()
+    voxel_size = header.get_zooms()[:3]
 
     if len(data.shape) < 3:
         raise NotImplementedError('Data less than 3D is not handled.')
@@ -77,14 +76,15 @@ def _load_and_check_volume_to4d(data_file, group_affine=None,
         # Adding a fourth dimension
         data = data.reshape((*data.shape, 1))
 
-    return data, affine, header
+    return data, affine, voxel_size, header
 
 
 def process_group(group: str, file_list: List[str], save_intermediate: bool,
                   subj_input_path: Path, subj_output_path: Path,
                   subj_std_mask_data: np.ndarray = None):
     """Process each group from the json config file:
-    - Load data from each file of the group and combine them.
+    - Load data from each file of the group and combine them. All datasets from
+      a given group must have the same affine, voxel resolution and data shape.
     - Standardize data
 
     Parameters
@@ -111,37 +111,52 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
     """
     # First file will define data dimension and affine
     first_file = subj_input_path.joinpath(file_list[0])
-    logging.debug('    Loading {}'.format(first_file))
-    group_data, group_affine, group_header = \
-        _load_and_check_volume_to4d(first_file)
+    group_data, group_affine, group_res, group_header = \
+        _load_volume_to4d(first_file)
 
-    # Other files must fit (data shape, header, affine)
+    # Other files must fit (data shape, affine, voxel size)
+    # It is not a promise that data has been correctly registered, but it
+    # is a minimal check.
     for data_name in file_list[1:]:
         data_file = subj_input_path.joinpath(data_name)
-        logging.debug('    Loading {}'.format(data_file))
-        data, _, _ = _load_and_check_volume_to4d(data_file, group_affine,
-                                                 group_header)
+        data, affine, res, _ = _load_volume_to4d(data_file)
+
+        if not np.array_equal(affine, group_affine):
+            raise ValueError('Data file {} does not have the same affine as '
+                             'other files in group {}. Data from each group '
+                             'will be concatenated, and should have the same '
+                             'affine and voxel resolution.'
+                             .format(data_name, group))
+
+        if not np.array_equal(res, group_res):
+            raise ValueError('Data file {} does not have the same resolution '
+                             'as other files in group {}. Data from each '
+                             'group will be concatenated, and should have the '
+                             'same affine and voxel resolution.'
+                             .format(data_name, group))
+
         try:
             group_data = np.append(group_data, data, axis=-1)
         except ImportError:
             raise ImportError('Data file {} could not be added to data group '
-                              '{}. Wrong dimensions?'.format(data_file, group))
+                              '{}. Wrong dimensions?'.format(data_name, group))
 
     # Save unnormalized data
     if save_intermediate:
-        logging.debug('  Saving intermediate non standardized files.')
+        logging.debug('      *Saving intermediate non standardized files.')
         group_image = nib.Nifti1Image(group_data, group_affine)
         output_fname = "{}_nonstandardized.nii.gz".format(group)
         nib.save(group_image,
                  str(subj_output_path.joinpath(output_fname)))
 
-    # Standardize data
-    logging.debug('  Standardizing data')
-    standardized_group_data = standardize_data(group_data, subj_std_mask_data)
+    # Standardize data (per channel)
+    logging.debug('      *Standardizing data')
+    standardized_group_data = standardize_data(group_data, subj_std_mask_data,
+                                               independent=True)
 
     # Save standardized data
     if save_intermediate:
-        logging.debug('  Saving intermediate standardized files.')
+        logging.debug('      *Saving intermediate standardized files.')
         standardized_img = nib.Nifti1Image(standardized_group_data,
                                            group_affine)
         output_fname = "{}_standardized.nii.gz".format(group)
@@ -170,7 +185,7 @@ def process_streamlines(bundles_dir: Path, bundles,
         subject.
     header : nib.Nifti1Header
         Reference used to load and send the streamlines in voxel space and to
-        create final merged SFT.
+        create final merged SFT. If the file is a .trk, 'same' is used instead.
     step_size: float
         Step size to resample streamlines. If none, compress streamlines.
     space: Space
@@ -178,19 +193,20 @@ def process_streamlines(bundles_dir: Path, bundles,
 
     Returns
     -------
-    output_tractogram : StatefulTractogram
+    final_tractogram : StatefulTractogram
         All streamlines in voxel space.
     output_lengths : List[float]
         The euclidean length of each streamline
     """
-    # Silencing SFT's logger if our logging is in DEBUG mode
+    # Silencing SFT's logger if our logging is in DEBUG mode, because it
+    # typically produces a lot of outputs!
     set_sft_logger_level('WARNING')
 
     # Initialize
-    output_tractogram = None
+    final_tractogram = None
     output_lengths = []
 
-    # Find official bundles list
+    # If not bundles in the config, taking everything in the subject's folder
     if bundles is None:
         # Take everything found in subject bundle folder
         bundles = [str(p) for p in bundles_dir.glob('*')]
@@ -199,60 +215,63 @@ def process_streamlines(bundles_dir: Path, bundles,
 
     for bundle_name in bundles:
         # Find bundle name
-        # Note. glob uses str. Other possibility: Path.cwd().glob but creates
-        # a generator object.
-        logging.debug('    Loading bundle {}'.format(bundle_name))
+        logging.debug('      *Loading bundle {}'.format(bundle_name))
+
+        # Completing name, ex if no extension was given or to allow suffixes
         bundle_name = str(bundles_dir.joinpath(bundle_name + '*'))
-        bundle_real_name = glob.glob(bundle_name)
-        if len(bundle_real_name) == 0 & enforce_bundles_presence:
-            raise FileNotFoundError('Bundle {} not found!'.format(bundle_name))
-        elif len(bundle_real_name) > 1:
+        bundle_complete_name = glob.glob(bundle_name)
+        if len(bundle_complete_name) == 0 & enforce_bundles_presence:
+            raise ImportWarning('Bundle {} was not found!'.format(bundle_name))
+        elif len(bundle_complete_name) > 1:
             raise ValueError(
                 'More than one file with name {}. Clean your bundles '
                 'folder.'.format(bundle_name))
         else:
-            bundle_real_name = bundle_real_name[0]
+            bundle_complete_name = bundle_complete_name[0]
 
-        # Check bundle extension
-        _, file_extension = os.path.splitext(bundle_real_name)
-        if file_extension not in ['.trk', '.tck']:
-            raise ValueError("We do not support bundle's type: {}. We "
-                             "only support .trk and .tck files."
-                             .format(bundle_real_name))
+            # Check bundle extension
+            _, file_extension = os.path.splitext(bundle_complete_name)
+            if file_extension not in ['.trk', '.tck']:
+                raise ValueError("We do not support bundle's type: {}. We "
+                                 "only support .trk and .tck files."
+                                 .format(bundle_complete_name))
+            if file_extension == '.trk':
+                header = 'same'
 
-        # Loading bundle and sending to wanted space
-        bundle = load_tractogram(bundle_real_name[0], header)
-        bundle.to_center()
+            # Loading bundle and sending to wanted space
+            bundle = load_tractogram(bundle_complete_name, header)
+            bundle.to_center()
 
-        # Resample or compress streamlines
-        # Note. No matter the chosen space, resampling is done in mm.
-        if step_size:
-            logging.debug('  Resampling')
-            bundle = resample_streamlines_step_size(bundle, step_size)
-            logging.debug("Resampled streamlines' step size to {}mm"
-                          .format(step_size))
-        else:
-            logging.debug('  Compressing')
-            bundle = compress_sft(bundle)
+            # Resample or compress streamlines
+            # Note. No matter the chosen space, resampling is done in mm.
+            if step_size:
+                logging.debug('      *Resampling')
+                bundle = resample_streamlines_step_size(bundle, step_size)
+                logging.debug("      *Resampled streamlines' step size to {}mm"
+                              .format(step_size))
+            else:
+                logging.debug('      *Compressing')
+                bundle = compress_sft(bundle)
 
-        # Compute euclidean lengths (rasmm space)
-        bundle.to_space(Space.RASMM)
-        output_lengths.extend(length(bundle.streamlines))
+            # Compute euclidean lengths (rasmm space)
+            bundle.to_space(Space.RASMM)
+            output_lengths.extend(length(bundle.streamlines))
 
-        # Sending to wanted space
-        bundle.to_space(space)
+            # Sending to wanted space
+            bundle.to_space(space)
 
-        # Add processed bundle to output tractogram
-        if output_tractogram is None:
-            output_tractogram = bundle
-        else:
-            output_tractogram.streamlines.extend(bundle.streamlines)
+            # Add processed bundle to output tractogram
+            if final_tractogram is None:
+                final_tractogram = bundle
+            else:
+                final_tractogram = concatenate_sft([final_tractogram, bundle],
+                                                   erase_metadata=False)
 
     # Removing invalid streamlines
-    logging.debug('...Done. Total: {:,.0f} streamlines. Now removing invalid '
-                  'streamlines.'.format(len(output_tractogram)))
-    output_tractogram.remove_invalid_streamlines()
-    logging.debug("...Done. Remaining: {:,.0f} streamlines."
-                  "".format(len(output_tractogram)))
+    logging.debug('      *Total: {:,.0f} streamlines. Now removing invalid '
+                  'streamlines.'.format(len(final_tractogram)))
+    final_tractogram.remove_invalid_streamlines()
+    logging.debug("      *Remaining: {:,.0f} streamlines."
+                  "".format(len(final_tractogram)))
 
-    return output_tractogram, output_lengths
+    return final_tractogram, output_lengths

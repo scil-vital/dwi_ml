@@ -65,9 +65,10 @@ def _parse_args():
                         'missing for a subject.')
     p.add_argument('--std_mask',
                    help="Mask defining the voxels used for data "
-                        "standardization.\nIf none is given, all non-zero "
-                        "voxels will be used. Should be the name of "
-                        "a file inside dwi_ml_ready/{subj_id}.")
+                        "standardization. Should be the name of a file inside "
+                        "dwi_ml_ready/{subj_id}\nStandardization is performed "
+                        "on each channel separatedly.\nIf none is given, all "
+                        "non-zero voxels will be used.")
     p.add_argument('--space', type=str, default='vox',
                    choices=['rasmm', 'vox', 'voxmm'],
                    help="Default space to bring all the stateful tractograms. "
@@ -159,6 +160,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                dwi_ml_dir):
     """
     Generate a dataset from a group of dMRI subjects with multiple bundles.
+    All data from each group are concatenated.
     All bundles are merged as a single whole-brain dataset in voxel space.
     If wished, all intermediate steps are saved on disk in the hdf5 folder.
     """
@@ -185,10 +187,14 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
         hdf_file.attrs['space'] = args.space
 
         # Add data one subject at the time
-        logging.info("    Processing {} subjects : "
-                     "{}".format(len(chosen_subjs), chosen_subjs))
+        nb_subjs=len(chosen_subjs)
+        logging.debug("   Processing {} subjects : {}"
+                      .format(nb_subjs, chosen_subjs))
+        nb_processed = 0
         for subj_id in chosen_subjs:
-            logging.info("      *Processing subject: {}".format(subj_id))
+            nb_processed = nb_processed + 1
+            logging.info("       *Processing subject {}/{}: {}"
+                         .format(nb_processed, nb_subjs, subj_id))
             subj_input_dir = dwi_ml_dir.joinpath(subj_id)
 
             # Add subject to hdf database
@@ -205,39 +211,36 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 subj_std_mask_img = nib.load(subj_std_mask_file)
                 subj_std_mask_data = np.asanyarray(subj_std_mask_img.dataobj)
                 subj_std_mask_data = subj_std_mask_data.astype(np.bool)
+            else:
+                subj_std_mask_data = None
 
             # Add the subj data based on groups in the json config file
             # (inputs and others. All nifti)
             for group in groups_config:
-                logging.debug('Processing group {}...'.format(group))
+                logging.debug("      *Processing group '{}'...".format(group))
                 file_list = groups_config[group]
                 group_data, group_affine, group_header = process_group(
                     group, file_list, args.save_intermediate, subj_input_dir,
                     subj_intermediate_path, subj_std_mask_data)
-                logging.debug('...done. Now creating dataset from group.')
+                logging.debug('      *Done. Now creating dataset from group.')
                 subj_hdf.create_dataset(group, data=group_data)
-                logging.debug('...done.')
+                logging.debug('      *Done.')
 
-            # Reparing header. Should be arranged in Dipy 1.2.
-            group_header['srow_x'] = group_affine[0, :]
-            group_header['srow_y'] = group_affine[1, :]
-            group_header['srow_z'] = group_affine[2, :]
-
-            # Taking any group (the last) to save space information.
+            # Saving data information.
             subj_hdf.attrs['affine'] = group_affine
-            subj_hdf.attrs['header'] = str(group_header)
 
             # Add the streamlines data
-            logging.debug('Processing bundles...')
+            # Header is the last group header if .tck, or 'same' if .trk
+            logging.debug('      *Processing bundles...')
             tractogram, lengths = process_streamlines(
                 subj_input_dir.joinpath("bundles"), args.bundles,
-                args.enforce_bundles_presence, group_header,
-                args.step_size, space)
+                args.enforce_bundles_presence, group_header, args.step_size,
+                space)
             streamlines = tractogram.streamlines
 
             # Save streamlines
             if args.save_intermediate:
-                logging.debug('Saving intermediate tractogram.')
+                logging.debug('      *Saving intermediate tractogram.')
                 save_tractogram(tractogram,
                                 str(subj_intermediate_path.joinpath(
                                     "{}_all_streamlines.tck".format(subj_id))))

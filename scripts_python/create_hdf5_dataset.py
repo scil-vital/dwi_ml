@@ -12,6 +12,7 @@ It will contain the .hdf5 file and possibly intermediate files.
 import argparse
 import datetime
 import json
+import glob
 import logging
 import shutil
 from pathlib import Path
@@ -126,6 +127,10 @@ def main():
     hdf5_dir, hdf5_filename = _initialize_hdf5_database(args.database_folder,
                                                         args.force, args.name)
 
+    # Check that all files exist
+    _check_files_presence(args, chosen_subjs, groups_config,
+                          dwi_ml_ready_folder)
+
     # Create dataset from config and save
     _add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
                                hdf5_filename, dwi_ml_ready_folder)
@@ -153,6 +158,64 @@ def _initialize_hdf5_database(database_path, force, name):
             datetime.datetime.now().strftime("%Y_%m_%d_%H%M%S"))
 
     return hdf5_dir, hdf5_filename
+
+
+def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
+                          dwi_ml_dir):
+    """The list of files to verify is :
+     - the standardization mask
+     - all files in the group_config file
+     - the bundles
+    """
+    logging.debug("   Verifying files presence")
+
+    # concatenating file_lists from all groups:
+    config_file_list = sum(groups_config.values(), [])
+
+    for subj_id in chosen_subjs:
+        subj_input_dir = dwi_ml_dir.joinpath(subj_id)
+
+        # Find subject's standardization mask
+        if args.std_mask:
+            subj_std_mask_file = subj_input_dir.joinpath(args.std_mask)
+            if not subj_std_mask_file.is_file():
+                raise FileNotFoundError("Standardization mask {} not found "
+                                        "for subject {}!"
+                                        .format(subj_std_mask_file, subj_id))
+
+        # Find subject's files from group_config
+        for f in config_file_list:
+            this_file=subj_input_dir.joinpath(f)
+            if not this_file.is_file():
+                raise FileNotFoundError("File from groups_config ({}) not "
+                                        "found for subject {}!"
+                                        .format(f, subj_id))
+
+        # Find streamlines
+        bundles_dir = subj_input_dir.joinpath("bundles")
+        if args.bundles is None:
+            # Take everything found in subject bundle folder
+            bundles = [str(p) for p in bundles_dir.glob('*')]
+            if len(bundles) == 0:
+                raise ValueError("No bundle found in the bundles folder for "
+                                 "subject {}!".format(subj_id))
+        else:
+            for bundle_name in args.bundles:
+                # Completing name
+                # (for instance if no extension was given)
+                # (or to allow suffixes, ex: OL could become OL_m)
+                bundle_name = str(bundles_dir.joinpath(bundle_name + '*'))
+                bundle_complete_name = glob.glob(bundle_name)
+                if len(bundle_complete_name) == 0 & \
+                        args.enforce_bundles_presence:
+                    raise FileNotFoundError("Bundle {} was not found for "
+                                            "subject {}!"
+                                            .format(bundle_name, subj_id))
+                elif len(bundle_complete_name) > 1:
+                    raise ValueError("More than one file with name {} for "
+                                     "subject {}. Clean your bundles folder "
+                                     "or be more specific in your bundles "
+                                     "list.".format(bundle_name, subj_id))
 
 
 def _add_all_subjs_to_database(args, chosen_subjs: List[str],
@@ -233,9 +296,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             # Header is the last group header if .tck, or 'same' if .trk
             logging.debug('      *Processing bundles...')
             tractogram, lengths = process_streamlines(
-                subj_input_dir.joinpath("bundles"), args.bundles,
-                args.enforce_bundles_presence, group_header, args.step_size,
-                space)
+                subj_input_dir.joinpath("bundles"), args.bundles, group_header,
+                args.step_size, space)
             streamlines = tractogram.streamlines
 
             # Save streamlines

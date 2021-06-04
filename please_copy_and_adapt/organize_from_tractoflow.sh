@@ -1,3 +1,4 @@
+#!/bin/bash
 
 ###############################################################################
 # Your tree should look like:                                                 #
@@ -102,7 +103,7 @@ do
 
   # masks:
   if [ ! -f $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz ]; then echo "Subject's WM mask not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/wm.nii.gz
+  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/wm_mask.nii.gz
 
   # bundles:
   if [ ! -f $subj_preprocessed_folder/*Tracking/${subjid}__*tracking*.trk ]; then echo "Subject's tractogram not found"; exit 1; fi
@@ -110,4 +111,4 @@ do
 
 done
 
-echo "We have organized tractoflow results into dwi_ml (dwi, anat, masks)"
+echo "We have organized tractoflow results from processed into dwi_ml_ready (dwi, anat, masks)"

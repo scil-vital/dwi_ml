@@ -166,10 +166,8 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
     return standardized_group_data, group_affine, group_header
 
 
-def process_streamlines(bundles_dir: Path, bundles,
-                        enforce_bundles_presence: bool,
-                        header: nib.Nifti1Header, step_size: float,
-                        space: Space):
+def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
+                        step_size: float, space: Space):
     """Load and process a group of bundles and merge all streamlines
     together.
 
@@ -180,9 +178,6 @@ def process_streamlines(bundles_dir: Path, bundles,
     bundles: List[str]
         List of the bundles filenames to load. If none, all bundles will be
         used.
-    enforce_bundles_presence: bool
-        If true, the process will stop if one bundle is missing for one
-        subject.
     header : nib.Nifti1Header
         Reference used to load and send the streamlines in voxel space and to
         create final merged SFT. If the file is a .trk, 'same' is used instead.
@@ -210,8 +205,6 @@ def process_streamlines(bundles_dir: Path, bundles,
     if bundles is None:
         # Take everything found in subject bundle folder
         bundles = [str(p) for p in bundles_dir.glob('*')]
-        if len(bundles) == 0:
-            raise ValueError("No bundle found in the bundles folder!")
 
     for bundle_name in bundles:
         # Find bundle name
@@ -220,12 +213,11 @@ def process_streamlines(bundles_dir: Path, bundles,
         # Completing name, ex if no extension was given or to allow suffixes
         bundle_name = str(bundles_dir.joinpath(bundle_name + '*'))
         bundle_complete_name = glob.glob(bundle_name)
-        if len(bundle_complete_name) == 0 & enforce_bundles_presence:
-            raise ImportWarning('Bundle {} was not found!'.format(bundle_name))
-        elif len(bundle_complete_name) > 1:
-            raise ValueError(
-                'More than one file with name {}. Clean your bundles '
-                'folder.'.format(bundle_name))
+        if len(bundle_complete_name) == 0:
+            logging.debug("      Skipping bundle {} because it was not found "
+                          "in this subject's folder".format(bundle_name))
+            # Note: if args.enforce_bundles_presence was set to true, this case
+            # is not possible, already checked in create_hdf5_dataset.py.
         else:
             bundle_complete_name = bundle_complete_name[0]
 

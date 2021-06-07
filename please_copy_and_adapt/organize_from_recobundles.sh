@@ -1,3 +1,5 @@
+#!/bin/bash
+
 ################################################################################
 # This script will create symlinks in dwi_ml_ready, pointing to your bundles   #
 # from RecobundlesX for each subject.                                          #

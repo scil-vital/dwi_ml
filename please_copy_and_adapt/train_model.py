@@ -25,8 +25,8 @@ def parse_args():
                                 formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument('parameters_filename',
                    help='Experiment configuration YAML filename. See '
-                        'please_copy_and_adapt/training_parameters.yaml for an '
-                        'example.')
+                        'please_copy_and_adapt/training_parameters.yaml for '
+                        'an example.')
 
     arguments = p.parse_args()
     return arguments

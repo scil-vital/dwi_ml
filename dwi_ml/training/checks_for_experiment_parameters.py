@@ -13,9 +13,9 @@ def check_similar_to_none(var, var_name: str):
     understood as a string.
     """
     if var == 'None':
-        raise ValueError("You have set {} to None in yaml! Possible confusion, "
-                         "stopping here. If you want to set a variable to None "
-                         "with yaml, you should use ~ or "
+        raise ValueError("You have set {} to None in yaml! Possible "
+                         "confusion, stopping here. If you want to set a "
+                         "variable to None with yaml, you should use ~ or "
                          "null.".format(var_name))
     if var == 'null':
         raise ValueError("You have set {} to 'null'. Possible confusion, "
@@ -99,13 +99,15 @@ def check_experiment_name(name: str, required: bool = False):
     return name
 
 
-def check_hdf5_filename(filename: str, required: bool = False):
+def check_hdf5_filename(filename: str, required: bool = False) -> str:
+
     check_similar_to_none(filename, 'hdf5 filename')
     check_required_was_given(filename, 'hdf5 filename', required)
 
     if filename is not None and not path.exists(filename):
         raise ValueError("The hdf5 database was not found! "
                          "({})".format(filename))
+
     return filename
 
 
@@ -177,8 +179,8 @@ def check_neighborhood(sphere_radius: float, grid_radius: int):
         return 'sphere', sphere_radius
     elif grid_radius:
         return 'grid', grid_radius
-    else:
-        return None, None
+
+    return None, None
 
 
 def check_previous_dir(num_previous_dirs: int):
@@ -288,9 +290,7 @@ def check_seed(seed: int, required: bool = False):
 
 
 # Main check function
-
-
-def check_all_experiment_parameters(conf):
+def check_all_experiment_parameters(conf: dict):
     # Experiment:
     name = check_experiment_name(
         conf['experiment']['name'], required=False)

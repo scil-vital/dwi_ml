@@ -32,11 +32,14 @@ def parse_args():
                    help='Path to the .hdf5 dataset. Should contain both your '
                         'training subjects and validation subjects.')
     p.add_argument('training_subjs_filename',
-                   help='Txt file containing the list of subjects used for '
-                        'training. One subject per line.')
+                   help='Txt file containing the list of subjects to use for '
+                        'training. One subject per line. All subjects should '
+                        'exist as training subjects in the hdf5 dataset.')
     p.add_argument('validation_subjs_filename',
                    help='Txt file containing the list of subjects used for '
-                        'validation. One subject per line. Can be None.')
+                        'validation. One subject per line. Can be None. All '
+                        'subjects should exist as validation subjects in the '
+                        'hdf5 dataset.')
     p.add_argument('parameters_filename',
                    help='Experiment configuration YAML filename. See '
                         'please_copy_and_adapt/training_parameters.yaml for '

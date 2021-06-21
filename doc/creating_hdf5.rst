@@ -15,10 +15,44 @@ Expected json config for the groups in your hdf5:
 .. code-block:: bash
 
     {
-        "group1": ["file1.nii.gz", "file2.nii.gz", ...],
-        "group2": ["file1.nii.gz"]
+        "group1": {
+            "type": "volume",
+            "files": ["dwi/dwi_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz"]
+             },
+        "group2": {
+            ...
+             }
     }
 
-The group names could be 'input_volume', 'target_volume', for example. Make sure your training script calls the same keys.
+The group names could be 'input_volume', 'target_volume', 'target_directions', or anything. Make sure your training scripts and your model'sbatch_sampler use the same keys. The groups 'files' must exist in every subject folder inside dwi_ml_ready. The groups 'type' must be recognized in dwi_ml. Currently, accepted datatype is:
 
-The filenames could be 'dwi/dwi_tractoflow.nii.gz' for example. Must exist in every subject folder inside dwi_ml_ready.
+    - 'volume': for instance, a dwi, an anat, mask, t1, fa, etc.
+
+Currently, only one group of streamlines is accepted for your data, and thus the streamlines are not integreated in the config file but are considered separately. During the data creation, see the option --bundles.
+
+.. code-block:: bash
+
+    create_hdf5_dataset.py --force --name $name --std_mask $mask_for_standardization \
+            --bundle "my_bundles" --space $space $database_folder $config_file \
+            $training_subjs $validation_subjs --enforce_bundles_presence True
+
+hdf5 file format
+****************
+
+If you would rather create your hdf5 file with your own script, here is the output format created by create_hdf5_dataset.py and recognized by the multi_subject_containers:
+
+.. code-block:: bash
+
+    hdf5.attrs["version"] = the database version.
+    hdf5.attrs['training_subjs'] = the list of str representing the training subjects.
+
+    hdf5.keys() are the subjects.
+    hdf5['subj1'].keys() are the groups from the config_file + 'streamlines'.
+    hdf5['subj1']['group1'].attrs['type'] = 'volume' or 'streamlines'.
+    hdf5['subj1']['group1'] is the data.
+
+    For streamlines, other available data:
+    hdf5['subj1']['streamlines']['data']
+    hdf5['subj1']['streamlines']['offsets']
+    hdf5['subj1']['streamlines']['lengths']
+    hdf5['subj1']['streamlines']['euclidean_lengths']

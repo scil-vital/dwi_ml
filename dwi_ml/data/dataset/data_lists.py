@@ -1,52 +1,89 @@
 # -*- coding: utf-8 -*-
+import logging
+
+from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
+                                                           SubjectData,
+                                                           LazySubjectData)
 
 
-class DataListForTorch(object):
+class DataListForTorchAbstract(object):
     """
-    Remembers the list of subjects and their common properties, such as the size
-    of the features for the dwi volume.
+    Remembers the list of subjects and their common properties, such as the
+    size of the features for the dwi volumes.
     Everything is loaded into memory until it is needed.
-    Will be used by multi_subjects_containers."""
-
+    Will be used by multi_subjects_containers.
+    """
     def __init__(self):
-        # Feature size should be common to all subjects.
-        self.subjects_data_list = []
-        self.feature_size = None
+        # Feature sizes should be common to all subjects.
+        self.subjects_data_list = []  # List of SubjectData
+        self.feature_sizes = []  # One value per volume group.
+        self.groups = []  # Will be set by the first subj. Others must fit.
 
-    @property
-    def volume_feature_size(self):
-        """Returns the nb of information per voxel in the input dMRI volume."""
-        if self.feature_size is None:
-            try:
-                self.feature_size = \
-                    int(self.subjects_data_list[0].dmri_data.shape[-1])
-            except IndexError:
-                # No volume has been registered yet. Do not raise an exception,
-                # but return 0 as the feature size.
-                self.feature_size = 0
-        return self.feature_size
+    def set_feature_sizes(self):
+        """
+        Sets the number of information per voxel in each group's dMRI volume.
+        """
+        if len(self.feature_sizes) > 0:
+            logging.warning("You have already set the feature sizes based on "
+                            "the first subject! Doing it again but you should "
+                            "verify this code!")
+        if len(self.subjects_data_list) == 0:
+            raise ValueError('First subject must be added to the list before '
+                             'verifying its feature sizes.')
 
-    def add_subject(self, subject_data):
-        """Adds subject's data to subjects_data_list.
+        for i in range(len(self.groups)):
+            self.feature_sizes.append(self._get_group_feature_size(0, i))
+
+    def _get_group_feature_size(self, subj: int, group: int):
+        """Get subject #subj's group #group's feature size"""
+        raise NotImplementedError
+
+    def add_subject(self, subject_data: SubjectDataAbstract):
+        """
+        Adds subject's data to subjects_data_list.
         Returns idx of where subject is inserted.
         """
-
-        # Add subject
         subject_idx = len(self.subjects_data_list)
         self.subjects_data_list.append(subject_data)
 
-        # Make sure all volumes have the same feature size
-        assert self.volume_feature_size == subject_data.dmri_data.shape[-1], \
-            "Tried to add a subject whose dMRI volume's feature size was " \
-            "different from previous!"
-        return subject_idx
+        # Make sure all volumes are there and have the same feature sizes
+        if subject_idx == 0:
+            # Set values from the first subject
+            assert len(self.groups) == 0
+            self.groups = subject_data.volume_groups
+            self.set_feature_sizes()
+        else:
+            # Make sure we have the right number of groups
+            if len(subject_data.volume_groups) != len(self.groups):
+                raise ValueError("Tried to add a subjects who had a different "
+                                 "number of volume groups than previous!")
+
+            for i in range(len(self.groups)):
+                group_size = self._get_group_feature_size(subject_idx, i)
+                if self.feature_sizes != group_size:
+                    raise ValueError(
+                        "Tried to add a subject whose dMRI volume's feature "
+                        "size was different from previous! Previous: {}, "
+                        "current: {}".format(self.feature_sizes, group_size))
+
+    def __len__(self):
+        return len(self.subjects_data_list)
+
+    def __getitem__(self, subject_idx):
+        raise NotImplementedError
+
+
+class DataListForTorch(DataListForTorchAbstract):
+
+    def __init__(self):
+        super().__init__()
+
+    def _get_group_feature_size(self, subj: int, group: int):
+        return int(self.subjects_data_list[subj].mri_data[group].shape[-1])
 
     def __getitem__(self, subject_idx):
         """ Necessary for torch"""
         return self.subjects_data_list[subject_idx]
-
-    def __len__(self):
-        return len(self.subjects_data_list)
 
 
 class LazyDataListForTorch(DataListForTorch):
@@ -54,37 +91,17 @@ class LazyDataListForTorch(DataListForTorch):
         super().__init__()
         self.hdf_handle = default_hdf_handle
 
-    @property
-    def volume_feature_size(self):
-        """Overriding super's function"""
-        if self.feature_size is None:
-            try:
-                self.feature_size = \
-                    int(self.__getitem__((0, self.hdf_handle)
-                                         ).dmri_data.shape[-1])
-            except IndexError:
-                # No volume has been registered yet. Do not raise an exception,
-                # but return 0 as the feature size.
-                self.feature_size = 0
-        return self.feature_size
+    def _get_group_feature_size(self, subj: int, group: int):
+        # Uses __getitem__ which means that a handle will be used.
+        return int(self.__getitem__((subj, self.hdf_handle)
+                                    ).mri_data[group].shape[-1])
 
-    def add_subject(self, subject_data):
-        """Overriding super's function"""
+    def __getitem__(self, subject_item) -> LazySubjectData:
+        assert type(subject_item) == tuple, \
+            "Trying to get an item, but item should be a tuple."
 
-        data_idx = len(self.subjects_data_list)
-        self.subjects_data_list.append(subject_data)
-
-        # Make sure all volumes have the same feature size
-        new_subject = self.__getitem__((-1, self.hdf_handle))
-        assert self.volume_feature_size == new_subject.dmri_data.shape[-1], \
-            "Tried to add a tractogram whose dMRI volume's feature size was " \
-            "different from previous!"
-
-        return data_idx
-
-    def __getitem__(self, subject_item):
-        """Overriding super's function"""
-        assert type(subject_item) == tuple, "Trying to get an item, but item should be a tuple."
         subject_idx, subject_hdf_handle = subject_item
         partial_subjectdata = self.subjects_data_list[subject_idx]
-        return partial_subjectdata.with_handle(subject_hdf_handle)
+        logging.debug('Handle in getitem:'.format(subject_hdf_handle))
+        subj_with_handle = partial_subjectdata.with_handle(subject_hdf_handle)
+        return subj_with_handle

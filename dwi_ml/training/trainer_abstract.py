@@ -7,7 +7,7 @@ import time
 import numpy as np
 import torch
 
-from dwi_ml.data.dataset.dataset import (MultiSubjectDataset)
+from dwi_ml.data.dataset.multi_subject_containers import (MultiSubjectDataset)
 from dwi_ml.experiment.timer import Timer
 from dwi_ml.experiment.monitoring import ValueHistoryMonitor
 
@@ -39,8 +39,7 @@ class DWIMLTrainerAbstractSequences:
                  hdf5_filename: str, max_epochs: int,
                  patience: int, batch_size: int, volumes_per_batch: int,
                  cycles_per_volume: int, device: torch.device,
-                 num_cpu_workers: int, worker_interpolation: bool,
-                 taskman_managed: bool, seed: int):
+                 num_cpu_workers: int, taskman_managed: bool, seed: int):
         """
         Parameters
         ----------
@@ -67,10 +66,6 @@ class DWIMLTrainerAbstractSequences:
             cycles before changing to new volumes. (None is equivalent to 1).
         num_cpu_workers: int
             Number of parallel CPU workers.
-        worker_interpolation: bool
-            If set, if using num_cpu_workers > 0, interpolation will be done on
-            CPU by the workers instead of on the main thread using the chosen
-            device.
         taskman_managed: bool
             If True, taskman manages the experiment. Do not output progress
             bars and instead output special messages for taskman.
@@ -96,7 +91,6 @@ class DWIMLTrainerAbstractSequences:
         # Memory:
         self.device = device
         self.num_cpu_workers = num_cpu_workers
-        self.worker_interpolation = worker_interpolation
         self.taskman_managed = taskman_managed
         self.taskman_report = {
             'loss_train': None,
@@ -121,10 +115,6 @@ class DWIMLTrainerAbstractSequences:
         torch.manual_seed(self.seed)  # Set torch seed
         if self.use_gpu:
             torch.cuda.manual_seed(self.seed) # Says error, but ok.
-
-        # If using worker_interpolation, data is processed on CPU
-        self.dataset_device = torch.device(
-            'cpu') if self.worker_interpolation else self.device
 
         # Other variables
         self.sh_order = None  # Will be set once the dataset is loaded
@@ -162,7 +152,7 @@ class DWIMLTrainerAbstractSequences:
         This method loads the data (streamlines and data volume).
         """
         with Timer("Loading training dataset", newline=True, color='blue'):
-            self.train_dataset.load()
+            self.train_dataset.load_data()
 
             input_size = self._compute_input_size()
 
@@ -170,7 +160,7 @@ class DWIMLTrainerAbstractSequences:
             self.sh_order = self.train_dataset.sh_order
 
         with Timer("Loading validation dataset", newline=True, color='blue'):
-            self.valid_dataset.load()
+            self.valid_dataset.load_data()
 
     def _compute_input_size(self):
         # Basic input size

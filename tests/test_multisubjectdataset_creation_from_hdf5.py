@@ -9,36 +9,25 @@ import numpy as np
 from dipy.io.stateful_tractogram import Origin, Space, StatefulTractogram
 from dipy.io.streamline import save_tractogram
 from nibabel import Nifti1Image
-from torch.utils.data.dataloader import DataLoader
+#from torch.utils.data.dataloader import DataLoader
 
-from dwi_ml.data.dataset.dataset import (MultiSubjectDataset, 
-                                         LazyMultiSubjectDataset)
-from dwi_ml.data.dataset.batch_sampler import (BatchSampler)
+from dwi_ml.data.dataset.multi_subject_containers import (MultiSubjectDataset,
+                                                          LazyMultiSubjectDataset)
+#from dwi_ml.data.dataset.batch_sampler import (BatchSampler)
 
 
 def parse_args():
     """
     Convert "raw" streamlines from a hdf5 to torch data or to PackedSequences
     via our MultiSubjectDataset class. Test some properties.
-
     The MultiSubjectDataset is used during training, in the trainer_abstract.
     """
-    parser = argparse.ArgumentParser(description=str(parse_args.__doc__),
-                                     formatter_class=RawTextHelpFormatter)
+    p = argparse.ArgumentParser(description=str(parse_args.__doc__),
+                                formatter_class=RawTextHelpFormatter)
     p.add_argument('hdf5_filename',
                    help='Path to the .hdf5 dataset. Should contain both your '
                         'training subjects and validation subjects.')
-    p.add_argument('training_subjs_filename',
-                   help='Txt file containing the list of subjects to use for '
-                        'training. One subject per line. All subjects should '
-                        'exist as training subjects in the hdf5 dataset.')
-    p.add_argument('validation_subjs_filename',
-                   help='Txt file containing the list of subjects used for '
-                        'validation. One subject per line. Can be None. All '
-                        'subjects should exist as validation subjects in the '
-                        'hdf5 dataset.')
-
-    return parser.parse_args()
+    return p.parse_args()
 
 
 def save_batches():
@@ -66,29 +55,21 @@ def save_batches():
 if __name__ == '__main__':
     args = parse_args()
 
-    if not path.exists(args.training_subjs_filename):
-        raise ValueError("The training subjects list ({}) was not found!"
-                         .format(args.training_subjs_filename))
-    if args.validation_subjs_filename and \
-            not path.exists(args.validation_subjs_filename):
-        raise ValueError("The validation subjects list ({}) was not found!"
-                         .format(args.validation_subjs_filename))
     if not path.exists(args.hdf5_filename):
-        raise ValueError("The validation subjects list ({}) was not found!"
+        raise ValueError("The hdf5 file ({}) was not found!"
                          .format(args.hdf5_filename))
 
     # Options tested:
+    logging.basicConfig(level='DEBUG')
     rng = np.random.RandomState(seed=1234)
 
-    # Creating dataset
-    fake_dataset = MultiSubjectDataset(
-        args.training_subjs_filename, rng)
+    # Non-lazy dataset:
+    #fake_dataset = MultiSubjectDataset(args.hdf5_filename)
+    #fake_dataset.load_training_data()
 
-    fake_lazy_dataset = LazyMultiSubjectDataset(
-        args.training_subjs_filename, rng)
-
-    # Using datasets
-    #fake_dataset.load()
+    # Lazy dataset:
+    fake_lazy_dataset = LazyMultiSubjectDataset(args.hdf5_filename)
+    fake_lazy_dataset.load_training_data()
 
     # Sampling batch
     #sampler = BatchSampler(data_source=fake_dataset)

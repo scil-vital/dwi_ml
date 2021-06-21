@@ -18,11 +18,12 @@ import shutil
 from pathlib import Path
 from typing import Dict, List
 
+from dipy.io.streamline import save_tractogram
+from dipy.io.stateful_tractogram import Space
 import h5py
 import nibabel as nib
 import numpy as np
-from dipy.io.streamline import save_tractogram
-from dipy.io.stateful_tractogram import Space
+from nested_lookup import nested_lookup
 
 from dwi_ml.data.hdf5_creation import (process_group, process_streamlines,
                                        verify_subject_lists)
@@ -127,13 +128,32 @@ def main():
     hdf5_dir, hdf5_filename = _initialize_hdf5_database(args.database_folder,
                                                         args.force, args.name)
 
+    # Check that all groups contain both "type" and "files" sub-keys
+    _check_groups_config(groups_config)
+
     # Check that all files exist
     _check_files_presence(args, chosen_subjs, groups_config,
                           dwi_ml_ready_folder)
 
     # Create dataset from config and save
     _add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
-                               hdf5_filename, dwi_ml_ready_folder)
+                               hdf5_filename, dwi_ml_ready_folder,
+                               training_subjs, validation_subjs)
+
+
+def _check_groups_config(groups_config):
+    for group in groups_config.keys():
+        logging.debug("Group's keys are {}".format(groups_config[group].keys()))
+        if 'type' not in groups_config[group]:
+            raise KeyError("Group {}'s type was not defined. It should be "
+                           "the group type. So far, the only type implemented "
+                           "is 'volume'. See the doc for a groups_config.json "
+                           "example.".format(group))
+        if 'files' not in groups_config[group]:
+            raise KeyError("Group {}'s files were not defined. It should list "
+                           "the files to load and concatenate for this group. "
+                           "See the doc for a groups_config.json example."
+                           .format(group))
 
 
 def _initialize_hdf5_database(database_path, force, name):
@@ -169,8 +189,9 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
     """
     logging.debug("   Verifying files presence")
 
-    # concatenating file_lists from all groups:
-    config_file_list = sum(groups_config.values(), [])
+    # concatenating file_lists from all groups files:
+    # See the doc for more explanation.
+    config_file_list = sum(nested_lookup('files', groups_config), [])
 
     for subj_id in chosen_subjs:
         subj_input_dir = dwi_ml_dir.joinpath(subj_id)
@@ -185,7 +206,7 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
 
         # Find subject's files from group_config
         for f in config_file_list:
-            this_file=subj_input_dir.joinpath(f)
+            this_file = subj_input_dir.joinpath(f)
             if not this_file.is_file():
                 raise FileNotFoundError("File from groups_config ({}) not "
                                         "found for subject {}!"
@@ -220,7 +241,7 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
 
 def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                groups_config: Dict, hdf5_dir, hdf5_filename,
-                               dwi_ml_dir):
+                               dwi_ml_dir, training_subjs, validation_subjs):
     """
     Generate a dataset from a group of dMRI subjects with multiple bundles.
     All data from each group are concatenated.
@@ -238,7 +259,10 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
         now = datetime.datetime.now()
         hdf_file.attrs['data_and_time'] = now.strftime('%d %B %Y %X')
         hdf_file.attrs['chosen_subjs'] = chosen_subjs
-        hdf_file.attrs['groups'] = str(groups_config)
+        hdf_file.attrs['groups_config'] = str(groups_config)
+        hdf_file.attrs['training_subjs'] = training_subjs
+        hdf_file.attrs['validation_subjs'] = validation_subjs
+
         if args.step_size is not None:
             hdf_file.attrs['step_size'] = args.step_size
         else:
@@ -250,7 +274,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
         hdf_file.attrs['space'] = args.space
 
         # Add data one subject at the time
-        nb_subjs=len(chosen_subjs)
+        nb_subjs = len(chosen_subjs)
         logging.debug("   Processing {} subjects : {}"
                       .format(nb_subjs, chosen_subjs))
         nb_processed = 0
@@ -270,6 +294,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
 
             # Find subject's standardization mask
             if args.std_mask:
+                logging.info("       - Loading mask")
                 subj_std_mask_file = subj_input_dir.joinpath(args.std_mask)
                 subj_std_mask_img = nib.load(subj_std_mask_file)
                 subj_std_mask_data = np.asanyarray(subj_std_mask_img.dataobj)
@@ -280,8 +305,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             # Add the subj data based on groups in the json config file
             # (inputs and others. All nifti)
             for group in groups_config:
-                logging.debug("      *Processing group '{}'...".format(group))
-                file_list = groups_config[group]
+                logging.info("       - Processing group '{}'...".format(group))
+                file_list = groups_config[group]['files']
                 group_data, group_affine, group_header = process_group(
                     group, file_list, args.save_intermediate, subj_input_dir,
                     subj_intermediate_path, subj_std_mask_data)
@@ -289,12 +314,13 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 subj_hdf.create_dataset(group, data=group_data)
                 logging.debug('      *Done.')
 
-            # Saving data information.
-            subj_hdf.attrs['affine'] = group_affine
+                # Saving data information.
+                subj_hdf[group].attrs['affine'] = group_affine
+                subj_hdf[group].attrs['type'] = groups_config[group]['type']
 
             # Add the streamlines data
             # Header is the last group header if .tck, or 'same' if .trk
-            logging.debug('      *Processing bundles...')
+            logging.info('       - Processing bundles...')
             tractogram, lengths = process_streamlines(
                 subj_input_dir.joinpath("bundles"), args.bundles, group_header,
                 args.step_size, space)
@@ -302,7 +328,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
 
             # Save streamlines
             if args.save_intermediate:
-                logging.debug('      *Saving intermediate tractogram.')
+                logging.info('       - Saving intermediate tractogram.')
                 save_tractogram(tractogram,
                                 str(subj_intermediate_path.joinpath(
                                     "{}_all_streamlines.tck".format(subj_id))))
@@ -316,6 +342,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 streamlines_group.attrs['space_attributes'] = \
                     str(tractogram.space_attributes)
                 streamlines_group.attrs['space'] = space.value
+                streamlines_group.attrs['type'] = 'streamlines'
 
                 # Accessing private Dipy values, but necessary
                 streamlines_group.create_dataset('data',

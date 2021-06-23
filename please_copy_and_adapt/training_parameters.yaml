@@ -19,6 +19,26 @@ logging:
   #     Logging level. If null, default = warning.
   level: warning
 
+experiment:
+  # name: str
+  #     If given, name for the experiment. Else, model will decide the name to
+  #     give.
+  name: null
+
+dataset:
+  # hdf5_filename: str
+  #     Path to the .hdf5 dataset. Should contain both your training subjects
+  #     and validation subjects.
+  hdf5_filename: test1.hdf5
+  # training_subjs_filename: str
+  #     Txt file containing the list of subjects used for training. One
+  #     subject per line.
+  training_subjs_filename: training_subjects.txt
+  # validation_subjs_filename: str
+  #     Txt file containing the list of subjects used for validation. One
+  #     subject per line.
+  validation_subjs_filename: validation_subjects.txt
+
 preprocessing:
   # step_size: float
   #     Resample all streamlines to this step size (in mm). If null, train on

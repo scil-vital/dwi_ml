@@ -1,15 +1,9 @@
 # -*- coding: utf-8 -*-
+
 from os import path
 
+
 # Various arg_parser equivalents.
-# Note that when editing in pycharm, many warnings are thrown about
-# type. Ex:
-# def fun(x: float)
-#   if x is None:
-#       x = 2.1
-#   return x
-# Throws the warning that the return variable is None which is not true.
-# That is a pycharm bug, and not solved here.
 
 
 def check_similar_to_none(var, var_name: str):
@@ -19,9 +13,9 @@ def check_similar_to_none(var, var_name: str):
     understood as a string.
     """
     if var == 'None':
-        raise ValueError("You have set {} to None in yaml! Possible "
-                         "confusion, stopping here. If you want to set a "
-                         "variable to None with yaml, you should use ~ or "
+        raise ValueError("You have set {} to None in yaml! Possible confusion, "
+                         "stopping here. If you want to set a variable to None "
+                         "with yaml, you should use ~ or "
                          "null.".format(var_name))
     if var == 'null':
         raise ValueError("You have set {} to 'null'. Possible confusion, "
@@ -49,7 +43,7 @@ def check_bool_instance(var: bool, var_name: str):
                          '{} was received'.format(var_name, var))
 
 
-def check_float_instance(var: float, var_name: str) -> float:
+def check_float_instance(var: float, var_name: str):
     # We allow the value None.
     if var is not None and not isinstance(var, float):
         if isinstance(var, int):
@@ -77,7 +71,7 @@ def check_str_instance(var: str, var_name: str):
 # Checks for each parameters
 
 
-def check_logging_level(level: str, required: bool = False) -> str:
+def check_logging_level(level: str, required: bool = False):
     """
     Checks that level is one of ['error', 'warning', 'info', 'debug'] and
     returns level in upper case. If None and not required, default is warning.
@@ -97,7 +91,45 @@ def check_logging_level(level: str, required: bool = False) -> str:
     return level
 
 
-def check_step_size(step_size: float, required: bool = False) -> float:
+def check_experiment_name(name: str, required: bool = False):
+    check_similar_to_none(name, 'experiment name')
+    check_required_was_given(name, 'experiment name', required)
+    check_str_instance(name, 'name')
+
+    return name
+
+
+def check_hdf5_filename(filename: str, required: bool = False):
+    check_similar_to_none(filename, 'hdf5 filename')
+    check_required_was_given(filename, 'hdf5 filename', required)
+
+    if filename is not None and not path.exists(filename):
+        raise ValueError("The hdf5 database was not found! "
+                         "({})".format(filename))
+    return filename
+
+
+def check_training_subjs_filename(filename: str, required: bool = False):
+    check_similar_to_none(filename, 'training subjs filename')
+    check_required_was_given(filename, 'training subjs filename', required)
+
+    if filename is not None and not path.exists(filename):
+        raise ValueError("The file training_subjs ({}) was not "
+                         "found!".format(filename))
+    return filename
+
+
+def check_validation_subjs_filename(filename: str, required: bool = False):
+    check_similar_to_none(filename, 'validation subjs filename')
+    check_required_was_given(filename, 'validation subjs filename', required)
+
+    if filename is not None and not path.exists(filename):
+        raise ValueError("The file validation_subjs ({}) was not "
+                         "found!".format(filename))
+    return filename
+
+
+def check_step_size(step_size: float, required: bool = False):
     check_similar_to_none(step_size, 'step_size')
     check_required_was_given(step_size, 'step_size', required)
     step_size = check_float_instance(step_size, 'step_size')
@@ -145,8 +177,8 @@ def check_neighborhood(sphere_radius: float, grid_radius: int):
         return 'sphere', sphere_radius
     elif grid_radius:
         return 'grid', grid_radius
-
-    return None, None
+    else:
+        return None, None
 
 
 def check_previous_dir(num_previous_dirs: int):
@@ -256,7 +288,20 @@ def check_seed(seed: int, required: bool = False):
 
 
 # Main check function
-def check_all_experiment_parameters(conf: dict):
+
+
+def check_all_experiment_parameters(conf):
+    # Experiment:
+    name = check_experiment_name(
+        conf['experiment']['name'], required=False)
+
+    # Dataset:
+    hdf5_filename = check_hdf5_filename(
+        conf['dataset']['hdf5_filename'], required=True)
+    training_subjs_filename = check_training_subjs_filename(
+        conf['dataset']['training_subjs_filename'], required=True)
+    validation_subjs_filename = check_validation_subjs_filename(
+        conf['dataset']['validation_subjs_filename'], required=True)
 
     # Preprocessing:
     step_size = check_step_size(
@@ -305,8 +350,30 @@ def check_all_experiment_parameters(conf: dict):
     seed = check_seed(
         conf['randomization']['seed'])
 
-    return (step_size, add_noise, split_ratio, neighborhood_type,
-            neighborhood_radius, num_previous_dirs, max_epochs, patience,
-            batch_size, volumes_per_batch, cycles_per_volume, lazy,
-            cache_manager, use_gpu, num_cpu_workers,  worker_interpolation,
-            taskman_managed, seed)
+    # Final args:
+    arranged_conf = {
+        'name': name,
+        'hdf5_filename': hdf5_filename,
+        'training_subjs_filename': training_subjs_filename,
+        'validation_subjs_filename': validation_subjs_filename,
+        'step_size': step_size,
+        'add_noise': add_noise,
+        'split_ratio': split_ratio,
+        'neighborhood_type': neighborhood_type,
+        'neighborhood_radius': neighborhood_radius,
+        'num_previous_dirs': num_previous_dirs,
+        'max_epochs': max_epochs,
+        'patience': patience,
+        'batch_size': batch_size,
+        'volumes_per_batch': volumes_per_batch,
+        'cycles_per_volume': cycles_per_volume,
+        'lazy': lazy,
+        'cache_manager': cache_manager,
+        'use_gpu': use_gpu,
+        'num_cpu_workers': num_cpu_workers,
+        'worker_interpolation': worker_interpolation,
+        'taskman_managed': taskman_managed,
+        'seed': seed,
+    }
+
+    return arranged_conf

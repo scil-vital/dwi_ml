@@ -28,9 +28,7 @@ create_hdf5_dataset.py --name $name --bundles $bundles --std_mask $mask \
 # 2. Training          #
 ########################
 
-yaml_file=training_parameters.yaml
 
-train_model.py $yaml_file
 
 ########################
 # 3. Validation        #

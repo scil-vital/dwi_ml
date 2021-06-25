@@ -80,7 +80,7 @@ class MultiSubjectDatasetAbstract(Dataset):
             logging.debug('Groups of data are: {}'.format(self.groups))
 
             # Build empty data_list (lazy or not) and initialize values
-            self.data_list = self.build_data_list(hdf_file)
+            self.data_list = self._build_data_list(hdf_file)
             self.subjID_to_streamlineID = OrderedDict()
             self.total_streamlines = 0
             streamline_lengths_mm_list = []
@@ -101,17 +101,21 @@ class MultiSubjectDatasetAbstract(Dataset):
                 # calling this method. In the lazy case, the hdf_file is not
                 # passed so subject information will basically be empty.
                 self.log.debug('* Creating subject {}'.format(subject_id))
-                subj_data = self.init_subj_from_hdf(hdf_file=hdf_file,
-                                                    subject_id=subject_id,
-                                                    groups=self.groups,
-                                                    log=self.log)
+                subj_data = self._init_subj_from_hdf(hdf_file=hdf_file,
+                                                     subject_id=subject_id,
+                                                     groups=self.groups,
+                                                     log=self.log)
 
                 # Add subject to the list
-                subjid = self.data_list.add_subject(subj_data)
+                subj_idx = self.data_list.add_subject(subj_data)
 
-                # Arrange streamlines (depends on lazy or not)
-                streamline_lengths_mm_list = self.arrange_streamlines(
-                    subj_data, subjid, streamline_lengths_mm_list, hdf_file)
+                # Arrange streamlines
+                # In the lazy case, we need to load the data first using the
+                # __getitem__ from the datalist, and passing the hdf handle.
+                # For the non-lazy version, this does nothing.
+                subj_data = subj_data.with_handle(hdf_file, self.groups)
+                streamline_lengths_mm_list = self._arrange_streamlines(
+                    subj_data, subj_idx, streamline_lengths_mm_list)
 
                 self.log.debug("* Done")
 
@@ -119,17 +123,46 @@ class MultiSubjectDatasetAbstract(Dataset):
         self.streamline_lengths_mm = np.concatenate(streamline_lengths_mm_list,
                                                     axis=0)
 
-    def arrange_streamlines(self, subj_data: SubjectDataAbstract,
-                            subjid: int, streamline_lengths_mm_list: List,
-                            hdf_file: None):
+    def _arrange_streamlines(self,
+                             subj_data: Union[SubjectData, LazySubjectData],
+                             subj_idx: int, streamline_lengths_mm_list: List):
+        """
+        Concatenating streamlines but remembering which id was which subject's
+        streamline.
+
+        The subj_data.streamlines depend on the class: np.Array in the non-lazy
+        version, or property in the lazy version, returning streamlines only if
+        a handle is present.
+        """
+        self.log.debug("*    Arranging streamlines per ID.")
+
+        if type(subj_data) == LazySubjectData:
+            if subj_data.hdf_handle is None:
+                self.log.debug("*    Subject's handle must be present!")
+
+        # Assign a unique ID to every streamline
+        n_streamlines = len(subj_data.streamlines)
+        self.log.debug("*    Subject had {} streamlines."
+                       .format(n_streamlines))
+
+        self.subjID_to_streamlineID[subj_idx] = (
+            self.total_streamlines, self.total_streamlines + n_streamlines)
+
+        # Update total nb of streamlines in the dataset
+        self.total_streamlines += n_streamlines
+
+        # Get number of timesteps per streamline
+        streamline_lengths_mm_list.append(
+            np.array(subj_data.lengths_mm, dtype=np.int16))
+
+        return streamline_lengths_mm_list
+
+    @staticmethod
+    def _build_data_list(hdf_file):
         raise NotImplementedError
 
     @staticmethod
-    def build_data_list(hdf_file):
-        raise NotImplementedError
-
-    @staticmethod
-    def init_subj_from_hdf(hdf_file, subject_id, groups, log):
+    def _init_subj_from_hdf(hdf_file, subject_id, groups, log):
         raise NotImplementedError
 
     """
@@ -138,8 +171,11 @@ class MultiSubjectDatasetAbstract(Dataset):
     def get_subject_data(self, subj_idx: int) -> SubjectDataAbstract:
         raise NotImplementedError
 
-    def get_subject_mri_data_as_tensor(self, subj_idx: int,
-                                       mri_group_idx: int):
+    def get_subject_mri_group_as_tensor(self, subj_idx: int,
+                                        mri_group_idx: int):
+        raise NotImplementedError
+
+    def get_subject_streamlines_subset(self, subj_idx, ids):
         raise NotImplementedError
 
     def __len__(self):
@@ -169,40 +205,14 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
                  taskman_managed: bool = False):
         super().__init__(hdf5_path, name, taskman_managed)
 
-    def arrange_streamlines(self, subj_data: SubjectData,
-                            subjid: int, streamline_lengths_mm_list: List,
-                            hdf_file: None):
-        """
-        Concatenating streamlines but remembering which id was which subject's
-        streamline. hdf_file not used here but used in the lazy version
-        """
-        self.log.debug("*    Arranging streamlines per ID.")
-
-        # Assign a unique ID to every streamline
-        n_streamlines = len(subj_data.streamlines)
-        self.log.debug("*    Subject had {} streamlines."
-                       .format(n_streamlines))
-
-        self.subjID_to_streamlineID[subjid] = (
-            self.total_streamlines, self.total_streamlines + n_streamlines)
-
-        # Update total nb of streamlines in the dataset
-        self.total_streamlines += n_streamlines
-
-        # Get number of timesteps per streamline
-        streamline_lengths_mm_list.append(
-            np.array(subj_data.lengths_mm, dtype=np.int16))
-
-        return streamline_lengths_mm_list
-
     @staticmethod
-    def build_data_list(hdf_file):
+    def _build_data_list(hdf_file):
         """ hdf_file not used. But this is used by load, and the lazy version
         uses this parameter. Keeping the same signature."""
         return DataListForTorch()
 
     @staticmethod
-    def init_subj_from_hdf(hdf_file, subject_id, groups, log):
+    def _init_subj_from_hdf(hdf_file, subject_id, groups, log):
         """Non-lazy version: using the class's method init_from_hdf,
         which already loads everyting. Encapsulating this call in a method
         because the lazy version will skip the hdf_file to init subject."""
@@ -214,16 +224,16 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
         SubjectData."""
         return self.data_list[subj_idx]
 
-    def get_subject_mri_data_as_tensor(self, subj_idx: int,
-                                       mri_group_idx: int):
+    def get_subject_mri_group_as_tensor(self, subj_idx: int,
+                                        mri_group_idx: int) -> torch.Tensor:
         """Different in lazy version. Here, get_subject_data is a SubjectData,
          its mri_data is a List[SubjectMRIData], all already loaded.
          mri_group_idx corresponds to the group number from the config_file."""
-        return self.get_subject_data(subj_idx).mri_data[mri_group_idx].as_tensor
+        return self.get_subject_data(subj_idx).mri_data_list[mri_group_idx].as_tensor
 
-    def get_subject_streamlines_subset(self, subj_id, ids):
-        """Same in lazy version"""
-        return self.get_subject_data(subj_id).streamlines[ids]
+    def get_subject_streamlines_subset(self, subj_idx, ids):
+        """Same in lazy version, but the "streamlines" is not the same"""
+        return self.get_subject_data(subj_idx).streamlines[ids]
 
 
 class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
@@ -249,33 +259,21 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
         if self.cache_size > 0:
             self.volume_cache_manager = None
 
-    def arrange_streamlines(self, subj_data, subjid,
-                            streamline_lengths_mm_list, hdf_file):
-        """
-        Concatenating streamlines but remembering which id was which subject's
-        streamline.
-        """
-        # Load his subject. This uses LazyDataListForTorch.__getitem__, so
-        # data will have a handle based on hdf_file.
-        tmp_subj_data_loaded = self.data_list[(subjid, hdf_file)]
-
-        streamline_lengths_mm_list = super().arrange_streamlines(
-            tmp_subj_data_loaded, subjid, streamline_lengths_mm_list, hdf_file)
-
-        return streamline_lengths_mm_list
-
     @staticmethod
-    def build_data_list(hdf_file):
+    def _build_data_list(hdf_file):
         assert hdf_file is not None
 
         return LazyDataListForTorch(hdf_file)
 
     @staticmethod
-    def init_subj_from_hdf(hdf_file, subject_id, groups, log):
-        """Lazy version: not using hdf_file for now, so no hdf_handle is
-        saved yet."""
+    def _init_subj_from_hdf(hdf_file, subject_id, groups, log):
+        """Lazy version: not using hdf_file arg, so no hdf_handle is saved yet
+        and data is not loaded."""
+
+        hdf_file = None
+
         return LazySubjectData.init_from_hdf(subject_id=subject_id,
-                                             groups=groups, hdf_file=None,
+                                             groups=groups, hdf_file=hdf_file,
                                              log=log)
 
     def get_subject_data(self, item) -> LazySubjectData:
@@ -285,10 +283,10 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
         """
         if self.hdf_handle is None:
             self.hdf_handle = h5py.File(self.hdf5_path, 'r')
-        return self.data_list[(item, self.hdf_handle)]
+        return self.data_list[(item, self.hdf_handle, self.groups)]
 
-    def get_subject_mri_data_as_tensor(self, subj_idx: int,
-                                       mri_group_idx: int):
+    def get_subject_mri_group_as_tensor(self, subj_idx: int,
+                                        mri_group_idx: int):
         """Here, get_subject_data is a LazySubjectData, its mri_data is a
         List[LazySubjectMRIData], not loaded yet but we will load it now using
         as_tensor.
@@ -308,7 +306,7 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
                 # volume_data isn't cached; fetch and cache it
                 # This will open a hdf handle if it not created yet.
                 volume_data = \
-                    self.get_subject_data(subj_idx).mri_data[mri_group_idx].as_tensor
+                    self.get_subject_data(subj_idx).mri_data_list[mri_group_idx].as_tensor
 
                 # Send volume_data on device and keep it there while it's
                 # cached
@@ -318,7 +316,11 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
             return volume_data
         else:
             # No cache is used
-            return self.get_subject_data(subj_idx).mri_data[mri_group_idx].as_tensor
+            return self.get_subject_data(subj_idx).mri_data_list[mri_group_idx].as_tensor
+
+    def get_subject_streamlines_subset(self, subj_idx, ids):
+        """Same in non-lazy version, but the "streamlines" is not the same"""
+        return self.get_subject_data(subj_idx).streamlines[ids]
 
     def __del__(self):
         if self.hdf_handle is not None:

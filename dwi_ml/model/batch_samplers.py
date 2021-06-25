@@ -278,7 +278,7 @@ class TrainingBatchSamplerOneInputVolume(MultiSubjectDataset):
         # Get neighborhood information.
         if self.add_neighborhood_mm:
             #non-lazy:
-            affine = self.data_list[0].mri_data.affine
+            affine = self.data_list[0].mri_data_list.affine
 
             #lazy:
             affine = self.tractodata_manager[(0, hdf_file)].input_dv.affine
@@ -495,7 +495,7 @@ class TrainingBatchSamplerOneInputVolume(MultiSubjectDataset):
                 [s[:-1] for s in batch_streamlines[y_ids]], axis=0)
 
             # Getting the subject's volume and sending to CPU/GPU
-            data_volume = self.get_subject_mri_data_as_tensor(subj)
+            data_volume = self.get_subject_mri_group_as_tensor(subj)
             data_volume = data_volume.to(device=device, non_blocking=True)
 
             # If user chose to add neighborhood:

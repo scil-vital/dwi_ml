@@ -12,6 +12,7 @@ from nibabel.streamlines import ArraySequence
 import numpy as np
 import torch
 
+
 class SubjectMRIDataAbstract(object):
     """For a subject, MRI data volume with its properties such as the vox2rasmm
     affine and the subject_id. Ex: dMRI, T1, masks, etc.
@@ -37,7 +38,7 @@ class SubjectMRIDataAbstract(object):
         self.group = group
 
         # Data management depends on lazy or not
-        self._data = self.get_internal_data(data)
+        self._data = self._get_internal_data(data)
         self.affine = torch.as_tensor(affine, dtype=torch.float)
         self.subject_id = subject_id
 
@@ -47,7 +48,7 @@ class SubjectMRIDataAbstract(object):
         raise NotImplementedError
 
     @staticmethod
-    def get_internal_data(data):
+    def _get_internal_data(data):
         """In non-lazy, the data is simply self._data, already loaded. In lazy,
         this returns non-loaded data."""
         raise NotImplementedError
@@ -81,7 +82,7 @@ class SubjectMRIData(SubjectMRIDataAbstract):
         return cls(group, data, affine, subject_id)
 
     @staticmethod
-    def get_internal_data(data):
+    def _get_internal_data(data):
         return torch.as_tensor(data, dtype=torch.float)
 
     @property
@@ -113,7 +114,7 @@ class LazySubjectMRIData(SubjectMRIDataAbstract):
                    subject_id=subject_id, )
 
     @staticmethod
-    def get_internal_data(data):
+    def _get_internal_data(data):
         """Different from the non-lazy version. Data is not loaded as a
         tensor yet."""
         return data
@@ -127,6 +128,7 @@ class LazySubjectMRIData(SubjectMRIDataAbstract):
 
 
 def find_group_infos(groups: List[str], hdf_subj):
+    logging.debug('GROUP INFOS')
     volume_groups = []
     streamline_group = None
 
@@ -179,11 +181,16 @@ class SubjectDataAbstract(object):
                       hdf_file, log=None):
         raise NotImplementedError
 
+    def with_handle(self, hdf_handle, groups):
+        """This will simply return data in the non-lazy version. In the lazy
+        version, this will add the hdf handle and load the data."""
+        raise NotImplementedError
+
 
 class SubjectData(SubjectDataAbstract):
     """Non-lazy version"""
     def __init__(self, volume_groups: List[str], streamline_group: str,
-                 subject_id: str, mri_data: List[SubjectMRIData] = None,
+                 subject_id: str, mri_data_list: List[SubjectMRIData] = None,
                  streamlines: nib.streamlines.ArraySequence = None,
                  lengths_mm: np.array = None):
         """
@@ -197,7 +204,7 @@ class SubjectData(SubjectDataAbstract):
             The streamlines' euclidean lengths.
         """
         super().__init__(volume_groups, streamline_group, subject_id)
-        self.mri_data = mri_data
+        self.mri_data_list = mri_data_list
         self.streamlines = streamlines
         self.lengths_mm = lengths_mm
 
@@ -211,7 +218,7 @@ class SubjectData(SubjectDataAbstract):
         tqdm progress bar, which does not work well with basic logger. Using
         compatible logger "log".
         """
-        subject_mri_data = []
+        subject_mri_data_list = []
 
         (volume_groups, streamline_group) = find_group_infos(
             groups, hdf_file[subject_id])
@@ -222,7 +229,7 @@ class SubjectData(SubjectDataAbstract):
             # lazy or non-lazy version.
             subject_mri_group_data = SubjectMRIData.init_from_hdf_info(
                 hdf_file[subject_id][group], group, subject_id)
-            subject_mri_data.append(subject_mri_group_data)
+            subject_mri_data_list.append(subject_mri_group_data)
 
         # Currently only one streamline group.
         for group in [streamline_group]:
@@ -238,10 +245,14 @@ class SubjectData(SubjectDataAbstract):
                 hdf_file[subject_id][group]['euclidean_lengths'])
 
         subj_data = cls(volume_groups, streamline_group, subject_id,
-                        mri_data=subject_mri_data,
+                        mri_data_list=subject_mri_data_list,
                         streamlines=streamlines, lengths_mm=lengths_mm)
 
         return subj_data
+
+    def with_handle(self, hdf_handle, groups):
+        # data is already loaded. No need to add a handle here.
+        return self
 
 
 class LazySubjectData(SubjectDataAbstract):
@@ -266,35 +277,32 @@ class LazySubjectData(SubjectDataAbstract):
     def init_from_hdf(cls, subject_id, groups, hdf_file=None, log=None):
         """In short: this does basically nothing, the lazy data is kept
         as hdf5 file."""
-        log.debug("*    Using hdf to create lazy data")
 
         if hdf_file:
-            logging.debug("Init lazy subject from the hdf file")
             (volume_groups, streamline_group) = find_group_infos(
                 groups, hdf_file[subject_id])
         else:
-            logging.debug("Init lazy subject without hdf handle")
             volume_groups = []
             streamline_group = None
 
         return cls(volume_groups, streamline_group, subject_id, hdf_file)
 
     @property
-    def mri_data(self) -> Union[List[LazySubjectMRIData], None]:
+    def mri_data_list(self) -> Union[List[LazySubjectMRIData], None]:
         """As a property, this is only computed if called by the user.
         Returns a List[LazySubjectMRIData],"""
         if self.hdf_handle is not None:
-            if self.volume_groups is None:
+            if len(self.volume_groups) == 0 :
                 raise NotImplementedError("Error, the mri data should not "
                                           "be loaded if the volume groups are "
                                           "not verified yet.")
-            mri_data = []
+            mri_data_list = []
             for group in self.volume_groups:
                 hdf_group = self.hdf_handle[self.subject_id][group]
-                mri_data.append(LazySubjectMRIData.init_from_hdf_info(
+                mri_data_list.append(LazySubjectMRIData.init_from_hdf_info(
                     hdf_group, group, self.subject_id))
 
-            return mri_data
+            return mri_data_list
         else:
             return None
 
@@ -302,7 +310,8 @@ class LazySubjectData(SubjectDataAbstract):
     def streamlines(self):
         """As a property, this is only computed if called by the user."""
         if self.hdf_handle is not None:
-            return LazyStreamlinesGetter(self.hdf_handle, self.subject_id)
+            return LazyStreamlinesGetter(self.hdf_handle, self.subject_id,
+                                         self.streamline_group)
         else:
             raise ValueError("No streamlines available without an HDF handle!")
 
@@ -314,14 +323,17 @@ class LazySubjectData(SubjectDataAbstract):
             return np.array(self.hdf_handle[self.subject_id][name])
 
     def with_handle(self, hdf_handle, groups):
+        """We could find groups directly from the subject's keys but this way
+        is safer in case one subject had different keys than others. Always
+        using only the wanted groups."""
         if hdf_handle is None:
-            logging.debug('Using with_handle(), but hdf_handle is None!')
-        else:
-            logging.debug('Adding hdf handle to the subject')
-            
-        if self.volume_groups is None:
+            logging.warning('Using with_handle(), but hdf_handle is None!')
+
+        if len(self.volume_groups) == 0:
+            first_subj_id = list(hdf_handle.keys())[0]
             (self.volume_groups, self.streamline_group) = find_group_infos(
-                groups, hdf_handle[0])
+                groups, hdf_handle[first_subj_id])
+
         return LazySubjectData(volume_groups=self.volume_groups,
                                streamline_group=self.streamline_group,
                                subject_id=self.subject_id,
@@ -329,9 +341,10 @@ class LazySubjectData(SubjectDataAbstract):
 
 
 class LazyStreamlinesGetter(object):
-    def __init__(self, hdf_handle, subject_id):
+    def __init__(self, hdf_handle, subject_id, streamline_group):
         self.hdf_handle = hdf_handle
         self.subject_id = subject_id
+        self.streamline_group = streamline_group # 'streamlines'
 
     def __getitem__(self, item):
         if isinstance(item, int):
@@ -344,9 +357,9 @@ class LazyStreamlinesGetter(object):
             return streamlines
 
         if isinstance(item, slice):
-            name='streamlines'
             streamlines = []
-            streamlines_dataset = self.hdf_handle[self.subject_id][name]
+            streamlines_dataset = \
+                self.hdf_handle[self.subject_id][self.streamline_group]
             offsets = streamlines_dataset['offsets'][item]
             lengths = streamlines_dataset['lengths'][item]
             for offset, length in zip(offsets, lengths):
@@ -357,7 +370,8 @@ class LazyStreamlinesGetter(object):
                          "list or slice")
 
     def _get_streamline(self, idx):
-        streamlines_dataset = self.hdf_handle[self.subject_id]['streamlines']
+        streamlines_dataset = \
+            self.hdf_handle[self.subject_id][self.streamline_group]
         offset = streamlines_dataset['offsets'][idx]
         length = streamlines_dataset['lengths'][idx]
         data = streamlines_dataset['data'][offset:offset + length]
@@ -365,7 +379,8 @@ class LazyStreamlinesGetter(object):
         return data
 
     def get_all(self):
-        streamlines_dataset = self.hdf_handle[self.subject_id]['streamlines']
+        streamlines_dataset = \
+            self.hdf_handle[self.subject_id][self.streamline_group]
 
         streamlines = nib.streamlines.ArraySequence()
         streamlines._data = np.array(streamlines_dataset['data'])

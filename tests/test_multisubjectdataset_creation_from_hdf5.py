@@ -30,26 +30,75 @@ def parse_args():
     return p.parse_args()
 
 
-def save_batches():
-    """
-    Saving batches on disk to open them and see what was sampled
-    """
-    for i, (streamlines, tid_to_slice) in enumerate(batches):
-        for tid, array_slice in tid_to_slice.items():
-            # Don't use the last coord because it is used only to compute last target direction
-            flattened_slice_coords = np.concatenate([s[:-1] for s in streamlines[array_slice]], axis=0)
+def test_non_lazy():
+    print("**========= NON-LAZY =========")
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename)
+    fake_dataset.load_training_data()
+    print("**Created a MultiSubjectDataset and loaded training set. "
+          "Testing properties : \n\n")
 
-            data_volume = dataset._get_tractodata_volume(tid)  # torch.Tensor
+    subj0 = fake_dataset.get_subject_data(0)
+    print("**Get_subject_data: \n"
+          "    Subject 0, should be SubjectData : {}. \n"
+          "    ID: {}. \n"
+          "    Volume groups: {}. \n"
+          "    Non-lazy mri data should be a list of SubjectMRIData: {}. \n"
+          "        First volume _data (is a tensor), shape: {} \n"
+          "    Streamline group: {} \n"
+          "        Number of streamlines: {} \n"
+          "        First streamline: {}... \n"
+          .format(subj0, subj0.subject_id, subj0.volume_groups,
+                  subj0.mri_data_list, subj0.mri_data_list[0]._data.shape,
+                  subj0.streamline_group,
+                  len(subj0.streamlines), subj0.streamlines[0][0]))
 
-            input_dv = dataset._get_tractodata(tid).input_dv
-            fname = 'subject_{}_batch_{}.tck'.format(input_dv.subject_id, i)
-            output = os.path.join(args.output_folder, fname)
-            logging.info("Saving batch of streamlines to {}".format(output))
-            ref = Nifti1Image(data_volume.numpy(), input_dv.affine_vox2rasmm)
-            sft = StatefulTractogram(streamlines[array_slice], ref,
-                                     Space.VOX,
-                                     origin=Origin.NIFTI)
-            save_tractogram(sft, output, bbox_valid_check=False)
+    subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
+    print("**Get_subject_mri_data_as_tensor: subject 0, volume 0. \n"
+          "     Shape {} \n"
+          "     First data (nan is normal: outside mask): {} \n"
+          "     First volume non-nan mean: {} \n"
+          .format(subj0_volume0_tensor.shape, subj0_volume0_tensor[0][0][0],
+                  np.nanmean(subj0_volume0_tensor.numpy())))
+
+    ss = fake_dataset.get_subject_streamlines_subset(0, 0)
+    print("**Get_subject_streamlines_subset: \n"
+          "     Streamline 0: {}".format(ss[0]))
+    del fake_dataset
+
+
+def test_lazy():
+    print("**========= LAZY =========")
+    fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename)
+    fake_dataset.load_training_data()
+    print("**Created a LazyMultiSubjectDataset and loaded training set. "
+          "Testing properties : \n\n")
+
+    subj0 = fake_dataset.get_subject_data(0)
+    print("**Get_subject_data (in this case, loading from hdf_handle): \n"
+          "    Subject 0, should be LazySubjectData : {}. \n"
+          "    Handle should be added by now: {}"
+          "    ID: {}. \n"
+          "    Volume groups: {}. \n"
+          "    Lazy mri data should be a list of LazySubjectMRIData: {}. \n"
+          "        First volume _data (is not a tensor!): {} \n"
+          "    Streamline group: {} \n"
+          "        Streamlines (getter not loaded!): {} \n"
+          "        First streamline: {} \n"
+          .format(subj0, subj0.hdf_handle, subj0.subject_id,
+                  subj0.volume_groups,
+                  subj0.mri_data_list, subj0.mri_data_list[0]._data,
+                  subj0.streamline_group, subj0.streamlines,
+                  subj0.streamlines.get_all()[0][0]))
+
+    subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
+    print("**Get_subject_mri_data_as_tensor: subject 0, volume 0. \n"
+          "     Shape {} \n"
+          "     First data (nan is normal: outside mask): {} \n"
+          "     First volume non-nan mean: {} \n"
+          .format(subj0_volume0_tensor.shape, subj0_volume0_tensor[0][0][0],
+                  np.nanmean(subj0_volume0_tensor.numpy())))
+
+    del fake_dataset
 
 
 if __name__ == '__main__':
@@ -59,32 +108,9 @@ if __name__ == '__main__':
         raise ValueError("The hdf5 file ({}) was not found!"
                          .format(args.hdf5_filename))
 
-    # Options tested:
     logging.basicConfig(level='DEBUG')
     rng = np.random.RandomState(seed=1234)
 
-    # Non-lazy dataset:
-    #fake_dataset = MultiSubjectDataset(args.hdf5_filename)
-    #fake_dataset.load_training_data()
-
-    # Lazy dataset:
-    fake_lazy_dataset = LazyMultiSubjectDataset(args.hdf5_filename)
-    fake_lazy_dataset.load_training_data()
-
-    # Sampling batch
-    #sampler = BatchSampler(data_source=fake_dataset)
-
-    # Loading batch
-    #dataloader = DataLoader(fake_dataset,
-    #                        batch_sampler=sampler,
-    #                        num_workers=0,
-    #                        collate_fn=fake_dataset.collate_fn)
-    #batches = [next(iter(dataloader)) for i in range(5)]
-
-    #save_batches()
-
-    # Delete references to avoid a weird Exception when force closing the hdf5
-    # file `ImportError: sys.meta_path is None, Python is likely shutting down`
-    #del dataloader
-    #del sampler
-    del fake_dataset
+    test_non_lazy()
+    print('\n\n')
+    test_lazy()

@@ -65,6 +65,7 @@ class DataListForTorchAbstract(object):
                         "Tried to add a subject whose dMRI volume's feature "
                         "size was different from previous! Previous: {}, "
                         "current: {}".format(self.feature_sizes, group_size))
+        return subject_idx
 
     def __len__(self):
         return len(self.subjects_data_list)
@@ -79,7 +80,8 @@ class DataListForTorch(DataListForTorchAbstract):
         super().__init__()
 
     def _get_group_feature_size(self, subj: int, group: int):
-        return int(self.subjects_data_list[subj].mri_data[group].shape[-1])
+        s = self.subjects_data_list[subj].mri_data_list[group].shape[-1]
+        return int(s)
 
     def __getitem__(self, subject_idx):
         """ Necessary for torch"""
@@ -94,14 +96,16 @@ class LazyDataListForTorch(DataListForTorch):
     def _get_group_feature_size(self, subj: int, group: int):
         # Uses __getitem__ which means that a handle will be used.
         return int(self.__getitem__((subj, self.hdf_handle)
-                                    ).mri_data[group].shape[-1])
+                                    ).mri_data_list[group].shape[-1])
 
     def __getitem__(self, subject_item) -> LazySubjectData:
         assert type(subject_item) == tuple, \
-            "Trying to get an item, but item should be a tuple."
+            "Trying to get an item, but item should be a tuple: " \
+            "(subj_idx, hdf_handle, groups) where groups is the list of " \
+            "groups to load for this subject."
 
-        subject_idx, subject_hdf_handle = subject_item
+        subject_idx, subject_hdf_handle, groups = subject_item
         partial_subjectdata = self.subjects_data_list[subject_idx]
-        logging.debug('Handle in getitem:'.format(subject_hdf_handle))
-        subj_with_handle = partial_subjectdata.with_handle(subject_hdf_handle)
+        subj_with_handle = partial_subjectdata.with_handle(subject_hdf_handle,
+                                                           groups)
         return subj_with_handle

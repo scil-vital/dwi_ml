@@ -9,7 +9,6 @@
 ###########
 beluga="YOUR INFOS"
 ismrm2015_folder="$beluga/ismrm2015/derivatives"
-my_scripts=dwi_ml/please_copy_and_adapt
 
 database_folder="$ismrm2015_folder/noArtefact"
 subjects_list="$ismrm2015_folder/noArtefact/subjects.txt"
@@ -23,14 +22,13 @@ config_file="$ismrm2015_folder/noArtefact/ML_studies/config_file.json"
 #       	"files": ["dwi/dwi_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz"]
 #	     }
 #}
-bash $my_scripts/organize_from_tractoflow.sh $database_folder $subjects_list
+organize_from_tractoflow.sh $database_folder $subjects_list
 
 ###########
 # Create hdf5
 ###########
 name=ismrm2015_noArtefact_test
 option_bundles="" #empty = takes everything
-logging="debug"
 logging="info"
 mask_for_standardization="masks/wm_mask.nii.gz"
 space="rasmm"

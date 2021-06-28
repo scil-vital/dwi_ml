@@ -231,18 +231,19 @@ def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
                 header = 'same'
 
             # Loading bundle and sending to wanted space
+            logging.info("          - Loading")
             bundle = load_tractogram(bundle_complete_name, header)
             bundle.to_center()
 
             # Resample or compress streamlines
             # Note. No matter the chosen space, resampling is done in mm.
             if step_size:
-                logging.debug('      *Resampling')
+                logging.info("          - Resampling")
                 bundle = resample_streamlines_step_size(bundle, step_size)
                 logging.debug("      *Resampled streamlines' step size to {}mm"
                               .format(step_size))
             else:
-                logging.debug('      *Compressing')
+                logging.info("          - Compressing")
                 bundle = compress_sft(bundle)
 
             # Compute euclidean lengths (rasmm space)

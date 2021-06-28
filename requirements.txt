@@ -1,3 +1,4 @@
+scilpy
 torch
 tqdm==4.34.0
 nibabel>=3.0.0

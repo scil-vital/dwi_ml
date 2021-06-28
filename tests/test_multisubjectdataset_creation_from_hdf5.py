@@ -1,19 +1,13 @@
 #!/usr/bin/env python
 import argparse
-import logging
-import os
-from os import path
 from argparse import RawTextHelpFormatter
+import logging
+from os import path
 
 import numpy as np
-from dipy.io.stateful_tractogram import Origin, Space, StatefulTractogram
-from dipy.io.streamline import save_tractogram
-from nibabel import Nifti1Image
-#from torch.utils.data.dataloader import DataLoader
 
-from dwi_ml.data.dataset.multi_subject_containers import (MultiSubjectDataset,
-                                                          LazyMultiSubjectDataset)
-#from dwi_ml.data.dataset.batch_sampler import (BatchSampler)
+from dwi_ml.data.dataset.multi_subject_containers import (
+    LazyMultiSubjectDataset, MultiSubjectDataset)
 
 
 def parse_args():

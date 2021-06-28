@@ -550,4 +550,3 @@ class TrainingBatchSamplerOneInputVolume(MultiSubjectDataset):
                             for s, p in zip(batch_x_data, previous_dirs)]
 
         return batch_x_data
->>>>>>> 4eb53f0... Batch_sampler now in model. Separated model-dependant functions from multisubject class and into batch_sampler. Arranged multisubject to include groups from config file.

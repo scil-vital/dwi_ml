@@ -143,7 +143,8 @@ def main():
 
 def _check_groups_config(groups_config):
     for group in groups_config.keys():
-        logging.debug("Group's keys are {}".format(groups_config[group].keys()))
+        logging.debug("Group's keys are {}"
+                      .format(groups_config[group].keys()))
         if 'type' not in groups_config[group]:
             raise KeyError("Group {}'s type was not defined. It should be "
                            "the group type. So far, the only type implemented "

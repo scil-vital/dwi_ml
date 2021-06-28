@@ -171,8 +171,7 @@ class MultiSubjectDatasetAbstract(Dataset):
     def get_subject_data(self, subj_idx: int) -> SubjectDataAbstract:
         raise NotImplementedError
 
-    def get_subject_mri_group_as_tensor(self, subj_idx: int,
-                                        mri_group_idx: int):
+    def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int):
         raise NotImplementedError
 
     def get_subject_streamlines_subset(self, subj_idx, ids):
@@ -225,11 +224,12 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
         return self.data_list[subj_idx]
 
     def get_subject_mri_group_as_tensor(self, subj_idx: int,
-                                        mri_group_idx: int) -> torch.Tensor:
+                                        group_idx: int) -> torch.Tensor:
         """Different in lazy version. Here, get_subject_data is a SubjectData,
          its mri_data is a List[SubjectMRIData], all already loaded.
          mri_group_idx corresponds to the group number from the config_file."""
-        return self.get_subject_data(subj_idx).mri_data_list[mri_group_idx].as_tensor
+        mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
+        return mri.as_tensor
 
     def get_subject_streamlines_subset(self, subj_idx, ids):
         """Same in lazy version, but the "streamlines" is not the same"""
@@ -285,8 +285,7 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
             self.hdf_handle = h5py.File(self.hdf5_path, 'r')
         return self.data_list[(item, self.hdf_handle, self.groups)]
 
-    def get_subject_mri_group_as_tensor(self, subj_idx: int,
-                                        mri_group_idx: int):
+    def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int):
         """Here, get_subject_data is a LazySubjectData, its mri_data is a
         List[LazySubjectMRIData], not loaded yet but we will load it now using
         as_tensor.
@@ -305,8 +304,8 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
             except KeyError:
                 # volume_data isn't cached; fetch and cache it
                 # This will open a hdf handle if it not created yet.
-                volume_data = \
-                    self.get_subject_data(subj_idx).mri_data_list[mri_group_idx].as_tensor
+                mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
+                volume_data = mri.as_tensor
 
                 # Send volume_data on device and keep it there while it's
                 # cached
@@ -316,7 +315,8 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
             return volume_data
         else:
             # No cache is used
-            return self.get_subject_data(subj_idx).mri_data_list[mri_group_idx].as_tensor
+            mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
+            return mri.as_tensor
 
     def get_subject_streamlines_subset(self, subj_idx, ids):
         """Same in non-lazy version, but the "streamlines" is not the same"""

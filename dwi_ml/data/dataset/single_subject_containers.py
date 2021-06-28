@@ -292,7 +292,7 @@ class LazySubjectData(SubjectDataAbstract):
         """As a property, this is only computed if called by the user.
         Returns a List[LazySubjectMRIData],"""
         if self.hdf_handle is not None:
-            if len(self.volume_groups) == 0 :
+            if len(self.volume_groups) == 0:
                 raise NotImplementedError("Error, the mri data should not "
                                           "be loaded if the volume groups are "
                                           "not verified yet.")
@@ -344,7 +344,7 @@ class LazyStreamlinesGetter(object):
     def __init__(self, hdf_handle, subject_id, streamline_group):
         self.hdf_handle = hdf_handle
         self.subject_id = subject_id
-        self.streamline_group = streamline_group # 'streamlines'
+        self.streamline_group = streamline_group  # 'streamlines'
 
     def __getitem__(self, item):
         if isinstance(item, int):

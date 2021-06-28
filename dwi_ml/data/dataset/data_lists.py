@@ -83,7 +83,7 @@ class DataListForTorch(DataListForTorchAbstract):
         s = self.subjects_data_list[subj].mri_data_list[group].shape[-1]
         return int(s)
 
-    def __getitem__(self, subject_idx):
+    def __getitem__(self, subject_idx) -> SubjectData:
         """ Necessary for torch"""
         return self.subjects_data_list[subject_idx]
 

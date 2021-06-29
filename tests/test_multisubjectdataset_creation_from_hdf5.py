@@ -44,7 +44,7 @@ def test_non_lazy():
           .format(subj0, subj0.subject_id, subj0.volume_groups,
                   subj0.mri_data_list, subj0.mri_data_list[0]._data.shape,
                   subj0.streamline_group,
-                  len(subj0.streamlines), subj0.streamlines[0][0]))
+                  len(subj0.sft_data), subj0.sft_data[0][0]))
 
     subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor: subject 0, volume 0. \n"

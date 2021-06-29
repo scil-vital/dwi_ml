@@ -312,7 +312,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                     group, file_list, args.save_intermediate, subj_input_dir,
                     subj_intermediate_path, subj_std_mask_data)
                 logging.debug('      *Done. Now creating dataset from group.')
-                subj_hdf.create_dataset(group, data=group_data)
+                hdf_group = subj_hdf.create_group(group)
+                hdf_group.create_dataset('data', data=group_data)
                 logging.debug('      *Done.')
 
                 # Saving data information.
@@ -322,15 +323,15 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             # Add the streamlines data
             # Header is the last group header if .tck, or 'same' if .trk
             logging.info('       - Processing bundles...')
-            tractogram, lengths = process_streamlines(
+            sft, lengths = process_streamlines(
                 subj_input_dir.joinpath("bundles"), args.bundles, group_header,
                 args.step_size, space)
-            streamlines = tractogram.streamlines
+            streamlines = sft.streamlines
 
             # Save streamlines
             if args.save_intermediate:
                 logging.info('       - Saving intermediate tractogram.')
-                save_tractogram(tractogram,
+                save_tractogram(sft,
                                 str(subj_intermediate_path.joinpath(
                                     "{}_all_streamlines.tck".format(subj_id))))
 
@@ -339,13 +340,27 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                 'contained no streamlines!'.format(subj_id))
             else:
                 streamlines_group = subj_hdf.create_group('streamlines')
-
-                streamlines_group.attrs['space_attributes'] = \
-                    str(tractogram.space_attributes)
-                streamlines_group.attrs['space'] = space.value
                 streamlines_group.attrs['type'] = 'streamlines'
 
-                # Accessing private Dipy values, but necessary
+                # The hdf5 can only store numpy arrays (it is actually the
+                # reason why it can fetch only precise streamlines from their
+                # ID). We need to deconstruct the sft and store all its data
+                # separately to allow reconstructing it later.
+                (a, d, vs, vo) = sft.space_attributes
+                streamlines_group.attrs['space'] = str(sft.space)
+                streamlines_group.attrs['affine'] = a
+                streamlines_group.attrs['dimensions'] = d
+                streamlines_group.attrs['voxel_sizes'] = vs
+                streamlines_group.attrs['voxel_order'] = vo
+
+                if len(sft.data_per_point) > 0:
+                    logging.warning('sft contained data_per_point. Data not '
+                                    'kept.')
+                if len(sft.data_per_streamlines) > 0:
+                    logging.warning('sft contained data_per_streamlines. '
+                                    'Data not kept.')
+
+                # Accessing private Dipy values, but necessary.
                 streamlines_group.create_dataset('data',
                                                  data=streamlines._data)
                 streamlines_group.create_dataset('offsets',

@@ -198,7 +198,7 @@ def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
     set_sft_logger_level('WARNING')
 
     # Initialize
-    final_tractogram = None
+    final_sft = None
     output_lengths = []
 
     # If not bundles in the config, taking everything in the subject's folder
@@ -232,39 +232,39 @@ def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
 
             # Loading bundle and sending to wanted space
             logging.info("          - Loading")
-            bundle = load_tractogram(bundle_complete_name, header)
-            bundle.to_center()
+            sft = load_tractogram(bundle_complete_name, header)
+            sft.to_center()
 
             # Resample or compress streamlines
             # Note. No matter the chosen space, resampling is done in mm.
             if step_size:
                 logging.info("          - Resampling")
-                bundle = resample_streamlines_step_size(bundle, step_size)
+                sft = resample_streamlines_step_size(sft, step_size)
                 logging.debug("      *Resampled streamlines' step size to {}mm"
                               .format(step_size))
             else:
                 logging.info("          - Compressing")
-                bundle = compress_sft(bundle)
+                sft = compress_sft(sft)
 
             # Compute euclidean lengths (rasmm space)
-            bundle.to_space(Space.RASMM)
-            output_lengths.extend(length(bundle.streamlines))
+            sft.to_space(Space.RASMM)
+            output_lengths.extend(length(sft.streamlines))
 
             # Sending to wanted space
-            bundle.to_space(space)
+            sft.to_space(space)
 
             # Add processed bundle to output tractogram
-            if final_tractogram is None:
-                final_tractogram = bundle
+            if final_sft is None:
+                final_sft = sft
             else:
-                final_tractogram = concatenate_sft([final_tractogram, bundle],
+                final_sft = concatenate_sft([final_sft, sft],
                                                    erase_metadata=False)
 
     # Removing invalid streamlines
     logging.debug('      *Total: {:,.0f} streamlines. Now removing invalid '
-                  'streamlines.'.format(len(final_tractogram)))
-    final_tractogram.remove_invalid_streamlines()
+                  'streamlines.'.format(len(final_sft)))
+    final_sft.remove_invalid_streamlines()
     logging.debug("      *Remaining: {:,.0f} streamlines."
-                  "".format(len(final_tractogram)))
+                  "".format(len(final_sft)))
 
-    return final_tractogram, output_lengths
+    return final_sft, output_lengths

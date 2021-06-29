@@ -141,7 +141,7 @@ class MultiSubjectDatasetAbstract(Dataset):
                 self.log.debug("*    Subject's handle must be present!")
 
         # Assign a unique ID to every streamline
-        n_streamlines = len(subj_data.streamlines)
+        n_streamlines = len(subj_data.sft_data.streamlines)
         self.log.debug("*    Subject had {} streamlines."
                        .format(n_streamlines))
 
@@ -153,7 +153,8 @@ class MultiSubjectDatasetAbstract(Dataset):
 
         # Get number of timesteps per streamline
         streamline_lengths_mm_list.append(
-            np.array(subj_data.lengths_mm, dtype=np.int16))
+            np.array(subj_data.sft_data.streamlines.lengths_mm,
+                     dtype=np.int16))
 
         return streamline_lengths_mm_list
 
@@ -233,7 +234,7 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
 
     def get_subject_streamlines_subset(self, subj_idx, ids):
         """Same in lazy version, but the "streamlines" is not the same"""
-        return self.get_subject_data(subj_idx).streamlines[ids]
+        return self.get_subject_data(subj_idx).sft_data[ids]
 
 
 class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
@@ -320,7 +321,7 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
 
     def get_subject_streamlines_subset(self, subj_idx, ids):
         """Same in non-lazy version, but the "streamlines" is not the same"""
-        return self.get_subject_data(subj_idx).streamlines[ids]
+        return self.get_subject_data(subj_idx).sft_data.streamlines[ids]
 
     def __del__(self):
         if self.hdf_handle is not None:

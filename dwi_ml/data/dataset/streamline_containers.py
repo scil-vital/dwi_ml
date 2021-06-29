@@ -12,7 +12,6 @@ from typing import Tuple, Union
 import torch
 from dipy.io.stateful_tractogram import StatefulTractogram, Space
 import h5py
-import nibabel as nib
 from nibabel.streamlines import ArraySequence
 import numpy as np
 
@@ -43,6 +42,10 @@ class LazyStreamlinesGetter(object):
         self.hdf_group = hdf_group
 
     def __getitem__(self, item):
+        """
+        Gets the streamlines from ids 'item', all concatenated together.
+        Still useful? See the get_array_sequence instead.
+        """
         if isinstance(item, int):
             return self._get_one_streamline(item)
 
@@ -71,8 +74,29 @@ class LazyStreamlinesGetter(object):
 
         return data
 
-    def get_all(self):
-        streamlines = _init_array_sequence_from_hdf_info(self.hdf_group)
+    def get_array_sequence(self, item=None):
+        if item is None:
+            streamlines = _init_array_sequence_from_hdf_info(self.hdf_group)
+        else:
+            streamlines = ArraySequence()
+            if isinstance(item, int):
+                streamline = self._get_one_streamline(item)
+                streamlines.append(streamline)
+
+            if isinstance(item, list):
+                for i in item:
+                    streamline = self._get_one_streamline(i)
+                    streamlines.append(streamline, cache_build=True)
+                streamlines.finalize_append()
+
+            if isinstance(item, slice):
+                offsets = self.hdf_group['offsets'][item]
+                lengths = self.hdf_group['lengths'][item]
+                for offset, length in zip(offsets, lengths):
+                    streamline = self.hdf_group['data'][offset:offset + length]
+                    streamlines.append(streamline, cache_build=True)
+                streamlines.finalize_append()
+
         return streamlines
 
     @property
@@ -201,11 +225,12 @@ class LazySFTData(SFTDataAbstract):
 
     def get_chosen_streamlines_as_sft(self, streamline_ids):
         """
-        streamline_ids:
+        streamline_ids: int, list or slice
 
         Returns chosen streamlines in a StatefulTractogram format.
         """
-        if streamline_ids:
-            streamlines = self.streamlines.get_item()
-        else:
-            streamlines = self.streamlines.get_all()
+        streamlines = self.streamlines.get_array_sequence(streamline_ids)
+
+        super()._get_streamlines_as_sft(streamlines)
+
+        return streamlines

@@ -58,6 +58,7 @@ class MultiSubjectDatasetAbstract(Dataset):
         # in lazy version, LazyDataListForTorch
         self.data_list = None
         self.groups = None
+        self.volume_groups = None
         self.subjID_to_streamlineID = None
         self.total_streamlines = None
         self.streamline_lengths_mm = None
@@ -108,6 +109,11 @@ class MultiSubjectDatasetAbstract(Dataset):
 
                 # Add subject to the list
                 subj_idx = self.data_list.add_subject(subj_data)
+                if subj_idx == 0:
+                    self.volume_groups = subj_data.volume_groups
+                elif self.volume_groups != subj_data.volume_groups:
+                    raise ValueError("Subject's volume groups did not "
+                                     "correspond to preceding subjects.")
 
                 # Arrange streamlines
                 # In the lazy case, we need to load the data first using the
@@ -175,9 +181,6 @@ class MultiSubjectDatasetAbstract(Dataset):
     def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int):
         raise NotImplementedError
 
-    def get_subject_streamlines_subset(self, subj_idx, ids):
-        raise NotImplementedError
-
     def __len__(self):
         return self.total_streamlines
 
@@ -231,10 +234,6 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
          mri_group_idx corresponds to the group number from the config_file."""
         mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
         return mri.as_tensor
-
-    def get_subject_streamlines_subset(self, subj_idx, ids):
-        """Same in lazy version, but the "streamlines" is not the same"""
-        return self.get_subject_data(subj_idx).sft_data[ids]
 
 
 class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
@@ -318,10 +317,6 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
             # No cache is used
             mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
             return mri.as_tensor
-
-    def get_subject_streamlines_subset(self, subj_idx, ids):
-        """Same in non-lazy version, but the "streamlines" is not the same"""
-        return self.get_subject_data(subj_idx).sft_data.streamlines[ids]
 
     def __del__(self):
         if self.hdf_handle is not None:

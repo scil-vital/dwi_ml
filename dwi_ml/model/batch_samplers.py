@@ -1,4 +1,40 @@
 # -*- coding: utf-8 -*-
+"""
+These batch samplers can be used in a torch DataLoader. For instance:
+        # Initialize dataset
+        dataset = MultiSubjectDataset(...)
+
+        # Initialize batch sampler
+        batch_sampler = BatchSampler(...)
+
+        # Use this in the dataloader
+        dataloader = DataLoader(dataset, batch_sampler=batch_sampler,
+                                collate_fn=batch_sampler.load_batch)
+
+The first class, BatchSamplerAbstract, defines functions that can be of use
+for all models.
+
+Depending on your model's needs in terms of streamlines, we offer to types of
+batch samplers:
+    - BatchSequenceSampler: provides functions in the case where streamlines
+        are used as sequences, for instance in the Recurrent Neural Network or
+        in a Transformer.
+    - BatchPointSampler: provides functions in the case where streamlines are
+        used locally, for instance in a Neural Nework or a Convolutional Neural
+        Network.
+
+You can then use these two batch samplers associated with the ones that fit
+your other needs, for instance in terms of inputs. You are encouraged to
+contribute to dwi_ml if no batch sampler fits your needs.
+    - BatchSequenceSamplerOneInputVolume: In the simple case where you have one
+        input per time step of the streamlines (ex, underlying dMRI
+        information, or concatenated with other informations such as T1, FA,
+        etc.). This is a child of the BatchSamplerSequence and is thus
+        implemented to work with the whole streamlines as sequences.
+        x = input
+        y = sequences
+"""
+
 from collections import defaultdict
 import logging
 from typing import Dict, List, Union, Iterable
@@ -14,46 +50,13 @@ from torch.utils.data import Sampler
 from dwi_ml.data.dataset.multi_subject_containers import (
     LazyMultiSubjectDataset, MultiSubjectDataset)
 from dwi_ml.data.processing.space.neighbourhood import (
+    extend_coordinates_with_neighborhood,
     get_neighborhood_vectors_axes, get_neighborhood_vectors_grid)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
+from dwi_ml.data.processing.volume.interpolation import (
+    torch_trilinear_interpolation)
 
-"""
-These batch samplers can then be used in a torch DataLoader. For instance:
-        # Initialize dataset
-        training_dataset = MultiSubjectDataset(...)
-
-        # Initialize batch sampler
-        training_batch_sampler = BatchSampler(...)
-
-        # Use this in the dataloader
-        training_dataloader = DataLoader(
-            training_dataset, batch_sampler=BatchSampler,
-            collate_fn=training_batch_sample.collate_fn)
-            
-The first class, BatchSamplerAbstract, defines functions that can be of use
-for all models.
-
-Depending on your model's needs in terms of streamlines, we offer to types of 
-batch samplers:
-    - BatchSamplerSequence: provides functions in the case where streamlines 
-        are used as sequences, for instance in the Recurrent Neural Network or
-        in a Transformer.
-    - BatchSamplerPoint: provides functions in the case where streamlines are 
-        used locally, for instance in a Neural Nework or a Convolutional Neural
-        Network.
-        
-You can then use these two batch samplers associated with the ones that fit 
-your other needs, for instance in terms of inputs. You are encouraged to 
-contribute to dwi_ml if no batch sampler fits your needs.
-    - BatchSamplerOneInputSequence: In the simple case where you have one input
-    per time step of the streamlines (ex, underlying dMRI information, or 
-    concatenated with other informations such as T1, FA, etc.). This is a child
-    of the BatchSamplerSequence and is thus implemented to work with the whole
-    streamlines as sequences.
-        x = inputs
-        y = sequences
-"""
 # Number of streamlines sampled at the same for a given subject (then, we
 # evaluate if the batch_size has been reached. No need to sample only one
 # streamline at the time!
@@ -112,7 +115,8 @@ class BatchSamplerAbstract(Sampler):
                  split_streamlines_ratio: float = 0.,
                  streamline_noise_sigma_mm: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
-                 avoid_cpu_computations: bool = None):
+                 avoid_cpu_computations: bool = None,
+                 device: torch.device = torch.device('cpu')):
         """
         Parameters
         ----------
@@ -187,6 +191,8 @@ class BatchSamplerAbstract(Sampler):
             (which is computed on CPU) will be skipped and should be performed
             by the user later. Ex: computing directions from the streamline
             coordinates, computing input interpolation, etc.
+        device: torch.device('cpu') or 'gpu'
+            The device to use
         """
         super().__init__(data_source)  # This does nothing but python likes it.
 
@@ -211,6 +217,7 @@ class BatchSamplerAbstract(Sampler):
         self.cycles = cycles
         self.step_size = step_size
         self.avoid_cpu_computations = avoid_cpu_computations
+        self.device = device
 
         # Batch size computation:
         # If self.step_size: we can't rely on the current number of time steps
@@ -437,6 +444,39 @@ class BatchSamplerAbstract(Sampler):
             sft = reverse_streamlines(sft, reverse_ids)
         return sft
 
+    def _get_volume_as_tensor(self, subj_idx: int, group_idx: int):
+        """Here, get_subject_data is a LazySubjectData, its mri_data is a
+        List[LazySubjectMRIData], not loaded yet but we will load it now using
+        as_tensor.
+        mri_group_idx corresponds to the group number from the config_file."""
+        if self.cache_size > 0:
+            # Parallel workers each build a local cache
+            # (data is duplicated across workers, but there is no need to
+            # serialize/deserialize everything)
+            if self.volume_cache_manager is None:
+                self.volume_cache_manager = \
+                    SingleThreadCacheManager(self.cache_size)
+
+            try:
+                # General case: Data is already cached
+                volume_data = self.volume_cache_manager[subj_idx]
+            except KeyError:
+                # volume_data isn't cached; fetch and cache it
+                # This will open a hdf handle if it not created yet.
+                mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
+                volume_data = mri.as_tensor
+
+                # Send volume_data on device and keep it there while it's
+                # cached
+                volume_data = volume_data.to(self.device)
+
+                self.volume_cache_manager[subj_idx] = volume_data
+            return volume_data
+        else:
+            # No cache is used
+            mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
+            return mri.as_tensor
+
 
 class BatchSequencesSampler(BatchSamplerAbstract):
     """
@@ -458,6 +498,7 @@ class BatchSequencesSampler(BatchSamplerAbstract):
                  streamline_noise_sigma_mm: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
                  avoid_cpu_computations: bool = None,
+                 device: torch.device = torch.device('cpu'),
                  normalize_directions: bool = True):
         """
         Additional parameters compared to super:
@@ -472,7 +513,7 @@ class BatchSequencesSampler(BatchSamplerAbstract):
                          n_subject, cycles, step_size, neighborhood_type,
                          neighborhood_radius_vox, split_streamlines_ratio,
                          streamline_noise_sigma_mm, reverse_streamlines_ratio,
-                         avoid_cpu_computations)
+                         avoid_cpu_computations, device)
         self.normalize_directions = normalize_directions
 
     def load_batch(self, streamline_ids_per_subj: Dict[int, list]):
@@ -536,7 +577,7 @@ class BatchSequencesSampler(BatchSamplerAbstract):
         # Getting directions
         batch_directions = [torch.as_tensor(s[1:] - s[:-1],
                                             dtype=torch.float32,
-                                            device=self.data_source.device)
+                                            device=self.device)
                             for s in batch_streamlines]
 
         # Normalization:
@@ -585,6 +626,7 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                  streamline_noise_sigma_mm: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
                  avoid_cpu_computations: bool = None,
+                 device: torch.device = torch.device('cpu'),
                  normalize_directions: bool = True,
                  add_previous_dir: bool = False):
         """
@@ -600,7 +642,7 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                          n_subject, cycles, step_size, neighborhood_type,
                          neighborhood_radius_vox, split_streamlines_ratio,
                          streamline_noise_sigma_mm, reverse_streamlines_ratio,
-                         avoid_cpu_computations, normalize_directions)
+                         avoid_cpu_computations, device, normalize_directions)
 
         self.input_group_name = input_group_name
         # Find group index in the data_source
@@ -635,9 +677,9 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
         If self.do_interpolation is False:
             batch_streamlines : List of np.ndarray with shape (N_i,3)
                 The streamlines coordinates in voxel space, ordered by subject.
-            tid_to_subbactch_sid : dict of [int,slice]
-                A dictionary that maps each tractodata_id to a subbatch of
-                voxel_streamlines (i.e. a slice).
+            final_streamline_ids_per_subj : Dict[int, slice]
+                A dictionary that maps each subject to the list of (processed)
+                streamlines.
         else:
             packed_inputs : PackedSequence
                 Inputs volume loaded from the given group name.
@@ -651,9 +693,6 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
         else:
             batch_streamlines, streamline_ids_per_subj, packed_directions = \
                 super().load_batch(streamline_ids_per_subj)
-
-            # Get the batch input volume and the streamline directions
-            packed_directions = self.load_batch(streamline_ids_per_subj)
 
             # Get the batch input volume
             # (i.e. volume's neighborhood under each point of the streamline)
@@ -681,45 +720,44 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
         for subj, y_ids in streamline_ids_per_subj.items():
             # Flatten = concatenate signal for all streamlines to process
             # faster. We don't use the last coord because it is used only to
-            # compute the last target direction from y, it's not really an
-            # input
+            # compute the last target direction, it's not really an input
             flat_subj_x_coords = np.concatenate(
                 [s[:-1] for s in batch_streamlines[y_ids]], axis=0)
 
             # Getting the subject's volume and sending to CPU/GPU
-            data_volume = self.get_subject_mri_group_as_tensor(subj)
-            data_volume = data_volume.to(device=device, non_blocking=True)
+            data_volume = self.data_source.get_subject_mri_group_as_tensor(
+                subj, self.input_group_idx, device=self.device,
+                non_blocking=True)
 
             # If user chose to add neighborhood:
-            if self.add_neighborhood_mm:
+            if self.neighborhood_type:
                 n_input_points = flat_subj_x_coords.shape[0]
 
                 # Extend the coords array with the neighborhood coordinates
-                flat_subj_x_coords = \
-                    extend_coords_with_interp_neighborhood_vectors(
-                        flat_subj_x_coords, self.neighborhood_vectors)
+                flat_subj_x_coords = extend_coordinates_with_neighborhood(
+                        flat_subj_x_coords, self.neighborhood_points)
 
                 # Interpolate signal for each (new) point
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
-                                               device=device)
+                                               device=self.device)
                 flat_subj_x_data = torch_trilinear_interpolation(
                     data_volume, coords_torch)
 
                 # Reshape signal into (n_points, new_feature_size)
-                # toDo DWI data features for each neighboor are contatenated.
+                # DWI data features for each neighboor are contatenated.
                 #    dwi_feat1_neig1  dwi_feat2_neig1 ...  dwi_featn_neighbm
                 #  p1        .              .                    .
                 #  p2        .              .                    .
-                #  Won't work for CNN!?
                 n_features = (flat_subj_x_data.shape[-1] *
-                              self.neighborhood_vectors.shape[0])
+                              self.neighborhood_points.shape[0])
                 flat_subj_x_data = flat_subj_x_data.reshape(n_input_points,
                                                             n_features)
             else:  # No neighborhood:
                 # Interpolate signal for each point
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
-                                               dtype=torch.float)
+                                               dtype=torch.float,
+                                               device=self.device)
                 flat_subj_x_data = torch_trilinear_interpolation(
                     data_volume, coords_torch)
 
@@ -735,7 +773,7 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
         if self.add_previous_dir:
             previous_dirs = [torch.cat((torch.zeros((1, 3),
                                                     dtype=torch.float32,
-                                                    device=device),
+                                                    device=self.device),
                                         d[:-1]))
                              for d in batch_directions]
             batch_x_data = [torch.cat((s, p), dim=1)

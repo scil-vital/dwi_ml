@@ -178,7 +178,11 @@ class MultiSubjectDatasetAbstract(Dataset):
     def get_subject_data(self, subj_idx: int) -> SubjectDataAbstract:
         raise NotImplementedError
 
-    def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int):
+    def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int,
+                                        device: torch.device,
+                                        non_blocking: bool = False):
+        """Note. Device is not important for non-lazy version but keeping the
+        same signature"""
         raise NotImplementedError
 
     def __len__(self):
@@ -227,25 +231,25 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
         SubjectData."""
         return self.data_list[subj_idx]
 
-    def get_subject_mri_group_as_tensor(self, subj_idx: int,
-                                        group_idx: int) -> torch.Tensor:
+    def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int,
+                                        device: torch.device,
+                                        non_blocking: bool = False):
         """Different in lazy version. Here, get_subject_data is a SubjectData,
          its mri_data is a List[SubjectMRIData], all already loaded.
          mri_group_idx corresponds to the group number from the config_file."""
         mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
-        return mri.as_tensor
+        volume_data = mri.as_tensor
+        volume_data.to(device=device, non_blocking=non_blocking)
+
+        return volume_data
 
 
 class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
     """Dataset containing multiple LazySubjectData objects saved in a
     LazyDataList."""
     def __init__(self, hdf5_path: str, name: str = None,
-                 taskman_managed: bool = False,
-                 device: torch.device = torch.device('cpu'),
-                 cache_size: int = 0):
+                 taskman_managed: bool = False, cache_size: int = 0):
         super().__init__(hdf5_path, name, taskman_managed)
-
-        self.device = device
 
         # In case `None` was passed explicitly, change cache_size:
         self.cache_size = cache_size or 0
@@ -285,7 +289,9 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
             self.hdf_handle = h5py.File(self.hdf5_path, 'r')
         return self.data_list[(item, self.hdf_handle, self.groups)]
 
-    def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int):
+    def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int,
+                                        device: torch.device,
+                                        non_blocking: bool = False):
         """Here, get_subject_data is a LazySubjectData, its mri_data is a
         List[LazySubjectMRIData], not loaded yet but we will load it now using
         as_tensor.
@@ -309,14 +315,17 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
 
                 # Send volume_data on device and keep it there while it's
                 # cached
-                volume_data = volume_data.to(self.device)
+                volume_data = volume_data.to(devoce=device,
+                                             non_blocking=non_blocking)
 
                 self.volume_cache_manager[subj_idx] = volume_data
             return volume_data
         else:
             # No cache is used
             mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
-            return mri.as_tensor
+            volume_data = mri.as_tensor
+            volume_data.to(device=device, non_blocking=non_blocking)
+            return volume_data
 
     def __del__(self):
         if self.hdf_handle is not None:

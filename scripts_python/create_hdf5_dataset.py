@@ -356,7 +356,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 if len(sft.data_per_point) > 0:
                     logging.warning('sft contained data_per_point. Data not '
                                     'kept.')
-                if len(sft.data_per_streamlines) > 0:
+                if len(sft.data_per_streamline) > 0:
                     logging.warning('sft contained data_per_streamlines. '
                                     'Data not kept.')
 

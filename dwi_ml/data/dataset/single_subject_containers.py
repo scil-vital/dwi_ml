@@ -5,10 +5,6 @@ We expect the classes here to be used in data_list.py
 import logging
 from typing import List, Union
 
-import nibabel as nib
-from nibabel.streamlines import ArraySequence
-import numpy as np
-
 from dwi_ml.data.dataset.mri_data_containers import LazyMRIData, MRIData
 from dwi_ml.data.dataset.streamline_containers import LazySFTData, SFTData
 
@@ -18,7 +14,6 @@ def find_group_infos(groups: List[str], hdf_subj):
     Separate subject's hdf5 groups intro volume groups or streamline groups
     based on their 'type' attrs.
     """
-    logging.debug('GROUP INFOS')
     volume_groups = []
     streamline_group = None
 
@@ -112,7 +107,7 @@ class SubjectData(SubjectDataAbstract):
             groups, hdf_file[subject_id])
 
         for group in volume_groups:
-            log.debug('*    => Adding volume group {}:'.format(group))
+            log.debug('*    => Adding volume group "{}": '.format(group))
             # Creating a SubjectMRIData or a LazySubjectMRIData based on
             # lazy or non-lazy version.
             subject_mri_group_data = MRIData.init_from_hdf_info(
@@ -193,7 +188,7 @@ class LazySubjectData(SubjectDataAbstract):
             # Mutiple streamline groups not implemented. Could be
             # for group in self.streamline_group
             hdf_group = self.hdf_handle[self.subject_id][self.streamline_group]
-            return SFTData.init_from_hdf_info(hdf_group)
+            return LazySFTData.init_from_hdf_info(hdf_group)
 
     def with_handle(self, hdf_handle, groups):
         """We could find groups directly from the subject's keys but this way

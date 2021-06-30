@@ -7,10 +7,12 @@ the hdf5 (which contains only lists and numpy arrays) instead of loading data
 from .trk files. They will contain all information necessary to treat with
 streamlines: the data itself and _offset, __lengths, space attributes, etc.
 """
+import logging
 from typing import Tuple, Union
 
 import torch
-from dipy.io.stateful_tractogram import StatefulTractogram, Space
+from dipy.io.stateful_tractogram import (set_sft_logger_level,
+                                         StatefulTractogram, Space)
 import h5py
 from nibabel.streamlines import ArraySequence
 import numpy as np
@@ -23,7 +25,11 @@ def _init_space_from_hdf_info(hdf_group: h5py.Group):
     vo = str(hdf_group.attrs['voxel_order'])
     space_attributes = (a, d, vs, vo)
 
-    space = Space(hdf_group.attrs['space'])
+    space_str = str(hdf_group.attrs['space']).lower()
+    if space_str[0:6] == 'space.':
+        # space was, ex, Space.RASMM. Changing for rasmm.
+        space_str = space_str[6:]
+    space = Space(space_str)
 
     return space_attributes, space
 
@@ -172,6 +178,7 @@ class SFTDataAbstract(object):
 
         Returns chosen streamlines in a StatefulTractogram format.
         """
+        set_sft_logger_level('WARNING')
         sft = StatefulTractogram(streamlines, self.space_attributes,
                                  self.space)
         return sft
@@ -230,7 +237,5 @@ class LazySFTData(SFTDataAbstract):
         Returns chosen streamlines in a StatefulTractogram format.
         """
         streamlines = self.streamlines.get_array_sequence(streamline_ids)
+        return super()._get_streamlines_as_sft(streamlines)
 
-        super()._get_streamlines_as_sft(streamlines)
-
-        return streamlines

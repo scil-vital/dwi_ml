@@ -101,7 +101,7 @@ class MultiSubjectDatasetAbstract(Dataset):
                 # Uses SubjectData or LazySubjectData based on the class
                 # calling this method. In the lazy case, the hdf_file is not
                 # passed so subject information will basically be empty.
-                self.log.debug('* Creating subject {}'.format(subject_id))
+                self.log.debug('* Creating subject "{}": '.format(subject_id))
                 subj_data = self._init_subj_from_hdf(hdf_file=hdf_file,
                                                      subject_id=subject_id,
                                                      groups=self.groups,

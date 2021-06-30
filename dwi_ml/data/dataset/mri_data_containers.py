@@ -65,7 +65,7 @@ class MRIData(MRIDataAbstract):
         Creating class instance from the hdf in cases where data is not
         loaded yet. Non-lazy = loading the data here.
         """
-        data = np.array(hdf_group, dtype=np.float32)
+        data = np.array(hdf_group['data'], dtype=np.float32)
         affine = np.array(hdf_group.attrs['affine'], dtype=np.float32)
 
         # Return an instance of SubjectMRIData instantiated through __init__

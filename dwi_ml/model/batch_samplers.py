@@ -551,6 +551,7 @@ class BatchSequencesSampler(BatchSamplerAbstract):
 
             # Resampling streamlines to a fixed step size
             if self.step_size:
+                # toDo Skip resampling if had already the same step size
                 sft = resample_streamlines_step_size(sft,
                                                      step_size=self.step_size)
 

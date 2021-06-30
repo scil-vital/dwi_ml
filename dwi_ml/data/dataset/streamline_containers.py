@@ -5,7 +5,7 @@ We expect the classes here to be used in single_subject_containers
 These classes will mimic the StatefulTractogram format, but loading data from
 the hdf5 (which contains only lists and numpy arrays) instead of loading data
 from .trk files. They will contain all information necessary to treat with
-streamlines: the data itself and _offset, __lengths, space attributes, etc.
+streamlines: the data itself and _offset, _lengths, space attributes, etc.
 """
 import logging
 from typing import Tuple, Union
@@ -38,8 +38,8 @@ def _init_array_sequence_from_hdf_info(hdf_group: h5py.Group):
     streamlines = ArraySequence()
     streamlines._data = np.array(hdf_group['data'])
     streamlines._offsets = np.array(hdf_group['offsets'])
-    streamlines._lengths = np.array(hdf_group['lengths'])
-    streamlines.lengths_mm = np.array(hdf_group['lengths'])
+    streamlines.lengths = np.array(hdf_group['lengths'])
+    streamlines.lengths_mm = np.array(hdf_group['euclidean_lengths'])
     return streamlines
 
 

@@ -107,7 +107,6 @@ if __name__ == '__main__':
                          .format(args.hdf5_filename))
 
     logging.basicConfig(level='DEBUG')
-    rng = np.random.RandomState(seed=1234)
 
     test_non_lazy()
     print('\n\n')

@@ -9,35 +9,6 @@ from dwi_ml.data.dataset.mri_data_containers import LazyMRIData, MRIData
 from dwi_ml.data.dataset.streamline_containers import LazySFTData, SFTData
 
 
-def find_group_infos(groups: List[str], hdf_subj):
-    """
-    Separate subject's hdf5 groups intro volume groups or streamline groups
-    based on their 'type' attrs.
-    """
-    volume_groups = []
-    streamline_group = None
-
-    for group in groups:
-        group_type = hdf_subj[group].attrs['type']
-        if group_type == 'volume':
-            volume_groups.append(group)
-        elif group_type == 'streamlines':
-            if streamline_group:
-                raise NotImplementedError(
-                    "We have not planned yet that you could add two "
-                    "groups with type 'streamlines' in the config_file.")
-            streamline_group = group
-        else:
-            raise NotImplementedError(
-                "So far, you can only add volume groups in the "
-                "groups_config.json. As for the streamlines, they are "
-                "added through the option --bundles. Please see the doc "
-                "for a json file example. You tried to add data of type: "
-                "{}".format(group_type))
-
-    return volume_groups, streamline_group
-
-
 class SubjectDataAbstract(object):
     """
     A "Subject" = MRI data volumes from group_config + streamlines.
@@ -62,11 +33,11 @@ class SubjectDataAbstract(object):
         self.subject_id = subject_id
 
     @classmethod
-    def init_from_hdf(cls, subject_id: str, groups: List[str],
-                      hdf_file, log=None):
+    def init_from_hdf(cls, subject_id: str, volume_groups: List[str],
+                      streamline_group: str, hdf_file, log=None):
         raise NotImplementedError
 
-    def with_handle(self, hdf_handle, groups):
+    def with_handle(self, hdf_handle):
         """This will simply return data in the non-lazy version. In the lazy
         version, this will add the hdf handle and load the data."""
         raise NotImplementedError
@@ -92,8 +63,8 @@ class SubjectData(SubjectDataAbstract):
         self.sft_data = sft_data
 
     @classmethod
-    def init_from_hdf(cls, subject_id: str, groups: List[str],
-                      hdf_file, log=None):
+    def init_from_hdf(cls, subject_id: str, volume_groups: List[str],
+                      streamline_group: str, hdf_file, log=None):
         """
         Instantiating a single subject data: load info and use __init__
 
@@ -102,9 +73,6 @@ class SubjectData(SubjectDataAbstract):
         compatible logger "log".
         """
         subject_mri_data_list = []
-
-        (volume_groups, streamline_group) = find_group_infos(
-            groups, hdf_file[subject_id])
 
         for group in volume_groups:
             log.debug('*    => Adding volume group "{}": '.format(group))
@@ -126,7 +94,7 @@ class SubjectData(SubjectDataAbstract):
 
         return subj_data
 
-    def with_handle(self, hdf_handle, groups):
+    def with_handle(self, hdf_handle):
         # data is already loaded. No need to add a handle here.
         return self
 
@@ -149,16 +117,10 @@ class LazySubjectData(SubjectDataAbstract):
         # self.with_handle --> adds hdf_handle to the subject to allow loading
 
     @classmethod
-    def init_from_hdf(cls, subject_id, groups, hdf_file=None, log=None):
+    def init_from_hdf(cls, subject_id, volume_groups: List[str],
+                      streamline_group: str, hdf_file=None, log=None):
         """In short: this does basically nothing, the lazy data is kept
         as hdf5 file."""
-
-        if hdf_file:
-            (volume_groups, streamline_group) = find_group_infos(
-                groups, hdf_file[subject_id])
-        else:
-            volume_groups = []
-            streamline_group = None
 
         return cls(volume_groups, streamline_group, subject_id, hdf_file)
 
@@ -190,20 +152,14 @@ class LazySubjectData(SubjectDataAbstract):
             hdf_group = self.hdf_handle[self.subject_id][self.streamline_group]
             return LazySFTData.init_from_hdf_info(hdf_group)
 
-    def with_handle(self, hdf_handle, groups):
+    def with_handle(self, hdf_handle):
         """We could find groups directly from the subject's keys but this way
         is safer in case one subject had different keys than others. Always
         using only the wanted groups."""
         if hdf_handle is None:
             logging.warning('Using with_handle(), but hdf_handle is None!')
 
-        if len(self.volume_groups) == 0:
-            first_subj_id = list(hdf_handle.keys())[0]
-            (self.volume_groups, self.streamline_group) = find_group_infos(
-                groups, hdf_handle[first_subj_id])
-
         return LazySubjectData(volume_groups=self.volume_groups,
                                streamline_group=self.streamline_group,
                                subject_id=self.subject_id,
                                hdf_handle=hdf_handle)
-

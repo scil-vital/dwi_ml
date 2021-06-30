@@ -13,7 +13,7 @@ You can use this multisubject dataset as base for your batch sampler. Create
 it to get the data from chosen groups based on your model. See for instance
 dwi_ml.model.batch_sampler.TrainingBatchSamplerOneInputVolume.
 """
-from collections import OrderedDict
+from collections import defaultdict
 from datetime import datetime
 import logging
 import os
@@ -33,6 +33,35 @@ from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
                                                            LazySubjectData)
 
 from dwi_ml.utils import TqdmLoggingHandler
+
+
+def find_group_infos(groups: List[str], hdf_subj):
+    """
+    Separate subject's hdf5 groups intro volume groups or streamline groups
+    based on their 'type' attrs.
+    """
+    volume_groups = []
+    streamline_group = None
+
+    for group in groups:
+        group_type = hdf_subj[group].attrs['type']
+        if group_type == 'volume':
+            volume_groups.append(group)
+        elif group_type == 'streamlines':
+            if streamline_group:
+                raise NotImplementedError(
+                    "We have not planned yet that you could add two "
+                    "groups with type 'streamlines' in the config_file.")
+            streamline_group = group
+        else:
+            raise NotImplementedError(
+                "So far, you can only add volume groups in the "
+                "groups_config.json. As for the streamlines, they are "
+                "added through the option --bundles. Please see the doc "
+                "for a json file example. You tried to add data of type: "
+                "{}".format(group_type))
+
+    return volume_groups, streamline_group
 
 
 class MultiSubjectDatasetAbstract(Dataset):
@@ -59,7 +88,8 @@ class MultiSubjectDatasetAbstract(Dataset):
         self.data_list = None
         self.groups = None
         self.volume_groups = None
-        self.subjID_to_streamlineID = None
+        self.streamline_group = None
+        self.streamline_id_slice_per_subj = None
         self.total_streamlines = None
         self.streamline_lengths_mm = None
 
@@ -82,7 +112,7 @@ class MultiSubjectDatasetAbstract(Dataset):
 
             # Build empty data_list (lazy or not) and initialize values
             self.data_list = self._build_data_list(hdf_file)
-            self.subjID_to_streamlineID = OrderedDict()
+            self.streamline_id_slice_per_subj = defaultdict(slice)
             self.total_streamlines = 0
             streamline_lengths_mm_list = []
 
@@ -96,30 +126,29 @@ class MultiSubjectDatasetAbstract(Dataset):
             # Using tqdm progress bar, load all subjects from hdf_file
             for subject_id in tqdm.tqdm(subject_keys, ncols=100,
                                         disable=self.taskman_managed):
+                if self.volume_groups is None:
+                    self.volume_groups, self.streamline_group = \
+                        find_group_infos(self.groups, hdf_file[subject_id])
+
                 # Create subject's container
                 # (subject = each group in groups_config + streamline)
                 # Uses SubjectData or LazySubjectData based on the class
                 # calling this method. In the lazy case, the hdf_file is not
                 # passed so subject information will basically be empty.
                 self.log.debug('* Creating subject "{}": '.format(subject_id))
-                subj_data = self._init_subj_from_hdf(hdf_file=hdf_file,
-                                                     subject_id=subject_id,
-                                                     groups=self.groups,
-                                                     log=self.log)
+                subj_data = self._init_subj_from_hdf(
+                    hdf_file=hdf_file, subject_id=subject_id,
+                    volume_groups=self.volume_groups,
+                    streamline_group=self.streamline_group, log=self.log)
 
                 # Add subject to the list
                 subj_idx = self.data_list.add_subject(subj_data)
-                if subj_idx == 0:
-                    self.volume_groups = subj_data.volume_groups
-                elif self.volume_groups != subj_data.volume_groups:
-                    raise ValueError("Subject's volume groups did not "
-                                     "correspond to preceding subjects.")
 
                 # Arrange streamlines
                 # In the lazy case, we need to load the data first using the
                 # __getitem__ from the datalist, and passing the hdf handle.
                 # For the non-lazy version, this does nothing.
-                subj_data = subj_data.with_handle(hdf_file, self.groups)
+                subj_data = subj_data.with_handle(hdf_file)
                 streamline_lengths_mm_list = self._arrange_streamlines(
                     subj_data, subj_idx, streamline_lengths_mm_list)
 
@@ -151,7 +180,7 @@ class MultiSubjectDatasetAbstract(Dataset):
         self.log.debug("*    Subject had {} streamlines."
                        .format(n_streamlines))
 
-        self.subjID_to_streamlineID[subj_idx] = (
+        self.streamline_id_slice_per_subj[subj_idx] = slice(
             self.total_streamlines, self.total_streamlines + n_streamlines)
 
         # Update total nb of streamlines in the dataset
@@ -169,7 +198,8 @@ class MultiSubjectDatasetAbstract(Dataset):
         raise NotImplementedError
 
     @staticmethod
-    def _init_subj_from_hdf(hdf_file, subject_id, groups, log):
+    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups,
+                            streamline_group, log):
         raise NotImplementedError
 
     """
@@ -198,9 +228,9 @@ class MultiSubjectDatasetAbstract(Dataset):
         if type(idx) is tuple:
             return idx
         else:
-            for subjid, (start, end) in self.subjID_to_streamlineID.items():
-                if start <= idx < end:
-                    streamlineid = idx - start
+            for subjid, y_slice in self.streamline_id_slice_per_subj.items():
+                if y_slice.start <= idx < y_slice.end:
+                    streamlineid = idx - y_slice.start
                     return streamlineid, subjid
             raise ValueError("Could not find (streamlineid, subjid) "
                              "from idx: {}".format(idx))
@@ -219,12 +249,13 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
         return DataListForTorch()
 
     @staticmethod
-    def _init_subj_from_hdf(hdf_file, subject_id, groups, log):
+    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups,
+                            streamline_group, log):
         """Non-lazy version: using the class's method init_from_hdf,
         which already loads everyting. Encapsulating this call in a method
         because the lazy version will skip the hdf_file to init subject."""
-        return SubjectData.init_from_hdf(subject_id=subject_id, groups=groups,
-                                         hdf_file=hdf_file, log=log)
+        return SubjectData.init_from_hdf(subject_id, volume_groups,
+                                         streamline_group, hdf_file, log)
 
     def get_subject_data(self, subj_idx: int) -> SubjectData:
         """Here, data_list is a DataListForTorch, and its elements are
@@ -270,15 +301,15 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
         return LazyDataListForTorch(hdf_file)
 
     @staticmethod
-    def _init_subj_from_hdf(hdf_file, subject_id, groups, log):
+    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups,
+                            streamline_group, log):
         """Lazy version: not using hdf_file arg, so no hdf_handle is saved yet
         and data is not loaded."""
 
         hdf_file = None
 
-        return LazySubjectData.init_from_hdf(subject_id=subject_id,
-                                             groups=groups, hdf_file=hdf_file,
-                                             log=log)
+        return LazySubjectData.init_from_hdf(subject_id, volume_groups,
+                                             streamline_group, hdf_file, log)
 
     def get_subject_data(self, item) -> LazySubjectData:
         """Contains both MRI data and streamlines. Here, data_list is a
@@ -287,7 +318,7 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
         """
         if self.hdf_handle is None:
             self.hdf_handle = h5py.File(self.hdf5_path, 'r')
-        return self.data_list[(item, self.hdf_handle, self.groups)]
+        return self.data_list[(item, self.hdf_handle)]
 
     def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int,
                                         device: torch.device,
@@ -330,4 +361,3 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
     def __del__(self):
         if self.hdf_handle is not None:
             self.hdf_handle.close()
-

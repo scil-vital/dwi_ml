@@ -3,6 +3,7 @@
 These batch samplers can be used in a torch DataLoader. For instance:
         # Initialize dataset
         dataset = MultiSubjectDataset(...)
+        dataset.load_training_data()
 
         # Initialize batch sampler
         batch_sampler = BatchSampler(...)
@@ -37,7 +38,7 @@ contribute to dwi_ml if no batch sampler fits your needs.
 
 from collections import defaultdict
 import logging
-from typing import Dict, List, Union, Iterable
+from typing import Dict, List, Union, Iterable, Iterator
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
@@ -245,7 +246,8 @@ class BatchSamplerAbstract(Sampler):
             raise ValueError('Reverse ration must be a float between 0 and 1')
 
         # Preparing the neighborhood for use by the child classes
-        if not (neighborhood_type == 'axes' or neighborhood_type == 'grid'):
+        if neighborhood_type and not (neighborhood_type == 'axes' or
+                                      neighborhood_type == 'grid'):
             raise ValueError("neighborhood type must be either 'axes', 'grid' "
                              "or None!")
         self.neighborhood_type = neighborhood_type
@@ -256,10 +258,7 @@ class BatchSamplerAbstract(Sampler):
         self.neighborhood_points = prepare_neighborhood_information(
             neighborhood_type, neighborhood_radius_vox)
 
-        if type(data_source) == LazyMultiSubjectDataset:
-            self.hdf_file = data_source.hdf_handle
-
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Dict[int, list]]:
         """
         Streamline sampling.
 
@@ -286,9 +285,9 @@ class BatchSamplerAbstract(Sampler):
         while True:
             # Weight subjects by their number of remaining streamlines
             streamlines_per_subj = np.array(
-                [np.sum(global_available_streamlines[start:end])
-                 for subj_id, (start, end) in
-                 self.data_source.subjID_to_streamlineID.items()])
+                [np.sum(global_available_streamlines[subj_id_slice])
+                 for _, subj_id_slice in
+                 self.data_source.streamline_id_slice_per_subj.items()])
             logging.debug('Nb of remaining streamlines per subj: {}'
                           .format(streamlines_per_subj))
             assert (np.sum(streamlines_per_subj) ==
@@ -316,8 +315,10 @@ class BatchSamplerAbstract(Sampler):
                     size=n_subjects, replace=False, p=weights)
             else:
                 # Sampling from all subjects
-                sampled_subjs = self.data_source.subjID_to_streamlineID.keys()
+                sampled_subjs = self.data_source.streamline_id_slice_per_subj.keys()
                 n_subjects = len(sampled_subjs)
+            logging.debug('Sampled subjects for this batch: {}'
+                          .format(sampled_subjs))
 
             # if step_size, this is in mm. Else, it is is number of points.
             batch_size_per_subj = self.batch_size / n_subjects
@@ -337,15 +338,8 @@ class BatchSamplerAbstract(Sampler):
                 for subj in sampled_subjs:
                     # Get the global streamline ids corresponding to this
                     # subject
-                    start, end = self.data_source.subjID_to_streamlineID[subj]
-                    subj_global_ids = global_streamlines_ids[start:end]
-                    logging.debug('Emma, batch sampler iter: '
-                                  'Why is this different? There is '
-                                  'something I have not understood?, should '
-                                  'be the same. {}-{} == {}-{}? If so, just do'
-                                  'np.array(start:end)'
-                                  .format(start, end, subj_global_ids[0],
-                                          subj_global_ids[-1]))
+                    subj_id_slice = \
+                        self.data_source.streamline_id_slice_per_subj[subj]
 
                     # We will continue iterating on this subject until we
                     # break (i.e. when we reach the maximum batch size for this
@@ -353,16 +347,12 @@ class BatchSamplerAbstract(Sampler):
                     total_subj_batch_size = 0
                     while True:
                         # Find streamlines that have not been used yet.
-                        subj_available_ids = \
-                            subj_global_ids[
-                                global_available_streamlines[start:end]]
-                        logging.debug(
-                            'Emma, batch sampler iter: ça me semble '
-                            'louche comme calcul. Simplifiable?'
-                            'Resultat de son calcul: {}, \n'
-                            'Resultat de mon calcul: {}'
-                            .format(subj_available_ids,
-                                    global_available_streamlines[start:end]))
+                        subj_available_ids = np.flatnonzero(
+                            global_available_streamlines[subj_id_slice]) + \
+                                             subj_id_slice.start
+                        logging.debug("Available streamlines for this "
+                                      "subject: {}"
+                                      .format(len(subj_available_ids)))
 
                         # No streamlines remain for this subject
                         if len(subj_available_ids) == 0:
@@ -372,16 +362,17 @@ class BatchSamplerAbstract(Sampler):
                         # heaviness
                         sample_global_ids = \
                             self._rng.choice(subj_available_ids, CHUNK_SIZE)
-                        subj_data = self.data_source.data_list[subj]
+                        subj_data = self.data_source.get_subject_data(subj)
                         if self.step_size:
                             # batch_size is in mm.
                             sample_heaviness = \
-                                subj_data.streamline_lengths_mm[
+                                subj_data.sft_data.streamlines.lengths_mm[
                                     sample_global_ids]
                         else:
                             # batch size in in number of points
                             sample_heaviness = \
-                                subj_data.streamline_lengths[sample_global_ids]
+                                subj_data.sft_data.streamlines.lengths[
+                                    sample_global_ids]
 
                         # If batch_size has been passed, taking a little less
                         # streamlines for this last sub_batch.
@@ -403,8 +394,9 @@ class BatchSamplerAbstract(Sampler):
                         global_available_streamlines[sample_global_ids] = 0
 
                         # Fetch subject-relative ids and add sample to batch
-                        sample_relative_ids = sample_global_ids - start
-                        batch_ids_per_subj[subj].append(sample_relative_ids)
+                        sample_relative_ids = \
+                            sample_global_ids - subj_id_slice.start
+                        batch_ids_per_subj[subj] = sample_relative_ids
 
                         if volume_batch_fulfilled:
                             break
@@ -603,7 +595,8 @@ class BatchPointsSampler(BatchSamplerAbstract):
     use them separatedly instead of the rnn.PackedSequence that
     BatchSequenceSampler uses.
     """
-    raise NotImplementedError
+    def __init__(self):
+        raise NotImplementedError
 
 
 class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):

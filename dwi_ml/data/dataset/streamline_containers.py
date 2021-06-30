@@ -38,8 +38,12 @@ def _init_array_sequence_from_hdf_info(hdf_group: h5py.Group):
     streamlines = ArraySequence()
     streamlines._data = np.array(hdf_group['data'])
     streamlines._offsets = np.array(hdf_group['offsets'])
+    streamlines._lengths = np.array(hdf_group['lengths'])
+
+    # Adding non-hidden parameters for nicer later acces
     streamlines.lengths = np.array(hdf_group['lengths'])
     streamlines.lengths_mm = np.array(hdf_group['euclidean_lengths'])
+
     return streamlines
 
 
@@ -186,9 +190,8 @@ class SFTDataAbstract(object):
 
 class SFTData(SFTDataAbstract):
     def __init__(self, streamlines: ArraySequence, space_attributes: Tuple,
-                 space: Space, lengths_mm):
+                 space: Space):
         super().__init__(streamlines, space_attributes, space)
-        self.lengths_mm = lengths_mm
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
@@ -197,19 +200,18 @@ class SFTData(SFTDataAbstract):
         loaded yet. Non-lazy = loading the data here.
         """
         streamlines = _init_array_sequence_from_hdf_info(hdf_group)
-        lengths_mm = np.array(hdf_group['euclidean_lengths'])
         space_attributes, space = _init_space_from_hdf_info(hdf_group)
 
         # Return an instance of SubjectMRIData instantiated through __init__
         # with this loaded data:
-        return cls(streamlines, space_attributes, space, lengths_mm)
+        return cls(streamlines, space_attributes, space)
 
     @property
     def streamlines_as_tensor(self):
         raise NotImplementedError
 
     def get_chosen_streamlines_as_sft(self, streamline_ids=None):
-        if streamline_ids:
+        if streamline_ids is not None:
             streamlines = self.streamlines[streamline_ids]
         else:
             streamlines = self.streamlines

@@ -43,4 +43,5 @@ create_hdf5_dataset.py --force --name $name --std_mask $mask_for_standardization
 ###########
 hdf5_filename="$ismrm2015_folder/noArtefact/hdf5/$name.hdf5"
 tests/test_multisubjectdataset_creation_from_hdf5.py $hdf5_filename
-tests/test_batch_sampler.py $hdf5_filename
+tests/test_batch_sampler_iter.py $hdf5_filename
+tests/test_batch_sampler_load_batch.py $hdf5_filename

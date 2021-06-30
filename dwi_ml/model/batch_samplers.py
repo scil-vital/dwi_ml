@@ -415,6 +415,7 @@ class BatchSamplerAbstract(Sampler):
         # Noise is considered in mm so we need to make sure the sft is in
         # rasmm space
         if self.streamline_noise_sigma and self.streamline_noise_sigma > 0:
+            logging.debug('Adding noise')
             sft.to_rasmm()
             sft = add_noise_to_streamlines(sft, self.streamline_noise_sigma,
                                            self._rng)
@@ -422,6 +423,7 @@ class BatchSamplerAbstract(Sampler):
         # Splitting streamlines
         # This increases the batch size, but does not change the total length
         if self.split_ratio and self.split_ratio > 0:
+            logging.debug('Splitting')
             all_ids = np.arange(len(sft))
             n_to_split = int(np.floor(len(sft) * self.split_ratio))
             split_ids = self._rng.choice(all_ids, size=n_to_split,
@@ -430,6 +432,7 @@ class BatchSamplerAbstract(Sampler):
 
         # Reversing streamlines
         if self.reverse_ratio and self.reverse_ratio > 0:
+            logging.debug('Reversing')
             ids = np.arange(len(sft))
             self._rng.shuffle(ids)
             reverse_ids = ids[:int(len(ids) * self.reverse_ratio)]
@@ -544,6 +547,7 @@ class BatchSequencesSampler(BatchSamplerAbstract):
             # Resampling streamlines to a fixed step size
             if self.step_size:
                 # toDo Skip resampling if had already the same step size
+                logging.debug('Resampling')
                 sft = resample_streamlines_step_size(sft,
                                                      step_size=self.step_size)
 
@@ -556,7 +560,7 @@ class BatchSequencesSampler(BatchSamplerAbstract):
             final_streamline_ids_per_subj[subj] = slice(ids_start, ids_end)
 
             # Add all (augmented) streamlines to the batch
-            batch_streamlines.extend(sft)
+            batch_streamlines.extend(sft.streamlines)
 
         if self.avoid_cpu_computations:
             return batch_streamlines, final_streamline_ids_per_subj
@@ -690,9 +694,6 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
 
             # Get the batch input volume
             # (i.e. volume's neighborhood under each point of the streamline)
-            logging.debug("Testing something. This was using the unpacked "
-                          "direction. I want to see if it is going to work "
-                          "with a PackedSequence")
             batch_x = self.compute_interpolation(batch_streamlines,
                                                  streamline_ids_per_subj,
                                                  packed_directions)
@@ -722,6 +723,8 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
             data_volume = self.data_source.get_subject_mri_group_as_tensor(
                 subj, self.input_group_idx, device=self.device,
                 non_blocking=True)
+            logging.debug('Volume nanmean for current subj: {}'
+                          .format(np.nanmean(data_volume.data)))
 
             # If user chose to add neighborhood:
             if self.neighborhood_type:
@@ -737,7 +740,9 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                                                device=self.device)
                 flat_subj_x_data = torch_trilinear_interpolation(
                     data_volume, coords_torch)
-
+                logging.debug('Volume nanmean for current subj after '
+                              'neighborhood + interpolation: {}'
+                              .format(np.nanmean(flat_subj_x_data)))
                 # Reshape signal into (n_points, new_feature_size)
                 # DWI data features for each neighboor are contatenated.
                 #    dwi_feat1_neig1  dwi_feat2_neig1 ...  dwi_featn_neighbm
@@ -754,6 +759,9 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                                                device=self.device)
                 flat_subj_x_data = torch_trilinear_interpolation(
                     data_volume, coords_torch)
+                logging.debug('Volume nanmean for current subj after '
+                              'interpolation: {}'
+                              .format(np.nanmean(flat_subj_x_data)))
 
             # Free the data volume from memory "immediately"
             del data_volume

@@ -42,7 +42,6 @@ def test_sampler(fake_dataset, batch_size, step_size):
     dataloader = DataLoader(fake_dataset, batch_sampler=batch_sampler,
                             collate_fn=batch_sampler.load_batch)
 
-    print('Getting one batch:')
     batch_generator = batch_sampler.__iter__()
 
     # Loop on batches

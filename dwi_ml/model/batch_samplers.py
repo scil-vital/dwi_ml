@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 import logging
-from typing import Dict, List, Tuple, Union, Iterable
+from typing import Dict, List, Union, Iterable
 
+from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
 from scilpy.tracking.tools import resample_streamlines_step_size
 import torch
@@ -53,47 +54,80 @@ contribute to dwi_ml if no batch sampler fits your needs.
         x = inputs
         y = sequences
 """
-# Note that we use default noise variance for compressed streamlines,
-# otherwise 0.1 * step-size
-DEFAULT_NOISE_SIGMA_MM = 0.1
-DEFAULT_REVERSE_RATIO = 0.5
+# Number of streamlines sampled at the same for a given subject (then, we
+# evaluate if the batch_size has been reached. No need to sample only one
+# streamline at the time!
+CHUNK_SIZE = 256
+
+
+def prepare_neighborhood_information(neighborhood_type,
+                                     neighborhood_radius):
+    """
+    Prepare neighborhood information for a given group.
+    Always based on the first subject.
+    Results are in the voxel world.
+    """
+    if neighborhood_type is not None:
+        if neighborhood_type == 'axes':
+            neighborhood_points = get_neighborhood_vectors_axes(
+                neighborhood_radius)
+        else:
+            neighborhood_points = get_neighborhood_vectors_grid(
+                neighborhood_radius)
+        return neighborhood_points
+    else:
+        return None
 
 
 class BatchSamplerAbstract(Sampler):
     """
-    This class defines how to use data available in the MultiSubjectData:
-       use noise? use the whole streamlines as sequences? use only one data
-       point at the time? add neighboorhood? etc.
+    This class defines how to sample the streamlines available in the
+    MultiSubjectData. However, the format in which the streamlines should be
+    returned depend on how you want to use them: as whole sequences
+    (torch.rnn.PackedSequence) or as individual time steps (NotImplemented).
+    See below for the BatchSequenceSampler and the BatchPointSampler.
 
-    Then it uses the sampled data to organize a batch. It is possible to
-    restrict the number of volumes in a batch and to reduce the number of time
-    we need to load new data, by using the same volumes for a given number of
-    "cycles".
+    It is possible to restrict the number of subjects in a batch (and thus the
+    number of inputs to load associated with sampled streamlines), and to
+    reduce the number of time we need to load new data by using the same
+    subjects for a given number of "cycles".
 
     NOTE: Actual batch sizes might be different than `batch_size` depending
     on chosen data augmentation. This sampler takes streamline cutting and
     resampling into consideration, and as such, will return more (or less)
     points than the provided `batch_size`.
+
+    Data augmentation is done on-the-fly to avoid having to multiply data on
+    disk.
     """
 
     def __init__(self, data_source: Union[MultiSubjectDataset,
                                           LazyMultiSubjectDataset],
+                 streamline_group_name: str,
                  batch_size: int, rng: np.random.RandomState,
                  n_subject: int = None, cycles: int = None,
-                 use_streamline_noise: bool = False, step_size: float = None,
-                 neighborhood_type: str = None,
+                 step_size: float = None, neighborhood_type: str = None,
                  neighborhood_radius_vox: Union[int, float,
                                                 Iterable[float]] = None,
-                 split_ratio: float = None, add_previous_dir: bool = False):
+                 split_streamlines_ratio: float = 0.,
+                 streamline_noise_sigma_mm: float = 0.,
+                 reverse_streamlines_ratio: float = 0.5,
+                 avoid_cpu_computations: bool = None):
         """
         Parameters
         ----------
         data_source : MultiSubjectDataset or LazyMultiSubjectDataset
             Dataset to sample from.
+        streamline_group_name: str
+            The name of the group to use to load the sequences. Probably
+            'streamlines'. Should exist for all subjects in the
+            MultiSubjectData.
         batch_size : int
             Number of required points in a batch. This will be approximated as
             the final batch size depends on data augmentation (streamline
-            cutting or resampling).
+            cutting or resampling). Note that approximation of the number of
+            streamlines to fit this batch size will depend on the type of
+            step_size: fixed or compressed data.
         rng : np.random.RandomState
             Random number generator.
         n_subject : int
@@ -105,10 +139,6 @@ class BatchSamplerAbstract(Sampler):
             Optional, but required if `n_subjects` is given.
             Number of batches re-using the same volumes before sampling new
             ones.
-        use_streamline_noise : float
-            If set, add random gaussian noise to streamline coordinates
-            on-the-fly. Noise variance is 0.1 * step-size, or 0.1mm if no step
-            size is used. [False]
         step_size : float
             Constant step size that every streamline should have between points
             (in mm). If None, train on streamlines as they are (ex,
@@ -124,15 +154,39 @@ class BatchSamplerAbstract(Sampler):
                 - For a grid neighborhood: type must be int.
                 - For an axes neighborhood: type must be float. If it is an
                 iterable of floats, we will use a multi-radius neighborhood.
-        split_ratio : float
-            Percentage of streamlines to randomly split into 2, in each batch.
+        split_streamlines_ratio : float
+            DATA AUGMENTATION: Percentage of streamlines to randomly split
+            into 2, in each batch (keeping both segments as two independent
+            streamlines).
             The reason for cutting is to help the ML algorithm to track from
             the middle of WM by having already seen half-streamlines. If you
-            are using interface seeding, this is not necessary. If None, will
-            not split streamlines. [None]
-        add_previous_dir : bool
-            If set, concatenate the previous streamline direction as input.
-            [False]
+            are using interface seeding, this is not necessary. Default: 0.
+        streamline_noise_sigma_mm : float
+            DATA AUGMENTATION: Add random Gaussian noise to streamline
+            coordinates with given variance. Make sure it is smaller than your
+            step size. Ex, you could choose 0.1 * step-size. Noise is truncated
+            to +/- 2*noise_sigma. Default: 0.
+            ToDo: add a variance in the distribution of noise between
+             epoques. Comme ça, la même streamline pourra être vue plusieurs
+             fois (dans plsr époques) mais plus ou moins bruitée d'une fois
+             à l'autre.
+        reverse_streamlines_ratio: float
+            DATA AUGMENTATION: If set, reversed a part of the streamlines in
+            the batch. You could want to reverse ALL your data and then use
+            both the initial data and reversed data. But this would take twice
+            the memory. If your ratio is, say, 0.5, streamlines have a 50%
+            chance to be reversed. If you train for enough epochs, high chance
+            that you will have used both directions of your streamline at least
+            once. Default: 0.5.
+            A way to absolutely ensure using both directions the same number of
+            time, we could use a flag and at each epoch, reverse those with
+            unreversed flag. But that adds a bool for each streamline in your
+            dataset and probably not so useful.
+        avoid_cpu_computations: bool
+            If set, all computations that can be avoided in the batch sampler
+            (which is computed on CPU) will be skipped and should be performed
+            by the user later. Ex: computing directions from the streamline
+            coordinates, computing input interpolation, etc.
         """
         super().__init__(data_source)  # This does nothing but python likes it.
 
@@ -151,62 +205,65 @@ class BatchSamplerAbstract(Sampler):
 
         # Batch sampler variables
         self.data_source = data_source
-        self.batch_size = batch_size
+        self.streamline_group_name = streamline_group_name
         self._rng = rng
         self.n_subjects = n_subject
         self.cycles = cycles
-
         self.step_size = step_size
-        self.batch_size_length_mm = self.step_size * self.batch_size
+        self.avoid_cpu_computations = avoid_cpu_computations
 
-        # Concerning the choice of dMRI data
-        self.sh_order = None  # Stored in the dataset file
+        # Batch size computation:
+        # If self.step_size: we can't rely on the current number of time steps
+        # because we will resample streamlines. Relying on the lenths_mm info
+        # available in the MultiSubjectData to be able to know the (eventual)
+        # number of time steps without loading the streamlines, particularly
+        # with the lazy data.
+        # If self.step_size is None: not resampling. Then we can get the real
+        # number of time steps in the streamlines, also already available in
+        # the MultiSubjectData without loading the streamlines.
+        if self.step_size:
+            # batch size is in mm
+            self.batch_size = self.step_size * batch_size
+        else:
+            # batch size is in number of points.
+            self.batch_size = batch_size
 
-        # Concerning the choice of streamlines:
-        # Noise, resampling, cutting, interpolation.
-        self.do_interpolation = do_interpolation
-        self.use_streamline_noise = use_streamline_noise
-        self.split_ratio = split_ratio
+        # Data augmentation for streamlines:
+        self.streamline_noise_sigma = streamline_noise_sigma_mm
+        self.split_ratio = split_streamlines_ratio
+        self.reverse_ratio = reverse_streamlines_ratio
+        if not 0 <= self.split_ratio <= 1:
+            raise ValueError('Split ratio must be a float between 0 and 1.')
+        if not 0 <= self.reverse_ratio <= 1:
+            raise ValueError('Reverse ration must be a float between 0 and 1')
 
-        # Concerning the use of inputs
-        self.add_previous_dir = add_previous_dir
-        self.neighborhood_type = neighborhood_type
-        self.neighborhood_radius = neighborhood_radius_vox
-        self.neighborhood_points = None  # Will be computed later
-        if self.neighborhood_type is None:
-            if self.neighborhood_radius:
-                logging.warning('You have chosen not to add a neighborhood '
-                                '(value None), but you have given a '
-                                'neighborhood radius. Discarded.')
-        if not (self.neighborhood_type == 'axes' or
-                self.neighborhood_type == 'grid'):
+        # Preparing the neighborhood for use by the child classes
+        if not (neighborhood_type == 'axes' or neighborhood_type == 'grid'):
             raise ValueError("neighborhood type must be either 'axes', 'grid' "
                              "or None!")
+        self.neighborhood_type = neighborhood_type
+        if self.neighborhood_type is None and neighborhood_radius_vox:
+            logging.warning("You have chosen not to add a neighborhood (value "
+                            "None), but you have given a neighborhood radius. "
+                            "Discarded.")
+        self.neighborhood_points = prepare_neighborhood_information(
+            neighborhood_type, neighborhood_radius_vox)
 
         if type(data_source) == LazyMultiSubjectDataset:
             self.hdf_file = data_source.hdf_handle
 
-    def prepare_neighborhood_information(self):
-        """
-        Prepare neighborhood information for a given group.
-        Always based on the first subject.
-        Results are in the voxel world.
-        """
-        if self.neighborhood_type is not None:
-            if self.neighborhood_type == 'axes':
-                self.neighborhood_points = get_neighborhood_vectors_axes(
-                    self.neighborhood_radius)
-            else:
-                self.neighborhood_points = get_neighborhood_vectors_grid(
-                    self.neighborhood_radius)
-
     def __iter__(self):
-        """First sample the volumes to be used from a given number of desired
-        volumes, then sample streamline ids inside those volumes.
+        """
+        Streamline sampling.
+
+        First sample the subjects to be used from a given number of desired
+        subjects, then sample streamline ids inside those volumes.
 
         Returns
         -------
-        batch : list of tuple of (relative_streamline_id, tractodata_id)
+        batch_ids_per_subj : dict[int, list]
+            The list of streamline ids for each subject (relative ids inside
+            each subject's tractogram).
         """
         # This is the list of all possible streamline ids
         global_streamlines_ids = np.arange(len(self.data_source))
@@ -214,23 +271,21 @@ class BatchSamplerAbstract(Sampler):
         # This contains one bool per streamline:
         #   1 = this streamline has not been used yet.
         #   0 = this streamline has been used.
-        global_streamlines_mask = np.ones_like(global_streamlines_ids,
-                                               dtype=np.bool)
+        global_available_streamlines = np.ones_like(global_streamlines_ids,
+                                                    dtype=np.bool)
 
         # This will continue "yielding" batches until it encounters a break.
-        # Possible breaks:
-        #   - if all streamlines have been used
-        #   -
+        # (i.e. when all streamlines have been used)
         while True:
             # Weight subjects by their number of remaining streamlines
             streamlines_per_subj = np.array(
-                [np.sum(global_streamlines_mask[start:end])
+                [np.sum(global_available_streamlines[start:end])
                  for subj_id, (start, end) in
                  self.data_source.subjID_to_streamlineID.items()])
             logging.debug('Nb of remaining streamlines per subj: {}'
                           .format(streamlines_per_subj))
             assert (np.sum(streamlines_per_subj) ==
-                    np.sum(global_streamlines_mask)), \
+                    np.sum(global_available_streamlines)), \
                 "Unexpected error, the total number of streamlines per " \
                 "subject does not correspond to the total number of " \
                 "streamlines in the multisubject dataset. Error in " \
@@ -247,20 +302,18 @@ class BatchSamplerAbstract(Sampler):
                 # Sampling first from subjects that were not seed a lot yet
                 weights = streamlines_per_subj / np.sum(streamlines_per_subj)
 
-                # Choose only non-empty subjects
+                # Choosing only non-empty subjects
                 n_subjects = min(self.n_subjects, np.count_nonzero(weights))
                 sampled_subjs = self._rng.choice(
                     np.arange(len(self.data_source.data_list)),
                     size=n_subjects, replace=False, p=weights)
             else:
-                # sampling from all subjects
+                # Sampling from all subjects
                 sampled_subjs = self.data_source.subjID_to_streamlineID.keys()
                 n_subjects = len(sampled_subjs)
 
-            # Compute the number of *original* timesteps required per subject
-            # (before resampling)
-            # This is our indice of the heavyness of data.
-            length_mm_per_subj = self.batch_size_length_mm / n_subjects
+            # if step_size, this is in mm. Else, it is is number of points.
+            batch_size_per_subj = self.batch_size / n_subjects
 
             # Preparing to iterate on these chosen subjects for a predefined
             # number of cycles
@@ -269,12 +322,11 @@ class BatchSamplerAbstract(Sampler):
             else:
                 # Infinite iterator, sampling from all subjects
                 iterator = iter(int, 1)
-
             for _ in iterator:
-                # For each subject, randomly choose streamlines that have not
-                # been chosen yet
-                batch = []
+                batch_ids_per_subj = defaultdict(list)
 
+                # For each subject, randomly choose streamlines that have not
+                # been chosen yet.
                 for subj in sampled_subjs:
                     # Get the global streamline ids corresponding to this
                     # subject
@@ -289,63 +341,101 @@ class BatchSamplerAbstract(Sampler):
                                           subj_global_ids[-1]))
 
                     # We will continue iterating on this subject until we
-                    # reach the maximum lengths_mm for this subject
-                    total_subj_length_mm = 0
+                    # break (i.e. when we reach the maximum batch size for this
+                    # subject)
+                    total_subj_batch_size = 0
                     while True:
-                        # Filter for available (unmasked) streamlines
-                        available_streamline_ids = \
+                        # Find streamlines that have not been used yet.
+                        subj_available_ids = \
                             subj_global_ids[
-                                global_streamlines_mask[start:end]]
+                                global_available_streamlines[start:end]]
+                        logging.debug(
+                            'Emma, batch sampler iter: ça me semble '
+                            'louche comme calcul. Simplifiable?'
+                            'Resultat de son calcul: {}, \n'
+                            'Resultat de mon calcul: {}'
+                            .format(subj_available_ids,
+                                    global_available_streamlines[start:end]))
 
-                        # No streamlines remain for this volume
-                        if len(available_streamline_ids) == 0:
+                        # No streamlines remain for this subject
+                        if len(subj_available_ids) == 0:
                             break
 
-                        # Sample a batch of streamlines and get their lengths
+                        # Sample a sub-batch of streamlines and get their
+                        # heaviness
                         sample_global_ids = \
-                            self._rng.choice(available_streamline_ids, 256)
-                        sample_lengths_mm = \
-                            self.data_source.streamline_lengths_mm[
-                                sample_global_ids]
+                            self._rng.choice(subj_available_ids, CHUNK_SIZE)
+                        subj_data = self.data_source.data_list[subj]
+                        if self.step_size:
+                            # batch_size is in mm.
+                            sample_heaviness = \
+                                subj_data.streamline_lengths_mm[
+                                    sample_global_ids]
+                        else:
+                            # batch size in in number of points
+                            sample_heaviness = \
+                                subj_data.streamline_lengths[sample_global_ids]
 
-                        volume_batch_fulfilled = False
-                        # Keep total volume length under the maximum
-                        if (total_subj_length_mm + np.sum(
-                                sample_lengths_mm) >
-                                length_mm_per_subj):
-                            # Select only enough streamlines to fill the
-                            # required length
-                            cumulative_sum = np.cumsum(sample_lengths_mm)
-                            selected_mask = cumulative_sum < (
-                                    length_mm_per_subj - total_subj_length_mm)
-                            sample_global_ids = sample_global_ids[
-                                selected_mask]
-                            sample_lengths_mm = sample_lengths_mm[
-                                selected_mask]
+                        # If batch_size has been passed, taking a little less
+                        # streamlines for this last sub_batch.
+                        if (total_subj_batch_size + np.sum(sample_heaviness) >=
+                                batch_size_per_subj):
+                            cumulative_sum = np.cumsum(sample_heaviness)
+                            selected = cumulative_sum < (batch_size_per_subj -
+                                                         total_subj_batch_size)
+                            sample_global_ids = sample_global_ids[selected]
+                            sample_heaviness = sample_heaviness[selected]
                             volume_batch_fulfilled = True
+                        else:
+                            volume_batch_fulfilled = False
 
-                        # Add this streamline's length to total length
-                        total_subj_length_mm += np.sum(sample_lengths_mm)
+                        # Add this sub-batch's heaviness to total heaviness
+                        total_subj_batch_size += np.sum(sample_heaviness)
 
                         # Mask the sampled streamline
-                        global_streamlines_mask[sample_global_ids] = 0
+                        global_available_streamlines[sample_global_ids] = 0
 
-                        # Fetch tractodata relative id
+                        # Fetch subject-relative ids and add sample to batch
                         sample_relative_ids = sample_global_ids - start
-
-                        # Add sample to batch
-                        for sample_id in sample_relative_ids:
-                            batch.append((sample_id, subj))
+                        batch_ids_per_subj[subj].append(sample_relative_ids)
 
                         if volume_batch_fulfilled:
                             break
 
-                if len(batch) == 0:
+                if len(batch_ids_per_subj) == 0:
                     logging.info("No more streamlines remain in any of the "
                                  "selected volumes! Moving to new cycle!")
                     break
 
-                yield batch
+                yield batch_ids_per_subj
+
+    def _sft_data_augmentation(self, sft: StatefulTractogram):
+        """ On-the-fly data augmentation."""
+
+        # Adding noise to coordinates
+        # Noise is considered in mm so we need to make sure the sft is in
+        # rasmm space
+        if self.streamline_noise_sigma and self.streamline_noise_sigma > 0:
+            sft.to_rasmm()
+            sft = add_noise_to_streamlines(sft, self.streamline_noise_sigma,
+                                           self._rng)
+
+        # Splitting streamlines
+        # This increases the batch size, but does not change the total length
+        if self.split_ratio and self.split_ratio > 0:
+            all_ids = np.arange(len(sft))
+            n_to_split = int(np.floor(len(sft) * self.split_ratio))
+            split_ids = self._rng.choice(all_ids, size=n_to_split,
+                                         replace=False)
+            sft = split_streamlines(sft, self._rng, split_ids)
+
+        # Reversing streamlines
+        if self.reverse_ratio and self.reverse_ratio > 0:
+            ids = np.arange(len(sft))
+            self._rng.shuffle(ids)
+            reverse_ids = ids[:int(len(ids) * self.reverse_ratio)]
+            sft = reverse_streamlines(sft, reverse_ids)
+        return sft
 
 
 class BatchSequencesSampler(BatchSamplerAbstract):
@@ -354,52 +444,23 @@ class BatchSequencesSampler(BatchSamplerAbstract):
     Can be used as parent for your BatchSampler, depending on the type of
     data needed for your model, such as was done below with
     BatchSamplerOneInputVolumeSequence
-
-    Data augmentation
-    -----------------
-    The _get_batch_streamlines method does on-the-fly data augmentation, to
-    avoid doubling the data on disk:
-    - Resampling step size
-    - Adding Gaussian noise (truncated to +/- 2*noise_sigma)
-        ToDo: add a variance in the distribution of noise between
-         epoques. Comme ça, la même streamline pourra être vue plusieurs
-         fois (dans plsr époques) mais plus ou moins bruitée d'une fois
-         à l'autre.
-    - Cutting streamlines: Splitting some streamlines into 2 at random
-    positions and keeping both segments as two independent streamlines
-        .The number of streamlines to split depends on the split_ratio.
-        .This increases the batch size, but does not change the number of
-        timesteps.
-        .We need to do it subject per subject to keep track of the streamline
-         ids.
-    - Reversing half of streamline batch: You could want to reverse ALL your
-    data and then use both the initial data and reversed data. But this would
-    take twice the memory. Here, for each epoch, you have 50% chance to be
-    reversed. If you train for enough epochs, high chance that you will have
-    used both directions of your streamline at least once.
-        A way to absolutely ensure using both directions the same number of
-        time, we could use a flag and at each epoch, reverse those with
-        unreversed flag. But that adds a bool for each streamline in your
-        dataset and probably not so useful.
     """
 
-    def __init__(self, streamline_group_name: str,
-                 data_source: Union[MultiSubjectDataset,
-                                    LazyMultiSubjectDataset],
+    def __init__(self, data_source: Union[MultiSubjectDataset,
+                                          LazyMultiSubjectDataset],
+                 streamline_group_name: str,
                  batch_size: int, rng: np.random.RandomState,
                  n_subject: int = None, cycles: int = None,
-                 use_streamline_noise: bool = False, step_size: float = None,
-                 neighborhood_type: str = None,
+                 step_size: float = None, neighborhood_type: str = None,
                  neighborhood_radius_vox: Union[int, float,
                                                 Iterable[float]] = None,
-                 split_ratio: float = None, add_previous_dir: bool = False,
-                 compute_directions: bool = False,
+                 split_streamlines_ratio: float = 0.,
+                 streamline_noise_sigma_mm: float = 0.,
+                 reverse_streamlines_ratio: float = 0.5,
+                 avoid_cpu_computations: bool = None,
                  normalize_directions: bool = True):
         """
-        streamline_group_name: str
-            The name of the group to use for the sequences. Probably
-            'streamlines'. Should exist for all subjects.
-
+        Additional parameters compared to super:
         normalize_directions: bool
             If true, directions will be normalized. If the step size is fixed,
             it shouldn't make any difference. If streamlines are compressed,
@@ -407,140 +468,98 @@ class BatchSequencesSampler(BatchSamplerAbstract):
             normalizing could give back to the algorithm a sense of distance
             between points.
         """
-        super().__init__(data_source, batch_size, rng, n_subject, cycles,
-                         use_streamline_noise, step_size,
-                         neighborhood_type,
-                         neighborhood_radius_vox, split_ratio,
-                         add_previous_dir)
-
-        self.streamline_group_name = streamline_group_name
+        super().__init__(data_source, streamline_group_name, batch_size, rng,
+                         n_subject, cycles, step_size, neighborhood_type,
+                         neighborhood_radius_vox, split_streamlines_ratio,
+                         streamline_noise_sigma_mm, reverse_streamlines_ratio,
+                         avoid_cpu_computations)
         self.normalize_directions = normalize_directions
 
-    @staticmethod
-    def _get_batch_streamline_ids_per_subj(batch_streamline_ids: List[int]):
+    def load_batch(self, streamline_ids_per_subj: Dict[int, list]):
         """
-        batch_ids: List[int]
-            The list of streamlines to process for this batch.
-
-        Returns the list of same ids, reordered per subject to accelerate
-        processing.
-        """
-        batch_streamline_ids_per_subj = defaultdict(list)
-        for y_id, subj in batch_streamline_ids:
-            batch_streamline_ids_per_subj[subj].append(y_id)
-
-        logging.debug("The streamlines ids for this batch will be: {}"
-                      .format(dict(batch_streamline_ids_per_subj)))
-        return batch_streamline_ids_per_subj
-
-    def _get_batch_streamlines(self, streamline_ids_per_subj):
-        """
-        Fetches the list of streamlines for all subjects in batch + processes
-        data augmentation.
+        Fetches the chosen streamlines for all subjects in batch.
+        Pocesses data augmentation.
 
         Torch uses this function to process the data with the dataloader
         workers. To be used as collate_fn. This part is ran on CPU.
 
-        We can choose which parts t
-
-        FUNCTIONNING:
-            - With interpolation: Gets the list of :
-                X = the dwi data under each point of the streamlines
-                streamlines = the streamlines coordinates.
-                directions = the streamlines directions.
-            Should be used with big data.
-            - Without interpolation: Only gets the list of streamlines
-            coordinates. The rest (X, directions) will be done by the training
-            script directly on GPU.
-            Can be used with smaller data.
+        With self.avoid_cpu_computations options: directions are not computed.
+        If you want to compute it later, use
+        >> self.compute_and_normalize_directions(self, batch_streamlines)
 
         Parameters
         ----------
-        streamline_ids_per_subj: Dict with the list of streamlines to get for
-            each subject.
+        streamline_ids_per_subj: dict[int, list]
+            The list of streamline ids for each subject (relative ids inside
+            each subject's tractogram).
         """
         batch_streamlines = []
 
         # The batch's streamline ids will change throughout processing because
-        # of data augmentation. These final ids will correspond to loaded,
-        # processed streamlines, not to the ids in the hdf5 file.
-        final_streamline_ids_per_subj = OrderedDict()
-
+        # of data augmentation, so we need to do it subject by subject to
+        # keep track of the streamline ids. These final ids will correspond to
+        # the loaded, processed streamlines, not to the ids in the hdf5 file.
+        final_streamline_ids_per_subj = defaultdict(slice)
         for subj, s_ids in streamline_ids_per_subj.items():
             subj_data = self.data_source.get_subject_data(subj)
             logging.debug("    Data augmentation for subj {}"
                           .format(subj + 1))
 
             # Get streamlines as sft
-            sub_sft = subj_data.sft_data.get_chosen_streamlines_as_sft(s_ids)
-
-            # On-the-fly data augmentation:
+            sft = subj_data.sft_data.get_chosen_streamlines_as_sft(s_ids)
 
             # Resampling streamlines to a fixed step size
             if self.step_size:
-                sub_sft = resample_streamlines_step_size(
-                    sub_sft, step_size=self.step_size)
+                sft = resample_streamlines_step_size(sft,
+                                                     step_size=self.step_size)
 
-            # Adding noise to coordinates
-            # Noise is considered in mm so we need to make sure the sft is in
-            # rasmm space
-            if self.use_streamline_noise:
-                sub_sft.to_rasmm()
-                noise_mm = DEFAULT_NOISE_SIGMA_MM * (self.step_size or 1.)
-                sub_sft = add_noise_to_streamlines(sub_sft, noise_mm,
-                                                   self._rng)
-
-            # Splitting streamlines
-            if self.split_ratio:
-                all_ids = np.arange(len(sub_sft))
-                n_to_split = int(np.floor(len(sub_sft) * self.split_ratio))
-                split_ids = self._rng.choice(all_ids, size=n_to_split,
-                                             replace=False)
-                sub_sft = split_streamlines(sub_sft, self._rng, split_ids)
-
-            # Reversing streamlines
-            ids = np.arange(len(sub_sft))
-            self._rng.shuffle(ids)
-            reverse_ids = ids[:int(len(ids) * DEFAULT_REVERSE_RATIO)]
-            sub_sft = reverse_streamlines(sub_sft, reverse_ids)
+            # Data augmentation
+            sft = self._sft_data_augmentation(sft)
 
             # Remember the indices of this subject's (augmented) streamlines
             ids_start = len(batch_streamlines)
-            ids_end = ids_start + len(sub_sft)
+            ids_end = ids_start + len(sft)
             final_streamline_ids_per_subj[subj] = slice(ids_start, ids_end)
 
             # Add all (augmented) streamlines to the batch
-            batch_streamlines.extend(sub_sft)
+            batch_streamlines.extend(sft)
 
-        if self.do_interpolation:
-            # Getting directions
-            batch_directions = self._get_batch_directions(batch_streamlines)
-
-            # Normalization:
-            if self.normalize_directions:
-                batch_directions = [s / torch.sqrt(torch.sum(s ** 2, dim=-1,
-                                                             keepdim=True))
-                                    for s in batch_directions]
-            packed_directions = pack_sequence(batch_directions,
-                                              enforce_sorted=False)
-            return packed_directions
-        else:
+        if self.avoid_cpu_computations:
             return batch_streamlines, final_streamline_ids_per_subj
+        else:
+            packed_directions = \
+                self.compute_and_normalize_directions(batch_streamlines)
+            return (batch_streamlines, final_streamline_ids_per_subj,
+                    packed_directions)
 
-    def _get_batch_directions(self, batch_streamlines: List[np.ndarray]):
-        """
-        Get the direction between two adjacent points for each streamlines.
-        """
-        directions = [torch.as_tensor(s[1:] - s[:-1], dtype=torch.float32,
-                                      device=self.data_source.device)
-                      for s in batch_streamlines]
-        return directions
+    def compute_and_normalize_directions(self, batch_streamlines):
+        # Getting directions
+        batch_directions = [torch.as_tensor(s[1:] - s[:-1],
+                                            dtype=torch.float32,
+                                            device=self.data_source.device)
+                            for s in batch_streamlines]
+
+        # Normalization:
+        if self.normalize_directions:
+            batch_directions = [s / torch.sqrt(torch.sum(s ** 2, dim=-1,
+                                                         keepdim=True))
+                                for s in batch_directions]
+        packed_directions = pack_sequence(batch_directions,
+                                          enforce_sorted=False)
+        return packed_directions
 
 
 class BatchPointsSampler(BatchSamplerAbstract):
     """
     This class loads streamlines one point at the time when streamlines
     are not needed as whole sequences.
+
+    Currently, the __iter__ from the BatchSamplerAbstract samples complete
+    streamline ids, not just points. The MultiSubjectData would have to be
+    modified to find only some timesteps from a given streamline. It is
+    probably easier to sample all points from each sampled streamline, and then
+    use them separatedly instead of the rnn.PackedSequence that
+    BatchSequenceSampler uses.
     """
     raise NotImplementedError
 
@@ -554,30 +573,34 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
     This is for instance the batch sampler used by Learn2Track and by
     Transformers.
     """
-
-    def __init__(self, input_group_name: str, streamline_group_name: str,
-                 data_source: Union[MultiSubjectDataset,
-                                    LazyMultiSubjectDataset],
+    def __init__(self, data_source: Union[MultiSubjectDataset,
+                                          LazyMultiSubjectDataset],
+                 streamline_group_name: str, input_group_name: str,
                  batch_size: int, rng: np.random.RandomState,
                  n_subject: int = None, cycles: int = None,
-                 use_streamline_noise: bool = False, step_size: float = None,
-                 neighborhood_type: str = None,
+                 step_size: float = None, neighborhood_type: str = None,
                  neighborhood_radius_vox: Union[int, float,
                                                 Iterable[float]] = None,
-                 split_ratio: float = None, add_previous_dir: bool = False,
-                 do_interpolation: bool = False,
-                 normalize_directions: bool = True):
+                 split_streamlines_ratio: float = 0.,
+                 streamline_noise_sigma_mm: float = 0.,
+                 reverse_streamlines_ratio: float = 0.5,
+                 avoid_cpu_computations: bool = None,
+                 normalize_directions: bool = True,
+                 add_previous_dir: bool = False):
         """
         Additional parameters compared to super:
 
         input_group_name: str
             Name of the volume group to load as input.
+        add_previous_dir : bool
+            If set, concatenate the previous streamline direction as input.
+            [False]
         """
-        super().__init__(streamline_group_name, data_source,
-                         batch_size, rng, n_subject, cycles,
-                         use_streamline_noise, step_size, neighborhood_type,
-                         neighborhood_radius_vox, split_ratio,
-                         add_previous_dir, do_interpolation)
+        super().__init__(data_source, streamline_group_name, batch_size, rng,
+                         n_subject, cycles, step_size, neighborhood_type,
+                         neighborhood_radius_vox, split_streamlines_ratio,
+                         streamline_noise_sigma_mm, reverse_streamlines_ratio,
+                         avoid_cpu_computations, normalize_directions)
 
         self.input_group_name = input_group_name
         # Find group index in the data_source
@@ -586,32 +609,26 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
         idx = self.data_source.volume_groups.index(input_group_name)
         self.input_group_idx = idx
 
-    def get_batch(self, batch_ids: List[Tuple[int, int]]):
+        self.add_previous_dir = add_previous_dir
+
+    def load_batch(self, streamline_ids_per_subj: Dict[int, list]):
         """
-        PURPOSE: Torch uses this function to process the data with the
-        dataloader workers. To be used as collate_fn.
+        Fetches the chosen streamlines + underlying inputs for all subjects in
+        batch. Pocesses data augmentation. Add previous_direction to the input.
 
-        CPU: It means that this part is ran on CPU. Particularly interesting
-        for interpolation: we don't need to send the DWI data to GPU.
-        Interpolation is done on CPU and interpolated data is send to GPU for
-        the model_and_training.
+        Torch uses this function to process the data with the dataloader
+        workers. To be used as collate_fn. This part is ran on CPU.
 
-        FUNCTIONNING:
-            - With interpolation: Gets the list of :
-                X = the dwi data under each point of the streamlines
-                streamlines = the streamlines coordinates.
-                directions = the streamlines directions.
-            Should be used with big data.
-            - Without interpolation: Only gets the list of streamlines
-            coordinates. The rest (X, directions) will be done by the training
-            script directly on GPU.
-            Can be used with smaller data.
+        With self.avoid_cpu_computations options: directions are not computed,
+        and interpolation is not done. If you want to compute them later, use
+        >> self.compute_and_normalize_directions(self, batch_streamlines)
+        >> self.compute_interpolation().
 
         Parameters
         ----------
-        batch_ids : List of tuple of (int,int)
-            A list of (streamline_id, subject_id), the streamlines to get for
-            this batch.
+        streamline_ids_per_subj: dict[int, list]
+            The list of streamline ids for each subject (relative ids inside
+            each subject's tractogram).
 
         Returns
         -------
@@ -628,31 +645,33 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                 Streamline directions.
         """
 
-        # Get the batch augmented streamlines and their new ids.
-        batch_streamlines, streamline_ids_per_subj = \
-            self._get_batch_streamlines(batch_ids)
+        if self.avoid_cpu_computations:
+            # Only returning the streamlines for now.
+            return super().load_batch(streamline_ids_per_subj)
+        else:
+            batch_streamlines, streamline_ids_per_subj, packed_directions = \
+                super().load_batch(streamline_ids_per_subj)
 
-        if self.do_interpolation:
             # Get the batch input volume and the streamline directions
-            packed_directions = self._get_batch_streamlines(batch_ids)
+            packed_directions = self.load_batch(streamline_ids_per_subj)
 
             # Get the batch input volume
             # (i.e. volume's neighborhood under each point of the streamline)
-            batch_x = self._get_batch_x_interp(batch_streamlines,
-                                               streamline_ids_per_subj,
-                                               batch_directions)
+            logging.debug("Testing something. This was using the unpacked "
+                          "direction. I want to see if it is going to work "
+                          "with a PackedSequence")
+            batch_x = self.compute_interpolation(batch_streamlines,
+                                                 streamline_ids_per_subj,
+                                                 packed_directions)
 
             # Packing data.
             packed_inputs = pack_sequence(batch_x, enforce_sorted=False)
 
             return packed_inputs, packed_directions
-        else:
-            # Only returning the streamlines for now.
-            return batch_streamlines, streamline_ids_per_subj
 
-    def _get_batch_x_interp(self, batch_streamlines: List[np.ndarray],
-                            streamline_ids_per_subj: Dict[int, slice],
-                            batch_directions):
+    def compute_interpolation(self, batch_streamlines: List[np.ndarray],
+                              streamline_ids_per_subj: Dict[int, slice],
+                              batch_directions):
         """
         Get the DWI (depending on volume: as raw, SH, fODF, etc.) volume for
         each point in each streamline (+ depending on options: neighborhood,

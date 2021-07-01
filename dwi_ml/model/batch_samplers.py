@@ -357,7 +357,7 @@ class BatchSamplerAbstract(Sampler):
                         # Find streamlines that have not been used yet.
                         subj_available_ids = np.flatnonzero(
                             global_available_streamlines[subj_id_slice]) + \
-                                             subj_id_slice.start
+                            subj_id_slice.start
                         logging.debug("Available streamlines for this "
                                       "subject: {}"
                                       .format(len(subj_available_ids)))
@@ -543,6 +543,9 @@ class BatchSequencesSampler(BatchSamplerAbstract):
             final_streamline_ids_per_subj[subj] = slice(ids_start, ids_end)
 
             # Add all (augmented) streamlines to the batch
+            # What we want is the streamline coordinates, to eventually get
+            # the underlying input(s). Sending to vox
+            sft.to_vox()
             batch_streamlines.extend(sft.streamlines)
 
         if self.avoid_cpu_computations:
@@ -657,7 +660,7 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
 
         Returns
         -------
-        If self.do_interpolation is False:
+        If self.avoid_cpu_computations::
             batch_streamlines : List of np.ndarray with shape (N_i,3)
                 The streamlines coordinates in voxel space, ordered by subject.
             final_streamline_ids_per_subj : Dict[int, slice]
@@ -717,7 +720,10 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
 
                 # Extend the coords array with the neighborhood coordinates
                 flat_subj_x_coords = extend_coordinates_with_neighborhood(
-                        flat_subj_x_coords, self.neighborhood_points)
+                    flat_subj_x_coords, self.neighborhood_points)
+
+                logging.debug('Neighborhood coordinates: {}'
+                              .format(flat_subj_x_coords))
 
                 # Interpolate signal for each (new) point
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
@@ -739,11 +745,14 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                                                             n_features)
             else:  # No neighborhood:
                 # Interpolate signal for each point
+                logging.debug('Streamlines coordinates: {}'
+                              .format(flat_subj_x_coords))
+
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
                                                device=self.device)
                 flat_subj_x_data = torch_trilinear_interpolation(
-                    data_volume, coords_torch)
+                    data_volume.data, coords_torch)
                 logging.debug('Volume nanmean for current subj after '
                               'interpolation: {}'
                               .format(np.nanmean(flat_subj_x_data)))

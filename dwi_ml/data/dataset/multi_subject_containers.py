@@ -263,7 +263,7 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
         return self.data_list[subj_idx]
 
     def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int,
-                                        device: torch.device,
+                                        device: torch.device = None,
                                         non_blocking: bool = False):
         """Different in lazy version. Here, get_subject_data is a SubjectData,
          its mri_data is a List[SubjectMRIData], all already loaded.
@@ -321,7 +321,7 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
         return self.data_list[(item, self.hdf_handle)]
 
     def get_subject_mri_group_as_tensor(self, subj_idx: int, group_idx: int,
-                                        device: torch.device,
+                                        device: torch.device = None,
                                         non_blocking: bool = False):
         """Here, get_subject_data is a LazySubjectData, its mri_data is a
         List[LazySubjectMRIData], not loaded yet but we will load it now using
@@ -346,7 +346,7 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
 
                 # Send volume_data on device and keep it there while it's
                 # cached
-                volume_data = volume_data.to(devoce=device,
+                volume_data = volume_data.to(device=device,
                                              non_blocking=non_blocking)
 
                 self.volume_cache_manager[subj_idx] = volume_data

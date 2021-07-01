@@ -56,7 +56,7 @@ class MRIDataAbstract(object):
 
 
 class MRIData(MRIDataAbstract):
-    def __init__(self, data: np.ndarray,  affine: np.ndarray):
+    def __init__(self, data: np.ndarray, affine: np.ndarray):
         super().__init__(data, affine)
 
     @classmethod
@@ -113,4 +113,3 @@ class LazyMRIData(MRIDataAbstract):
         data is not a tensor yet."""
         return torch.as_tensor(np.array(self._data, dtype=np.float32),
                                dtype=torch.float)
-

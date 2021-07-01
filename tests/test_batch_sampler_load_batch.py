@@ -2,10 +2,10 @@
 import argparse
 from argparse import RawTextHelpFormatter
 import logging
+from datetime import datetime
 from os import path
 
 import numpy as np
-from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import (
     LazyMultiSubjectDataset, MultiSubjectDataset)
@@ -52,7 +52,8 @@ def test_batch_loading_no_computations(fake_dataset, batch_size, step_size):
 def test_batch_loading_computations(fake_dataset, batch_size, step_size):
     # Initialize batch sampler
     print('Initializing sampler...')
-    rng_seed = np.random.RandomState(1234)
+    n = datetime.now().time()
+    rng_seed = np.random.RandomState(n.minute * 100 + n.second)
     batch_sampler = BatchSequencesSamplerOneInputVolume(
         fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
         step_size=step_size, avoid_cpu_computations=False)
@@ -64,6 +65,7 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size):
     for batch in batch_generator:
         print('Batch # 1: nb sampled streamlines subj 0 was {}'
               .format(len(batch[0])))
+        print('Batch # 1 streamline #1: {}'.format(batch[0][0]))
         break
 
     packed_inputs, packed_directions = batch_sampler.load_batch(batch)
@@ -77,6 +79,7 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size):
           'seeding was interface. nanmean: {} '
           'Remember to deal with neighborhood being outside of mask too.'
           .format(len(packed_inputs.data), np.nanmean(packed_inputs.data)))
+
 
 def test_non_lazy():
     print("\n\n========= NON-LAZY =========\n\n")
@@ -103,7 +106,7 @@ def test_lazy():
     fake_dataset.load_training_data()
 
     print('=============================Test with batch size 10000')
-    test_batch_loading(fake_dataset, 10000, 0.5)
+    test_batch_loading_computations(fake_dataset, 10000, 0.5)
 
 
 if __name__ == '__main__':
@@ -117,4 +120,4 @@ if __name__ == '__main__':
 
     test_non_lazy()
     print('\n\n')
-    #test_lazy()
+    test_lazy()

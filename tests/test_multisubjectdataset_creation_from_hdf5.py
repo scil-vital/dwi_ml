@@ -49,8 +49,7 @@ def test_non_lazy():
                   subj0.sft_data.streamlines[0][0],
                   subj0.sft_data.get_chosen_streamlines_as_sft(0).streamlines[0][0]))
 
-    subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(
-        0, 0, device=None)
+    subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor from subject 0, volume 0: \n"
           "     Shape {} \n"
           "     First data (nan is normal: outside mask): {} \n"
@@ -87,8 +86,7 @@ def test_lazy():
                   subj0.sft_data.streamlines.get_array_sequence()[0][0],
                   subj0.sft_data.get_chosen_streamlines_as_sft(0).streamlines[0][0]))
 
-    subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(
-        0, 0, device=None)
+    subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor: subject 0, volume 0. \n"
           "     Shape {} \n"
           "     First data (nan is normal: outside mask): {} \n"

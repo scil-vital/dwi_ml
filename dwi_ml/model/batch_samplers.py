@@ -36,6 +36,7 @@ contribute to dwi_ml if no batch sampler fits your needs.
         y = sequences
 """
 
+
 from collections import defaultdict
 import logging
 from typing import Dict, List, Union, Iterable, Iterator
@@ -114,7 +115,8 @@ class BatchSamplerAbstract(Sampler):
                  neighborhood_radius_vox: Union[int, float,
                                                 Iterable[float]] = None,
                  split_streamlines_ratio: float = 0.,
-                 streamline_noise_sigma_mm: float = 0.,
+                 noise_gaussian_size: float = 0.,
+                 noise_gaussian_variability: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
                  avoid_cpu_computations: bool = None,
                  device: torch.device = torch.device('cpu')):
@@ -166,15 +168,19 @@ class BatchSamplerAbstract(Sampler):
             The reason for cutting is to help the ML algorithm to track from
             the middle of WM by having already seen half-streamlines. If you
             are using interface seeding, this is not necessary. Default: 0.
-        streamline_noise_sigma_mm : float
+        noise_gaussian_size : float
             DATA AUGMENTATION: Add random Gaussian noise to streamline
-            coordinates with given variance. Make sure it is smaller than your
-            step size. Ex, you could choose 0.1 * step-size. Noise is truncated
-            to +/- 2*noise_sigma. Default: 0.
-            ToDo: add a variance in the distribution of noise between
-             epoques. Comme ça, la même streamline pourra être vue plusieurs
-             fois (dans plsr époques) mais plus ou moins bruitée d'une fois
-             à l'autre.
+            coordinates with given variance. This corresponds to the std of the
+            Gaussian. If step_size is not given, make sure it is smaller than
+            your step size to avoid flipping direction. Ex, you could choose
+            0.1 * step-size. Noise is truncated to +/- 2*noise_sigma and to
+            +/- 0.5 * step-size (if given). Default: 0.
+        noise_gaussian_variability: float
+            DATA AUGMENTATION: If this is given, a variation is applied to the
+            streamline_noise_gaussian_size to have more noisy streamlines and
+            less noisy streamlines. This means that the real gaussian_size will
+            be a random number between [size - variability, size + variability]
+            Default: 0.
         reverse_streamlines_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
             the batch. You could want to reverse ALL your data and then use
@@ -237,7 +243,8 @@ class BatchSamplerAbstract(Sampler):
             self.batch_size = batch_size
 
         # Data augmentation for streamlines:
-        self.streamline_noise_sigma = streamline_noise_sigma_mm
+        self.noise_gaussian_size = noise_gaussian_size
+        self.noise_gaussian_variability = noise_gaussian_variability
         self.split_ratio = split_streamlines_ratio
         self.reverse_ratio = reverse_streamlines_ratio
         if not 0 <= self.split_ratio <= 1:
@@ -315,7 +322,8 @@ class BatchSamplerAbstract(Sampler):
                     size=n_subjects, replace=False, p=weights)
             else:
                 # Sampling from all subjects
-                sampled_subjs = self.data_source.streamline_id_slice_per_subj.keys()
+                sampled_subjs = \
+                    self.data_source.streamline_id_slice_per_subj.keys()
                 n_subjects = len(sampled_subjs)
             logging.debug('Sampled subjects for this batch: {}'
                           .format(sampled_subjs))
@@ -414,11 +422,12 @@ class BatchSamplerAbstract(Sampler):
         # Adding noise to coordinates
         # Noise is considered in mm so we need to make sure the sft is in
         # rasmm space
-        if self.streamline_noise_sigma and self.streamline_noise_sigma > 0:
+        if self.noise_gaussian_size and self.noise_gaussian_size > 0:
             logging.debug('Adding noise')
             sft.to_rasmm()
-            sft = add_noise_to_streamlines(sft, self.streamline_noise_sigma,
-                                           self._rng)
+            sft = add_noise_to_streamlines(sft, self.noise_gaussian_size,
+                                           self.noise_gaussian_variability,
+                                           self._rng, self.step_size)
 
         # Splitting streamlines
         # This increases the batch size, but does not change the total length
@@ -439,39 +448,6 @@ class BatchSamplerAbstract(Sampler):
             sft = reverse_streamlines(sft, reverse_ids)
         return sft
 
-    def _get_volume_as_tensor(self, subj_idx: int, group_idx: int):
-        """Here, get_subject_data is a LazySubjectData, its mri_data is a
-        List[LazySubjectMRIData], not loaded yet but we will load it now using
-        as_tensor.
-        mri_group_idx corresponds to the group number from the config_file."""
-        if self.cache_size > 0:
-            # Parallel workers each build a local cache
-            # (data is duplicated across workers, but there is no need to
-            # serialize/deserialize everything)
-            if self.volume_cache_manager is None:
-                self.volume_cache_manager = \
-                    SingleThreadCacheManager(self.cache_size)
-
-            try:
-                # General case: Data is already cached
-                volume_data = self.volume_cache_manager[subj_idx]
-            except KeyError:
-                # volume_data isn't cached; fetch and cache it
-                # This will open a hdf handle if it not created yet.
-                mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
-                volume_data = mri.as_tensor
-
-                # Send volume_data on device and keep it there while it's
-                # cached
-                volume_data = volume_data.to(self.device)
-
-                self.volume_cache_manager[subj_idx] = volume_data
-            return volume_data
-        else:
-            # No cache is used
-            mri = self.get_subject_data(subj_idx).mri_data_list[group_idx]
-            return mri.as_tensor
-
 
 class BatchSequencesSampler(BatchSamplerAbstract):
     """
@@ -490,7 +466,8 @@ class BatchSequencesSampler(BatchSamplerAbstract):
                  neighborhood_radius_vox: Union[int, float,
                                                 Iterable[float]] = None,
                  split_streamlines_ratio: float = 0.,
-                 streamline_noise_sigma_mm: float = 0.,
+                 noise_gaussian_size: float = 0.,
+                 noise_gaussian_variability: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
                  avoid_cpu_computations: bool = None,
                  device: torch.device = torch.device('cpu'),
@@ -507,7 +484,8 @@ class BatchSequencesSampler(BatchSamplerAbstract):
         super().__init__(data_source, streamline_group_name, batch_size, rng,
                          n_subject, cycles, step_size, neighborhood_type,
                          neighborhood_radius_vox, split_streamlines_ratio,
-                         streamline_noise_sigma_mm, reverse_streamlines_ratio,
+                         noise_gaussian_size, noise_gaussian_variability,
+                         reverse_streamlines_ratio,
                          avoid_cpu_computations, device)
         self.normalize_directions = normalize_directions
 
@@ -546,7 +524,12 @@ class BatchSequencesSampler(BatchSamplerAbstract):
 
             # Resampling streamlines to a fixed step size
             if self.step_size:
-                # toDo Skip resampling if had already the same step size
+                # Note that we could skip resampling if it had already the same
+                # step size, but computing current step size is not straight-
+                # forward. Ex: A resampling of step_size = 1 may give a true
+                # step_size of 0.99 (nb_points = int(length/step_size) creates
+                # an approximation. We would need to define a tolerance on the
+                # variability.
                 logging.debug('Resampling')
                 sft = resample_streamlines_step_size(sft,
                                                      step_size=self.step_size)
@@ -621,7 +604,8 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                  neighborhood_radius_vox: Union[int, float,
                                                 Iterable[float]] = None,
                  split_streamlines_ratio: float = 0.,
-                 streamline_noise_sigma_mm: float = 0.,
+                 noise_gaussian_size: float = 0.,
+                 noise_gaussian_variability: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
                  avoid_cpu_computations: bool = None,
                  device: torch.device = torch.device('cpu'),
@@ -639,8 +623,9 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
         super().__init__(data_source, streamline_group_name, batch_size, rng,
                          n_subject, cycles, step_size, neighborhood_type,
                          neighborhood_radius_vox, split_streamlines_ratio,
-                         streamline_noise_sigma_mm, reverse_streamlines_ratio,
-                         avoid_cpu_computations, device, normalize_directions)
+                         noise_gaussian_size, noise_gaussian_variability,
+                         reverse_streamlines_ratio, avoid_cpu_computations,
+                         device, normalize_directions)
 
         self.input_group_name = input_group_name
         # Find group index in the data_source

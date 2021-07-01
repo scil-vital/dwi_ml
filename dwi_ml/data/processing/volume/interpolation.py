@@ -63,7 +63,6 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
 
     if volume.dim() <= 2 or volume.dim() >= 5:
         raise ValueError("Volume must be 3D or 4D!")
-    logging.debug('Volume dim: {}'.format(volume.shape))
 
     # indices are the coordinates + idx, a box with 8 corners
     # coords shape = [n_timesteps, 3]

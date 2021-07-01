@@ -711,8 +711,6 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
             data_volume = self.data_source.get_subject_mri_group_as_tensor(
                 subj, self.input_group_idx, device=self.device,
                 non_blocking=True)
-            logging.debug('Volume nanmean for current subj: {}'
-                          .format(np.nanmean(data_volume.data)))
 
             # If user chose to add neighborhood:
             if self.neighborhood_type:
@@ -722,18 +720,12 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                 flat_subj_x_coords = extend_coordinates_with_neighborhood(
                     flat_subj_x_coords, self.neighborhood_points)
 
-                logging.debug('Neighborhood coordinates: {}'
-                              .format(flat_subj_x_coords))
-
                 # Interpolate signal for each (new) point
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
                                                device=self.device)
                 flat_subj_x_data = torch_trilinear_interpolation(
                     data_volume, coords_torch)
-                logging.debug('Volume nanmean for current subj after '
-                              'neighborhood + interpolation: {}'
-                              .format(np.nanmean(flat_subj_x_data)))
                 # Reshape signal into (n_points, new_feature_size)
                 # DWI data features for each neighboor are contatenated.
                 #    dwi_feat1_neig1  dwi_feat2_neig1 ...  dwi_featn_neighbm
@@ -745,17 +737,11 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                                                             n_features)
             else:  # No neighborhood:
                 # Interpolate signal for each point
-                logging.debug('Streamlines coordinates: {}'
-                              .format(flat_subj_x_coords))
-
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
                                                device=self.device)
                 flat_subj_x_data = torch_trilinear_interpolation(
                     data_volume.data, coords_torch)
-                logging.debug('Volume nanmean for current subj after '
-                              'interpolation: {}'
-                              .format(np.nanmean(flat_subj_x_data)))
 
             # Free the data volume from memory "immediately"
             del data_volume

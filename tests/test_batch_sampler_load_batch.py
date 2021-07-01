@@ -26,7 +26,7 @@ def parse_args():
     return p.parse_args()
 
 
-def test_batch_loading_no_computations(fake_dataset, batch_size, step_size):
+def test_batch_loading_no_computations(n, fake_dataset, batch_size, step_size):
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = np.random.RandomState(1234)
@@ -49,10 +49,9 @@ def test_batch_loading_no_computations(fake_dataset, batch_size, step_size):
           .format(len(batch_streamlines), batch_streamlines[0][0]))
 
 
-def test_batch_loading_computations(fake_dataset, batch_size, step_size):
+def test_batch_loading_computations(n, fake_dataset, batch_size, step_size):
     # Initialize batch sampler
     print('Initializing sampler...')
-    n = datetime.now().time()
     rng_seed = np.random.RandomState(n.minute * 100 + n.second)
     batch_sampler = BatchSequencesSamplerOneInputVolume(
         fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
@@ -75,13 +74,8 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size):
           .format(len(packed_inputs.data), len(packed_directions.data),
                   len(packed_directions.sorted_indices)))
 
-    print('inputs size: {} contains Nan because the mask I used was wm_mask, '
-          'seeding was interface. nanmean: {} '
-          'Remember to deal with neighborhood being outside of mask too.'
-          .format(len(packed_inputs.data), np.nanmean(packed_inputs.data)))
 
-
-def test_non_lazy():
+def test_non_lazy(n):
     print("\n\n========= NON-LAZY =========\n\n")
 
     # Initialize dataset
@@ -90,14 +84,14 @@ def test_non_lazy():
     fake_dataset.load_training_data()
 
     print('=============================Test with batch size 10000 + resample')
-    test_batch_loading_no_computations(fake_dataset, 10000, 0.5)
+    test_batch_loading_no_computations(n, fake_dataset, 10000, 0.5)
 
     print('=============================Test with batch size 10000 + resample '
           '+ do cpu computations')
-    test_batch_loading_computations(fake_dataset, 10000, 0.5)
+    test_batch_loading_computations(n, fake_dataset, 10000, 0.5)
 
 
-def test_lazy():
+def test_lazy(n):
     print("\n\n========= LAZY =========\n\n")
 
     # Initialize dataset
@@ -105,8 +99,8 @@ def test_lazy():
     fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename)
     fake_dataset.load_training_data()
 
-    print('=============================Test with batch size 10000')
-    test_batch_loading_computations(fake_dataset, 10000, 0.5)
+    print('=============================Test with batch size 10000 + resample')
+    test_batch_loading_computations(n, fake_dataset, 10000, 0.5)
 
 
 if __name__ == '__main__':
@@ -117,7 +111,8 @@ if __name__ == '__main__':
                          .format(args.hdf5_filename))
 
     logging.basicConfig(level='DEBUG')
+    n = datetime.now().time()
 
-    test_non_lazy()
+    test_non_lazy(n)
     print('\n\n')
-    test_lazy()
+    test_lazy(n)

@@ -7,6 +7,7 @@ the hdf5 (which contains only lists and numpy arrays) instead of loading data
 from .trk files. They will contain all information necessary to treat with
 streamlines: the data itself and _offset, _lengths, space attributes, etc.
 """
+import logging
 from typing import Tuple, Union
 
 import torch
@@ -91,21 +92,22 @@ class LazyStreamlinesGetter(object):
             if isinstance(item, int):
                 streamline = self._get_one_streamline(item)
                 streamlines.append(streamline)
-
-            if isinstance(item, list):
+            elif isinstance(item, list) or isinstance(item, np.ndarray):
                 for i in item:
                     streamline = self._get_one_streamline(i)
                     streamlines.append(streamline, cache_build=True)
                 streamlines.finalize_append()
-
-            if isinstance(item, slice):
+            elif isinstance(item, slice):
                 offsets = self.hdf_group['offsets'][item]
                 lengths = self.hdf_group['lengths'][item]
                 for offset, length in zip(offsets, lengths):
                     streamline = self.hdf_group['data'][offset:offset + length]
                     streamlines.append(streamline, cache_build=True)
                 streamlines.finalize_append()
-
+            else:
+                raise ValueError('Item should be either a int, list, '
+                                 'np.ndarray or slice but we received {}'
+                                 .format(type(item)))
         return streamlines
 
     @property

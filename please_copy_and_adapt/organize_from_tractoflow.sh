@@ -102,13 +102,15 @@ do
   ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__map_wm.nii.gz $subj_folder/anat/wm_map.nii.gz
 
   # masks:
-  if [ ! -f $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz ]; then echo "Subject's WM mask not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__mask_wm.nii.gz $subj_folder/masks/wm_mask.nii.gz
+  if [ ! -f $subj_preprocessed_folder/Resample_B0/${subjid}__b0_mask_resampled.nii.gz ]; then echo "Subject's b0 bet mask not found"; exit 1; fi
+  ln -s $subj_preprocessed_folder/Resample_B0/${subjid}__b0_mask_resampled.nii.gz $subj_folder/masks/b0_bet_mask_resampled.nii.gz
 
   # bundles:
-  if [ ! -f $subj_preprocessed_folder/*Tracking/${subjid}__*tracking*.trk ]; then echo "Subject's tractogram not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/*Tracking/${subjid}__*tracking*.trk $subj_folder/bundles/tractoflow_wholebrain.trk
-
+  for dir in $subj_preprocessed_folder/*Tracking
+  do
+    if [ ! -f $dir/${subjid}__*tracking*.trk ]; then echo "Subject's tractogram not found"; exit 1; fi
+    ln -s $dir/${subjid}__*tracking*.trk $subj_folder/bundles/tractoflow_wholebrain.trk
+  done
 done
 
 echo "We have organized tractoflow results from processed into dwi_ml_ready (dwi, anat, masks)"

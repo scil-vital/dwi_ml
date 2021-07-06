@@ -639,7 +639,8 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
 
         self.add_previous_dir = add_previous_dir
 
-    def load_batch(self, streamline_ids_per_subj: Dict[int, list]):
+    def load_batch(self, streamline_ids_per_subj: Dict[int, list],
+                   save_batch_input_masks: bool = None):
         """
         Fetches the chosen streamlines + underlying inputs for all subjects in
         batch. Pocesses data augmentation. Add previous_direction to the input.
@@ -657,6 +658,10 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
         streamline_ids_per_subj: dict[int, list]
             The list of streamline ids for each subject (relative ids inside
             each subject's tractogram).
+        save_batch_input_masks: bool
+            If True, save a mask of voxels touched by streamlines per subject.
+            For debugging purposes. (Only used when doing the cpu computations.
+            Then, returns (batch_streamlines, batch_input_masks)).
 
         Returns
         -------
@@ -684,22 +689,34 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
             # (i.e. volume's neighborhood under each point of the streamline)
             batch_x = self.compute_interpolation(batch_streamlines,
                                                  streamline_ids_per_subj,
-                                                 packed_directions)
+                                                 packed_directions,
+                                                 save_batch_input_masks)
+            if save_batch_input_masks:
+                # Debugging purposes. Returned batch_x contains input_masks.
+                # Retrieving. For now, batch_x is not important and not
+                # returned. Note that mask is easier to analyse with only one
+                # subject because then, all the batch_streamlines should fit
+                # with the same input_mask.
+                batch_x, batch_input_masks = batch_x
+                return batch_streamlines, batch_input_masks
+            else:
+                # Packing data.
+                packed_inputs = pack_sequence(batch_x, enforce_sorted=False)
 
-            # Packing data.
-            packed_inputs = pack_sequence(batch_x, enforce_sorted=False)
-
-            return packed_inputs, packed_directions
+                return packed_inputs, packed_directions
 
     def compute_interpolation(self, batch_streamlines: List[np.ndarray],
                               streamline_ids_per_subj: Dict[int, slice],
-                              batch_directions):
+                              batch_directions,
+                              save_batch_input_mask: bool = None):
         """
         Get the DWI (depending on volume: as raw, SH, fODF, etc.) volume for
         each point in each streamline (+ depending on options: neighborhood,
         and preceding diretion)
         """
         batch_x_data = []
+        batch_input_masks = []
+
         for subj, y_ids in streamline_ids_per_subj.items():
             # Flatten = concatenate signal for all streamlines to process
             # faster. We don't use the last coord because it is used only to
@@ -724,8 +741,8 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
                                                device=self.device)
-                flat_subj_x_data = torch_trilinear_interpolation(
-                    data_volume, coords_torch)
+                flat_subj_x_data, coords_clipped = \
+                    torch_trilinear_interpolation(data_volume, coords_torch)
                 # Reshape signal into (n_points, new_feature_size)
                 # DWI data features for each neighboor are contatenated.
                 #    dwi_feat1_neig1  dwi_feat2_neig1 ...  dwi_featn_neighbm
@@ -740,8 +757,20 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
                                                device=self.device)
-                flat_subj_x_data = torch_trilinear_interpolation(
-                    data_volume.data, coords_torch)
+                flat_subj_x_data, coords_clipped = \
+                    torch_trilinear_interpolation(data_volume.data,
+                                                  coords_torch)
+
+            if torch.any(np.isnan(flat_subj_x_data)):
+                logging.warning('WARNING. NaN values found in the underlying '
+                                'input. Some streamlines were probably '
+                                'outside the mask.')
+
+            if save_batch_input_mask:
+                input_mask = torch.tensor(np.zeros(data_volume.shape[0:3]))
+                for s in range(len(coords_torch)):
+                    input_mask.data[tuple(coords_clipped[s, :])] = 1
+                batch_input_masks.append(input_mask)
 
             # Free the data volume from memory "immediately"
             del data_volume
@@ -761,4 +790,7 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
             batch_x_data = [torch.cat((s, p), dim=1)
                             for s, p in zip(batch_x_data, previous_dirs)]
 
-        return batch_x_data
+        if save_batch_input_mask:
+            return batch_x_data, batch_input_masks
+        else:
+            return batch_x_data

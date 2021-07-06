@@ -15,6 +15,8 @@ B1 = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
                [1, -1, 0, 0, -1, 1, 0, 0],
                [-1, 1, 1, -1, 1, -1, -1, 1]], dtype=np.float)
 
+# We will use the 8 voxels surrounding current position to interpolate a
+# value.
 idx = np.array([[0, 0, 0],
                 [0, 0, 1],
                 [0, 1, 0],
@@ -65,11 +67,11 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
         raise ValueError("Volume must be 3D or 4D!")
 
     # indices are the coordinates + idx, a box with 8 corners
-    # coords shape = [n_timesteps, 3]
+    # coords' shape = [n_timesteps, 3]
     # coords[:, None, :] shape = [n_timesteps, 3]
-    # coords[:, None, :] + idx_torch shape: [n_timesteps, 8, 3] ->
-    #   -> the coords + box around
-    # reshaped as [n_timesteps*8, 3]
+    # coords[:, None, :] + idx_torch shape: [n_timesteps, 8, 3]
+    #   -> the box around each time step
+    # reshaped as (-1,3) = [n_timesteps*8, 3]
     # torch needs indices to be cast to long
     indices_unclipped = \
         torch.floor(coords[:, None, :] + idx_torch).reshape((-1, 3)).long()
@@ -78,6 +80,8 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
     lower = torch.as_tensor([0, 0, 0], device=device)
     upper = torch.as_tensor(volume.shape[:3], device=device) - 1
     indices = torch.min(torch.max(indices_unclipped, lower), upper)
+    coords_clipped = torch.min(torch.max(torch.round(coords).long(), lower),
+                               upper)
 
     d = coords - torch.floor(coords)
     dx, dy, dz = d[:, 0], d[:, 1], d[:, 2]
@@ -92,9 +96,8 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
 
         output = torch.sum(p * torch.mm(B1_torch.t(), Q1), dim=0)
 
-        return output
-
-    if volume.dim() == 4:
+        return output, coords_clipped
+    elif volume.dim() == 4:
 
         # Fetch volume data at indices
         p = volume[indices[:, 0], indices[:, 1], indices[:, 2], :]
@@ -103,10 +106,10 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
         output = \
             torch.sum(p * torch.mm(B1_torch.t(), Q1).t()[:, :, None], dim=1)
 
-        return output
-
-    raise ValueError("There was a problem with the volume's number of "
-                     "dimensions!")
+        return output, coords_clipped
+    else:
+        raise ValueError("There was a problem with the volume's number of "
+                         "dimensions!")
 
 
 def interpolate_volume_at_coordinates(volume: np.ndarray, coords: np.ndarray,

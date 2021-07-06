@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import logging
-
 import torch
 import numpy as np
 from scipy.ndimage import map_coordinates
@@ -16,7 +14,8 @@ B1 = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
                [-1, 1, 1, -1, 1, -1, -1, 1]], dtype=np.float)
 
 # We will use the 8 voxels surrounding current position to interpolate a
-# value.
+# value. See ref https://spie.org/samples/PM159.pdf. The point p000 = [0, 0, 0]
+# is the bottom corner of the current position (using floor).
 idx = np.array([[0, 0, 0],
                 [0, 0, 1],
                 [0, 1, 0],
@@ -66,7 +65,8 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
     if volume.dim() <= 2 or volume.dim() >= 5:
         raise ValueError("Volume must be 3D or 4D!")
 
-    # indices are the coordinates + idx, a box with 8 corners
+    # indices are the flor of coordinates + idx, boxes with 8 corners around
+    # given coordinates.
     # coords' shape = [n_timesteps, 3]
     # coords[:, None, :] shape = [n_timesteps, 3]
     # coords[:, None, :] + idx_torch shape: [n_timesteps, 8, 3]
@@ -108,8 +108,8 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
 
         return output, coords_clipped
     else:
-        raise ValueError("There was a problem with the volume's number of "
-                         "dimensions!")
+        raise ValueError("Interpolation: There was a problem with the "
+                         "volume's number of dimensions!")
 
 
 def interpolate_volume_at_coordinates(volume: np.ndarray, coords: np.ndarray,

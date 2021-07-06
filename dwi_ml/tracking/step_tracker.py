@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from dwi_ml.data.dataset.single_subject_containers import MRIDataVolume
-from dwi_ml.data.processing.space.neighbourhood import s(
+from dwi_ml.data.processing.space.neighborhood import s(
     get_neighborhood_vectors_axes)
 from dwi_ml.data.processing.space.world_to_vox import convert_world_to_vox
 from dwi_ml.data.processing.volume.interpolation import (

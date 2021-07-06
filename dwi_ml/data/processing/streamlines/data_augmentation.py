@@ -65,7 +65,12 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
     # Modify gaussian_size based on gaussian_variability
     # adding a random number between
     # [-gaussian_variability gaussian_variability]
-    gaussian_size = random.uniform(-gaussian_variability, gaussian_variability)
+    if gaussian_variability > gaussian_size:
+        logging.warning('Gaussian variability ({}) should be smaller than '
+                        'Gaussian size ({}) to avoid negative noise.'
+                        .format(gaussian_variability, gaussian_size))
+    gaussian_size = random.uniform(gaussian_size - gaussian_variability,
+                                   gaussian_size + gaussian_variability)
     
     # Perform noise addition (flattening before to go faster)
     # max: min(2*gaussian_size, step_size/2)
@@ -75,6 +80,10 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
         max_noise_unscaled = min(2, step_size / (2 * gaussian_size))
     else:
         max_noise_unscaled = 2
+
+    logging.debug("Adding noise: between ({} and {})*{}"
+                  .format(-max_noise_unscaled, max_noise_unscaled,
+                          gaussian_size))
     flattened_coords += truncnorm.rvs(-max_noise_unscaled, max_noise_unscaled,
                                       size=flattened_coords.shape,
                                       scale=gaussian_size,

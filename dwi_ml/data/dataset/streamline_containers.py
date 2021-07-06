@@ -7,7 +7,6 @@ the hdf5 (which contains only lists and numpy arrays) instead of loading data
 from .trk files. They will contain all information necessary to treat with
 streamlines: the data itself and _offset, _lengths, space attributes, etc.
 """
-import logging
 from typing import Tuple, Union
 
 import torch

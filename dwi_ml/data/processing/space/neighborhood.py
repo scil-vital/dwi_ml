@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import itertools
+import logging
 from typing import Iterable, Union
 
 import numpy as np
@@ -21,7 +22,7 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     Parameters
     ----------
     radius : number (int or float) or list or np.ndarray.
-        Distance to each neighbor on a sphere (in voxel space).
+        Distance to each neighbor (in voxel space).
 
     Returns
     -------
@@ -39,7 +40,7 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
 
     neighborhood = []
     for r in radius:
-        neighborhood.append(unit_axes * r)
+        neighborhood.extend(unit_axes * r)
     neighborhood = np.asarray(neighborhood)
 
     return neighborhood
@@ -101,6 +102,7 @@ def extend_coordinates_with_neighborhood(coords: np.ndarray,
     """
     n_coords = coords.shape[0]
     n_neighbors = neighborhood_translations.shape[0]
+    logging.debug('Adding {} neighboors to each point.'.format(n_neighbors))
 
     # 1. We repeat each coordinate to have the neighborhood size (+ 1 for
     # original coordinate) before applying translations.
@@ -110,9 +112,9 @@ def extend_coordinates_with_neighborhood(coords: np.ndarray,
     # 2. We translate each point based on the translations vector.
     # Ex, if neighborhood_translations = [here, up, down, left, right, ...]
     # coords = [p1+0 p1+up p1+down ..., p2+0 p2+up, p2+down, ...]'
-    tiled_vectors = np.tile(np.concatenate((np.zeros((1, 3)),
-                                            neighborhood_translations)),
-                            (n_coords, 1))
+    total_neighborhood = np.concatenate((np.zeros((1, 3)),
+                                         neighborhood_translations))
+    tiled_vectors = np.tile(total_neighborhood, (n_coords, 1))
     coords += tiled_vectors
 
     return coords

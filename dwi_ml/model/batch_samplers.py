@@ -35,8 +35,6 @@ contribute to dwi_ml if no batch sampler fits your needs.
         x = input
         y = sequences
 """
-
-
 from collections import defaultdict
 import logging
 from typing import Dict, List, Union, Iterable, Iterator
@@ -51,7 +49,7 @@ from torch.utils.data import Sampler
 
 from dwi_ml.data.dataset.multi_subject_containers import (
     LazyMultiSubjectDataset, MultiSubjectDataset)
-from dwi_ml.data.processing.space.neighbourhood import (
+from dwi_ml.data.processing.space.neighborhood import (
     extend_coordinates_with_neighborhood,
     get_neighborhood_vectors_axes, get_neighborhood_vectors_grid)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
@@ -247,9 +245,9 @@ class BatchSamplerAbstract(Sampler):
         self.noise_gaussian_variability = noise_gaussian_variability
         self.split_ratio = split_streamlines_ratio
         self.reverse_ratio = reverse_streamlines_ratio
-        if not 0 <= self.split_ratio <= 1:
+        if self.split_ratio and not 0 <= self.split_ratio <= 1:
             raise ValueError('Split ratio must be a float between 0 and 1.')
-        if not 0 <= self.reverse_ratio <= 1:
+        if self.reverse_ratio and not 0 <= self.reverse_ratio <= 1:
             raise ValueError('Reverse ration must be a float between 0 and 1')
 
         # Preparing the neighborhood for use by the child classes
@@ -262,6 +260,9 @@ class BatchSamplerAbstract(Sampler):
             logging.warning("You have chosen not to add a neighborhood (value "
                             "None), but you have given a neighborhood radius. "
                             "Discarded.")
+        if self.neighborhood_type and neighborhood_radius_vox is None:
+            raise ValueError("You must provide neighborhood radius to add a "
+                             "neighborhood.")
         self.neighborhood_points = prepare_neighborhood_information(
             neighborhood_type, neighborhood_radius_vox)
 
@@ -732,10 +733,13 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
             # If user chose to add neighborhood:
             if self.neighborhood_type:
                 n_input_points = flat_subj_x_coords.shape[0]
+                logging.debug('Nb input points: {}'.format(n_input_points))
 
                 # Extend the coords array with the neighborhood coordinates
                 flat_subj_x_coords = extend_coordinates_with_neighborhood(
                     flat_subj_x_coords, self.neighborhood_points)
+                logging.debug('Nb final points with neighborhood (shape 3): {}'
+                              .format(flat_subj_x_coords.shape))
 
                 # Interpolate signal for each (new) point
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
@@ -743,23 +747,30 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                                                device=self.device)
                 flat_subj_x_data, coords_clipped = \
                     torch_trilinear_interpolation(data_volume, coords_torch)
+                logging.debug('Nb final interpolated points (shape 3D): {}'
+                              .format(flat_subj_x_data.shape))
                 # Reshape signal into (n_points, new_feature_size)
                 # DWI data features for each neighboor are contatenated.
                 #    dwi_feat1_neig1  dwi_feat2_neig1 ...  dwi_featn_neighbm
                 #  p1        .              .                    .
                 #  p2        .              .                    .
                 n_features = (flat_subj_x_data.shape[-1] *
-                              self.neighborhood_points.shape[0])
+                              (self.neighborhood_points.shape[0] + 1))
                 flat_subj_x_data = flat_subj_x_data.reshape(n_input_points,
                                                             n_features)
             else:  # No neighborhood:
                 # Interpolate signal for each point
+                logging.debug('Nb input points: {}'
+                              .format(flat_subj_x_coords.shape[0]))
+
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
                                                device=self.device)
                 flat_subj_x_data, coords_clipped = \
                     torch_trilinear_interpolation(data_volume.data,
                                                   coords_torch)
+                logging.debug('Nb final interpolated points (shape 3D): {}'
+                              .format(flat_subj_x_data.shape))
 
             if torch.any(np.isnan(flat_subj_x_data)):
                 logging.warning('WARNING. NaN values found in the underlying '

@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+from collections import deque
+import timeit
+
 import numpy as np
 
 
-# Checked!
 class ValueHistoryMonitor(object):
     """ History of some value for each iteration during training, and mean
     value for each epoch.
@@ -69,7 +71,6 @@ class ValueHistoryMonitor(object):
         self.epochs_means_history = state['epochs_means_history']
 
 
-# Checked!
 class EarlyStopping(object):
     """
     Object to stop training early if the loss doesn't improve after a given
@@ -134,3 +135,40 @@ class EarlyStopping(object):
         self.best = state['best']
         self.n_bad_epochs = state['n_bad_epochs']
 
+
+class EarlyStoppingError(Exception):
+    """Exception raised when an experiment is stopped by early-stopping
+
+    Attributes
+        message -- explanation of why early stopping occured"""
+
+    def __init__(self, message):
+        self.message = message
+
+
+class IterTimer(object):
+    """
+    Used to track the epochs.????
+    """
+    def __init__(self, history_len=5):
+        self.history = deque(maxlen=history_len)
+        self.iterable = None
+        self.start_time = None
+
+    def __call__(self, iterable):
+        self.iterable = iter(iterable)
+        return self
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.start_time is not None:
+            elapsed = timeit.default_timer() - self.start_time
+            self.history.append(elapsed)
+        self.start_time = timeit.default_timer()
+        return next(self.iterable)
+
+    @property
+    def mean(self):
+        return np.mean(self.history) if len(self.history) > 0 else 0

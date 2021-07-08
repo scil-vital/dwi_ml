@@ -3,8 +3,6 @@ import torch
 import numpy as np
 from scipy.ndimage import map_coordinates
 
-from dwi_ml.data.processing.space.world_to_vox import convert_world_to_vox
-
 
 B1 = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
                [-1, 0, 0, 0, 1, 0, 0, 0],
@@ -15,6 +13,9 @@ B1 = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
                [1, -1, 0, 0, -1, 1, 0, 0],
                [-1, 1, 1, -1, 1, -1, -1, 1]], dtype=np.float)
 
+# We will use the 8 voxels surrounding current position to interpolate a
+# value. See ref https://spie.org/samples/PM159.pdf. The point p000 = [0, 0, 0]
+# is the bottom corner of the current position (using floor).
 idx = np.array([[0, 0, 0],
                 [0, 0, 1],
                 [0, 1, 0],
@@ -64,55 +65,51 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
     if volume.dim() <= 2 or volume.dim() >= 5:
         raise ValueError("Volume must be 3D or 4D!")
 
+    # indices are the flor of coordinates + idx, boxes with 8 corners around
+    # given coordinates.
+    # coords' shape = [n_timesteps, 3]
+    # coords[:, None, :] shape = [n_timesteps, 3]
+    # coords[:, None, :] + idx_torch shape: [n_timesteps, 8, 3]
+    #   -> the box around each time step
+    # reshaped as (-1,3) = [n_timesteps*8, 3]
+    # torch needs indices to be cast to long
+    indices_unclipped = \
+        torch.floor(coords[:, None, :] + idx_torch).reshape((-1, 3)).long()
+
+    # Clip indices to make sure we don't go out-of-bounds
+    lower = torch.as_tensor([0, 0, 0], device=device)
+    upper = torch.as_tensor(volume.shape[:3], device=device) - 1
+    indices = torch.min(torch.max(indices_unclipped, lower), upper)
+    coords_clipped = torch.min(torch.max(torch.round(coords).long(), lower),
+                               upper)
+
+    d = coords - torch.floor(coords)
+    dx, dy, dz = d[:, 0], d[:, 1], d[:, 2]
+    Q1 = torch.stack([torch.ones_like(dx), dx, dy, dz,
+                      dx * dy, dy * dz, dx * dz,
+                      dx * dy * dz], dim=0)
+
     if volume.dim() == 3:
-        # torch needs indices to be cast to long
-        indices_unclipped = \
-            (coords[:, None, :] + idx_torch).reshape((-1, 3)).long()
-
-        # Clip indices to make sure we don't go out-of-bounds
-        lower = torch.as_tensor([0, 0, 0]).to(device)
-        upper = (torch.as_tensor(volume.shape) - 1).to(device)
-        indices = torch.min(torch.max(indices_unclipped, lower), upper)
-
         # Fetch volume data at indices
         p = volume[indices[:, 0], indices[:, 1], indices[:, 2]]
-        p = p.reshape((coords.shape[0], -1)).t()
+        p = p.reshape((coords.shape[0], -1)).t()  # -1 = the 8 corners
 
-        d = coords - torch.floor(coords)
-        dx, dy, dz = d[:, 0], d[:, 1], d[:, 2]
-        Q1 = torch.stack([torch.ones_like(dx), dx, dy, dz,
-                          dx * dy, dy * dz, dx * dz,
-                          dx * dy * dz], dim=0)
         output = torch.sum(p * torch.mm(B1_torch.t(), Q1), dim=0)
 
-        return output
-
-    if volume.dim() == 4:
-        # 8 coordinates of the corners of the cube, for each input coordinate
-        indices_unclipped = \
-            torch.floor(coords[:, None, :] + idx_torch).reshape((-1, 3)).long()
-
-        # Clip indices to make sure we don't go out-of-bounds
-        lower = torch.as_tensor([0, 0, 0], device=device)
-        upper = torch.as_tensor(volume.shape[:3], device=device) - 1
-        indices = torch.min(torch.max(indices_unclipped, lower), upper)
+        return output, coords_clipped
+    elif volume.dim() == 4:
 
         # Fetch volume data at indices
         p = volume[indices[:, 0], indices[:, 1], indices[:, 2], :]
         p = p.reshape((coords.shape[0], 8, volume.shape[-1]))
 
-        d = coords - torch.floor(coords)
-        dx, dy, dz = d[:, 0], d[:, 1], d[:, 2]
-        Q1 = torch.stack([torch.ones_like(dx), dx, dy, dz,
-                          dx * dy, dy * dz, dx * dz,
-                          dx * dy * dz], dim=0)
         output = \
             torch.sum(p * torch.mm(B1_torch.t(), Q1).t()[:, :, None], dim=1)
 
-        return output
-
-    raise ValueError("There was a problem with the volume's number of "
-                     "dimensions!")
+        return output, coords_clipped
+    else:
+        raise ValueError("Interpolation: There was a problem with the "
+                         "volume's number of dimensions!")
 
 
 def interpolate_volume_at_coordinates(volume: np.ndarray, coords: np.ndarray,

@@ -17,7 +17,9 @@ class DataListForTorchAbstract(object):
         # Feature sizes should be common to all subjects.
         self.subjects_data_list = []  # List of SubjectData
         self.feature_sizes = []  # One value per volume group.
-        self.groups = []  # Will be set by the first subj. Others must fit.
+        self.volume_groups = []  # Will be set by the first subj.
+        # Others must fit.
+        self.streamline_group = None
 
     def set_feature_sizes(self):
         """
@@ -31,7 +33,7 @@ class DataListForTorchAbstract(object):
             raise ValueError('First subject must be added to the list before '
                              'verifying its feature sizes.')
 
-        for i in range(len(self.groups)):
+        for i in range(len(self.volume_groups)):
             self.feature_sizes.append(self._get_group_feature_size(0, i))
 
     def _get_group_feature_size(self, subj: int, group: int):
@@ -49,16 +51,16 @@ class DataListForTorchAbstract(object):
         # Make sure all volumes are there and have the same feature sizes
         if subject_idx == 0:
             # Set values from the first subject
-            assert len(self.groups) == 0
-            self.groups = subject_data.volume_groups
+            assert len(self.volume_groups) == 0
+            self.volume_groups = subject_data.volume_groups
             self.set_feature_sizes()
         else:
             # Make sure we have the right number of groups
-            if len(subject_data.volume_groups) != len(self.groups):
+            if len(subject_data.volume_groups) != len(self.volume_groups):
                 raise ValueError("Tried to add a subjects who had a different "
                                  "number of volume groups than previous!")
 
-            for i in range(len(self.groups)):
+            for i in range(len(self.volume_groups)):
                 group_size = self._get_group_feature_size(subject_idx, i)
                 if self.feature_sizes != group_size:
                     raise ValueError(
@@ -101,11 +103,9 @@ class LazyDataListForTorch(DataListForTorch):
     def __getitem__(self, subject_item) -> LazySubjectData:
         assert type(subject_item) == tuple, \
             "Trying to get an item, but item should be a tuple: " \
-            "(subj_idx, hdf_handle, groups) where groups is the list of " \
-            "groups to load for this subject."
+            "(subj_idx, hdf_handle)"
 
-        subject_idx, subject_hdf_handle, groups = subject_item
+        subject_idx, subject_hdf_handle = subject_item
         partial_subjectdata = self.subjects_data_list[subject_idx]
-        subj_with_handle = partial_subjectdata.with_handle(subject_hdf_handle,
-                                                           groups)
+        subj_with_handle = partial_subjectdata.with_handle(subject_hdf_handle)
         return subj_with_handle

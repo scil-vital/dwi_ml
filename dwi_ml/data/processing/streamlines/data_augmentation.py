@@ -3,6 +3,7 @@
 from collections import defaultdict
 import copy
 import logging
+import random
 from typing import Union
 
 from dipy.io.stateful_tractogram import StatefulTractogram
@@ -13,27 +14,43 @@ from scipy.stats import truncnorm
 from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths
 
 
-def add_noise_to_streamlines(sft: StatefulTractogram,
-                             noise_sigma: float,
-                             noise_rng: np.random.RandomState):
+def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
+                             gaussian_variability: float,
+                             noise_rng: np.random.RandomState,
+                             step_size: float = None):
     """Add gaussian noise (truncated to +/- 2*noise_sigma) to streamlines
     coordinates.
+
+    Keep in mind that you need to choose noise small enough so that directions
+    won't flip. If step_size is provided, we make this check for you, ensuring
+    that that noise is < step_size/2 at each step. In the worst case, the
+    starting point of a segment may advance of step_size/2 while the ending
+    point rewinds of step_size/2, but not further, so the direction of the
+    segment won't flip. If you don't provide a step_size, make sure that your
+    noise_sigma<step_size/4. Then, the maximum noise would be <step_size/2.
 
     Parameters
     ----------
     sft : StatefulTractogram
         Streamlines.
-    noise_sigma : float
-        Standard deviation of the gaussian noise to add to the streamlines.
+    gaussian_size : float
+        Standard deviation of the gaussian noise to add to the streamlines. If
+        you don't know what to choose, 0.1 or 0.1*step_size are both good
+        approximations.
         CAREFUL. We do not deal with space. Make sure your noise is in the
         same space as your sft.
-        CAREFUL. Keep in mind that you need to choose noise_sigma<step_size/4.
-        Then, the maximum noise would be <step_size/2. So in the worst case,
-        the starting point of a segment may advance of step_size/2 while the
-        ending point rewinds of step_size/2, but not further, so the direction
-        of the segment won't flip.
+        CAREFUL.  Default: 0.
+    gaussian_variability: float
+        If this is given, a variation is applied to the gaussian_size to have
+        more noisy streamlines and less noisy streamlines. This means that the
+        real gaussian_size will be a random number between
+        [size - variability, size + variability]. Default: 0.
     noise_rng : np.random.RandomState object
         Random number generator.
+    step_size: float
+        We will ensure the noise is not more than step_size/2 at each step. If
+        None (because your are not resampling, for instance), be extra careful
+        in the gaussian_size and gaussian_variability you provide.
 
     Returns
     -------
@@ -43,12 +60,33 @@ def add_noise_to_streamlines(sft: StatefulTractogram,
         please perform noisy_sft.remove_invalid_streamlines() first.
     """
     logging.info("Please note your sft space is in {}. We suppose that the "
-                 "noise, {}, fits.".format(sft.space, noise_sigma))
+                 "noise, {}, fits.".format(sft.space, gaussian_size))
+
+    # Modify gaussian_size based on gaussian_variability
+    # adding a random number between
+    # [-gaussian_variability gaussian_variability]
+    if gaussian_variability > gaussian_size:
+        logging.warning('Gaussian variability ({}) should be smaller than '
+                        'Gaussian size ({}) to avoid negative noise.'
+                        .format(gaussian_variability, gaussian_size))
+    gaussian_size = random.uniform(gaussian_size - gaussian_variability,
+                                   gaussian_size + gaussian_variability)
     
     # Perform noise addition (flattening before to go faster)
+    # max: min(2*gaussian_size, step_size/2)
+    #    = min(2, step_size/(2*gaussian_size)) * gaussian_size
     flattened_coords = np.concatenate(sft.streamlines, axis=0)
-    flattened_coords += truncnorm.rvs(-2, 2, size=flattened_coords.shape,
-                                      scale=noise_sigma,
+    if step_size:
+        max_noise_unscaled = min(2, step_size / (2 * gaussian_size))
+    else:
+        max_noise_unscaled = 2
+
+    logging.debug("Adding noise: between ({} and {})*{}"
+                  .format(-max_noise_unscaled, max_noise_unscaled,
+                          gaussian_size))
+    flattened_coords += truncnorm.rvs(-max_noise_unscaled, max_noise_unscaled,
+                                      size=flattened_coords.shape,
+                                      scale=gaussian_size,
                                       random_state=noise_rng)
     noisy_streamlines = split_array_at_lengths(
         flattened_coords, [len(s) for s in sft.streamlines])

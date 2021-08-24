@@ -15,7 +15,7 @@ from dwi_ml.model.utils_for_fisher_von_mises import fisher_von_mises_log_prob
 
 DESCRIPTION = """
 MODELS:
-    REGRESSION models: Simple regression to learn directly a direction (each 
+    REGRESSION models: Simple regression to learn directly a direction (each
     output size = 3 = [x,y,z]). This means that it is a deterministic output.
         - CosineRegressionDirectionGetter:
                 Model: a 2-layer NN
@@ -30,7 +30,7 @@ MODELS:
                       = sqrt(sum(t_i - y_i)^2)
                       The mean of loss values for each step of the streamline
                       is computed.
-                              
+
     CLASSIFICATION models: That means that the output is a probability over all
     classes. We can decide how to sample the final direction. The classes
     depend on the model.
@@ -43,10 +43,10 @@ MODELS:
 
     GAUSSIAN models: Contrary to regression, which would learn the parameters
     (hidden through the weights) that would represent a function h such that
-    y ~ h(x)  (we learn the *parameters*), gaussian processes learn directly 
+    y ~ h(x)  (we learn the *parameters*), gaussian processes learn directly
     the *function probability*. See for ex here
     https://blog.dominodatalab.com/fitting-gaussian-process-models-python/
-    The model learns to represent the mean and variance of all the functions 
+    The model learns to represent the mean and variance of all the functions
     that could represent the data. We can decide how to sample the final
     direction.
         - SingleGaussianDirectionGetter:
@@ -79,10 +79,10 @@ INPUTS:  Def: Here, we call 'input' the output of your experiment model.
 OUTPUTS: Def: The model final outputs, corresponding to directions, i.e.
               (x,y,z) coordinates.
          Type: tensor
-         Size: 
+         Size:
              - Sequence model: [batch_size*seq_len, 3]
              - Local models: [batch_size, 3]
-         
+
 TARGETS: Def: The target values (real Y) for the batch
          Type: Could be `PackedSequence.data`
          Size: 
@@ -119,9 +119,11 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     """
     supportsCompressedStreamlines = False
 
-    def __init__(self, dropout: float = 0.):
+    def __init__(self, input_size, dropout: float = 0.):
         """ Prepares the dropout and ReLU sub-layers"""
         super().__init__()
+
+        self.input_size = input_size
 
         if dropout and (dropout < 0 or dropout > 1):
             raise ValueError('Dropout rate should be between 0 and 1.')
@@ -131,6 +133,13 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         else:
             self.dropout_sublayer = lambda x: x
         self.relu_sublayer = ReLU()
+
+    @property
+    def attributes(self):
+        attributes = {
+            'dropout': self.dropout
+        }
+        return attributes
 
     def loop_on_layers(self, inputs: Tensor, layers: List[torch.nn.Module]):
         """
@@ -182,12 +191,20 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
 
     def __init__(self, input_size: int, dropout: float = None):
         # Prepare the dropout, Relu, loop:
-        super().__init__(dropout)
+        super().__init__(input_size, dropout)
 
         self.layers = init_2layer_fully_connected(input_size, 3)
 
         # Loss will be applied on the last dimension.
         self.loss = CosineSimilarity(dim=-1)
+
+    @property
+    def attributes(self):
+        attributes = super().attributes
+        attributes.update({
+            'model': 'cosine-regression'
+        })
+        return attributes
 
     def forward(self, inputs: Tensor):
         """ Run the inputs through the loop on layers.  """
@@ -234,13 +251,21 @@ class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
 
     def __init__(self, input_size: int, dropout: float = None):
         # Prepare the dropout, Relu, loop:
-        super().__init__(dropout)
+        super().__init__(input_size, dropout)
 
         self.layers = init_2layer_fully_connected(input_size, 3)
 
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
         self.loss = PairwiseDistance()
+
+    @property
+    def attributes(self):
+        attributes = super().attributes
+        attributes.update({
+            'model': 'l2-regression'
+        })
+        return attributes
 
     def forward(self, inputs: Tensor):
         """
@@ -280,7 +305,7 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
 
     def __init__(self, input_size: int, dropout: float = None):
         # Prepare the dropout, Relu, loop:
-        super().__init__(dropout)
+        super().__init__(input_size, dropout)
 
         # Classes
         self.sphere = dipy.data.get_sphere(CHOSEN_SPHERE)
@@ -291,6 +316,14 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         self.layers = init_2layer_fully_connected(input_size, output_size)
 
         # Loss will be defined in compute_loss, using torch distribution
+
+    @property
+    def attributes(self):
+        attributes = super().attributes
+        attributes.update({
+            'model': 'sphere-classification'
+        })
+        return attributes
 
     def forward(self, inputs: Tensor):
         """
@@ -371,13 +404,21 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
     def __init__(self, input_size: int, dropout: float = None):
         # Prepare the dropout, Relu, loop:
-        super().__init__(dropout)
+        super().__init__(input_size, dropout)
 
         # Layers
         self.layers_mean = init_2layer_fully_connected(input_size, 3)
         self.layers_variance = init_2layer_fully_connected(input_size, 3)
 
         # Loss will be defined in compute_loss, using torch distribution
+
+    @property
+    def attributes(self):
+        attributes = super().attributes
+        attributes.update({
+            'model': 'gaussian'
+        })
+        return attributes
 
     def forward(self, inputs: Tensor):
         """
@@ -463,6 +504,15 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
             input_size, 3 * self.n_gaussians)
 
         # Loss will be defined in compute_loss, using torch distribution
+
+    @property
+    def attributes(self):
+        attributes = super().attributes
+        attributes.update({
+            'model': 'gaussian-mixture',
+            'nb_gaussians': self.n_gaussians
+        })
+        return attributes
 
     def forward(self, inputs: Tensor):
         """
@@ -568,12 +618,20 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
 
     def __init__(self, input_size: int, dropout: float = None):
         # Prepare the dropout, Relu, loop:
-        super().__init__(dropout)
+        super().__init__(input_size, dropout)
 
         self.layers_mean = init_2layer_fully_connected(input_size, 3)
         self.layers_kappa = init_2layer_fully_connected(input_size, 1)
 
         # Loss will be defined in compute_loss, using torch distribution
+
+    @property
+    def attributes(self):
+        attributes = super().attributes
+        attributes.update({
+            'model': 'fisher-von-mises',
+        })
+        return attributes
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         """Run the inputs through the fully-connected layer.
@@ -672,10 +730,19 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
     """
     def __init__(self, input_size: int, dropout: float = None,
                  n_cluster: int = 3):
-        super().__init__(dropout)
+        super().__init__(input_size, dropout)
 
         self.n_cluster = n_cluster
         raise NotImplementedError
+
+    @property
+    def attributes(self):
+        attributes = super().attributes
+        attributes.update({
+            'model': 'fisher-von-mises-mixture',
+            'n_cluster': self.n_cluster
+        })
+        return attributes
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         raise NotImplementedError
@@ -688,7 +755,7 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
         raise NotImplementedError
 
 
-KEY_TO_DIRECTION_GETTER_MODEL = \
+keys_to_direction_getters = \
     {'cosine-regression': CosineRegressionDirectionGetter,
      'l2-regression': L2RegressionDirectionGetter,
      'sphere-classification': SphereClassificationDirectionGetter,

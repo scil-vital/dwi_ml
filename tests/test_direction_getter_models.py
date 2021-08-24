@@ -63,7 +63,7 @@ def prepare_packedsequence(a):
 def prepare_tensor_and_compute_loss(outputs, targets, model):
     outputs = prepare_tensor(outputs)
     targets = prepare_tensor(targets)
-    mean_loss = model.compute_loss(outputs, targets).item()
+    mean_loss = model.run_model_and_compute_loss(outputs, targets).item()
 
     return mean_loss
 
@@ -71,7 +71,7 @@ def prepare_tensor_and_compute_loss(outputs, targets, model):
 def prepare_packedsequence_and_compute_loss(outputs, targets, model):
     outputs = prepare_tensor(outputs)
     targets = prepare_packedsequence(targets)
-    mean_loss = model.compute_loss(outputs, targets.data).item()
+    mean_loss = model.run_model_and_compute_loss(outputs, targets.data).item()
 
     return mean_loss
 

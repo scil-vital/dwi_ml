@@ -26,8 +26,8 @@ def parse_args():
 
 def test_non_lazy():
     print("**========= NON-LAZY =========")
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename)
-    fake_dataset.load_training_data()
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, 'training_subjs')
+    fake_dataset.load_data()
     print("**Created a MultiSubjectDataset and loaded training set. "
           "Testing properties : \n\n")
 
@@ -47,7 +47,7 @@ def test_non_lazy():
                   subj0.streamline_group,
                   len(subj0.sft_data.streamlines),
                   subj0.sft_data.streamlines[0][0],
-                  subj0.sft_data.get_chosen_streamlines_as_sft(0).streamlines[0][0]))
+                  subj0.sft_data.from_chosen_streamlines(0).streamlines[0][0]))
 
     subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor from subject 0, volume 0: \n"
@@ -62,8 +62,9 @@ def test_non_lazy():
 
 def test_lazy():
     print("**========= LAZY =========")
-    fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename)
-    fake_dataset.load_training_data()
+    fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename,
+                                           'training_subjs')
+    fake_dataset.load_data()
     print("**Created a LazyMultiSubjectDataset and loaded training set. "
           "Testing properties : \n\n")
 
@@ -84,7 +85,7 @@ def test_lazy():
                   subj0.mri_data_list, subj0.mri_data_list[0]._data,
                   subj0.streamline_group, subj0.sft_data.streamlines,
                   subj0.sft_data.streamlines.get_array_sequence()[0][0],
-                  subj0.sft_data.get_chosen_streamlines_as_sft(0).streamlines[0][0]))
+                  subj0.sft_data.from_chosen_streamlines(0).streamlines[0][0]))
 
     subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor: subject 0, volume 0. \n"

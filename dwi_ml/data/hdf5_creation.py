@@ -258,7 +258,7 @@ def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
                 final_sft = sft
             else:
                 final_sft = concatenate_sft([final_sft, sft],
-                                                   erase_metadata=False)
+                                            erase_metadata=False)
 
     # Removing invalid streamlines
     logging.debug('      *Total: {:,.0f} streamlines. Now removing invalid '

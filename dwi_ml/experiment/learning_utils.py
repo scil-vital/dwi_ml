@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 
-# checked!
 def compute_gradient_norm(parameters):
     """Compute the gradient norm of the provided iterable parameters.
     (Machine learning gradient descent, not dwi gradients!)
@@ -15,10 +14,12 @@ def compute_gradient_norm(parameters):
     Returns
     -------
     total_norm : float
-        The total gradient norm of the parameters
+        The total gradient norm of the parameters, i.e. sqrt(sum(params^2)),
+        similarly as done in torch.nn.utils.clip_grad.clip_grad_norm.
     """
     total_norm = 0.
     for p in parameters:
+        # Possibly add: if hasattr(p, 'grad'):
         param_norm = p.grad.as_tensor.norm(2)
         total_norm += param_norm.item() ** 2
     total_norm = total_norm ** (1. / 2)

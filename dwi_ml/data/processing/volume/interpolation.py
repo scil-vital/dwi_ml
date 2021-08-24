@@ -114,8 +114,8 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
 
 def interpolate_volume_at_coordinates(volume: np.ndarray, coords: np.ndarray,
                                       mode: str = 'nearest'):
-    """Evaluates a 3D or 4D volume data at the given coordinates using trilinear
-    interpolation.
+    """Evaluates a 3D or 4D volume data at the given coordinates using
+    trilinear interpolation.
 
     Parameters
     ----------
@@ -125,8 +125,9 @@ def interpolate_volume_at_coordinates(volume: np.ndarray, coords: np.ndarray,
         3D coordinates where to evaluate the volume data.
     mode : str, optional
         Points outside the boundaries of the input are filled according to
-        the given mode (‘constant’, ‘nearest’, ‘reflect’ or ‘wrap’). [‘nearest’]
-        ('constant' uses 0.0 as a points outside the boundary)
+        the given mode (‘constant’, ‘nearest’, ‘reflect’ or ‘wrap’).
+        Default: [‘nearest’]  ('constant' uses 0.0 as a points outside the
+        boundary)
 
     Returns
     -------
@@ -147,5 +148,3 @@ def interpolate_volume_at_coordinates(volume: np.ndarray, coords: np.ndarray,
                                          mode=mode)
             values_4d.append(values_tmp)
         return np.ascontiguousarray(np.array(values_4d).T)
-
-

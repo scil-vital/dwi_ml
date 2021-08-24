@@ -17,7 +17,6 @@ COLOR_CODES = {
 }
 
 
-# Checked!
 class Timer:
     """
     Example of usage:

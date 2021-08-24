@@ -31,7 +31,7 @@ dependencies related to DWI_ML.
   deep learning back end. Thus, in order to use DWI_ML deep learning methods
   you will need to take a few additional steps.
 
- #. **Cuda**:
+  1. **Cuda**:
 
   - Verify that your computer has the required capabilities in the
     *Pre-installation Actions* section at `cuda/cuda-installation-guide <https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html>`_
@@ -44,7 +44,7 @@ dependencies related to DWI_ML.
 
   - Follow the installation instructions.
 
- #. **PyTorch**:
+  2. **PyTorch**:
 
   - Install `PyTorch`_. Use the selector under the *Start locally* section at
     `pytorch.org/get-started <https://pytorch.org/get-started/locally/>`_ to
@@ -53,6 +53,20 @@ dependencies related to DWI_ML.
 
   - Perform the suggested verifications to make sure that both `CUDA`_ and
     `PyTorch`_ have been correctly installed.
+
+- The toolkit uses `comet_ml <https://www.comet.ml/docs/python-sdk/advanced/>`_.
+  It is a python library that creates an "Experiment" (ex, training a model
+  with a given set of hyperparameters) which automatically creates many types
+  of logs online. It requires user to set an API key in $HOME/.comet.config
+  with contents:
+
+        | [comet]
+        | api_key=YOUR-API-KEY
+
+  An API (application programming interface) is a code that gets passed in by
+  applications, containing information to identify its user, for instance. To
+  get a API key, see `<www.comet.ml/api/my/settings>`_.
+
 
 Installing dwi_ml
 *****************

@@ -34,7 +34,8 @@ def add_dwi_ml_optional_args(p):
                         "input vector.")
     p.add_argument('--lazy', action="store_true",
                    help="Do not load all the model_and_training dataset in  "
-                        "memory at once. Load only what is needed for a batch.")
+                        "memory at once. Load only what is needed for a "
+                        "batch.")
     p.add_argument('--batch-size', type=int, default=20000,
                    help="Number of streamline points per batch. [20000]")
     p.add_argument('--volumes-per-batch', type=int,

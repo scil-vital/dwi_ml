@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
+
 import numpy as np
 from scipy.spatial.distance import mahalanobis
-import torch
 
 """
 Variables:
@@ -39,21 +40,26 @@ Formulas:
                  = sum_K (z_i /sqrt(  (2pi)^d*det(C_i)  ) * exp(-0.5m_i^2))
 
     5. Log-likelihood for a mixture of Gaussians:
-            log(P(x)) = log( sum_K (z_i /sqrt(  (2pi)^d*det(C_i)  ) * exp(-0.5m_i^2)) )
+            log(P(x)) = log(sum_K(z_i/sqrt((2pi)^d*det(C_i)) * exp(-0.5m_i^2)))
 
         If z_i is already known (mixture_probs, computed separately), it is
         easy to separate this variable in the computation by using
         x = exp(log(x))
 
-           log(P(x)) = log(sum_K(exp(log(  (z_i /sqrt((2pi)^d*det(C_i)) * exp(-0.5m_i^2)  ))))
+           log(P(x)) = log(sum_K(exp(log((z_i /sqrt((2pi)^d * det(C_i)) *
+                                                             exp(-0.5m_i^2)))))
                      = ...
-                     = logsumexp( log(z_i) - 0.5(  d*log(2pi) + log(det(C_i)) + m_i^2  ))
+                     = logsumexp(log(z_i) - 0.5(d*log(2pi) + log(det(C_i)) +
+                                                                        m_i^2))
 
         *For independant variables: det(C) = product of diagonal = sum(sigma^2)
-                    = logsumexp( log(z_i) - 0.5( d*log(2pi) + m_i^2 ) -0.5log(det(C_i)) )
-                    = logsumexp( log(z_i) - 0.5( d*log(2pi) + m_i^2 ) -sum(log(sigma)))
-                                          -------------------------------------------
-                                           This part is the logpdf of a single Gaussian!
+                    = logsumexp( log(z_i) - 0.5( d*log(2pi) + m_i^2 ) -
+                                                              0.5log(det(C_i)))
+                    = logsumexp( log(z_i) - 0.5( d*log(2pi) + m_i^2 ) -
+                                                               sum(log(sigma)))
+                                          -------------------------------------
+                                                 This part is the logpdf of
+                                                    a single Gaussian!
                     = logsumexp( log(z_i) + logpdf_i)
 
    ref:

@@ -28,6 +28,15 @@ from nested_lookup import nested_lookup
 from dwi_ml.data.hdf5_creation import (process_group, process_streamlines,
                                        verify_subject_lists)
 
+"""
+Important notes
+
+The memory is a delicate question here, but checks have been made, and it
+appears that the SFT's garbage collector may not be working entirely well.
+
+Keeping as is for now, hoping that next Dipy versions will solve the problem.
+"""
+
 
 def _parse_args():
     p = argparse.ArgumentParser(description=__doc__,
@@ -41,7 +50,8 @@ def _parse_args():
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. Should follow description in "
                         "our doc, here: "
-                        "https://dwi-ml.readthedocs.io/en/latest/data_organization.html")
+                        "https://dwi-ml.readthedocs.io/en/latest/"
+                        "data_organization.html")
     p.add_argument('training_subjs',
                    help="txt file containing the list of subjects ids to use "
                         "for training.")
@@ -135,6 +145,10 @@ def main():
     _check_files_presence(args, chosen_subjs, groups_config,
                           dwi_ml_ready_folder)
 
+    logging.info("  ==== Starting database creation === \n"
+                 "  We will be creating a HDF5 database with bundles ({}) and "
+                 "groups: \n {}".format(args.bundles, groups_config))
+
     # Create dataset from config and save
     _add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
                                hdf5_filename, dwi_ml_ready_folder,
@@ -143,8 +157,6 @@ def main():
 
 def _check_groups_config(groups_config):
     for group in groups_config.keys():
-        logging.debug("Group's keys are {}"
-                      .format(groups_config[group].keys()))
         if 'type' not in groups_config[group]:
             raise KeyError("Group {}'s type was not defined. It should be "
                            "the group type. So far, the only type implemented "

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import logging
 
 from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
                                                            SubjectData,
@@ -14,37 +13,43 @@ class DataListForTorchAbstract(object):
     Will be used by multi_subjects_containers.
     """
     def __init__(self):
-        # Feature sizes should be common to all subjects.
-        self.subjects_data_list = []  # List of SubjectData
-        self.feature_sizes = []  # One value per volume group.
-        self.volume_groups = []  # Will be set by the first subj.
-        # Others must fit.
-        self.streamline_group = None
+        self.subjects_data_list = []  # type: List[SubjectDataAbstract]
 
-    def set_feature_sizes(self):
+        # Feature sizes should be common to all subjects.
+        # One value per volume group. Will be set by the first subj.
+        # Others must fit.
+        self.feature_sizes = []  # type: List[int]
+        self.volume_groups = []  # type: List[str]
+        self.streamline_group = None  # type : str
+
+    def _set_feature_sizes(self, log):
         """
-        Sets the number of information per voxel in each group's dMRI volume.
+        Sets the number of information per voxel in each group's dMRI volume
+        based on subject 0. This must be called only when subj 0 will exist.
         """
         if len(self.feature_sizes) > 0:
-            logging.warning("You have already set the feature sizes based on "
-                            "the first subject! Doing it again but you should "
-                            "verify this code!")
+            raise ValueError("You have already set the feature sizes based on "
+                             "the first subject!")
         if len(self.subjects_data_list) == 0:
             raise ValueError('First subject must be added to the list before '
                              'verifying its feature sizes.')
 
         for i in range(len(self.volume_groups)):
             self.feature_sizes.append(self._get_group_feature_size(0, i))
+            log.debug("     => Group #{}: feature size set to {}"
+                      .format(i, self.feature_sizes[i]))
 
-    def _get_group_feature_size(self, subj: int, group: int):
-        """Get subject #subj's group #group's feature size"""
+    def _get_group_feature_size(self, subj_idx, group: int):
+        """Get subject group's feature size (i.e. last dim)"""
+        # Depends on lazy or not.
         raise NotImplementedError
 
-    def add_subject(self, subject_data: SubjectDataAbstract):
+    def add_subject(self, subject_data: SubjectDataAbstract, log=None):
         """
         Adds subject's data to subjects_data_list.
         Returns idx of where subject is inserted.
         """
+        log.debug('* Adding already created subject to subjects_data_list')
         subject_idx = len(self.subjects_data_list)
         self.subjects_data_list.append(subject_data)
 
@@ -52,8 +57,11 @@ class DataListForTorchAbstract(object):
         if subject_idx == 0:
             # Set values from the first subject
             assert len(self.volume_groups) == 0
+            log.debug('     => Subj 0. Saving group informations as reference '
+                      'for the next subjects.')
             self.volume_groups = subject_data.volume_groups
-            self.set_feature_sizes()
+            log.debug('     => Volume groups: {}'.format(self.volume_groups))
+            self._set_feature_sizes(log)
         else:
             # Make sure we have the right number of groups
             if len(subject_data.volume_groups) != len(self.volume_groups):

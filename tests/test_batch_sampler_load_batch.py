@@ -15,6 +15,13 @@ from dwi_ml.data.dataset.multi_subject_containers import (
     LazyMultiSubjectDataset, MultiSubjectDataset)
 from dwi_ml.model.batch_samplers import (BatchSequencesSamplerOneInputVolume)
 
+"""
+To save binary maps of the input voxels, open model.batch_samplers and change
+SAVE_BATCH_INPUT_MASK=True
+in both this file and the batch sampler
+"""
+SAVE_BATCH_INPUT_MASK = False
+
 
 def parse_args():
     """
@@ -64,7 +71,7 @@ def test_batch_loading_no_computations(
         print('Batch # 1 streamline #1: {}'.format(batch[0][0]))
         break
 
-    batch_streamlines, batch_ids = batch_sampler.load_batch(batch)
+    batch_streamlines, _ = batch_sampler.load_batch(batch)
 
     print('Nb loaded processed batch streamlines: {}. Streamline 1: {}'
           .format(len(batch_streamlines), batch_streamlines[0][0]))
@@ -95,7 +102,8 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size,
         fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
         step_size=step_size, avoid_cpu_computations=False,
         neighborhood_type=neighborhood_type,
-        neighborhood_radius_vox=neighborhood_radius)
+        neighborhood_radius_vox=neighborhood_radius,
+        nb_previous_dirs=2)
 
     batch_generator = batch_sampler.__iter__()
 
@@ -104,28 +112,41 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size,
     for batch in batch_generator:
         print('Batch # 1: nb sampled streamlines subj 0 was {}'
               .format(len(batch[0])))
-        print('Batch # 1 streamline #1: {}'.format(batch[0][0]))
+        print("Batch # 1 streamline #1's id: {}".format(batch[0][0]))
         break
 
-    batch_streamlines, batch_input_masks = batch_sampler.load_batch(
-        batch, save_batch_input_masks=True)
+    inputs, directions, previous_dirs = batch_sampler.load_batch(batch)
 
-    print('Nb loaded processed batch streamlines: {}. Streamline 1: {}'
-          .format(len(batch_streamlines), batch_streamlines[0][0]))
+    if SAVE_BATCH_INPUT_MASK:
+        # debugging mode.
+        # packed_input was not really returned. Instead, returned
+        # batch_streamlines and mask
+        batch_streamlines, batch_input_masks = inputs
 
-    millisecond = round(now.microsecond / 10000)
-    now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
+        print('Nb loaded processed batch streamlines: {}. Streamline 1: {}'
+              .format(len(batch_streamlines), batch_streamlines[0][0]))
 
-    print("Saving subj 0's tractogram {}".format('test_batch1_' + now_s))
-    sft = StatefulTractogram(batch_streamlines, ref, space=Space.VOX)
-    save_tractogram(sft, saving_path + '/test_batch1_' + now_s + '.trk')
+        millisecond = round(now.microsecond / 10000)
+        now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
 
-    print("Saving subj 0's underlying coords mask: {}"
-          .format('test_batch1_underlying_mask_' + now_s))
-    mask = batch_input_masks[0]
-    data_nii = nib.Nifti1Image(np.asarray(mask, dtype=bool), affine, header)
-    nib.save(data_nii, saving_path + '/test_batch1_underlying_mask_' + now_s +
-             '.nii.gz')
+        print("Saving subj 0's tractogram {}".format('test_batch1_' + now_s))
+        sft = StatefulTractogram(batch_streamlines, ref, space=Space.VOX)
+        save_tractogram(sft, saving_path + '/test_batch1_' + now_s + '.trk')
+
+        print("Saving subj 0's underlying coords mask: {}"
+              .format('test_batch1_underlying_mask_' + now_s))
+        mask = batch_input_masks[0]
+        data_nii = nib.Nifti1Image(np.asarray(mask, dtype=bool), affine,
+                                   header)
+        nib.save(data_nii, saving_path + '/test_batch1_underlying_mask_' +
+                 now_s + '.nii.gz')
+    else:
+        print("Nb of inputs: {}. Ex of inputs shape: {}, \n"
+              "Nb of directions: {}. Ex of direction shape: {}\n"
+              "Previous_dirs: {}. Ex of shape (should be x6): {}"
+              .format(len(inputs), inputs[0].shape,
+                      len(directions), directions[0].shape,
+                      len(previous_dirs), previous_dirs[0].shape))
 
 
 def test_non_lazy(ref, affine, header, saving_path):
@@ -134,8 +155,8 @@ def test_non_lazy(ref, affine, header, saving_path):
     # Initialize dataset
     print('Initializing dataset...')
     logging.root.setLevel('INFO')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename)
-    fake_dataset.load_training_data()
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, 'training_subjs')
+    fake_dataset.load_data()
 
     print('\n\n\n=======================Test with batch size 10000 + resample')
     test_batch_loading_no_computations(fake_dataset, 10000, 0.5, ref,
@@ -178,8 +199,9 @@ def test_lazy(ref, affine, header, saving_path):
     # Initialize dataset
     print('Initializing dataset...')
     logging.root.setLevel('INFO')
-    fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename)
-    fake_dataset.load_training_data()
+    fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename,
+                                           'training_subjs')
+    fake_dataset.load_data()
 
     print('\n\n\n=======================Test with batch size 10000 + resample')
     test_batch_loading_no_computations(fake_dataset, 10000, 0.5, ref,

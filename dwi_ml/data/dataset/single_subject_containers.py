@@ -111,7 +111,7 @@ class LazySubjectData(SubjectDataAbstract):
         self.hdf_handle = hdf_handle
 
         # Compared to non-lazy:
-        # self.mri_data --> becomes a property
+        # self.mri_data_list --> becomes a property
         # self.sft_data --> becomes a property
         # These properties depend on if a hdf_handle is currently used.
         # self.with_handle --> adds hdf_handle to the subject to allow loading
@@ -121,6 +121,8 @@ class LazySubjectData(SubjectDataAbstract):
                       streamline_group: str, hdf_file=None, log=None):
         """In short: this does basically nothing, the lazy data is kept
         as hdf5 file."""
+        log.debug('*    => Lazy: not loading data. Saving information. Is hdf '
+                  'handle none? Answer : {}'.format(hdf_file))
 
         return cls(volume_groups, streamline_group, subject_id, hdf_file)
 

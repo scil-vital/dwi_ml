@@ -17,7 +17,7 @@ from collections import defaultdict
 from datetime import datetime
 import logging
 import os
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Dict, Any
 
 import h5py
 import numpy as np
@@ -26,12 +26,11 @@ from torch.utils.data import Dataset
 import tqdm
 
 from dwi_ml.cache.cache_manager import SingleThreadCacheManager
-from dwi_ml.data.dataset.data_lists import (DataListForTorch,
-                                            LazyDataListForTorch)
-from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
-                                                           SubjectData,
-                                                           LazySubjectData)
-
+from dwi_ml.data.dataset.data_lists import (
+    DataListForTorch, LazyDataListForTorch)
+from dwi_ml.data.dataset.single_subject_containers import (
+    SubjectDataAbstract, SubjectData, LazySubjectData)
+from dwi_ml.experiment.timer import Timer
 from dwi_ml.utils import TqdmLoggingHandler
 
 
@@ -72,11 +71,32 @@ class MultiSubjectDatasetAbstract(Dataset):
     Based on torch's dataset class. Provides functions for a DataLoader to
     iterate over data and process batches.
     """
-    def __init__(self, hdf5_path: str, name: str = None,
+    def __init__(self, hdf5_path: str, subjs_set: str, name: str = None,
                  taskman_managed: bool = False):
+        """
+        Parameters
+        ----------
+        hdf5_path: str
+            Path to the hdf5 file containing the data.
+        subjs_set: str
+            Either 'training_subjs' or 'validation_subjs'. The subjects to
+            load when using self.load_data(). This refers to the attrs in the
+            hdf5 file containing the list of subjects for the training dataset
+            and the validation dataset.
+        name: str
+           Name of the dataset, optional.
+        taskman_managed: bool
+            Enable or disable que tqdm progress bar.
+        """
         # Dataset info
         self.hdf5_path = hdf5_path
         self.name = name if name else os.path.basename(self.hdf5_path)
+        self.set = subjs_set
+        if not (subjs_set == 'training_subjs' or
+                subjs_set == 'validation_subjs'):
+            raise ValueError("The MultisubjectDataset set should be either "
+                             "'training_subjs' or 'validation_subjs' but we "
+                             "received {}".format(subjs_set))
 
         # Concerning the memory usage:
         self.taskman_managed = taskman_managed
@@ -93,7 +113,17 @@ class MultiSubjectDatasetAbstract(Dataset):
         self.total_streamlines = None
         self.streamline_lengths_mm = None
 
-    def load_training_data(self):
+    @property
+    def attributes(self) -> Dict[str, Any]:
+        all_params = {
+            'hdf5_path': self.hdf5_path,
+            'name': self.name,
+            'set': self.set,
+            'taskman_managed': self.taskman_managed,
+        }
+        return all_params
+
+    def load_data(self):
         """
         Load raw dataset into memory.
         """
@@ -102,11 +132,11 @@ class MultiSubjectDatasetAbstract(Dataset):
             # Load main attributes from hdf file, but each process calling
             # the collate_fn must open its own hdf_file
             database_version = hdf_file.attrs["version"]
-            logging.info("Loaded hdf file: {}".format(self.hdf5_path))
+            logging.info("Reading hdf file: {}".format(self.hdf5_path))
             logging.info("Database version: {}".format(database_version))
-            subject_keys = sorted(hdf_file.attrs['training_subjs'])
-            logging.debug('hdf_file (subject) keys for the training set '
-                          'are: {}'.format(subject_keys))
+            subject_keys = sorted(hdf_file.attrs[self.set])
+            logging.debug('hdf_file (subject) keys for the {} set '
+                          'are: {}'.format(self.set, subject_keys))
             self.groups = list(hdf_file[subject_keys[0]].keys())
             logging.debug('Groups of data are: {}'.format(self.groups))
 
@@ -142,7 +172,7 @@ class MultiSubjectDatasetAbstract(Dataset):
                     streamline_group=self.streamline_group, log=self.log)
 
                 # Add subject to the list
-                subj_idx = self.data_list.add_subject(subj_data)
+                subj_idx = self.data_list.add_subject(subj_data, self.log)
 
                 # Arrange streamlines
                 # In the lazy case, we need to load the data first using the
@@ -238,9 +268,22 @@ class MultiSubjectDatasetAbstract(Dataset):
 
 class MultiSubjectDataset(MultiSubjectDatasetAbstract):
     """Dataset containing multiple SubjectData objects saved in a DataList."""
-    def __init__(self, hdf5_path: str, name: str = None,
+    def __init__(self, hdf5_path: str, subjs_set: str, name: str = None,
                  taskman_managed: bool = False):
-        super().__init__(hdf5_path, name, taskman_managed)
+        super().__init__(hdf5_path, subjs_set, name, taskman_managed)
+
+        # This will accelerate verification of laziness, compared to
+        # is_instance(data, LazyMultiSubjectDataset)
+        self.is_lazy = False
+
+    @property
+    def attributes(self):
+        all_params = super().attributes
+        other_params = {
+            'is_lazy': self.is_lazy
+        }
+        all_params.update(other_params)
+        return all_params
 
     @staticmethod
     def _build_data_list(hdf_file):
@@ -278,9 +321,9 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
 class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
     """Dataset containing multiple LazySubjectData objects saved in a
     LazyDataList."""
-    def __init__(self, hdf5_path: str, name: str = None,
+    def __init__(self, hdf5_path: str, subjs_set: str, name: str = None,
                  taskman_managed: bool = False, cache_size: int = 0):
-        super().__init__(hdf5_path, name, taskman_managed)
+        super().__init__(hdf5_path, subjs_set, name, taskman_managed)
 
         # In case `None` was passed explicitly, change cache_size:
         self.cache_size = cache_size or 0
@@ -293,6 +336,20 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
         self.hdf_handle = None
         if self.cache_size > 0:
             self.volume_cache_manager = None
+
+        # This will accelerate verification of laziness, compared to
+        # is_instance(data, LazyMultiSubjectDataset)
+        self.is_lazy = True
+
+    @property
+    def attributes(self):
+        all_params = super().attributes
+        other_params = {
+            'cache_size': self.cache_size,
+            'is_lazy': self.is_lazy
+        }
+        all_params.update(other_params)
+        return all_params
 
     @staticmethod
     def _build_data_list(hdf_file):
@@ -361,3 +418,22 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
     def __del__(self):
         if self.hdf_handle is not None:
             self.hdf_handle.close()
+
+
+def init_dataset(is_lazy: bool, hdf5_filename: str, subjs_set: str,
+                 name: str = None, taskman_managed: bool = None,
+                 cache_size: int = None, **unused_kwargs):
+    if is_lazy:
+        dataset = LazyMultiSubjectDataset(hdf5_filename, subjs_set, name,
+                                          taskman_managed, cache_size)
+    else:
+        dataset = MultiSubjectDataset(hdf5_filename, subjs_set, name,
+                                      taskman_managed)
+
+    with Timer("Loading dataset for {}".format(subjs_set), newline=True,
+               color='blue'):
+        dataset.load_data()
+
+    logging.debug("Unused kwargs are: {}".format(unused_kwargs))
+
+    return dataset

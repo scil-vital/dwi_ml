@@ -176,7 +176,7 @@ class SFTDataAbstract(object):
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
         raise NotImplementedError
 
-    def _get_streamlines_as_sft(self, streamlines: ArraySequence):
+    def from_chosen_streamlines(self, streamlines: ArraySequence):
         """
         streamline_ids: list of chosen ids. If None, take all streamlines.
 
@@ -210,13 +210,13 @@ class SFTData(SFTDataAbstract):
     def streamlines_as_tensor(self):
         raise NotImplementedError
 
-    def get_chosen_streamlines_as_sft(self, streamline_ids=None):
+    def from_chosen_streamlines(self, streamline_ids=None):
         if streamline_ids is not None:
             streamlines = self.streamlines[streamline_ids]
         else:
             streamlines = self.streamlines
 
-        return super()._get_streamlines_as_sft(streamlines)
+        return super().from_chosen_streamlines(streamlines)
 
 
 class LazySFTData(SFTDataAbstract):
@@ -232,11 +232,11 @@ class LazySFTData(SFTDataAbstract):
 
         return cls(streamlines, space_attributes, space)
 
-    def get_chosen_streamlines_as_sft(self, streamline_ids):
+    def from_chosen_streamlines(self, streamline_ids):
         """
         streamline_ids: int, list or slice
 
         Returns chosen streamlines in a StatefulTractogram format.
         """
         streamlines = self.streamlines.get_array_sequence(streamline_ids)
-        return super()._get_streamlines_as_sft(streamlines)
+        return super().from_chosen_streamlines(streamlines)

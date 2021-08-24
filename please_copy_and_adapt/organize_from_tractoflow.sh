@@ -4,7 +4,7 @@
 # Your tree should look like:                                                 #
 # derivatives                                                                 #
 #    ├── original (ex, tractoflow input)                                      #
-#    └── preprocessed (ex, tractoflow output + recobundle output)             #
+#    └── tractoflow_output (ex, tractoflow output + recobundle output)        #
 #    └── dwi_ml_ready: will be created now.                                   #
 #                                                                             #
 # This script will create symlinks in dwi_ml_ready, pointing to your data     #
@@ -28,7 +28,7 @@
 #                                                                             #
 # See our doc for more information                                            #
 # (https://dwi-ml.readthedocs.io/en/latest/data_organization.html#ref-organization).
-# We suppose that you have a "preprocessed" folder that contains RecobundlesX #
+# We suppose that you have a "tractoflow_output" folder that contains RecobundlesX #
 # results folder for each subject.                                            #
 ###############################################################################
 
@@ -53,8 +53,8 @@ if [ ! -d $database_folder ]; then
   echo "Database not found! ($database_folder)!"
   exit
 fi
-if [ ! -d $database_folder/preprocessed ]; then
-  echo "There is no preprocessed folder in your database! ($database_folder)"
+if [ ! -d $database_folder/tractoflow_output ]; then
+  echo "There is no tractoflow_output folder in your database! ($database_folder)"
   exit
 fi
 if [ ! -f $subject_list ]; then
@@ -77,7 +77,7 @@ subjects=$(<$subject_list)
 for subjid in $subjects
 do
   echo "Reorganizing subject $subjid"
-  subj_preprocessed_folder=$database_folder/preprocessed/$subjid
+  subj_tractoflow_output_folder=$database_folder/tractoflow_output/$subjid
   subj_folder=$dwi_ml_ready_folder/$subjid
   mkdir $subj_folder
   mkdir $subj_folder/anat
@@ -86,29 +86,29 @@ do
   mkdir $subj_folder/bundles
 
   # dwi:
-  if [ ! -f $subj_preprocessed_folder/Resample_DWI/${subjid}__dwi_resampled.nii.gz ]; then echo "Subject's DWI not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Resample_DWI/${subjid}__dwi_resampled.nii.gz $subj_folder/dwi/dwi_tractoflow.nii.gz
-  if [ ! -f $subj_preprocessed_folder/Eddy/${subjid}__bval_eddy ]; then echo "Subject's bval not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Eddy/${subjid}__bval_eddy $subj_folder/dwi/bval_tractoflow
-  if [ ! -f $subj_preprocessed_folder/Eddy/${subjid}__dwi_eddy_corrected.bvec ]; then echo "Subject's bvec not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Eddy/${subjid}__dwi_eddy_corrected.bvec $subj_folder/dwi/bvec_tractoflow
-  if [ ! -f $subj_preprocessed_folder/DTI_Metrics/${subjid}__fa.nii.gz ]; then echo "Subject's FA not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/DTI_Metrics/${subjid}__fa.nii.gz $subj_folder/dwi/fa.nii.gz
+  if [ ! -f $subj_tractoflow_output_folder/Resample_DWI/${subjid}__dwi_resampled.nii.gz ]; then echo "Subject's DWI not found"; exit 1; fi
+  ln -s $subj_tractoflow_output_folder/Resample_DWI/${subjid}__dwi_resampled.nii.gz $subj_folder/dwi/dwi_tractoflow.nii.gz
+  if [ ! -f $subj_tractoflow_output_folder/Eddy/${subjid}__bval_eddy ]; then echo "Subject's bval not found"; exit 1; fi
+  ln -s $subj_tractoflow_output_folder/Eddy/${subjid}__bval_eddy $subj_folder/dwi/bval_tractoflow
+  if [ ! -f $subj_tractoflow_output_folder/Eddy/${subjid}__dwi_eddy_corrected.bvec ]; then echo "Subject's bvec not found"; exit 1; fi
+  ln -s $subj_tractoflow_output_folder/Eddy/${subjid}__dwi_eddy_corrected.bvec $subj_folder/dwi/bvec_tractoflow
+  if [ ! -f $subj_tractoflow_output_folder/DTI_Metrics/${subjid}__fa.nii.gz ]; then echo "Subject's FA not found"; exit 1; fi
+  ln -s $subj_tractoflow_output_folder/DTI_Metrics/${subjid}__fa.nii.gz $subj_folder/dwi/fa.nii.gz
 
   # anat:
-  if [ ! -f $subj_preprocessed_folder/Register_T1/${subjid}__t1_warped.nii.gz ]; then echo "Subject's T1 not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Register_T1/${subjid}__t1_warped.nii.gz $subj_folder/anat/t1_tractoflow.nii.gz
-  if [ ! -f $subj_preprocessed_folder/Segment_Tissues/${subjid}__map_wm.nii.gz ]; then echo "Subject's WM map not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Segment_Tissues/${subjid}__map_wm.nii.gz $subj_folder/anat/wm_map.nii.gz
+  if [ ! -f $subj_tractoflow_output_folder/Register_T1/${subjid}__t1_warped.nii.gz ]; then echo "Subject's T1 not found"; exit 1; fi
+  ln -s $subj_tractoflow_output_folder/Register_T1/${subjid}__t1_warped.nii.gz $subj_folder/anat/t1_tractoflow.nii.gz
+  if [ ! -f $subj_tractoflow_output_folder/Segment_Tissues/${subjid}__map_wm.nii.gz ]; then echo "Subject's WM map not found"; exit 1; fi
+  ln -s $subj_tractoflow_output_folder/Segment_Tissues/${subjid}__map_wm.nii.gz $subj_folder/anat/wm_map.nii.gz
 
   # masks:
-  if [ ! -f $subj_preprocessed_folder/Resample_B0/${subjid}__b0_mask_resampled.nii.gz ]; then echo "Subject's b0 bet mask not found"; exit 1; fi
-  ln -s $subj_preprocessed_folder/Resample_B0/${subjid}__b0_mask_resampled.nii.gz $subj_folder/masks/b0_bet_mask_resampled.nii.gz
+  if [ ! -f $subj_tractoflow_output_folder/Resample_B0/${subjid}__b0_mask_resampled.nii.gz ]; then echo "Subject's b0 bet mask not found"; exit 1; fi
+  ln -s $subj_tractoflow_output_folder/Resample_B0/${subjid}__b0_mask_resampled.nii.gz $subj_folder/masks/b0_bet_mask_resampled.nii.gz
 
   # bundles:
-  for dir in $subj_preprocessed_folder/*Tracking
+  for dir in $subj_tractoflow_output_folder/*Tracking
   do
-    if [ ! -f $dir/${subjid}__*tracking*.trk ]; then echo "Subject's tractogram not found"; exit 1; fi
+    if [ ! -f $dir/${subjid}__*tracking*.trk ]; then echo "WARNING. Subject's tractogram not found, but continuing"; fi
     ln -s $dir/${subjid}__*tracking*.trk $subj_folder/bundles/tractoflow_wholebrain.trk
   done
 done

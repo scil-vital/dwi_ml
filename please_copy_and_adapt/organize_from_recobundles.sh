@@ -8,7 +8,7 @@
 #                                                                              #
 # See our doc for more information                                             #
 # (https://dwi-ml.readthedocs.io/en/latest/data_organization.html#ref-organization).
-# We suppose that you have a "preprocessed" folder that contains RecobundlesX  #
+# We suppose that you have a "tractoflow_output" folder that contains RecobundlesX  #
 # results folder for each subject.                                             #
 ################################################################################
 
@@ -16,7 +16,7 @@
 #  VARIABLES TO BE DEFINED BY THE USER #
 # =====================================#
 # -database_folder = Path to the database, which should contain a
-#     preprocessed folder and a dwi_ml_ready folder.
+#     tractoflow_output folder and a dwi_ml_ready folder.
 # -recobundles_name = Name of the recobundlesX folder for each
 #     subject. Ex: RecobundlesX/multi_bundles
 # -subjects = The list of ALL subjects. You may choose later which ones will be
@@ -30,12 +30,12 @@ subject_list=$3     # SUBJECTS.txt
 # =====================================#
 # Cleaning path name
 database_folder=$(realpath $database_folder)
-preprocessed_folder=$database_folder/preprocessed
+tractoflow_output_folder=$database_folder/tractoflow_output
 dwi_ml_ready_folder=$database_folder/dwi_ml_ready
 
 # Checking if files exist
-if [ ! -d $preprocessed_folder ]; then
-  echo "Preprocessed folder not found! ($preprocessed_folder)!"
+if [ ! -d $tractoflow_output_folder ]; then
+  echo "tractoflow_output folder not found! ($tractoflow_output_folder)!"
   exit
 fi
 if [ ! -d $dwi_ml_ready_folder ]; then
@@ -54,7 +54,7 @@ for subjid in $subjects
 do
   echo "Reorganizing subject $subjid"
   subj_folder=$dwi_ml_ready_folder/$subjid
-  recobundles_folder=$preprocessed_folder/$subjid/$recobundles_name
+  recobundles_folder=$tractoflow_output_folder/$subjid/$recobundles_name
   if [ ! -d $subj_folder/bundles ]; then
     mkdir $subj_folder/bundles
   fi

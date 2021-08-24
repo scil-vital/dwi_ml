@@ -87,7 +87,7 @@ class LazyMRIData(MRIDataAbstract):
     such as the vox2rasmm affine or the subject_id."""
 
     def __init__(self, data: h5py.Group = None, affine: np.ndarray = None):
-        super().__init__(data, affine,)
+        super().__init__(data, affine)
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group):

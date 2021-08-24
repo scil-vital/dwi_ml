@@ -19,17 +19,17 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
     data : np.ndarray with shape (X, Y, Z, #modalities)
         Volume to normalize along each modality.
     mask : binary np.ndarray with shape (X, Y, Z)
-        3D mask defining which voxels should be used for normalization. If None,
-        all non-zero voxels will be used. Voxels outside mask will be set to
-        nan.
+        3D mask defining which voxels should be used for normalization. If
+        None, all non-zero voxels will be used. Voxels outside mask will be set
+        to nan.
     independent: bool
         If true, will normalize each modality independently (last axis). Else,
         will normalize with the mean and variance of all data. There is a
         big reflexion to have here. Typical approach in machine learning is to
         normalize each input X separately (each modality). But our data is not
         independent. Ex, with peaks, the peak in one direction and the peak in
-        another must probably belong to the same distribution to mean something.
-        We recommend using independent = False for your dwi data.
+        another must probably belong to the same distribution to mean
+        something. We recommend using independent = False for your dwi data.
 
     Returns
     -------
@@ -109,11 +109,12 @@ def resample_raw_dwi_from_sh(dwi_image: nib.Nifti1Image,
     sh_basis = sph_harm_lookup.get(sh_basis)
 
     # Resample data
-    # B.T contains the new sampling scheme and B*data_sh projects to the sphere.
-    # B : 2-D array; real harmonics sampled at (\theta, \phi)
-    # m : array; degree of the sampled harmonics.
-    # l : array; order of the sampled harmonics.
-    B, m, l = sh_basis(sh_order, sphere.theta, sphere.phi)
-    data_resampled = np.dot(data_sh, B.T)
+    # var_b : 2-D array; real harmonics sampled at (\theta, \phi)
+    #      var_b.T contains the new sampling scheme and var_b*data_sh projects
+    #      to the sphere.
+    # degree_m : array; degree of the sampled harmonics.
+    # order_l : array; order of the sampled harmonics.
+    var_b, degree_m, order_l = sh_basis(sh_order, sphere.theta, sphere.phi)
+    data_resampled = np.dot(data_sh, var_b.T)
 
     return data_resampled

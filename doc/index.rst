@@ -29,3 +29,4 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
 
     devel/contributing_link
     devel/coding_style_guideline
+    devel/summary

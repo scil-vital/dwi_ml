@@ -12,11 +12,9 @@ This is how your data should be organized before trying to load your data as a h
 
     Your original data folder. This is facultative but you probably have already organized your data like that if you ran tractoflow. For more information on data organization for tractoflow, please check `Tractoflow's Input Structure <https://tractoflow-documentation.readthedocs.io/en/latest/pipeline/input.html>`_.
 
-**Preprocessed:**
+**tractoflow_output:**
 
-    No matter how you preprocess your data, please keep the results in a "preprocessed" folder. Ex: tractoflow + any other technique to get your bundles.
-
-    ** Note. If you used tractoflow and have kept the results in preprocessed, you can organize automatically the dwi_ml_ready folder. We have started to prepare a script for you, which you can find in please_copy_and_adapt/**01_organizse_from_tractoflow.sh**, which creates symlinks between your tractoflow results and a dwi_ml_ready folder. We encourage you to modify this script in your own project depending on your needs. You can find `here <./reminder_tractoflow_output.rst>`_ a description of tractoflow's typical output.
+    If you used tractoflow to preprocess your data, you may organize automatically the dwi_ml_ready folder (see below). We have started to prepare a script for you, which you can find in please_copy_and_adapt/**01_organizse_from_tractoflow.sh**, which creates symlinks between your tractoflow results and a dwi_ml_ready folder. We encourage you to modify this script in your own project depending on your needs. You can find `here <./reminder_tractoflow_output.rst>`_ a description of tractoflow's typical output.
 
 **dwi_ml_ready**
 

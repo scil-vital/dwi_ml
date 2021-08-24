@@ -28,9 +28,9 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     -------
     neighborhood : np.ndarray[float]
         A list of vectors with last dimension = 3 (x,y,z coordinate for each
-        neighbour per respect to the origin). Hint: You can now interpolate your
-        DWI data in each direction around your point of interest to get your
-        neighbourhood.
+        neighbour per respect to the origin). Hint: You can now interpolate
+        your DWI data in each direction around your point of interest to get
+        your neighbourhood.
     """
     tmp_axes = np.identity(3)
     unit_axes = np.concatenate((tmp_axes, -tmp_axes))
@@ -48,11 +48,11 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
 
 def get_neighborhood_vectors_grid(radius: int):
     """Returns a list of points similar to the original voxel grid. Ex: with
-    radius 1, this is 27 points. With radius 2, that's 125 points. Good for
+    radius 1, this is 26 points. With radius 2, that's 124 points. Good for
     CNN, for example.
 
-    Note: We only support isometric voxels! Adding isometry would also require
-    remembering where the x,y,z directions are.
+    Note: We only support isometric voxels! Adding anisometry would also
+    require remembering where the x,y,z directions are.
 
     Parameters
     ----------
@@ -73,14 +73,15 @@ def get_neighborhood_vectors_grid(radius: int):
     neighborhood = []
     the_range = range(-radius, radius + 1)
     for x, y, z in itertools.product(the_range, the_range, the_range):
-        neighborhood.append([x, y, z])
+        if not (x == y == z == 0):  # Not adding origin; not a neighbor
+            neighborhood.append([x, y, z])
     neighborhood = np.asarray(neighborhood)
 
     return neighborhood
 
 
-def extend_coordinates_with_neighborhood(coords: np.ndarray,
-                                         neighborhood_translations: np.ndarray):
+def extend_coordinates_with_neighborhood(
+        coords: np.ndarray, neighborhood_translations: np.ndarray):
     """
     From a list of coordinates (e.g. [p1,p2,p3]) and neighborhood translation
     vectors (e.g. [up, down, left, right]), get a new list of coordinates

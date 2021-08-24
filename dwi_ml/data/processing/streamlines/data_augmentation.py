@@ -71,7 +71,7 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
                         .format(gaussian_variability, gaussian_size))
     gaussian_size = random.uniform(gaussian_size - gaussian_variability,
                                    gaussian_size + gaussian_variability)
-    
+
     # Perform noise addition (flattening before to go faster)
     # max: min(2*gaussian_size, step_size/2)
     #    = min(2, step_size/(2*gaussian_size)) * gaussian_size
@@ -147,9 +147,11 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
         # Cut if at least min_nb_points
         if i in split_ids:
             if len(old_streamline) > min_nb_points:
-                cut_idx = rng.randint(min_final_nb_points,
-                                      len(old_streamline) - min_final_nb_points)
-                segments_s = [old_streamline[:cut_idx], old_streamline[cut_idx:]]
+                cut_idx = rng.randint(
+                    min_final_nb_points,
+                    len(old_streamline) - min_final_nb_points)
+                segments_s = [old_streamline[:cut_idx],
+                              old_streamline[cut_idx:]]
                 segments_dpp = [old_dpp[:cut_idx], old_dpp[cut_idx:]]
 
                 all_streamlines.extend(segments_s)
@@ -164,8 +166,9 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
             all_dpp = _extend_dict(all_dpp, old_dpp)
             all_dps = _extend_dict(all_dps, old_dps)
 
-    logging.info('{} streamlines to split were not split because they were too '
-                 'short (<{})'.format(nb_streamlines_not_cut, min_nb_points))
+    logging.info('{} streamlines to split were not split because they were '
+                 'too short (<{})'
+                 .format(nb_streamlines_not_cut, min_nb_points))
     new_sft = StatefulTractogram.from_sft(all_streamlines, sft,
                                           data_per_point=all_dpp,
                                           data_per_streamline=all_dps)
@@ -184,7 +187,8 @@ def _extend_dict(main_dict: Union[PerArraySequenceDict, PerArrayDict],
     return main_dict
 
 
-def reverse_streamlines(sft: StatefulTractogram, reverse_ids: np.ndarray = None):
+def reverse_streamlines(sft: StatefulTractogram,
+                        reverse_ids: np.ndarray = None):
     """Reverse streamlines, i.e. inverse the beginning and end
 
     Parameters

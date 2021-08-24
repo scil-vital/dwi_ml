@@ -121,7 +121,7 @@ class BatchSamplerAbstract(Sampler):
                  noise_gaussian_size: float = 0.,
                  noise_gaussian_variability: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
-                 avoid_cpu_computations: bool = None, **kwargs):
+                 avoid_cpu_computations: bool = None, **_):
         """
         Parameters
         ----------
@@ -203,8 +203,6 @@ class BatchSamplerAbstract(Sampler):
         """
         super().__init__(data_source)  # This does nothing but python likes it.
 
-        logging.debug('BatchSamplerAbstract unused kwargs: {}'.format(kwargs))
-
         # Checking that batch_size is correct
         if (not isinstance(batch_size, int) or isinstance(batch_size, bool)
                 or batch_size <= 0):
@@ -213,9 +211,9 @@ class BatchSamplerAbstract(Sampler):
 
         # Checking that n_volumes was given if cycles was given
         if cycles and not n_subjects_per_batch:
-            raise ValueError("If `cycles_per_volume_batch` is defined, "
-                             "`n_volumes` should be defined. Got: "
-                             "n_volumes={}, cycles={}"
+            raise ValueError("If `cycles` is defined, "
+                             "`n_subjects_per_batch` should be defined. Got: "
+                             "n_subjects_per_batch={}, cycles={}"
                              .format(n_subjects_per_batch, cycles))
 
         # Batch sampler variables
@@ -517,7 +515,7 @@ class BatchSequencesSampler(BatchSamplerAbstract):
                  noise_gaussian_variability: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
                  avoid_cpu_computations: bool = None,
-                 normalize_directions: bool = True, **kwargs):
+                 normalize_directions: bool = True, **_):
         """
         Additional parameters compared to super:
         normalize_directions: bool
@@ -535,8 +533,6 @@ class BatchSequencesSampler(BatchSamplerAbstract):
                          reverse_streamlines_ratio,
                          avoid_cpu_computations)
         self.normalize_directions = normalize_directions
-
-        logging.debug('BatchSequencesSampler unused kwargs: {}'.format(kwargs))
 
     @property
     def hyperparameters(self):
@@ -691,7 +687,7 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                  reverse_streamlines_ratio: float = 0.5,
                  avoid_cpu_computations: bool = None,
                  normalize_directions: bool = True, nb_previous_dirs: int = 0,
-                 **kwargs):
+                 **_):
         """
         Additional parameters compared to super:
 
@@ -709,10 +705,14 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
                          reverse_streamlines_ratio, avoid_cpu_computations,
                          normalize_directions)
 
+        # This is probably the same as data_source.volume_groups, but asking
+        # user again in case the dataset contain more than one input group
+        # but you only want to use one.
         self.input_group_name = input_group_name
+
         # Find group index in the data_source
-        # Returns the first apperance. If the group is present twice, no error.
-        # If the group is not present, will raise an error.
+        # Returns the first appearance.
+        # toDo If the group is present twice, no error. ok?
         idx = self.data_source.volume_groups.index(input_group_name)
         self.input_group_idx = idx
 
@@ -720,9 +720,6 @@ class BatchSequencesSamplerOneInputVolume(BatchSequencesSampler):
             nb_previous_dirs = 0
         self.nb_previous_dirs = nb_previous_dirs
         self.final_feature_sizes = self._compute_feature_sizes(idx)
-
-        logging.debug('BatchSequencesSamplerOneInputVolume unused kwargs: {}'
-                      .format(kwargs))
 
     def _compute_feature_sizes(self, input_group_idx):
         """

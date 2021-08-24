@@ -30,7 +30,6 @@ from dwi_ml.data.dataset.data_lists import (
     DataListForTorch, LazyDataListForTorch)
 from dwi_ml.data.dataset.single_subject_containers import (
     SubjectDataAbstract, SubjectData, LazySubjectData)
-from dwi_ml.experiment.timer import Timer
 from dwi_ml.utils import TqdmLoggingHandler
 
 
@@ -103,7 +102,7 @@ class MultiSubjectDatasetAbstract(Dataset):
         self.log = None
 
         # Preparing the dataset
-        # type will be dwi_ml.data.dataset.data_lit.DataListForTorch or,
+        # type will be dwi_ml.data.dataset.data_list.DataListForTorch or,
         # in lazy version, LazyDataListForTorch
         self.data_list = None
         self.groups = None
@@ -420,20 +419,16 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
             self.hdf_handle.close()
 
 
-def init_dataset(is_lazy: bool, hdf5_filename: str, subjs_set: str,
+def init_dataset(lazy: bool, hdf5_filename: str, subjs_set: str,
                  name: str = None, taskman_managed: bool = None,
-                 cache_size: int = None, **unused_kwargs):
-    if is_lazy:
+                 cache_size: int = None, **_):
+    if lazy:
         dataset = LazyMultiSubjectDataset(hdf5_filename, subjs_set, name,
                                           taskman_managed, cache_size)
     else:
         dataset = MultiSubjectDataset(hdf5_filename, subjs_set, name,
                                       taskman_managed)
 
-    with Timer("Loading dataset for {}".format(subjs_set), newline=True,
-               color='blue'):
-        dataset.load_data()
-
-    logging.debug("Unused kwargs are: {}".format(unused_kwargs))
+    dataset.load_data()
 
     return dataset

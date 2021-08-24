@@ -6,7 +6,7 @@ import shutil
 import torch
 
 
-class ModelAbstract(torch.nn.module):
+class ModelAbstract(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -55,7 +55,7 @@ class ModelAbstract(torch.nn.module):
             shutil.rmtree(to_remove)
 
     def forward(self, *args):
-        raise NotImplementedError
+        pass
 
     def compute_loss(self, outputs, targets):
         raise NotImplementedError

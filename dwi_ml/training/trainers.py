@@ -41,11 +41,11 @@ class DWIMLTrainer:
                  batch_sampler_validation: BatchSamplerAbstract,
                  model: ModelAbstract,
                  experiment_path: str, experiment_name: str,
-                 learning_rate: float = None, weight_decay: float = None,
+                 learning_rate: float = 0.001, weight_decay: float = 0.01,
                  max_epochs: int = None, max_batches_per_epoch: int = 10000,
                  patience: int = None, device: torch.device = None,
                  num_cpu_workers: int = None, taskman_managed: bool = None,
-                 seed: int = None, use_gpu: bool = None,
+                 rng: int = None, use_gpu: bool = None,
                  worker_interpolation: bool = None,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, **_):
@@ -59,7 +59,7 @@ class DWIMLTrainer:
             Instantiated class used for sampling batches of validation
             data. Data in batch_sampler_training.source_data must be already
             loaded.
-        model: torch.nn.module
+        model: torch.nn.Module
             Instatiated class containing your model.
         experiment_path: str
             Path where to save this experiment's results and checkpoints.
@@ -68,10 +68,10 @@ class DWIMLTrainer:
             Name of this experiment. This will also be the name that will
             appear online for comet.ml experiment.
         learning_rate: float
-            Learning rate. Default: None (torch's default is 0.001)
+            Learning rate. Default: 0.001 (torch's default)
         weight_decay: float
-            Add a weight decay penalty on the parameters. Default: None.
-            (torch's default is 0.01).
+            Add a weight decay penalty on the parameters. Default: 0.01.
+            (torch's default).
         max_epochs: int
             Maximum number of epochs. Note that we supervise this maximum to
             make sure it is not too big for general usage. Epochs lengths will
@@ -86,7 +86,7 @@ class DWIMLTrainer:
         taskman_managed: bool
             If True, taskman manages the experiment. Do not output progress
             bars and instead output special messages for taskman.
-        seed: int
+        rng: int
             Random experiment seed.
         use_gpu: bool
             If true, use GPU device when possible instead of CPU.
@@ -161,7 +161,7 @@ class DWIMLTrainer:
             print('Will hang up at ' + htime)
 
         # Set random numbers
-        self.seed = seed
+        self.seed = rng
         self.rng = np.random.RandomState(self.seed)
         torch.manual_seed(self.seed)  # Set torch seed
 
@@ -193,10 +193,13 @@ class DWIMLTrainer:
         # parameters)
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=learning_rate,
-            weight_decay=weight_decay)
+
+        logging.debug("This trainer will use Adam optimization on the "
+                      "following model.parameters: {}"
+                      .format([i for i in self.model.parameters()]))
+        self.optimizer = torch.optim.Adam(self.model.parameters(),
+                                          lr=learning_rate,
+                                          weight_decay=weight_decay)
 
     @property
     def attributes(self) -> dict:
@@ -592,7 +595,7 @@ class DWIMLTrainer:
     @classmethod
     def init_from_checkpoint(cls, batch_sampler_training: BatchSamplerAbstract,
                              batch_sampler_validation: BatchSamplerAbstract,
-                             model: torch.nn.module,
+                             model: torch.nn.Module,
                              checkpoint_state: dict):
         """
         During save_checkpoint(), checkpoint_state.pkl is saved. Loading it

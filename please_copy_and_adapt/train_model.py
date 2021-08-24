@@ -21,6 +21,8 @@ from os import path
 import yaml
 
 from dwi_ml.experiment.monitoring import EarlyStoppingError
+from dwi_ml.experiment.timer import Timer
+from dwi_ml.model.main_models import ModelAbstract
 from dwi_ml.training.checks_for_experiment_parameters import (
     check_all_experiment_parameters, check_logging_level)
 from dwi_ml.training.trainers import (DWIMLTrainer)
@@ -33,6 +35,8 @@ from dwi_ml.data.dataset.multi_subject_containers import init_dataset
 #    This is one possibility, others could be implemented.
 from dwi_ml.model.batch_samplers import (
     BatchSequencesSamplerOneInputVolume as ChosenBatchSampler)
+
+
 # 3. Implement the build_model function below
 
 
@@ -66,38 +70,41 @@ def parse_args():
     return arguments
 
 
-def build_model(input_size):
-    model = []
+def build_model(input_size, **_):
+    model = ModelAbstract()
 
     return model
 
 
-def prepare_trainer(params_dict):
+def prepare_data_and_model(train_data_params, valid_data_params,
+                           train_sampler_params, valid_sampler_params,
+                           model_params):
     # Instantiate dataset classes
-    training_dataset = \
-        init_dataset(**params_dict['train_data_params'])
-    validation_dataset = \
-        init_dataset(**params_dict['valid_data_params'])
+    with Timer("\n\nPreparing testing and validation sets",
+               newline=True, color='blue'):
+        training_dataset = init_dataset(**train_data_params)
+        validation_dataset = init_dataset(**valid_data_params)
 
     # Instantiate batch
-    training_batch_sampler = ChosenBatchSampler(
-        training_dataset,
-        **params_dict['train_sampler_params'])
-    validation_batch_sampler = ChosenBatchSampler(
-        validation_dataset,
-        **params_dict['valid_sampler_params'])
+    with Timer("\n\nPreparing batch samplers with volume: {}"
+                       .format(training_dataset.volume_groups[0]),
+               newline=True, color='green'):
+        training_batch_sampler = ChosenBatchSampler(
+            training_dataset, training_dataset.streamline_group,
+            training_dataset.volume_groups[0], **train_sampler_params)
+        validation_batch_sampler = ChosenBatchSampler(
+            validation_dataset, validation_dataset.streamline_group,
+            validation_dataset.volume_groups[0], **valid_sampler_params)
 
-    # Instantiate model
-    s = training_batch_sampler.data_source.compute_feature_sizes()
-    # Note. s from validation should be the same.
-    model = build_model(s)
+    # Instantiate model.
+    # Hint: input_size is :
+    size = training_batch_sampler.data_source.data_list.feature_sizes[0]
+    # Instantiate batch
+    with Timer("\n\nPreparing model",
+               newline=True, color='yellow'):
+        model = build_model(size)
 
-    # Instantiate trainer
-    trainer = DWIMLTrainer.init_from_checkpoint(
-        training_batch_sampler, validation_batch_sampler, model,
-        **params_dict)
-
-    return trainer
+    return training_batch_sampler, validation_batch_sampler, model
 
 
 def main():
@@ -118,7 +125,6 @@ def main():
     # Initialize logger
     logging_level = check_logging_level(yaml_parameters['logging']['level'])
     logging.basicConfig(level=logging_level)
-    logging.info(yaml_parameters)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
     if path.exists(os.path.join(args.experiment_path, args.experiment_name,
@@ -139,7 +145,20 @@ def main():
                                           args.override_checkpoint_patience)
 
         # Prepare the trainer from checkpoint_state
-        trainer = prepare_trainer(checkpoint_state)
+        (training_batch_sampler, validation_batch_sampler,
+         model) = prepare_data_and_model(
+            checkpoint_state['train_data_params'],
+            checkpoint_state['valid_data_params'],
+            checkpoint_state['train_sampler_params'],
+            checkpoint_state['valid_sampler_params'],
+            None)
+
+        # Instantiate trainer
+        with Timer("\n\nPreparing trainer",
+                   newline=True, color='red'):
+            trainer = DWIMLTrainer.init_from_checkpoint(
+                training_batch_sampler, validation_batch_sampler, model,
+                checkpoint_state)
     else:
         # Perform checks
         # We have decided to use yaml for a more rigorous way to store
@@ -147,22 +166,40 @@ def main():
         # we need to make our own checks.
         all_params = check_all_experiment_parameters(yaml_parameters)
 
-        # Modify to copy the checkpoint_state params.
-        all_params['train_data_params'] = all_params
-        all_params['train_data_params']['subjs_set'] = 'training_subjs'
-        all_params['valid_data_params'] = all_params
-        all_params['train_data_params']['subjs_set'] = 'validation_subjs'
+        # Modifying params to copy the checkpoint_state params.
+        # Each class (dataset, batch sampler, etc) will receive a lot of
+        # non-useful parameters, but that's ok.
+        # Params in all_params (coming from the yaml file) must have the same
+        # keys as when using a checkpoint.
+        all_params['hdf5_filename'] = args.hdf5_filename
         all_params['experiment_path'] = args.experiment_path
         all_params['experiment_name'] = args.experiment_name
 
+        train_params = all_params.copy()
+        train_params['subjs_set'] = 'training_subjs'
+        valid_params = all_params.copy()
+        valid_params['subjs_set'] = 'validation_subjs'
+
         # Prepare the trainer from checkpoint_state
-        trainer = prepare_trainer(all_params)
+        (training_batch_sampler, validation_batch_sampler,
+         model) = prepare_data_and_model(train_params, valid_params,
+                                         all_params, all_params,
+                                         None)
+
+        # Instantiate trainer
+        with Timer("\n\nPreparing trainer",
+                   newline=True, color='red'):
+            trainer = DWIMLTrainer(training_batch_sampler,
+                                   validation_batch_sampler, model,
+                                   **all_params)
 
     #####
     # Run (or continue) the experiment
     #####
     try:
-        trainer.train_validate_and_save_loss()
+        with Timer("\n\n****** Training!!! ********",
+                   newline=True, color='magenta'):
+            trainer.train_validate_and_save_loss()
     except EarlyStoppingError as e:
         print(e)
 

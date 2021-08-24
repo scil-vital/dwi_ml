@@ -4,6 +4,8 @@
 # and create your own data lists
 # subjects: ismrm2015_noArtefact
 
+# Run this from inside dwi_ml.
+
 ###########
 # Organize data
 ###########
@@ -13,15 +15,9 @@ database_folder="$ismrm2015_folder/noArtefact"
 
 subjects_list="$database_folder/subjects.txt"
 
-# I added this to my organize_from_tractoflow :
-#  echo "Emmanuelle: copying tractograms based on how I preprocessed my data."
-#  ln -s $dir/Tracking_Interface/PFT_Tracking/${subjid}__filtered_20_200.trk $subj_folder/bundles/tractoflow__interface_pft_tracking_wholebrain.trk
-#  ln -s $dir/Tracking_WM/PFT_Tracking/${subjid}__filtered_20_200.trk $subj_folder/bundles/tractoflow__wm_pft_tracking_wholebrain.trk
-#  ln -s $dir/Tracking_WM/Local_Tracking/${subjid}__filtered_20_200.trk $subj_folder/bundles/tractoflow__wm_local_tracking_wholebrain.trk
-
 rm -r $database_folder/dwi_ml_ready
 organize_from_tractoflow_folder=please_copy_and_adapt/
-organize_from_tractoflow_folder=../Learn2Track/USER_SCRIPTS/
+organize_from_tractoflow_folder=../Learn2Track/scripts/
 $organize_from_tractoflow_folder/organize_from_tractoflow.sh $database_folder $subjects_list
 
 ###########
@@ -54,7 +50,7 @@ create_hdf5_dataset.py --force --name $name \
         $database_folder $config_file $training_subjs $validation_subjs
 
 ###########
-# Tests
+# Tests on dataset and batch sampler
 ###########
 hdf5_filename="$database_folder/hdf5/$name.hdf5"
 ref="$database_folder/dwi_ml_ready/ismrm2015_noArtefact/anat/t1_tractoflow.nii.gz"
@@ -68,4 +64,12 @@ tests/test_batch_sampler_iter.py $hdf5_filename
 tests/test_batch_sampler_load_batch.py $hdf5_filename $ref $test_tractograms_path
 
 # check results and then:
-rm $database_folder/dwi_ml_ready/ismrm2015_noArtefact/test_batch1*
+# rm $database_folder/dwi_ml_ready/ismrm2015_noArtefact/test_batch1*
+
+###########
+# Running training on chosen database
+###########
+mkdir $database_folder/experiments
+python please_copy_and_adapt/train_model.py --hdf5_filename $database_folder/hdf5/ismrm2015_noArtefact_test.hdf5 \
+      --parameters_filename please_copy_and_adapt/training_parameters.yaml \
+      --experiment_name test_experiment1 $database_folder/experiments

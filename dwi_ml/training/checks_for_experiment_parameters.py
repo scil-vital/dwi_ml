@@ -254,7 +254,7 @@ def check_taskman_managed(taskman_managed: bool):
     return taskman_managed
 
 
-def check_seed(seed: int) -> int:
+def check_rng_seed(seed: int) -> int:
     check_similar_to_none(seed, 'seed')
     check_int_instance(seed, 'seed')
 
@@ -321,7 +321,7 @@ def check_all_experiment_parameters(conf: dict):
         conf['memory']['taskman_managed'])
 
     # Randomization:
-    all_params['seed'] = check_seed(
-        conf['randomization']['seed'])
+    all_params['rng'] = check_rng_seed(
+        conf['randomization']['rng'])
 
     return all_params

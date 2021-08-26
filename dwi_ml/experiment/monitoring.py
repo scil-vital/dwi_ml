@@ -148,7 +148,15 @@ class EarlyStoppingError(Exception):
 
 class IterTimer(object):
     """
-    Used to track the epochs.????
+    Hint: After each iteration, you can check that the maximum allowed time has
+    not been reached by using:
+
+    # Ex: To check that time remaining is less than one iter + 30 seconds
+    time.time() + iter_timer.mean + 30 > max_time
+
+    # Ex: To allow some incertainty. Ex: prevent continuing in the case the
+    # next iter could be twice as long as usual:
+    time.time() + iter_timer.mean * 2.0 + 30 > max_time
     """
     def __init__(self, history_len=5):
         self.history = deque(maxlen=history_len)

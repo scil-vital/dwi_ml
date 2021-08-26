@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import time
+from datetime import datetime
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import contextlib2
@@ -14,8 +15,9 @@ from tqdm import tqdm
 
 from dwi_ml.experiment.monitoring import (
     EarlyStopping, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
-from dwi_ml.model.batch_samplers import BatchSamplerAbstract
-from dwi_ml.model.main_models import ModelAbstract
+from dwi_ml.model.batch_samplers import BatchStreamlinesSampler
+from dwi_ml.model.main_models import MainModelAbstract
+from dwi_ml.utils import TqdmLoggingHandler
 
 # If the remaining time is less than one epoch + X seconds, we will quit
 # training now, to allow updating taskman_report.
@@ -37,18 +39,17 @@ class DWIMLTrainer:
     saved locally in the experiment_path.
     """
     def __init__(self,
-                 batch_sampler_training: BatchSamplerAbstract,
-                 batch_sampler_validation: BatchSamplerAbstract,
-                 model: ModelAbstract,
+                 batch_sampler_training: BatchStreamlinesSampler,
+                 batch_sampler_validation: BatchStreamlinesSampler,
+                 model: MainModelAbstract,
                  experiment_path: str, experiment_name: str,
                  learning_rate: float = 0.001, weight_decay: float = 0.01,
                  max_epochs: int = None, max_batches_per_epoch: int = 10000,
                  patience: int = None, device: torch.device = None,
                  num_cpu_workers: int = None, taskman_managed: bool = None,
-                 rng: int = None, use_gpu: bool = None,
-                 worker_interpolation: bool = None,
-                 comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, **_):
+                 use_gpu: bool = None, comet_workspace: str = None,
+                 comet_project: str = None, from_checkpoint: bool = False,
+                 **_):
         """
         Parameters
         ----------
@@ -59,7 +60,7 @@ class DWIMLTrainer:
             Instantiated class used for sampling batches of validation
             data. Data in batch_sampler_training.source_data must be already
             loaded.
-        model: torch.nn.Module
+        model: MainModelAbstract
             Instatiated class containing your model.
         experiment_path: str
             Path where to save this experiment's results and checkpoints.
@@ -86,13 +87,9 @@ class DWIMLTrainer:
         taskman_managed: bool
             If True, taskman manages the experiment. Do not output progress
             bars and instead output special messages for taskman.
-        rng: int
-            Random experiment seed.
         use_gpu: bool
             If true, use GPU device when possible instead of CPU.
-        worker_interpolation: bool
-            If true, ?
-        comet_workspace: str
+
             Your comet workspace. If None, comet.ml will not be used. See our
             docs/Getting Started for more information on comet and its API key.
         comet_project: str
@@ -153,23 +150,37 @@ class DWIMLTrainer:
             'time': 0.
         }
 
+        # Prepare log to work with tqdm. Use self.log instead of logging
+        # inside any tqdm loop. Batch samplers will be used inside loops so
+        # we are also setting their logs.
+        self.log = logging.getLogger('for_tqdm' + str(datetime.now()))
+        self.log.setLevel(logging.root.level)
+        self.log.addHandler(TqdmLoggingHandler())
+        self.log.propagate = False
+
+        # Developpers: use self.log in the batch samplers and the model if you
+        # would rather see a lot of logs!
+        silent_log = logging.getLogger('non-verbose-log-for-samplers')
+        silent_log.setLevel('WARNING')
+        silent_log.propagate = False
+        self.train_batch_sampler.set_log(silent_log)
+        self.valid_batch_sampler.set_log(silent_log)
+        self.model.set_log(self.log)
+
         # Time limited run
+        # toDo. Change this for a parameter???
         self.hangup_time = None
         htime = os.environ.get('HANGUP_TIME', None)
         if htime is not None:
             self.hangup_time = int(htime)
             print('Will hang up at ' + htime)
 
-        # Set random numbers
-        self.seed = rng
-        self.rng = np.random.RandomState(self.seed)
-        torch.manual_seed(self.seed)  # Set torch seed
-
         # A voir....
         self.use_gpu = use_gpu
-        self.worker_interpolation = worker_interpolation
         if self.use_gpu:
-            torch.cuda.manual_seed(self.seed)  # Says error, but ok.
+            # Says error, but ok.
+            # toDo valid_batch_sampler.rng should be the same.
+            torch.cuda.manual_seed(self.train_batch_sampler.rng)
 
         # Setup monitors
         self.train_loss_monitor = ValueHistoryMonitor("Training loss")
@@ -194,9 +205,11 @@ class DWIMLTrainer:
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
 
+        list_params = [n for n, _ in self.model.named_parameters()]
+        logging.debug("Initiating trainer: {}".format(type(self)))
         logging.debug("This trainer will use Adam optimization on the "
-                      "following model.parameters: {}"
-                      .format([i for i in self.model.parameters()]))
+                      "following model.parameters: \n" +
+                      "\n".join(list_params) + "\n")
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=learning_rate,
                                           weight_decay=weight_decay)
@@ -213,12 +226,12 @@ class DWIMLTrainer:
             'comet_key': self.comet_key,
             'train_hdf5_path': self.train_batch_sampler.data_source.hdf5_path,
             'valid_hdf5_path': self.valid_batch_sampler.data_source.hdf5_path,
-            'train_sampler_type': type(self.train_batch_sampler),
-            'valid_sampler_type': type(self.valid_batch_sampler),
+            'train sampler attributes': self.train_batch_sampler.attributes,
+            'valid sampler attributes': self.valid_batch_sampler.attributes,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
+            'num_cpu_workers': self.num_cpu_workers
         }
-        attrs.update(self.hyperparameters)
         return attrs
 
     @property
@@ -233,9 +246,10 @@ class DWIMLTrainer:
             'nb_training_batches_per_epoch': self.nb_train_batches_per_epoch,
             'nb_validation_batches_per_epoch':
                 self.nb_valid_batches_per_epoch,
-            'training_sampler': self.train_batch_sampler.hyperparameters,
-            'validation_sampler': self.valid_batch_sampler.hyperparameters,
-            'seed': self.seed,
+            'training sampler hyperparameters':
+                self.train_batch_sampler.hyperparameters,
+            'validation sampler hyperparameters':
+                self.valid_batch_sampler.hyperparameters,
             'patience': self.patience
         }
         return hyperparameters
@@ -280,9 +294,9 @@ class DWIMLTrainer:
         """
         return self.max_batches_per_epochs, self.max_batches_per_epochs
 
-    def train_validate_and_save_loss(self, *args):
+    def run_model(self, *args):
         """
-        Train + validates the model
+        Train + validates the model (+ computes loss)
 
         - Starts comet,
         - Creates DataLoaders from the BatchSamplers,
@@ -297,10 +311,17 @@ class DWIMLTrainer:
         All *args will be passed all the way to _train_one_epoch and
         _train_one_batch, in case you want to override them.
         """
+        logging.info("Trainer {}: \n"
+                     "Running the model {}.\n\n"
+                     .format(type(self), type(self.model)))
+
+        logging.info("- Preparing everything.")
+
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:
             (self.nb_train_batches_per_epoch,
-             self.nb_valid_batches_per_epoch) = self.estimate_nb_batches_per_epoch()
+             self.nb_valid_batches_per_epoch) = \
+                self.estimate_nb_batches_per_epoch()
 
         logging.info("Experiment attributes : \n{}".format(
             json.dumps(self.attributes, indent=4, sort_keys=True,
@@ -314,7 +335,7 @@ class DWIMLTrainer:
         # Else, resuming from checkpoint. Will continue with given key.
         self._init_comet()
         if self.comet_exp:
-            train_context = self.comet_exp.train_validate_and_save_loss
+            train_context = self.comet_exp.run_model
             valid_context = self.comet_exp.validate
         else:
             # Instantiating contexts doing nothing instead
@@ -326,34 +347,40 @@ class DWIMLTrainer:
         #     dataloader output is on GPU, ready to be fed to the model.
         #     Otherwise, dataloader output is kept on CPU, and the main thread
         #     sends volumes and coords on GPU for interpolation.
+        logging.debug("- Instantiating dataloaders...")
         train_dataloader = DataLoader(
             self.train_batch_sampler.data_source,
             batch_sampler=self.train_batch_sampler,
             num_workers=self.num_cpu_workers,
             collate_fn=self.train_batch_sampler.load_batch,
-            pin_memory=self.use_gpu and self.worker_interpolation)
+            pin_memory=self.use_gpu)
 
         valid_dataloader = DataLoader(
             self.valid_batch_sampler.data_source,
             batch_sampler=self.valid_batch_sampler,
             num_workers=self.num_cpu_workers,
             collate_fn=self.valid_batch_sampler.load_batch,
-            pin_memory=self.use_gpu and self.worker_interpolation)
+            pin_memory=self.use_gpu)
 
-        # Instantiating our IterTimer. DOES WHAT???
+        # Instantiating our IterTimer.
+        # After each iteration, checks that the maximum allowed time has not
+        # been reached.
         iter_timer = IterTimer(history_len=20)
 
         # Start from current_spoch in case the experiment is resuming
         # Train each epoch
         for epoch in iter_timer(range(self.current_epoch, self.max_epochs)):
             self.current_epoch = epoch
-            logging.info("Epoch #{}".format(epoch))
 
             # Training
+            logging.info("**********TRAINING: Epoch #{}*************"
+                         .format(epoch))
             self.train_one_epoch(train_dataloader, train_context, epoch,
                                  *args)
 
             # Validation
+            logging.info("**********VALIDATION: Epoch #{}*************"
+                         .format(epoch))
             self.validate_one_epoch(valid_dataloader, valid_context, epoch,
                                     *args)
 
@@ -437,6 +464,8 @@ class DWIMLTrainer:
             self.comet_exp.log_metric("current_epoch", self.current_epoch)
 
         # Training all batches
+        logging.debug("Training one epoch: iterating on batches using "
+                      "tqdm on the dataloader...")
         with tqdm(train_dataloader, ncols=100, disable=self.taskman_managed,
                   total=self.nb_train_batches_per_epoch) as pbar:
             train_iterator = enumerate(pbar)
@@ -453,7 +482,7 @@ class DWIMLTrainer:
                         data, is_training=True,
                         batch_sampler=self.train_batch_sampler, *args)
 
-                    logging.debug("Updated loss: {}".format(mean_loss))
+                    self.log.debug("Updated loss: {}".format(mean_loss))
                     self.train_loss_monitor.update(mean_loss)
                     self.grad_norm_monitor.update(grad_norm)
 
@@ -488,6 +517,7 @@ class DWIMLTrainer:
             del train_iterator
 
         # Saving epoch's information
+        self.log.info("Finishing epoch...")
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
         self._save_log_from_array(self.train_loss_monitor.epochs_means_history,
@@ -593,8 +623,8 @@ class DWIMLTrainer:
         raise NotImplementedError
 
     @classmethod
-    def init_from_checkpoint(cls, batch_sampler_training: BatchSamplerAbstract,
-                             batch_sampler_validation: BatchSamplerAbstract,
+    def init_from_checkpoint(cls, batch_sampler_training: BatchStreamlinesSampler,
+                             batch_sampler_validation: BatchStreamlinesSampler,
                              model: torch.nn.Module,
                              checkpoint_state: dict):
         """
@@ -610,9 +640,11 @@ class DWIMLTrainer:
 
         # Set RNG states
         torch.set_rng_state(checkpoint_state['torch_rng_state'])
-        experiment.rng.set_state(checkpoint_state['numpy_rng_state'])
-        if (experiment.use_gpu and
-                checkpoint_state['torch_cuda_state'] is not None):
+        experiment.train_batch_sampler.np_rng.set_state(
+            checkpoint_state['numpy_rng_state'])
+        experiment.valid_batch_sampler.np_rng.seed(
+            checkpoint_state['numpy_rng_state'])
+        if experiment.use_gpu:
             torch.cuda.set_rng_state(checkpoint_state['torch_cuda_state'])
 
         # Set other objects
@@ -651,6 +683,7 @@ class DWIMLTrainer:
         os.mkdir(checkpoint_dir)
 
         # Save experiment
+        # Separated function to be re-implemented by child classes.
         checkpoint_state = self._prepare_checkpoint_state()
         torch.save(checkpoint_state,
                    os.path.join(checkpoint_dir, "checkpoint_state.pkl"))
@@ -680,9 +713,7 @@ class DWIMLTrainer:
             'device': self.device,
             'num_cpu_workers': self.num_cpu_workers,
             'taskman_managed': self.taskman_managed,
-            'seed': self.seed,
             'use_gpu': self.use_gpu,
-            'worker_interpolation': self.worker_interpolation,
             'comet_workspace': self.comet_project,
             'comet_project': self.comet_project
         }
@@ -698,7 +729,7 @@ class DWIMLTrainer:
             'torch_cuda_state':
                 torch.cuda.get_rng_state() if self.use_gpu else
                 None,
-            'numpy_rng_state': self.rng.get_state(),
+            'numpy_rng_state': self.train_batch_sampler.np_rng.get_state(),
             'early_stopping_state':
                 self.early_stopping.get_state() if self.early_stopping else
                 None,

@@ -14,10 +14,6 @@
 #       choices correspond to python's True/False.
 ##################
 
-logging:
-  # level: one of ['error', 'warning', 'info', 'debug']
-  #     Logging level. If null, default = warning.
-  level: debug
 
 preprocessing:
   # step_size: float
@@ -76,7 +72,7 @@ input:
   # num_previous_dirs: int
   #     Concatenate X previous streamline directions to the input vector. Null
   #     is equivalent to 0.
-  num_previous_dirs: null
+  num_previous_dirs: 0
 
 model:
   # Add your model's parameters
@@ -127,7 +123,7 @@ memory:
   avoid_cpu_computations: True
   # num_cpu_workers: int
   #     Number of parallel CPU workers.
-  num_cpu_workers: null
+  num_cpu_workers: 1
   # worker_interpolation: bool
   #     If set, if using num_cpu_workers > 0, interpolation will be done on CPU
   #     by the workers instead of on the main thread using the chosen device.

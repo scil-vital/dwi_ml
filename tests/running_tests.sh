@@ -67,9 +67,13 @@ tests/test_batch_sampler_load_batch.py $hdf5_filename $ref $test_tractograms_pat
 # rm $database_folder/dwi_ml_ready/ismrm2015_noArtefact/test_batch1*
 
 ###########
-# Running training on chosen database
+# Running training on chosen database:
+# This will stop with error "optimizer got an empty parameter list" at line
+# self.optimizer = torch.optim.Adam(self.model.parameters()) in the trainer.
+# Further testing was done with Learn2track's model.
 ###########
 mkdir $database_folder/experiments
-python please_copy_and_adapt/train_model.py --hdf5_filename $database_folder/hdf5/ismrm2015_noArtefact_test.hdf5 \
+python please_copy_and_adapt/train_model.py --loggin debug \
+      --hdf5_filename $database_folder/hdf5/ismrm2015_noArtefact_test.hdf5 \
       --parameters_filename please_copy_and_adapt/training_parameters.yaml \
       --experiment_name test_experiment1 $database_folder/experiments

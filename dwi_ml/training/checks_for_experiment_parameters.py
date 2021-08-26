@@ -51,26 +51,6 @@ def check_str_instance(var: str, var_name: str):
                          'received'.format(var_name, var))
 
 
-# Checks for each parameter
-def check_logging_level(level: str) -> str:
-    """
-    Checks that level is one of ['error', 'warning', 'info', 'debug'] and
-    returns level in upper case. If None and not mendatory, default is warning.
-    """
-    check_similar_to_none(level, 'logging level')
-    check_str_instance(level, 'level')
-
-    if level is None:
-        level = 'WARNING'
-    else:
-        level = level.upper()
-        choices = ['ERROR', 'WARNING', 'INFO', 'DEBUG']
-        if level not in choices:
-            raise ValueError("Choice for logging level should be one of "
-                             "['error', 'warning', 'info', 'debug'].")
-    return level
-
-
 def check_step_size(step_size: float) -> float:
     check_similar_to_none(step_size, 'step_size')
     step_size = check_float_instance(step_size, 'step_size')

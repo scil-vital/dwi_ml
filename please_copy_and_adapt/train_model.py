@@ -22,9 +22,9 @@ import yaml
 
 from dwi_ml.experiment.monitoring import EarlyStoppingError
 from dwi_ml.experiment.timer import Timer
-from dwi_ml.model.main_models import ModelAbstract
+from dwi_ml.model.main_models import MainModelAbstract
 from dwi_ml.training.checks_for_experiment_parameters import (
-    check_all_experiment_parameters, check_logging_level)
+    check_all_experiment_parameters)
 from dwi_ml.training.trainers import (DWIMLTrainer)
 
 # These are model-dependant. Choose the best classes and functions for you
@@ -34,7 +34,7 @@ from dwi_ml.data.dataset.multi_subject_containers import init_dataset
 # 2. Change this init_batch_sampler if you prefer!
 #    This is one possibility, others could be implemented.
 from dwi_ml.model.batch_samplers import (
-    BatchSequencesSamplerOneInputVolume as ChosenBatchSampler)
+    BatchStreamlinesSampler1IPV as ChosenBatchSampler)
 
 
 # 3. Implement the build_model function below
@@ -64,6 +64,9 @@ def parse_args():
                    help='If a checkpoint exists, patience can be increased '
                         'to allow experiment to continue if the allowed '
                         'number of bad epochs has been previously reached.')
+    p.add_argument('--logging', choices=['error', 'warning', 'info', 'debug'],
+                   help="Logging level. One of ['error', 'warning', 'info', "
+                        "'debug']. Default: Info.")
 
     arguments = p.parse_args()
 
@@ -71,7 +74,7 @@ def parse_args():
 
 
 def build_model(input_size, **_):
-    model = ModelAbstract()
+    model = MainModelAbstract()
 
     return model
 
@@ -87,7 +90,7 @@ def prepare_data_and_model(train_data_params, valid_data_params,
 
     # Instantiate batch
     with Timer("\n\nPreparing batch samplers with volume: {}"
-                       .format(training_dataset.volume_groups[0]),
+               .format(training_dataset.volume_groups[0]),
                newline=True, color='green'):
         training_batch_sampler = ChosenBatchSampler(
             training_dataset, training_dataset.streamline_group,
@@ -118,13 +121,12 @@ def main():
         raise FileNotFoundError("The Yaml parameters file was not found: {}"
                                 .format(args.parameters_filename))
 
-    # Load parameters
-    with open(args.parameters_filename) as f:
-        yaml_parameters = yaml.safe_load(f.read())
-
     # Initialize logger
-    logging_level = check_logging_level(yaml_parameters['logging']['level'])
-    logging.basicConfig(level=logging_level)
+    if args.logging:
+        level = args.logging.upper()
+    else:
+        level = 'INFO'
+    logging.basicConfig(level=level)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
     if path.exists(os.path.join(args.experiment_path, args.experiment_name,
@@ -160,6 +162,10 @@ def main():
                 training_batch_sampler, validation_batch_sampler, model,
                 checkpoint_state)
     else:
+        # Load parameters
+        with open(args.parameters_filename) as f:
+            yaml_parameters = yaml.safe_load(f.read())
+
         # Perform checks
         # We have decided to use yaml for a more rigorous way to store
         # parameters, compared, say, to bash. However, no argparser is used so
@@ -197,9 +203,9 @@ def main():
     # Run (or continue) the experiment
     #####
     try:
-        with Timer("\n\n****** Training!!! ********",
+        with Timer("\n\n****** Running model!!! ********",
                    newline=True, color='magenta'):
-            trainer.train_validate_and_save_loss()
+            trainer.run_model()
     except EarlyStoppingError as e:
         print(e)
 

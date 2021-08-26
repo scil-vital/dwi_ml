@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import logging
 import os
 import shutil
 
@@ -9,10 +10,7 @@ import torch
 class ModelAbstract(torch.nn.Module):
     def __init__(self):
         super().__init__()
-
-        # Initialize best model
-        # Uses torch's module state_dict.
-        self.best_model_state = self.state_dict()
+        self.log = logging.getLogger()  # Gets the root
 
     @property
     def hyperparameters(self):
@@ -22,6 +20,22 @@ class ModelAbstract(torch.nn.Module):
     def attributes(self):
         """All parameters necessary to create again the same model"""
         return self.hyperparameters
+
+    def set_log(self, log: logging.Logger):
+        """Possibility to pass a tqdm-compatible logger in case the dataloader
+        is iterated through a tqdm progress bar. Note that, of course, log
+        outputs will be confusing, particularly in debug mode, considering
+        that the dataloader may use more than one method in parallel."""
+        self.log = log
+
+
+class MainModelAbstract(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        # Initialize best model
+        # Uses torch's module state_dict.
+        self.best_model_state = self.state_dict()
 
     def save(self, saving_dir):
         # Make model directory

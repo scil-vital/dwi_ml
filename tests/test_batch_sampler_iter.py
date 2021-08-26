@@ -9,7 +9,7 @@ from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import (
     LazyMultiSubjectDataset, MultiSubjectDataset)
-from dwi_ml.model.batch_samplers import (BatchSequencesSamplerOneInputVolume)
+from dwi_ml.model.batch_samplers import (BatchStreamlinesSampler1IPV)
 
 
 def parse_args():
@@ -30,7 +30,7 @@ def test_sampler(fake_dataset, batch_size, step_size):
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = np.random.RandomState(1234)
-    batch_sampler = BatchSequencesSamplerOneInputVolume(
+    batch_sampler = BatchStreamlinesSampler1IPV(
         fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
         step_size=step_size)
 

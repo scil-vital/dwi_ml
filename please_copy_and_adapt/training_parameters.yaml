@@ -14,47 +14,44 @@
 #       choices correspond to python's True/False.
 ##################
 
-logging:
-  # level: one of ['error', 'warning', 'info', 'debug']
-  #     Logging level. If null, default = warning.
-  level: warning
-
-experiment:
-  # name: str
-  #     If given, name for the experiment. Else, model will decide the name to
-  #     give.
-  name: null
-
-dataset:
-  # hdf5_filename: str
-  #     Path to the .hdf5 dataset. Should contain both your training subjects
-  #     and validation subjects.
-  hdf5_filename: test1.hdf5
-  # training_subjs_filename: str
-  #     Txt file containing the list of subjects used for training. One
-  #     subject per line.
-  training_subjs_filename: training_subjects.txt
-  # validation_subjs_filename: str
-  #     Txt file containing the list of subjects used for validation. One
-  #     subject per line.
-  validation_subjs_filename: validation_subjects.txt
 
 preprocessing:
   # step_size: float
   #     Resample all streamlines to this step size (in mm). If null, train on
   #     streamlines as they are (e.g. compressed).
   step_size: null
+  # normalize_directions: bool
+  #     If true, directions will be normalized. If the step size is fixed, it
+  #     shouldn't make any difference. If streamlines are compressed, in theory
+  #     you should normalize, but you could hope that not normalizing could
+  #     give back to the algorithm a sense of distance between points.
+  normalize_directions: True
 
 data_augmentation:
-  # add_noise: bool
-  #     Add random gaussian noise to streamline coordinates on-the-fly. Noise
-  #     variance is 0.1 * step-size, or 0.1mm if no step size is used.
-  # toDO!! Add variable for variance
-  add_noise: False
+  # noise_size: bool
+  #     Add random Gaussian noise to streamline coordinates with given
+  #     variance. This corresponds to the std of the Gaussian. If step_size is
+  #     not given, make sure it is smaller than your step size to avoid
+  #     flipping direction. Ex, you could choose 0.1 * step-size. Noise is
+  #     truncated to +/- 2*noise_sigma and to +/- 0.5 * step-size (if given).
+  #     null or 0 both lead to no added noise.
+  noise_size: 0.
+  # noise_variability: bool
+  #     If this is given, a variation is applied to the noise_size to have very
+  #     noisy streamlines and less noisy streamlines. This means that the real
+  #     gaussian_size will be a random number between
+  #     [size - variability, size + variability]. null is the same as 0.
+  noise_variability: null
   # split_ratio: float
-  #     Split a percentage of streamlines at a random point, in each batch. Null
-  #     is equivalent to 0.
+  #     Percentage of streamlines to randomly split into 2, in each batch
+  #     (keeping both segments as two independent streamlines). The reason for
+  #     cutting is to help the ML algorithm to track from the middle of WM by
+  #     having already seen half-streamlines. If you are using interface
+  #     seeding, this is not necessary.
   split_ratio: null
+  # reverse_ratio: float
+  #     Percentage of streamlines to randomly reverse in each batch.
+  reverse_ratio: null
 
 input:
   neighborhood:
@@ -75,7 +72,7 @@ input:
   # num_previous_dirs: int
   #     Concatenate X previous streamline directions to the input vector. Null
   #     is equivalent to 0.
-  num_previous_dirs: null
+  num_previous_dirs: 0
 
 model:
   # Add your model's parameters
@@ -84,25 +81,30 @@ training:
   epochs:
     # max_epochs: int
     #     Maximum number of epochs. Suggestion: 100.
-    max_epochs: null
+    max_epochs: 2
     # patience: int
     #     Use early stopping. Defines the number of epochs after which the
-    #     model should stop if the loss hasn't improved. Suggestion: 20.
+    #     model should stop if the loss hasn't improved. Suggestion: 20. If
+    #     null, the model will continue for max_epochs.
     patience: null
   batch:
     # batch_size: int
     #     Number of streamline points per batch. Suggestion: 20000.
-    size: null
-    # volumes_per_batch: int
-    #     Limits the number of volumes used in a batch. If null, will use
-    #     true random sampling.
+    #     NOTE: Actual batch sizes might be different than `batch_size`
+    #     depending on chosen data augmentation.
+    size: 20
+    # n_subjects_per_batch: int
+    #     Maximum number of different subjects from which to load data in each
+    #     batch. This should help avoid loading too many inputs in memory,
+    #     particularly for lazy data. If null, we will use true random sampling.
+    #     Suggestion: 5.
     #     Hint: Will influence the cache size if memory:cache_manager is used.
-    volumes_per_batch: null
-    # cycles_per_volume: int
-    #     Relevant only if epochs:batch:volumes_used is not null. Number of
-    #     cycles before changing to new volumes. (null is equivalent to
-    #     1).
-    cycles_per_volume: null
+    n_subjects_per_batch: 1
+    # cycles: int
+    #     Relevant only if training:batch:n_subject_per_batch is not null.
+    #     Number of cycles before changing to new subjects (and thus new
+    #     volumes). null is equivalent to 1.
+    cycles: 2
 
 memory:
   # lazy: bool
@@ -114,12 +116,14 @@ memory:
   #     streamlines in memory instead of fetching from the disk everytime.
   #     Cache size will depend on epochs:volumes_per_batch.
   cache_manager: False
-  # use_gpu: bool
-  #     If set, train using the GPU. Else, stay on CPU.
-  use_gpu: True
+  # avoid_cpu_computations: bool
+  #     If set, all possible computations that can be avoided on cpu will be
+  #     skipped in the batch sampler. Ex: interpolation, directions
+  #     computations from the streamlines coordinates, etc.
+  avoid_cpu_computations: True
   # num_cpu_workers: int
   #     Number of parallel CPU workers.
-  num_cpu_workers: null
+  num_cpu_workers: 1
   # worker_interpolation: bool
   #     If set, if using num_cpu_workers > 0, interpolation will be done on CPU
   #     by the workers instead of on the main thread using the chosen device.
@@ -129,6 +133,6 @@ memory:
   taskman_managed: False
 
 randomization:
-  # seed: int
+  # rng: int
   #     Random experiment seed.
-  seed: 1234
+  rng: 1234

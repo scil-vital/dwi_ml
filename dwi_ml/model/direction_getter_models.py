@@ -10,6 +10,7 @@ from torch.distributions import Categorical, MultivariateNormal
 from torch.nn import (Linear, Dropout, ReLU, CosineSimilarity)
 from torch.nn.modules.distance import PairwiseDistance
 
+from dwi_ml.model.main_models import ModelAbstract
 from dwi_ml.model.utils_for_gaussians import independent_gaussian_log_prob
 from dwi_ml.model.utils_for_fisher_von_mises import fisher_von_mises_log_prob
 
@@ -106,7 +107,7 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
     return layers
 
 
-class AbstractDirectionGetterModel(torch.nn.Module):
+class AbstractDirectionGetterModel(ModelAbstract):
     """
     Default static class attribute, to be redefined by sub-classes.
 
@@ -200,10 +201,11 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
 
     @property
     def attributes(self):
-        attributes = super().attributes
-        attributes.update({
+        attributes = super().attributes  # type: dict
+        other_params = {
             'model': 'cosine-regression'
-        })
+        }
+        attributes.update(other_params)
         return attributes
 
     def forward(self, inputs: Tensor):

@@ -13,7 +13,7 @@ from dipy.io.streamline import (save_tractogram, Space)
 
 from dwi_ml.data.dataset.multi_subject_containers import (
     LazyMultiSubjectDataset, MultiSubjectDataset)
-from dwi_ml.model.batch_samplers import (BatchSequencesSamplerOneInputVolume)
+from dwi_ml.model.batch_samplers import (BatchStreamlinesSampler1IPV)
 
 """
 To save binary maps of the input voxels, open model.batch_samplers and change
@@ -53,7 +53,7 @@ def test_batch_loading_no_computations(
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = np.random.RandomState(now.minute * 100 + now.second)
-    batch_sampler = BatchSequencesSamplerOneInputVolume(
+    batch_sampler = BatchStreamlinesSampler1IPV(
         fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
         step_size=step_size, avoid_cpu_computations=True,
         split_streamlines_ratio=split_ratio,
@@ -98,12 +98,12 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size,
     print('Initializing sampler...')
     rng_seed = np.random.RandomState(now.minute * 100 + now.second)
 
-    batch_sampler = BatchSequencesSamplerOneInputVolume(
+    batch_sampler = BatchStreamlinesSampler1IPV(
         fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
         step_size=step_size, avoid_cpu_computations=False,
         neighborhood_type=neighborhood_type,
         neighborhood_radius_vox=neighborhood_radius,
-        nb_previous_dirs=2)
+        num_previous_dirs=2)
 
     batch_generator = batch_sampler.__iter__()
 

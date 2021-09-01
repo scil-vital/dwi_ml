@@ -6,6 +6,25 @@ from typing import Iterable, Union
 import numpy as np
 
 
+def prepare_neighborhood_information(neighborhood_type, neighborhood_radius):
+    """
+    Prepare neighborhood information either with the 'axes' option or the
+    'grid' option.
+
+    Results are in the voxel world.
+    """
+    if neighborhood_type is not None:
+        if neighborhood_type == 'axes':
+            neighborhood_points = get_neighborhood_vectors_axes(
+                neighborhood_radius)
+        else:
+            neighborhood_points = get_neighborhood_vectors_grid(
+                neighborhood_radius)
+        return neighborhood_points
+    else:
+        return None
+
+
 def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     """This neighborhood definition lies on a sphere. Returns a list of 6
     positions (up, down, left, right, behind, in front) at exactly `radius`

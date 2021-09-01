@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+from collections import deque
+import timeit
+
 import numpy as np
 
 
-# Checked!
 class ValueHistoryMonitor(object):
     """ History of some value for each iteration during training, and mean
     value for each epoch.
@@ -69,7 +71,6 @@ class ValueHistoryMonitor(object):
         self.epochs_means_history = state['epochs_means_history']
 
 
-# Checked!
 class EarlyStopping(object):
     """
     Object to stop training early if the loss doesn't improve after a given
@@ -134,3 +135,48 @@ class EarlyStopping(object):
         self.best = state['best']
         self.n_bad_epochs = state['n_bad_epochs']
 
+
+class EarlyStoppingError(Exception):
+    """Exception raised when an experiment is stopped by early-stopping
+
+    Attributes
+        message -- explanation of why early stopping occured"""
+
+    def __init__(self, message):
+        self.message = message
+
+
+class IterTimer(object):
+    """
+    Hint: After each iteration, you can check that the maximum allowed time has
+    not been reached by using:
+
+    # Ex: To check that time remaining is less than one iter + 30 seconds
+    time.time() + iter_timer.mean + 30 > max_time
+
+    # Ex: To allow some incertainty. Ex: prevent continuing in the case the
+    # next iter could be twice as long as usual:
+    time.time() + iter_timer.mean * 2.0 + 30 > max_time
+    """
+    def __init__(self, history_len=5):
+        self.history = deque(maxlen=history_len)
+        self.iterable = None
+        self.start_time = None
+
+    def __call__(self, iterable):
+        self.iterable = iter(iterable)
+        return self
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.start_time is not None:
+            elapsed = timeit.default_timer() - self.start_time
+            self.history.append(elapsed)
+        self.start_time = timeit.default_timer()
+        return next(self.iterable)
+
+    @property
+    def mean(self):
+        return np.mean(self.history) if len(self.history) > 0 else 0

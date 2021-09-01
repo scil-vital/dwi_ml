@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
+from collections import Iterator
 
 
-def compute_gradient_norm(parameters):
+def compute_gradient_norm(parameters: Iterator):
     """Compute the gradient norm of the provided iterable parameters.
     (Machine learning gradient descent, not dwi gradients!)
 
     Parameters
     ----------
-    parameters : list of torch.Tensor
+    parameters : Iterable
         Model parameters after loss.backwards() has been called. All parameters
-        p must have a p.grad attribute.
+        p must have a p.grad attribute. Ex: using model.parameters() returns
+        an Iterable.
 
     Returns
     -------
@@ -20,7 +22,7 @@ def compute_gradient_norm(parameters):
     total_norm = 0.
     for p in parameters:
         # Possibly add: if hasattr(p, 'grad'):
-        param_norm = p.grad.as_tensor.norm(2)
+        param_norm = p.grad.norm(2)
         total_norm += param_norm.item() ** 2
     total_norm = total_norm ** (1. / 2)
     return total_norm

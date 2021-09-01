@@ -21,3 +21,8 @@ class TqdmLoggingHandler(logging.StreamHandler):
             raise
         except Exception:
             self.handleError(record)
+
+
+def format_dict_to_str(d):
+    return "    " + "\n    ".join("{!r}: {!r},"
+                                  .format(k, v) for k, v in d.items())

@@ -30,7 +30,6 @@ from dwi_ml.data.dataset.data_lists import (
     DataListForTorch, LazyDataListForTorch)
 from dwi_ml.data.dataset.single_subject_containers import (
     SubjectDataAbstract, SubjectData, LazySubjectData)
-from dwi_ml.experiment.timer import Timer
 from dwi_ml.utils import TqdmLoggingHandler
 
 
@@ -100,10 +99,16 @@ class MultiSubjectDatasetAbstract(Dataset):
 
         # Concerning the memory usage:
         self.taskman_managed = taskman_managed
-        self.log = None
+
+        # Prepare log to work with tqdm. Use self.log instead of logging
+        # inside any tqdm loop
+        self.log = logging.getLogger('for_tqdm' + str(datetime.now()))
+        self.log.setLevel(logging.root.level)
+        self.log.addHandler(TqdmLoggingHandler())
+        self.log.propagate = False
 
         # Preparing the dataset
-        # type will be dwi_ml.data.dataset.data_lit.DataListForTorch or,
+        # type will be dwi_ml.data.dataset.data_list.DataListForTorch or,
         # in lazy version, LazyDataListForTorch
         self.data_list = None
         self.groups = None
@@ -145,13 +150,6 @@ class MultiSubjectDatasetAbstract(Dataset):
             self.streamline_id_slice_per_subj = defaultdict(slice)
             self.total_streamlines = 0
             streamline_lengths_mm_list = []
-
-            # Prepare log to work with tqdm. Use self.log instead of logging
-            # inside any tqdm loop
-            self.log = logging.getLogger('for_tqdm' + str(datetime.now()))
-            self.log.setLevel(logging.root.level)
-            self.log.addHandler(TqdmLoggingHandler())
-            self.log.propagate = False
 
             # Using tqdm progress bar, load all subjects from hdf_file
             for subject_id in tqdm.tqdm(subject_keys, ncols=100,
@@ -248,22 +246,25 @@ class MultiSubjectDatasetAbstract(Dataset):
     def __len__(self):
         return self.total_streamlines
 
-    def __getitem__(self, idx: Union[int, Tuple[int, int]]):
+    def __getitem__(self, idx: Tuple[int, int]):
         """
-        - If idx: int, it is a unique item database streamline identifier.
-            Then, returns a (streamline_id, subject_id) associated with it.
-        - If idx: tuple, it is already a (streamline_id, subj_id). Then this
-            function does nothing but necessary. Will be used by torch.
+        See here for more information on how the dataloader can use the
+        dataset: https://pytorch.org/docs/stable/data.html
+        Here, we create a 'map-style' dataset, meaning the the dataloader will
+        use dataset[idx]. We could be loading the data here but we will
+        actually do it after, in the collate_fn=load_batch, to make sure we
+        load one once the data per subject. Thus, this function does nothing
+        but passes idx. The dataloader will iterate and pass a list of idx
+        (thus a list of tuples) to load_batch.
+
+        Idx: tuple[int, int]
+            It is already a (streamline_id, subj_id).
         """
-        if type(idx) is tuple:
-            return idx
-        else:
-            for subjid, y_slice in self.streamline_id_slice_per_subj.items():
-                if y_slice.start <= idx < y_slice.end:
-                    streamlineid = idx - y_slice.start
-                    return streamlineid, subjid
-            raise ValueError("Could not find (streamlineid, subjid) "
-                             "from idx: {}".format(idx))
+        if not isinstance(idx, tuple):
+            raise ValueError("Idx ({}) was not a tuple. Please verify how "
+                             "your batch sampler created the list of idx to "
+                             "fetch.".format(idx))
+        return idx
 
 
 class MultiSubjectDataset(MultiSubjectDatasetAbstract):
@@ -420,20 +421,16 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
             self.hdf_handle.close()
 
 
-def init_dataset(is_lazy: bool, hdf5_filename: str, subjs_set: str,
+def init_dataset(lazy: bool, hdf5_filename: str, subjs_set: str,
                  name: str = None, taskman_managed: bool = None,
-                 cache_size: int = None, **unused_kwargs):
-    if is_lazy:
+                 cache_size: int = None, **_):
+    if lazy:
         dataset = LazyMultiSubjectDataset(hdf5_filename, subjs_set, name,
                                           taskman_managed, cache_size)
     else:
         dataset = MultiSubjectDataset(hdf5_filename, subjs_set, name,
                                       taskman_managed)
 
-    with Timer("Loading dataset for {}".format(subjs_set), newline=True,
-               color='blue'):
-        dataset.load_data()
-
-    logging.debug("Unused kwargs are: {}".format(unused_kwargs))
+    dataset.load_data()
 
     return dataset

@@ -10,8 +10,7 @@ import torch
 import torch.multiprocessing
 from torch.utils.data import Sampler
 
-from dwi_ml.data.dataset.multi_subject_containers import (
-    LazyMultiSubjectDataset, MultiSubjectDataset)
+from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.space.neighborhood import (
     extend_coordinates_with_neighborhood,
     prepare_neighborhood_information)
@@ -34,7 +33,7 @@ BatchStreamlineSampler:
     them (resampling + data augmentation).
 
 
-You can then implement a child class that fits your needs. You are encouraged 
+You can then implement a child class that fits your needs. You are encouraged
 to contribute to dwi_ml.
 
 BatchStreamlinesSampler1IPV
@@ -42,14 +41,14 @@ BatchStreamlinesSampler1IPV
     1IPV standard for 1 Input + Previous Dirs.
 
     x1: input = volume group named "input"
-        (The underlying information under each point of the sampled 
+        (The underlying information under each point of the sampled
         streamlines)
     x2: prev_dirs = a list of n previous dirs
     y: target = the whole streamlines as sequences.
 """
 
 """
-USAGE: 
+USAGE:
 These batch samplers can be used in a torch DataLoader. For instance:
         # Initialize dataset
         dataset = MultiSubjectDataset(...)
@@ -95,8 +94,7 @@ class BatchStreamlinesSampler(Sampler):
     disk.
     """
 
-    def __init__(self, data_source: Union[MultiSubjectDataset,
-                                          LazyMultiSubjectDataset],
+    def __init__(self, dataset: MultisubjectSubset,
                  streamline_group_name: str, batch_size: int, rng: int,
                  n_subjects_per_batch: int = None, cycles: int = None,
                  step_size: float = None, neighborhood_type: str = None,
@@ -111,7 +109,7 @@ class BatchStreamlinesSampler(Sampler):
         """
         Parameters
         ----------
-        data_source : MultiSubjectDataset or LazyMultiSubjectDataset
+        dataset : MultisubjectSubset
             Dataset to sample from.
         streamline_group_name: str
             The name of the group to use to load the sequences among all
@@ -192,7 +190,7 @@ class BatchStreamlinesSampler(Sampler):
             normalizing could give back to the algorithm a sense of distance
             between points.
         """
-        super().__init__(data_source)  # This does nothing but python likes it.
+        super().__init__(dataset)  # This does nothing but python likes it.
 
         # Checking that batch_size is correct
         if (not isinstance(batch_size, int) or isinstance(batch_size, bool)
@@ -208,7 +206,7 @@ class BatchStreamlinesSampler(Sampler):
                              .format(n_subjects_per_batch, cycles))
 
         # Batch sampler variables
-        self.data_source = data_source
+        self.dataset = dataset
         self.streamline_group_name = streamline_group_name
         self.n_subjects_per_batch = n_subjects_per_batch
         self.cycles = cycles
@@ -217,7 +215,7 @@ class BatchStreamlinesSampler(Sampler):
         self.normalize_directions = normalize_directions
 
         # Find idx of streamline group
-        self.streamline_group = self.data_source.streamline_groups.index(
+        self.streamline_group = self.dataset.streamline_groups.index(
             self.streamline_group_name)
 
         # Set device
@@ -297,7 +295,7 @@ class BatchStreamlinesSampler(Sampler):
         All parameters. Contains at least all parameters that would be
         necessary to create this batch sampler again.
         """
-        attributes = {
+        attrs = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
             'avoid_cpu_computations': self.avoid_cpu_computations,
@@ -307,7 +305,7 @@ class BatchStreamlinesSampler(Sampler):
             'n_subjects_per_batch': self.n_subjects_per_batch,
             'type': type(self)
         }
-        return attributes
+        return attrs
 
     @property
     def states(self):
@@ -333,9 +331,8 @@ class BatchStreamlinesSampler(Sampler):
         -------
         batch_ids_per_subj : list[(int, list)]
             - The torch's dataloader will get this list and iterate on it, each
-            time using __iter__ function of the its dataset (our
-            multisubject_dataset) to create a data and send it to the
-            collate_fn (our load_batch).
+            time using __iter__ function of the dataset (a multisubjectSubset)
+            to create a data and send it to the collate_fn (our load_batch).
             - This must be a list.
             - Inside the tuple, the int is the subject id and the list is
             the list of streamlines ids for this subject.
@@ -344,9 +341,9 @@ class BatchStreamlinesSampler(Sampler):
         """
         # This is the list of all possible streamline ids
         global_streamlines_ids = np.arange(
-            self.data_source.total_streamlines[self.streamline_group])
+            self.dataset.total_streamlines[self.streamline_group])
         ids_per_subjs = \
-            self.data_source.streamline_ids_per_subj[self.streamline_group]
+            self.dataset.streamline_ids_per_subj[self.streamline_group]
 
         # This contains one bool per streamline:
         #   1 = this streamline has not been used yet.
@@ -385,7 +382,7 @@ class BatchStreamlinesSampler(Sampler):
                 n_subjects = min(self.n_subjects_per_batch,
                                  np.count_nonzero(weights))
                 sampled_subjs = self.np_rng.choice(
-                    np.arange(len(self.data_source.data_list)),
+                    np.arange(len(self.dataset.subjs_list)),
                     size=n_subjects, replace=False, p=weights)
             else:
                 # Sampling from all subjects
@@ -443,9 +440,10 @@ class BatchStreamlinesSampler(Sampler):
                         subj_chosen_global_ids = self.np_rng.choice(
                             subj_unused_ids_in_global, CHUNK_SIZE)
 
-                        subj_data = self.data_source.get_subject_data(subj)
+                        subj_data = \
+                            self.dataset.subjs_list.open_handle_and_getitem(subj)
                         subj_sft_data = \
-                            subj_data._sft_data_list[self.streamline_group]
+                            subj_data.sft_data_list[self.streamline_group]
                         if self.step_size:
                             # batch_size is in mm.
                             sample_heaviness = \
@@ -594,8 +592,8 @@ class BatchStreamlinesSampler(Sampler):
                 "          Processing data preparation for streamlines ids:\n"
                 "{}".format(s_ids))
 
-            subj_data = self.data_source.get_subject_data(subj)
-            subj_sft_data = subj_data._sft_data_list[self.streamline_group]
+            subj_data = self.dataset.subjs_list.open_handle_and_getitem(subj)
+            subj_sft_data = subj_data.sft_data_list[self.streamline_group]
 
             # Get streamlines as sft
             sft = subj_sft_data.from_chosen_streamlines(s_ids)
@@ -712,8 +710,7 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
     Transformers.
     """
 
-    def __init__(self, data_source: Union[MultiSubjectDataset,
-                                          LazyMultiSubjectDataset],
+    def __init__(self, dataset: MultisubjectSubset,
                  streamline_group_name: str, input_group_name: str,
                  batch_size: int, rng: int,
                  n_subjects_per_batch: int = None, cycles: int = None,
@@ -725,18 +722,18 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
                  noise_gaussian_variability: float = 0.,
                  reverse_streamlines_ratio: float = 0.5,
                  avoid_cpu_computations: bool = None,
-                 normalize_directions: bool = True, num_previous_dirs: int = 0,
+                 normalize_directions: bool = True, nb_previous_dirs: int = 0,
                  **_):
         """
         Additional parameters compared to super:
 
         input_group_name: str
             Name of the volume group to load as input.
-        num_previous_dirs : int
+        nb_previous_dirs : int
             If set, concatenate the n previous streamline directions as input.
             [0].
         """
-        super().__init__(data_source, streamline_group_name, batch_size, rng,
+        super().__init__(dataset, streamline_group_name, batch_size, rng,
                          n_subjects_per_batch, cycles, step_size,
                          neighborhood_type, neighborhood_radius_vox,
                          split_streamlines_ratio,
@@ -750,25 +747,21 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         self.input_group_name = input_group_name
 
         # Find group index in the data_source
-        idx = self.data_source.volume_groups.index(input_group_name)
+        idx = self.dataset.volume_groups.index(input_group_name)
         self.input_group_idx = idx
 
-        if num_previous_dirs is None:
-            num_previous_dirs = 0
-        self.nb_previous_dirs = num_previous_dirs
-        self.final_feature_sizes = self._compute_feature_sizes(idx)
+        if nb_previous_dirs is None:
+            nb_previous_dirs = 0
+        self.nb_previous_dirs = nb_previous_dirs
+        self.final_nb_features = self._compute_nb_features(idx)
 
-    def _compute_feature_sizes(self, input_group_idx):
+    def _compute_nb_features(self, input_group_idx):
         """
         Depending on data augmentation, compute features sizes to help prepare
         an eventual model.
         """
-        if len(self.data_source.data_list.feature_sizes) == 0:
-            self.data_source.load_data()
-
-        # The data list feature_size is the last dim of each input volume.
-        expected_input_size = \
-            self.data_source.data_list.feature_sizes[input_group_idx]
+        # The nb_features is the last dim of each input volume.
+        expected_input_size = self.dataset.nb_features[input_group_idx]
 
         if self.neighborhood_points is not None:
             expected_input_size += len(self.neighborhood_points) * \
@@ -896,7 +889,9 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
                 [s[:-1] for s in batch_streamlines[y_ids]], axis=0)
 
             # Getting the subject's volume and sending to CPU/GPU
-            data_volume = self.data_source.get_subject_mri_group_as_tensor(
+            # If data is lazy, get volume from cache or send to cache if
+            # it wasn't there yet.
+            data_volume = self.dataset.get_volume_verify_cache(
                 subj, self.input_group_idx, device=self.device,
                 non_blocking=True)
 
@@ -915,7 +910,7 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
                 flat_subj_x_data, coords_clipped = \
                     torch_trilinear_interpolation(data_volume, coords_torch)
 
-                # Reshape signal into (n_points, new_feature_size)
+                # Reshape signal into (n_points, new_nb_features)
                 # DWI data features for each neighboor are contatenated.
                 #    dwi_feat1_neig1  dwi_feat2_neig1 ...  dwi_featn_neighbm
                 #  p1        .              .                    .

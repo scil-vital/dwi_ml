@@ -10,6 +10,7 @@ contextlib2
 future==0.17.1
 numpy==1.18.*
 scipy==1.4.*
+# h5py must absolutely be >2.4: that's when it became thread-safe
 h5py==2.10.*
 dipy==1.3.*
 

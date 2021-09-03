@@ -46,7 +46,7 @@ class DWIMLTrainer:
                  learning_rate: float = 0.001, weight_decay: float = 0.01,
                  max_epochs: int = None, max_batches_per_epoch: int = 10000,
                  patience: int = None, device: torch.device = None,
-                 num_cpu_workers: int = None, taskman_managed: bool = None,
+                 nb_cpu_workers: int = None, taskman_managed: bool = None,
                  use_gpu: bool = None, comet_workspace: str = None,
                  comet_project: str = None, from_checkpoint: bool = False,
                  **_):
@@ -82,7 +82,7 @@ class DWIMLTrainer:
         patience: int
             Use early stopping. Defines the number of epochs after which the
             model should stop if the loss hasn't improved.
-        num_cpu_workers: int
+        nb_cpu_workers: int
             Number of parallel CPU workers.
         taskman_managed: bool
             If True, taskman manages the experiment. Do not output progress
@@ -137,7 +137,7 @@ class DWIMLTrainer:
 
         # Memory:
         self.device = device
-        self.num_cpu_workers = num_cpu_workers
+        self.nb_cpu_workers = nb_cpu_workers
         self.taskman_managed = taskman_managed
         self.taskman_report = {
             'loss_train': None,
@@ -224,13 +224,13 @@ class DWIMLTrainer:
             'experiment_name': self.experiment_name,
             'dwi_ml_trainer_version': VERSION,
             'comet_key': self.comet_key,
-            'train_hdf5_path': self.train_batch_sampler.data_source.hdf5_path,
-            'valid_hdf5_path': self.valid_batch_sampler.data_source.hdf5_path,
+            'train_hdf5_path': self.train_batch_sampler.dataset.hdf5_path,
+            'valid_hdf5_path': self.valid_batch_sampler.dataset.hdf5_path,
             'train sampler attributes': self.train_batch_sampler.attributes,
             'valid sampler attributes': self.valid_batch_sampler.attributes,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
-            'num_cpu_workers': self.num_cpu_workers
+            'nb_cpu_workers': self.nb_cpu_workers
         }
         return attrs
 
@@ -315,10 +315,9 @@ class DWIMLTrainer:
                      "Running the model {}.\n\n"
                      .format(type(self), type(self.model)))
 
-        logging.info("- Preparing everything.")
-
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:
+            logging.info("Estimating batch sizes.")
             (self.nb_train_batches_per_epoch,
              self.nb_valid_batches_per_epoch) = \
                 self.estimate_nb_batches_per_epoch()
@@ -349,16 +348,16 @@ class DWIMLTrainer:
         #     sends volumes and coords on GPU for interpolation.
         logging.debug("- Instantiating dataloaders...")
         train_dataloader = DataLoader(
-            self.train_batch_sampler.data_source,
+            self.train_batch_sampler.dataset,
             batch_sampler=self.train_batch_sampler,
-            num_workers=self.num_cpu_workers,
+            num_workers=self.nb_cpu_workers,
             collate_fn=self.train_batch_sampler.load_batch,
             pin_memory=self.use_gpu)
 
         valid_dataloader = DataLoader(
-            self.valid_batch_sampler.data_source,
+            self.valid_batch_sampler.dataset,
             batch_sampler=self.valid_batch_sampler,
-            num_workers=self.num_cpu_workers,
+            num_workers=self.nb_cpu_workers,
             collate_fn=self.valid_batch_sampler.load_batch,
             pin_memory=self.use_gpu)
 
@@ -455,10 +454,10 @@ class DWIMLTrainer:
         implement, in case you need some variables.
         """
         # Make sure there are no existing HDF handles if using parallel workers
-        if (self.num_cpu_workers > 0 and
-                self.train_batch_sampler.data_source.is_lazy):
-            self.train_batch_sampler.data_source.hdf_handle = None
-            self.train_batch_sampler.data_source.volume_cache_manager = None
+        if (self.nb_cpu_workers > 0 and
+                self.train_batch_sampler.dataset.is_lazy):
+            self.train_batch_sampler.dataset.hdf_handle = None
+            self.train_batch_sampler.dataset.volume_cache_manager = None
 
         if self.comet_exp:
             self.comet_exp.log_metric("current_epoch", self.current_epoch)
@@ -551,10 +550,10 @@ class DWIMLTrainer:
         logging.debug('Unused args in validate: {}'.format(args))
 
         # Make sure there are no existing HDF handles if using parallel workers
-        if (self.num_cpu_workers > 0 and
-                self.valid_batch_sampler.data_source.is_lazy):
-            self.valid_batch_sampler.data_source.hdf_handle = None
-            self.valid_batch_sampler.data_source.volume_cache_manager = None
+        if (self.nb_cpu_workers > 0 and
+                self.valid_batch_sampler.dataset.is_lazy):
+            self.valid_batch_sampler.dataset.hdf_handle = None
+            self.valid_batch_sampler.dataset.volume_cache_manager = None
 
         # Validate all batches
         with tqdm(valid_dataloader, ncols=100, disable=self.taskman_managed,
@@ -623,7 +622,8 @@ class DWIMLTrainer:
         raise NotImplementedError
 
     @classmethod
-    def init_from_checkpoint(cls, batch_sampler_training: BatchStreamlinesSampler,
+    def init_from_checkpoint(cls,
+                             batch_sampler_training: BatchStreamlinesSampler,
                              batch_sampler_validation: BatchStreamlinesSampler,
                              model: torch.nn.Module,
                              checkpoint_state: dict):
@@ -696,10 +696,8 @@ class DWIMLTrainer:
         checkpoint_state = {
             'train_sampler_params': self.train_batch_sampler.attributes,
             'valid_sampler_params': self.valid_batch_sampler.attributes,
-            'train_data_params':
-                self.train_batch_sampler.data_source.attributes,
-            'valid_data_params':
-                self.valid_batch_sampler.data_source.attributes,
+            'train_data_params': self.train_batch_sampler.dataset.attributes,
+            'valid_data_params': self.valid_batch_sampler.dataset.attributes,
             'model_params': self.model.attributes,
         }
 
@@ -711,7 +709,7 @@ class DWIMLTrainer:
             'max_batches_per_epoch': self.max_batches_per_epochs,
             'patience': self.patience,
             'device': self.device,
-            'num_cpu_workers': self.num_cpu_workers,
+            'nb_cpu_workers': self.nb_cpu_workers,
             'taskman_managed': self.taskman_managed,
             'use_gpu': self.use_gpu,
             'comet_workspace': self.comet_project,

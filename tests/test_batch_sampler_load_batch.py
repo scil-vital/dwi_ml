@@ -11,8 +11,7 @@ from dipy.io.stateful_tractogram import (StatefulTractogram,
                                          set_sft_logger_level)
 from dipy.io.streamline import (save_tractogram, Space)
 
-from dwi_ml.data.dataset.multi_subject_containers import (
-    LazyMultiSubjectDataset, MultiSubjectDataset)
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.model.batch_samplers import (BatchStreamlinesSampler1IPV)
 
 
@@ -43,11 +42,13 @@ def test_batch_loading_no_computations(
     now = datetime.now().time()
     logging.root.setLevel('DEBUG')
 
+    training_set = fake_dataset.training_set
+
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
     batch_sampler = BatchStreamlinesSampler1IPV(
-        fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
+        training_set, 'streamlines', 'input', batch_size, rng_seed,
         step_size=step_size, avoid_cpu_computations=True,
         split_streamlines_ratio=split_ratio,
         noise_gaussian_size=noise_size,
@@ -84,16 +85,18 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size,
     logging.root.setLevel('DEBUG')
     now = datetime.now().time()
 
+    training_set = fake_dataset.training_set
+
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
 
     batch_sampler = BatchStreamlinesSampler1IPV(
-        fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
+        training_set, 'streamlines', 'input', batch_size, rng_seed,
         step_size=step_size, avoid_cpu_computations=False,
         neighborhood_type=neighborhood_type,
         neighborhood_radius_vox=neighborhood_radius,
-        num_previous_dirs=2)
+        nb_previous_dirs=2)
 
     batch_generator = batch_sampler.__iter__()
 
@@ -145,7 +148,7 @@ def test_non_lazy(ref, affine, header, saving_path):
     # Initialize dataset
     print('Initializing dataset...')
     logging.root.setLevel('INFO')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, 'training_subjs')
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False)
     fake_dataset.load_data()
 
     print('\n\n\n=======================Test with batch size 10000 + resample '
@@ -174,8 +177,7 @@ def test_lazy(ref, affine, header, saving_path):
     # Initialize dataset
     print('Initializing dataset...')
     logging.root.setLevel('INFO')
-    fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename,
-                                           'training_subjs')
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True)
     fake_dataset.load_data()
 
     print('\n\n\n=======================Test with batch size 10000 + resample')

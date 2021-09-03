@@ -132,14 +132,14 @@ def check_neighborhood(sphere_radius: float, grid_radius: int):
         return None, None
 
 
-def check_previous_dir(num_previous_dirs: int):
-    check_similar_to_none(num_previous_dirs, 'num_previous_dirs')
-    check_int_instance(num_previous_dirs, 'num_previous_dirs')
+def check_previous_dir(nb_previous_dirs: int):
+    check_similar_to_none(nb_previous_dirs, 'nb_previous_dirs')
+    check_int_instance(nb_previous_dirs, 'nb_previous_dirs')
 
-    if num_previous_dirs is None:
-        num_previous_dirs = 0
+    if nb_previous_dirs is None:
+        nb_previous_dirs = 0
 
-    return num_previous_dirs
+    return nb_previous_dirs
 
 
 def check_max_epochs(max_epochs: int):
@@ -215,11 +215,11 @@ def check_avoid_cpu_computations(avoid_cpu_computations: bool):
     return avoid_cpu_computations
 
 
-def check_num_cpu_workers(num_workers: int):
-    check_similar_to_none(num_workers, 'num_workers')
-    check_int_instance(num_workers, 'num_workers')
+def check_nb_cpu_workers(nb_workers: int):
+    check_similar_to_none(nb_workers, 'nb_workers')
+    check_int_instance(nb_workers, 'nb_workers')
 
-    return num_workers
+    return nb_workers
 
 
 def check_worker_interpolation(worker_interpolation: bool):
@@ -271,8 +271,8 @@ def check_all_experiment_parameters(conf: dict):
         conf['input']['neighborhood']['grid_radius'])
     all_params['neighborhood_type'] = n_type
     all_params['neighborhood_radius'] = n_radius
-    all_params['num_previous_dirs'] = check_previous_dir(
-        conf['input']['num_previous_dirs'])
+    all_params['nb_previous_dirs'] = check_previous_dir(
+        conf['input']['nb_previous_dirs'])
 
     # Epochs:
     all_params['max_epochs'] = check_max_epochs(
@@ -295,8 +295,8 @@ def check_all_experiment_parameters(conf: dict):
         conf['memory']['cache_manager'], lazy)
     all_params['avoid_cpu_computations'] = check_avoid_cpu_computations(
         conf['memory']['avoid_cpu_computations'])
-    all_params['num_cpu_workers'] = check_num_cpu_workers(
-        conf['memory']['num_cpu_workers'])
+    all_params['nb_cpu_workers'] = check_nb_cpu_workers(
+        conf['memory']['nb_cpu_workers'])
     all_params['worker_interpolation'] = check_worker_interpolation(
         conf['memory']['worker_interpolation'])
     all_params['taskman_managed'] = check_taskman_managed(

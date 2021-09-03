@@ -11,7 +11,7 @@ When ready, you will be able to run, in order:
 
      #. ``organize_from_tractoflow.sh``
      #. ``organize_from_recobundles.sh``
-     #. ``create_dataset.sh``.
+     #. ``create_hdf5_dataset.sh``.
      #. ``training.sh``.
      #. ``tracking.sh``.
 
@@ -20,3 +20,4 @@ More information can be found below (more to come).
 .. toctree::
 
     creating_hdf5
+    data_containers

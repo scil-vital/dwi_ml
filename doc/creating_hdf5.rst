@@ -62,3 +62,12 @@ If you would rather create your hdf5 file with your own script, here is the outp
     hdf5['subj1']['streamlines']['offsets']
     hdf5['subj1']['streamlines']['lengths']
     hdf5['subj1']['streamlines']['euclidean_lengths']
+
+About data standardization
+**************************
+
+Data is standardized (normalized) during data creation: data = (data - mean) / std. (Each features/modalities independently or not).
+
+If all voxel were to be used, most of them would probably contain the background of the data, bringing the mean and std probably very close to 0. Thus, non-zero voxels only are used to compute the mean and std, or voxels inside the provided mask if any.
+
+In the latest case, voxels outside the mask could have been set to NaN, but a test with the b0 as a mask showed that some streamlines had points outside the mask (probably due to data interpolation or to the skull-stripping technique of the b0 mask). The safer choice, chosen in dwi_ml, was to simply modify all voxels to data = (data - mean) / std, even voxels outside the mask.

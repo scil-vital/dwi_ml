@@ -20,8 +20,10 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
         Volume to normalize along each modality.
     mask : binary np.ndarray with shape (X, Y, Z)
         3D mask defining which voxels should be used for normalization. If
-        None, all non-zero voxels will be used. Voxels outside mask will be set
-        to nan.
+        None, all non-zero voxels will be used. Voxels outside mask could be
+        set to NaN, but then all streamlines touching these voxels (ex, at
+        their extremities) would have associated inputs containing NaN. Simply
+        standardizing them with the computed mean and std.
     independent: bool
         If true, will normalize each modality independently (last axis). Else,
         will normalize with the mean and variance of all data. There is a
@@ -60,7 +62,7 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
             std = 1
 
     standardized_data = (data - mean) / std
-    standardized_data[~mask] = np.nan
+    # standardized_data[~mask] = np.nan
 
     return standardized_data
 

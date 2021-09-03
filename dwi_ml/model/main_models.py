@@ -29,7 +29,7 @@ class ModelAbstract(torch.nn.Module):
         self.log = log
 
 
-class MainModelAbstract(torch.nn.Module):
+class MainModelAbstract(ModelAbstract):
     def __init__(self):
         super().__init__()
 

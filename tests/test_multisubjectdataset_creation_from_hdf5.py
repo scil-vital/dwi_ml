@@ -52,10 +52,8 @@ def test_non_lazy():
     subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor from subject 0, volume 0: \n"
           "     Shape {} \n"
-          "     First data (nan is normal: outside mask): {} \n"
-          "     First volume non-nan mean: {} \n"
-          .format(subj0_volume0_tensor.shape, subj0_volume0_tensor[0][0][0],
-                  np.nanmean(subj0_volume0_tensor.numpy())))
+          "     First data : {} \n"
+          .format(subj0_volume0_tensor.shape, subj0_volume0_tensor[0][0][0]))
 
     del fake_dataset
 
@@ -74,7 +72,7 @@ def test_lazy():
           "    Handle should be added by now: {}"
           "    ID: {}. \n"
           "    Volume groups: {}. \n"
-          "    Lazy mri data should be a list of LazySubjectMRIData: {}. \n"
+          "    Lazy mri data should be a list of LazyMRIData: {}. \n"
           "        First volume _data (is not a tensor!): {} \n"
           "    Streamline group: {} \n"
           "        Streamlines (getter not loaded!): {} \n"
@@ -90,10 +88,8 @@ def test_lazy():
     subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor: subject 0, volume 0. \n"
           "     Shape {} \n"
-          "     First data (nan is normal: outside mask): {} \n"
-          "     First volume non-nan mean: {} \n"
-          .format(subj0_volume0_tensor.shape, subj0_volume0_tensor[0][0][0],
-                  np.nanmean(subj0_volume0_tensor.numpy())))
+          "     First data: {} \n"
+          .format(subj0_volume0_tensor.shape, subj0_volume0_tensor[0][0][0]))
 
     del fake_dataset
 
@@ -105,7 +101,7 @@ if __name__ == '__main__':
         raise ValueError("The hdf5 file ({}) was not found!"
                          .format(args.hdf5_filename))
 
-    logging.basicConfig(level='DEBUG')
+    logging.basicConfig(level='INFO')
 
     test_non_lazy()
     print('\n\n')

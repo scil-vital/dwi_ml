@@ -76,9 +76,6 @@ use them separatedly.
 # evaluate if the batch_size has been reached. No need to sample only one
 # streamline at the time!
 CHUNK_SIZE = 256
-# Debugging purposes: save a binary mask of underlying voxels after
-# interpolation
-SAVE_BATCH_INPUT_MASK = False
 
 
 class BatchStreamlinesSampler(Sampler):
@@ -781,8 +778,10 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         attributes.update({'input_group_name': self.input_group_name})
         return attributes
 
-    def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]) \
-            -> Union[Tuple[List, Dict], Tuple[List, List, List]]:
+    def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
+                   save_batch_input_mask: bool = False) \
+            -> Union[Tuple[List, Dict],
+                     Tuple[List, List, List]]:
         """
         Fetches the chosen streamlines + underlying inputs + previous_dirs (if
         wanted) for all subjects in batch. Pocesses data augmentation.
@@ -802,6 +801,12 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         streamline_ids_per_subj: List[Tuple[int, list]]
             The list of streamline ids for each subject (relative ids inside
             each subject's tractogram).
+        save_batch_input_mask: bool
+            Debugging purposes. Saves the input coordinates as a mask. Must be
+            used together with avoid_cpu_computations=False. The inputs will
+            be modified to a tuple containing the batch_streamlines (or else,
+            with avoid_cpu_computations=False, the directions only would be
+            returned), to compare the streamlines with masks.
 
         Returns
         -------
@@ -830,8 +835,8 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         if self.avoid_cpu_computations:
             # Only returning the streamlines for now.
             # Note that this is the same as using data_preparation_cpu_step
-            self.log.debug( "            Not loading the input data because "
-                            "user prefers to do it later on GPU.")
+            self.log.debug("            Not loading the input data because "
+                           "user prefers to do it later on GPU.")
 
             return batch
         else:
@@ -841,7 +846,8 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
             # Get the inputs
             self.log.debug("        Loading a batch of inputs!")
             batch_inputs = self.compute_inputs(batch_streamlines,
-                                               final_s_ids_per_subj)
+                                               final_s_ids_per_subj,
+                                               save_batch_input_mask)
 
             # Get the previous dirs
             self.log.debug("        Computing previous dirs!")
@@ -850,11 +856,24 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
             return batch_inputs, batch_directions, previous_dirs
 
     def compute_inputs(self, batch_streamlines: List[np.ndarray],
-                       streamline_ids_per_subj: Dict[int, slice]):
+                       streamline_ids_per_subj: Dict[int, slice],
+                       save_batch_input_mask: bool = False):
         """
         Get the DWI (depending on volume: as raw, SH, fODF, etc.) volume for
         each point in each streamline (+ depending on options: neighborhood,
         and preceding diretion)
+
+        save_batch_input_mask: bool
+            Debugging purposes. Saves the input coordinates as a mask. Must be
+            used together with avoid_cpu_computations=False. The inputs will
+            be modified to a tuple containing the batch_streamlines (or else,
+            with avoid_cpu_computations=False, the directions only would be
+            returned), to compare the streamlines with masks.
+
+        Returns
+        -------
+        batch_x_data : List
+            The list of (list of) inputs for each streamlines
         """
         batch_x_data = []
         batch_input_masks = []
@@ -904,28 +923,20 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
                     torch_trilinear_interpolation(data_volume.data,
                                                   coords_torch)
 
-            if torch.any(np.isnan(subj_x_data)):
-                logging.warning('WARNING. NaN values found in the underlying '
-                                'input. Some streamlines were probably '
-                                'outside the mask.')
+            # Split the flattened signal back to streamlines
+            lengths = [len(s) - 1 for s in batch_streamlines[y_ids]]
+            subbatch_x_data = subj_x_data.split(lengths)
+            batch_x_data.extend(subbatch_x_data)
 
-            if SAVE_BATCH_INPUT_MASK:
-                logging.debug("DEBUGGING MODE. Not returning inputs. "
-                              "Returning batch_streamlines and mask instead.")
+            if save_batch_input_mask:
+                logging.debug("DEBUGGING MODE. Returning batch_streamlines "
+                              "and mask together with inputs.")
                 input_mask = torch.tensor(np.zeros(data_volume.shape[0:3]))
                 for s in range(len(coords_torch)):
                     input_mask.data[tuple(coords_clipped[s, :])] = 1
                 batch_input_masks.append(input_mask)
 
-                return batch_streamlines, batch_input_masks
-
-            # Free the data volume from memory "immediately"
-            del data_volume
-
-            # Split the flattened signal back to streamlines
-            lengths = [len(s) - 1 for s in batch_streamlines[y_ids]]
-            subbatch_x_data = subj_x_data.split(lengths)
-            batch_x_data.extend(subbatch_x_data)
+                return batch_streamlines, batch_input_masks, batch_x_data
 
         return batch_x_data
 

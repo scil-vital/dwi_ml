@@ -29,9 +29,8 @@ def parse_args():
 def test_sampler(fake_dataset, batch_size, step_size):
     # Initialize batch sampler
     print('Initializing sampler...')
-    rng_seed = np.random.RandomState(1234)
     batch_sampler = BatchStreamlinesSampler1IPV(
-        fake_dataset, 'streamlines', 'input', batch_size, rng_seed,
+        fake_dataset, 'streamlines', 'input', batch_size, 1234,
         step_size=step_size)
 
     # Use it in the dataloader
@@ -49,8 +48,10 @@ def test_sampler(fake_dataset, batch_size, step_size):
     i = 0
     total_sampled_ids_sub0 = []
     for batch in batch_generator:
+        subj0 = batch[0]
+        (subj0_id, subj0_streamlines) = subj0
         print('Batch # {}: nb sampled streamlines subj 0 was {}'
-              .format(i, len(batch[0])))
+              .format(i, len(subj0_streamlines)))
         total_sampled_ids_sub0.append(batch[0])
         i = i + 1
         if i > 3:
@@ -65,12 +66,13 @@ def test_non_lazy():
     fake_dataset = MultiSubjectDataset(args.hdf5_filename, 'training_subjs')
     fake_dataset.load_data()
 
-    print('=============================Test with batch size 1000')
+    print('\n=============================Test with batch size 1000')
     test_sampler(fake_dataset, 1000, None)
-    print('=============================Test with batch size 10000')
+
+    print('\n=============================Test with batch size 10000')
     test_sampler(fake_dataset, 10000, None)
 
-    print('=============================Test with batch size 10000 + resample')
+    print('\n===========================Test with batch size 10000 + resample')
     test_sampler(fake_dataset, 10000, 0.5)
 
 
@@ -83,12 +85,12 @@ def test_lazy():
                                            'training_subjs')
     fake_dataset.load_data()
 
-    print('=============================Test with batch size 1000')
+    print('\n=============================Test with batch size 1000')
     test_sampler(fake_dataset, 1000, None)
-    print('=============================Test with batch size 10000')
+    print('\n=============================Test with batch size 10000')
     test_sampler(fake_dataset, 10000, None)
 
-    print('=============================Test with batch size 10000 + resample')
+    print('\n===========================Test with batch size 10000 + resample')
     test_sampler(fake_dataset, 10000, 0.5)
 
 

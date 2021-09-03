@@ -11,8 +11,8 @@
 ###########
 beluga="YOUR INFOS"
 ismrm2015_folder="$beluga/ismrm2015/derivatives"
-database_folder="$ismrm2015_folder/noArtefact"
 
+database_folder="$ismrm2015_folder/noArtefact"
 subjects_list="$database_folder/subjects.txt"
 
 rm -r $database_folder/dwi_ml_ready
@@ -25,16 +25,17 @@ $organize_from_tractoflow_folder/organize_from_tractoflow.sh $database_folder $s
 ###########
 name=ismrm2015_noArtefact_test
 bundle=tractoflow__interface_pft_tracking_wholebrain
-logging="debug"
+logging="info"
 mask_for_standardization="masks/b0_bet_mask_resampled.nii.gz"
 space="rasmm"
 step_size=0.5 #Use step_size for now. Dipy's compress_streamlines seems to have memory issues.
 training_subjs="$database_folder/subjects_for_ML_training.txt"
-echo ismrm2015_noArtefact > $training_subjs
 validation_subjs="$database_folder/subjects_for_ML_validation.txt"
+config_file="$database_folder/config_file.json"
+
+echo ismrm2015_noArtefact > $training_subjs
 echo fake_subj2 > $validation_subjs
 cp -r $database_folder/dwi_ml_ready/ismrm2015_noArtefact/ $database_folder/dwi_ml_ready/fake_subj2
-config_file="$database_folder/config_file.json"
 # My config file is:
 #{
 #    "input": {
@@ -43,8 +44,8 @@ config_file="$database_folder/config_file.json"
 #	     }
 #}
 
-create_hdf5_dataset.py --force --name $name \
-        --std_mask $mask_for_standardization \
+create_hdf5_dataset.py --force --name $name --save_intermediate \
+        --std_mask $mask_for_standardization --independent_modalities True \
         --bundles $bundle --logging $logging --space $space \
         --enforce_bundles_presence True --step_size $step_size \
         $database_folder $config_file $training_subjs $validation_subjs
@@ -54,17 +55,16 @@ create_hdf5_dataset.py --force --name $name \
 ###########
 hdf5_filename="$database_folder/hdf5/$name.hdf5"
 ref="$database_folder/dwi_ml_ready/ismrm2015_noArtefact/anat/t1_tractoflow.nii.gz"
-test_tractograms_path="$database_folder/dwi_ml_ready/ismrm2015_noArtefact"
+test_tractograms_path="$database_folder/hdf5/tests/"
+
+mkdir $test_tractograms_path
+
 tests/test_multisubjectdataset_creation_from_hdf5.py $hdf5_filename
 tests/test_batch_sampler_iter.py $hdf5_filename
-
-# Open model.batch_samplers and change SAVE_BATCH_INPUT_MASK to True in both
-# batch sampler and test file to save input masks. Run as is to see output
-# shapes
 tests/test_batch_sampler_load_batch.py $hdf5_filename $ref $test_tractograms_path
 
 # check results and then:
-# rm $database_folder/dwi_ml_ready/ismrm2015_noArtefact/test_batch1*
+rm $test_tractograms_path/test_batch1*
 
 ###########
 # Running training on chosen database:

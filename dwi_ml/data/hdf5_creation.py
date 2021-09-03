@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 
 from dipy.io.stateful_tractogram import (set_sft_logger_level, Space)
-from dipy.io.streamline import load_tractogram
+from dipy.io.streamline import load_tractogram, save_tractogram
 from dipy.tracking.utils import length
 import nibabel as nib
 import numpy as np
@@ -81,7 +81,8 @@ def _load_volume_to4d(data_file):
 
 def process_group(group: str, file_list: List[str], save_intermediate: bool,
                   subj_input_path: Path, subj_output_path: Path,
-                  subj_std_mask_data: np.ndarray = None):
+                  subj_std_mask_data: np.ndarray = None,
+                  independent_modalities: bool = True):
     """Process each group from the json config file:
     - Load data from each file of the group and combine them. All datasets from
       a given group must have the same affine, voxel resolution and data shape.
@@ -101,10 +102,12 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
         Path where to save the intermediate files.
     subj_std_mask_data: np.ndarray of bools, optional
         Binary mask that will be used for data standardization.
+    independent_modalities: bool
+        If True, modalities will be standardized separately.
 
     Returns
     -------
-    standardized_group_data: np.ndarray
+    group_data: np.ndarray
         Group data created by concatenating all files, standardized.
     group_affine: np.ndarray
         Affine for the group.
@@ -143,31 +146,33 @@ def process_group(group: str, file_list: List[str], save_intermediate: bool,
 
     # Save unnormalized data
     if save_intermediate:
-        logging.debug('      *Saving intermediate non standardized files.')
+        output_fname = subj_output_path.joinpath(group +
+                                                 "_nonstandardized.nii.gz")
+        logging.debug('      *Saving intermediate non standardized files into '
+                      '{}.'.format(output_fname))
         group_image = nib.Nifti1Image(group_data, group_affine)
-        output_fname = "{}_nonstandardized.nii.gz".format(group)
-        nib.save(group_image,
-                 str(subj_output_path.joinpath(output_fname)))
+        nib.save(group_image, output_fname)
 
     # Standardize data (per channel)
     logging.debug('      *Standardizing data')
-    standardized_group_data = standardize_data(group_data, subj_std_mask_data,
-                                               independent=True)
+    group_data = standardize_data(group_data, subj_std_mask_data,
+                                  independent=independent_modalities)
 
     # Save standardized data
     if save_intermediate:
-        logging.debug('      *Saving intermediate standardized files.')
-        standardized_img = nib.Nifti1Image(standardized_group_data,
-                                           group_affine)
-        output_fname = "{}_standardized.nii.gz".format(group)
-        nib.save(standardized_img,
-                 str(subj_output_path.joinpath(output_fname)))
+        output_fname = subj_output_path.joinpath(group +
+                                                 "_standardized.nii.gz")
+        logging.debug('      *Saving intermediate standardized files into {}.'
+                      .format(output_fname))
+        standardized_img = nib.Nifti1Image(group_data, group_affine)
+        nib.save(standardized_img, output_fname)
 
-    return standardized_group_data, group_affine, group_header
+    return group_data, group_affine, group_header
 
 
 def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
-                        step_size: float, space: Space):
+                        step_size: float, space: Space,
+                        save_intermediate: bool, subj_output_path: Path):
     """Load and process a group of bundles and merge all streamlines
     together.
 
@@ -185,6 +190,10 @@ def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
         Step size to resample streamlines. If none, compress streamlines.
     space: Space
         Space to place the tractograms.
+    save_intermediate: bool
+        If true, intermediate files will be saved.
+    subj_output_path: Path
+        Path where to save the intermediate files.
 
     Returns
     -------
@@ -211,8 +220,8 @@ def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
         logging.debug('      *Loading bundle {}'.format(bundle_name))
 
         # Completing name, ex if no extension was given or to allow suffixes
-        bundle_name = str(bundles_dir.joinpath(bundle_name + '*'))
-        bundle_complete_name = glob.glob(bundle_name)
+        bundle_path = str(bundles_dir.joinpath(bundle_name + '*'))
+        bundle_complete_name = glob.glob(bundle_path)
         if len(bundle_complete_name) == 0:
             logging.debug("      Skipping bundle {} because it was not found "
                           "in this subject's folder".format(bundle_name))
@@ -259,6 +268,16 @@ def process_streamlines(bundles_dir: Path, bundles, header: nib.Nifti1Header,
             else:
                 final_sft = concatenate_sft([final_sft, sft],
                                             erase_metadata=False)
+
+            if save_intermediate:
+                bundle_name = os.path.splitext(bundle_name)[0]
+                output_fname = subj_output_path.joinpath(bundle_name + '.trk')
+                logging.debug(
+                    '      *Saving intermediate bundle {} into {}.'
+                    .format(bundle_name, output_fname))
+                # Note. Do not remove the str below. Does not work well with
+                # Path.
+                save_tractogram(sft, str(output_fname))
 
     # Removing invalid streamlines
     logging.debug('      *Total: {:,.0f} streamlines. Now removing invalid '

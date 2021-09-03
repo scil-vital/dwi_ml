@@ -74,13 +74,15 @@ def _parse_args():
                         "'bundles' folder.")
     p.add_argument('--enforce_bundles_presence', type=bool, default=True,
                    help='If true, the process will stop if one bundle is '
-                        'missing for a subject.')
+                        'missing for a subject. Default: True')
     p.add_argument('--std_mask',
                    help="Mask defining the voxels used for data "
                         "standardization. Should be the name of a file inside "
-                        "dwi_ml_ready/{subj_id}\nStandardization is performed "
-                        "on each channel separatedly.\nIf none is given, all "
+                        "dwi_ml_ready/{subj_id}\nIf none is given, all "
                         "non-zero voxels will be used.")
+    p.add_argument('--independent_modalities', type=bool, default=True,
+                   help='If true, standardization will be computed separately '
+                        'over all features in the input data. Default: True.')
     p.add_argument('--space', type=str, default='vox',
                    choices=['rasmm', 'vox', 'voxmm'],
                    help="Default space to bring all the stateful tractograms. "
@@ -301,7 +303,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             subj_hdf = hdf_file.create_group(subj_id)
 
             # Prepare subject folder for intermediate files
-            subj_intermediate_path = hdf5_dir.joinpath(subj_id)
+            subj_intermediate_path = \
+                hdf5_dir.joinpath(subj_id + "_intermediate")
             if args.save_intermediate:
                 subj_intermediate_path.mkdir()
 
@@ -310,8 +313,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 logging.info("       - Loading mask")
                 subj_std_mask_file = subj_input_dir.joinpath(args.std_mask)
                 subj_std_mask_img = nib.load(subj_std_mask_file)
-                subj_std_mask_data = np.asanyarray(subj_std_mask_img.dataobj)
-                subj_std_mask_data = subj_std_mask_data.astype(np.bool)
+                subj_std_mask_data = np.asanyarray(
+                    subj_std_mask_img.dataobj).astype(np.bool)
             else:
                 subj_std_mask_data = None
 
@@ -322,7 +325,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 file_list = groups_config[group]['files']
                 group_data, group_affine, group_header = process_group(
                     group, file_list, args.save_intermediate, subj_input_dir,
-                    subj_intermediate_path, subj_std_mask_data)
+                    subj_intermediate_path, subj_std_mask_data,
+                    args.independent_modalities)
                 logging.debug('      *Done. Now creating dataset from group.')
                 hdf_group = subj_hdf.create_group(group)
                 hdf_group.create_dataset('data', data=group_data)
@@ -337,15 +341,9 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             logging.info('       - Processing bundles...')
             sft, lengths = process_streamlines(
                 subj_input_dir.joinpath("bundles"), args.bundles, group_header,
-                args.step_size, space)
+                args.step_size, space, args.save_intermediate,
+                subj_intermediate_path)
             streamlines = sft.streamlines
-
-            # Save streamlines
-            if args.save_intermediate:
-                logging.info('       - Saving intermediate tractogram.')
-                save_tractogram(sft,
-                                str(subj_intermediate_path.joinpath(
-                                    "{}_all_streamlines.tck".format(subj_id))))
 
             if streamlines is None:
                 logging.warning('Careful! Total tractogram for subject {} '
@@ -382,7 +380,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 streamlines_group.create_dataset('euclidean_lengths',
                                                  data=lengths)
 
-    print("Saved dataset : {}".format(hdf5_file_path))
+    logging.info("Saved dataset : {}".format(hdf5_file_path))
 
 
 if __name__ == '__main__':

@@ -53,7 +53,6 @@ class LazyStreamlinesGetter(object):
     def __getitem__(self, item):
         """
         Gets the streamlines from ids 'item', all concatenated together.
-        Still useful? See the get_array_sequence instead.
         """
         if isinstance(item, int):
             return self._get_one_streamline(item)
@@ -163,6 +162,7 @@ class SFTDataAbstract(object):
         self.space = space
         self.streamlines = streamlines
 
+    @property
     def space_attributes_as_tensor(self):
         (a, d, vs, vo) = self.space_attributes
 
@@ -205,10 +205,6 @@ class SFTData(SFTDataAbstract):
         # Return an instance of SubjectMRIData instantiated through __init__
         # with this loaded data:
         return cls(streamlines, space_attributes, space)
-
-    @property
-    def streamlines_as_tensor(self):
-        raise NotImplementedError
 
     def from_chosen_streamlines(self, streamline_ids=None):
         if streamline_ids is not None:

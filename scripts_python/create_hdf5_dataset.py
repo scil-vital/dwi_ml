@@ -12,20 +12,18 @@ It will contain the .hdf5 file and possibly intermediate files.
 import argparse
 import datetime
 import json
-import glob
 import logging
 import shutil
 from pathlib import Path
 from typing import Dict, List
 
-from dipy.io.streamline import save_tractogram
 from dipy.io.stateful_tractogram import Space
 import h5py
 import nibabel as nib
 import numpy as np
 from nested_lookup import nested_lookup
 
-from dwi_ml.data.hdf5_creation import (process_group, process_streamlines,
+from dwi_ml.data.hdf5_creation import (process_volumes, process_streamlines,
                                        verify_subject_lists)
 
 """
@@ -36,6 +34,7 @@ appears that the SFT's garbage collector may not be working entirely well.
 
 Keeping as is for now, hoping that next Dipy versions will solve the problem.
 """
+HDF_DATABASE_VERSION = 2
 
 
 def _parse_args():
@@ -51,7 +50,7 @@ def _parse_args():
                         "wanted in your hdf5. Should follow description in "
                         "our doc, here: "
                         "https://dwi-ml.readthedocs.io/en/latest/"
-                        "data_organization.html")
+                        "creating_hdf5.html")
     p.add_argument('training_subjs',
                    help="txt file containing the list of subjects ids to use "
                         "for training.")
@@ -66,14 +65,8 @@ def _parse_args():
     p.add_argument('--name',
                    help="Dataset name [Default uses date and time of "
                         "processing].")
-    p.add_argument('--bundles', nargs='+',
-                   help="Bundles to concatenate as streamlines in the hdf5. "
-                        "Must correspond to the filenames present "
-                        "in each subject's 'bundles' folder in dwi_ml_ready.\n"
-                        "If none is given, we will take all the files in the "
-                        "'bundles' folder.")
-    p.add_argument('--enforce_bundles_presence', type=bool, default=True,
-                   help='If true, the process will stop if one bundle is '
+    p.add_argument('--enforce_files_presence', type=bool, default=True,
+                   help='If true, the process will stop if one file is '
                         'missing for a subject. Default: True')
     p.add_argument('--std_mask',
                    help="Mask defining the voxels used for data "
@@ -141,34 +134,46 @@ def main():
                                                         args.force, args.name)
 
     # Check that all groups contain both "type" and "files" sub-keys
-    _check_groups_config(groups_config)
+    volume_groups, streamline_groups = _check_groups_config(groups_config)
 
     # Check that all files exist
-    _check_files_presence(args, chosen_subjs, groups_config,
-                          dwi_ml_ready_folder)
-
-    logging.info("  ==== Starting database creation === \n"
-                 "  We will be creating a HDF5 database with bundles ({}) and "
-                 "groups: \n {}".format(args.bundles, groups_config))
+    if args.enforce_files_presence:
+        _check_files_presence(args, chosen_subjs, groups_config,
+                              dwi_ml_ready_folder)
 
     # Create dataset from config and save
     _add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
                                hdf5_filename, dwi_ml_ready_folder,
-                               training_subjs, validation_subjs)
+                               training_subjs, validation_subjs,
+                               volume_groups, streamline_groups)
 
 
 def _check_groups_config(groups_config):
+    volume_groups = []
+    streamline_groups = []
     for group in groups_config.keys():
         if 'type' not in groups_config[group]:
             raise KeyError("Group {}'s type was not defined. It should be "
-                           "the group type. So far, the only type implemented "
-                           "is 'volume'. See the doc for a groups_config.json "
-                           "example.".format(group))
+                           "the group type (either 'volume' or "
+                           "'streamlines'). See the doc for a "
+                           "groups_config.json example.".format(group))
         if 'files' not in groups_config[group]:
             raise KeyError("Group {}'s files were not defined. It should list "
                            "the files to load and concatenate for this group. "
                            "See the doc for a groups_config.json example."
                            .format(group))
+        if groups_config[group]['type'] == 'volume':
+            volume_groups.append(group)
+        elif groups_config[group]['type'] == 'streamlines':
+            streamline_groups.append(group)
+        else:
+            raise ValueError("Group {}'s type should be one of volume or "
+                             "streamlines but got {}"
+                             .format(group, groups_config[group]['type']))
+
+    logging.info("Volume groups: {}".format(volume_groups))
+    logging.info("Streamline groups: {}".format(streamline_groups))
+    return volume_groups, streamline_groups
 
 
 def _initialize_hdf5_database(database_path, force, name):
@@ -203,9 +208,7 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
      - the bundles
     """
     logging.debug("   Verifying files presence")
-
-    # concatenating file_lists from all groups files:
-    # See the doc for more explanation.
+    # concatenating files from all groups files:
     config_file_list = sum(nested_lookup('files', groups_config), [])
 
     for subj_id in chosen_subjs:
@@ -227,36 +230,11 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
                                         "found for subject {}!"
                                         .format(f, subj_id))
 
-        # Find streamlines
-        bundles_dir = subj_input_dir.joinpath("bundles")
-        if args.bundles is None:
-            # Take everything found in subject bundle folder
-            bundles = [str(p) for p in bundles_dir.glob('*')]
-            if len(bundles) == 0:
-                raise ValueError("No bundle found in the bundles folder for "
-                                 "subject {}!".format(subj_id))
-        else:
-            for bundle_name in args.bundles:
-                # Completing name
-                # (for instance if no extension was given)
-                # (or to allow suffixes, ex: OL could become OL_m)
-                bundle_name = str(bundles_dir.joinpath(bundle_name + '*'))
-                bundle_complete_name = glob.glob(bundle_name)
-                if len(bundle_complete_name) == 0 & \
-                        args.enforce_bundles_presence:
-                    raise FileNotFoundError("Bundle {} was not found for "
-                                            "subject {}!"
-                                            .format(bundle_name, subj_id))
-                elif len(bundle_complete_name) > 1:
-                    raise ValueError("More than one file with name {} for "
-                                     "subject {}. Clean your bundles folder "
-                                     "or be more specific in your bundles "
-                                     "list.".format(bundle_name, subj_id))
-
 
 def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                groups_config: Dict, hdf5_dir, hdf5_filename,
-                               dwi_ml_dir, training_subjs, validation_subjs):
+                               dwi_ml_dir, training_subjs, validation_subjs,
+                               volume_groups, streamline_groups):
     """
     Generate a dataset from a group of dMRI subjects with multiple bundles.
     All data from each group are concatenated.
@@ -270,7 +248,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
     hdf5_file_path = hdf5_dir.joinpath("{}.hdf5".format(hdf5_filename))
     with h5py.File(hdf5_file_path, 'w') as hdf_file:
         # Save version and configuration
-        hdf_file.attrs['version'] = 1
+        hdf_file.attrs['version'] = HDF_DATABASE_VERSION
         now = datetime.datetime.now()
         hdf_file.attrs['data_and_time'] = now.strftime('%d %B %Y %X')
         hdf_file.attrs['chosen_subjs'] = chosen_subjs
@@ -282,10 +260,6 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             hdf_file.attrs['step_size'] = args.step_size
         else:
             hdf_file.attrs['step_size'] = 'Not defined by user'
-        if args.bundles is not None:
-            hdf_file.attrs['bundles'] = [b for b in args.bundles]
-        else:
-            hdf_file.attrs['bundles'] = "All bundles in subjects's folders"
         hdf_file.attrs['space'] = args.space
 
         # Add data one subject at the time
@@ -320,65 +294,79 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
 
             # Add the subj data based on groups in the json config file
             # (inputs and others. All nifti)
-            for group in groups_config:
-                logging.info("       - Processing group '{}'...".format(group))
+            group_header = None
+            for group in volume_groups:
+                logging.info("       - Processing volume group '{}'..."
+                             .format(group))
                 file_list = groups_config[group]['files']
-                group_data, group_affine, group_header = process_group(
-                    group, file_list, args.save_intermediate, subj_input_dir,
-                    subj_intermediate_path, subj_std_mask_data,
-                    args.independent_modalities)
-                logging.debug('      *Done. Now creating dataset from group.')
+
+                group_data, group_affine, group_header = process_volumes(
+                    group, file_list, args.save_intermediate,
+                    subj_input_dir, subj_intermediate_path,
+                    subj_std_mask_data, args.independent_modalities)
+                logging.debug('      *Done. Now creating dataset from '
+                              'group.')
                 hdf_group = subj_hdf.create_group(group)
                 hdf_group.create_dataset('data', data=group_data)
                 logging.debug('      *Done.')
 
                 # Saving data information.
                 subj_hdf[group].attrs['affine'] = group_affine
-                subj_hdf[group].attrs['type'] = groups_config[group]['type']
+                subj_hdf[group].attrs['type'] = \
+                    groups_config[group]['type']
 
-            # Add the streamlines data
-            # Header is the last group header if .tck, or 'same' if .trk
-            logging.info('       - Processing bundles...')
-            sft, lengths = process_streamlines(
-                subj_input_dir.joinpath("bundles"), args.bundles, group_header,
-                args.step_size, space, args.save_intermediate,
-                subj_intermediate_path)
-            streamlines = sft.streamlines
+            for group in streamline_groups:
 
-            if streamlines is None:
-                logging.warning('Careful! Total tractogram for subject {} '
-                                'contained no streamlines!'.format(subj_id))
-            else:
-                streamlines_group = subj_hdf.create_group('streamlines')
-                streamlines_group.attrs['type'] = 'streamlines'
+                # Add the streamlines data
+                logging.info('       - Processing bundles...')
 
-                # The hdf5 can only store numpy arrays (it is actually the
-                # reason why it can fetch only precise streamlines from their
-                # ID). We need to deconstruct the sft and store all its data
-                # separately to allow reconstructing it later.
-                (a, d, vs, vo) = sft.space_attributes
-                streamlines_group.attrs['space'] = str(sft.space)
-                streamlines_group.attrs['affine'] = a
-                streamlines_group.attrs['dimensions'] = d
-                streamlines_group.attrs['voxel_sizes'] = vs
-                streamlines_group.attrs['voxel_order'] = vo
+                if group_header is None:
+                    logging.debug("No group_header! This means no 'volume' "
+                                  "group was added in the config_file. If "
+                                  "all bundles are .trk, we can use ref "
+                                  "'same' but if some bundles were .tck, we "
+                                  "need a ref!")
+                sft, lengths = process_streamlines(
+                    subj_input_dir, group, groups_config[group]['files'],
+                    group_header, args.step_size, space,
+                    args.save_intermediate, subj_intermediate_path)
+                streamlines = sft.streamlines
 
-                if len(sft.data_per_point) > 0:
-                    logging.warning('sft contained data_per_point. Data not '
-                                    'kept.')
-                if len(sft.data_per_streamline) > 0:
-                    logging.warning('sft contained data_per_streamlines. '
-                                    'Data not kept.')
+                if streamlines is None:
+                    logging.warning('Careful! Total tractogram for subject {} '
+                                    'contained no streamlines!'
+                                    .format(subj_id))
+                else:
+                    streamlines_group = subj_hdf.create_group('streamlines')
+                    streamlines_group.attrs['type'] = 'streamlines'
 
-                # Accessing private Dipy values, but necessary.
-                streamlines_group.create_dataset('data',
-                                                 data=streamlines._data)
-                streamlines_group.create_dataset('offsets',
-                                                 data=streamlines._offsets)
-                streamlines_group.create_dataset('lengths',
-                                                 data=streamlines._lengths)
-                streamlines_group.create_dataset('euclidean_lengths',
-                                                 data=lengths)
+                    # The hdf5 can only store numpy arrays (it is actually the
+                    # reason why it can fetch only precise streamlines from
+                    # their ID). We need to deconstruct the sft and store all
+                    # its data separately to allow reconstructing it later.
+                    (a, d, vs, vo) = sft.space_attributes
+                    streamlines_group.attrs['space'] = str(sft.space)
+                    streamlines_group.attrs['affine'] = a
+                    streamlines_group.attrs['dimensions'] = d
+                    streamlines_group.attrs['voxel_sizes'] = vs
+                    streamlines_group.attrs['voxel_order'] = vo
+
+                    if len(sft.data_per_point) > 0:
+                        logging.warning('sft contained data_per_point. Data '
+                                        'not kept.')
+                    if len(sft.data_per_streamline) > 0:
+                        logging.warning('sft contained data_per_streamlines. '
+                                        'Data not kept.')
+
+                    # Accessing private Dipy values, but necessary.
+                    streamlines_group.create_dataset('data',
+                                                     data=streamlines._data)
+                    streamlines_group.create_dataset('offsets',
+                                                     data=streamlines._offsets)
+                    streamlines_group.create_dataset('lengths',
+                                                     data=streamlines._lengths)
+                    streamlines_group.create_dataset('euclidean_lengths',
+                                                     data=lengths)
 
     logging.info("Saved dataset : {}".format(hdf5_file_path))
 

@@ -4,8 +4,6 @@ from argparse import RawTextHelpFormatter
 import logging
 from os import path
 
-import numpy as np
-
 from dwi_ml.data.dataset.multi_subject_containers import (
     LazyMultiSubjectDataset, MultiSubjectDataset)
 
@@ -25,7 +23,7 @@ def parse_args():
 
 
 def test_non_lazy():
-    print("**========= NON-LAZY =========")
+    print("\n\n**========= NON-LAZY =========\n\n")
     fake_dataset = MultiSubjectDataset(args.hdf5_filename, 'training_subjs')
     fake_dataset.load_data()
     print("**Created a MultiSubjectDataset and loaded training set. "
@@ -44,10 +42,10 @@ def test_non_lazy():
           "        First streamline as sft: {} \n"
           .format(subj0, subj0.subject_id, subj0.volume_groups,
                   subj0.mri_data_list, subj0.mri_data_list[0]._data.shape,
-                  subj0.streamline_group,
-                  len(subj0.sft_data.streamlines),
-                  subj0.sft_data.streamlines[0][0],
-                  subj0.sft_data.from_chosen_streamlines(0).streamlines[0][0]))
+                  subj0.streamline_groups,
+                  len(subj0.sft_data_list[0].streamlines),
+                  subj0.sft_data_list[0].streamlines[0][0],
+                  subj0.sft_data_list[0].from_chosen_streamlines(0).streamlines[0][0]))
 
     subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor from subject 0, volume 0: \n"
@@ -81,9 +79,9 @@ def test_lazy():
           .format(subj0, subj0.hdf_handle, subj0.subject_id,
                   subj0.volume_groups,
                   subj0.mri_data_list, subj0.mri_data_list[0]._data,
-                  subj0.streamline_group, subj0.sft_data.streamlines,
-                  subj0.sft_data.streamlines.get_array_sequence()[0][0],
-                  subj0.sft_data.from_chosen_streamlines(0).streamlines[0][0]))
+                  subj0.streamline_groups, subj0.sft_data_list[0].streamlines,
+                  subj0.sft_data_list[0].streamlines[0][0],
+                  subj0.sft_data_list[0].from_chosen_streamlines(0).streamlines[0][0]))
 
     subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor: subject 0, volume 0. \n"
@@ -101,7 +99,7 @@ if __name__ == '__main__':
         raise ValueError("The hdf5 file ({}) was not found!"
                          .format(args.hdf5_filename))
 
-    logging.basicConfig(level='INFO')
+    logging.basicConfig(level='DEBUG')
 
     test_non_lazy()
     print('\n\n')

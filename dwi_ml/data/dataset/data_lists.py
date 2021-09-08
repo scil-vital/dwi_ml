@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from typing import List
 
 from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
                                                            SubjectData,
@@ -20,7 +21,6 @@ class DataListForTorchAbstract(object):
         # Others must fit.
         self.feature_sizes = []  # type: List[int]
         self.volume_groups = []  # type: List[str]
-        self.streamline_group = None  # type : str
 
     def _set_feature_sizes(self, log):
         """

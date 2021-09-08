@@ -444,12 +444,12 @@ class BatchStreamlinesSampler(Sampler):
                         if self.step_size:
                             # batch_size is in mm.
                             sample_heaviness = \
-                                subj_data.sft_data.streamlines.lengths_mm[
+                                subj_data.sft_data_list.streamlines.lengths_mm[
                                     subj_chosen_global_ids]
                         else:
                             # batch size in in number of points
                             sample_heaviness = \
-                                subj_data.sft_data.streamlines.lengths[
+                                subj_data.sft_data_list.streamlines.lengths[
                                     subj_chosen_global_ids]
 
                         # If batch_size has been passed, taking a little less
@@ -589,7 +589,7 @@ class BatchStreamlinesSampler(Sampler):
             subj_data = self.data_source.get_subject_data(subj)
 
             # Get streamlines as sft
-            sft = subj_data.sft_data.from_chosen_streamlines(s_ids)
+            sft = subj_data.sft_data_list.from_chosen_streamlines(s_ids)
 
             # Resampling streamlines to a fixed step size
             self.log.debug("            Resampling (if True)")

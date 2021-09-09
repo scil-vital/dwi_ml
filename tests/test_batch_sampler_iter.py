@@ -4,7 +4,6 @@ from argparse import RawTextHelpFormatter
 import logging
 from os import path
 
-import numpy as np
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import (

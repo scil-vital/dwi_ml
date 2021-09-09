@@ -82,11 +82,11 @@ class MultiSubjectDatasetAbstract(Dataset):
         # type will be dwi_ml.data.dataset.data_list.DataListForTorch or,
         # in lazy version, LazyDataListForTorch
         self.data_list = None
-        self.volume_groups = None
-        self.streamline_groups = None
-        self.streamline_id_slice_per_subj = None
-        self.total_streamlines = None
-        self.streamline_lengths_mm = None
+        self.volume_groups = [str]
+        self.streamline_groups = [str]
+        self.streamline_ids_per_subj = [slice]
+        self.total_streamlines = [int]
+        self.streamline_lengths_mm = [list]
 
     @property
     def attributes(self) -> Dict[str, Any]:
@@ -153,7 +153,7 @@ class MultiSubjectDatasetAbstract(Dataset):
 
             # Build empty data_list (lazy or not) and initialize values
             self.data_list = self._build_data_list(hdf_file)
-            self.streamline_id_slice_per_subj = \
+            self.streamline_ids_per_subj = \
                 [defaultdict(slice) for _ in self.streamline_groups]
             self.total_streamlines = [0 for _ in self.streamline_groups]
             streamline_lengths_mm_list = [[] for _ in self.streamline_groups]
@@ -212,7 +212,7 @@ class MultiSubjectDatasetAbstract(Dataset):
                        .format(n_streamlines))
 
         # Assigning these id in the dict for this group
-        self.streamline_id_slice_per_subj[group_idx][subj_idx] = \
+        self.streamline_ids_per_subj[group_idx][subj_idx] = \
             slice(self.total_streamlines[group_idx],
                   self.total_streamlines[group_idx] + n_streamlines)
 
@@ -247,9 +247,6 @@ class MultiSubjectDatasetAbstract(Dataset):
         """Note. Device is not important for non-lazy version but keeping the
         same signature"""
         raise NotImplementedError
-
-    def __len__(self):
-        return self.total_streamlines
 
     def __getitem__(self, idx: Tuple[int, int]):
         """

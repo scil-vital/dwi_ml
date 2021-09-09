@@ -123,7 +123,7 @@ memory:
   avoid_cpu_computations: True
   # num_cpu_workers: int
   #     Number of parallel CPU workers.
-  num_cpu_workers: 1
+  num_cpu_workers: 0
   # worker_interpolation: bool
   #     If set, if using num_cpu_workers > 0, interpolation will be done on CPU
   #     by the workers instead of on the main thread using the chosen device.

@@ -114,9 +114,8 @@ class BatchStreamlinesSampler(Sampler):
         data_source : MultiSubjectDataset or LazyMultiSubjectDataset
             Dataset to sample from.
         streamline_group_name: str
-            The name of the group to use to load the sequences. Probably
-            'streamlines'. Should exist for all subjects in the
-            MultiSubjectData.
+            The name of the group to use to load the sequences among all
+            streamline_groups in the data_source.
         batch_size : int
             Number of required points in a batch. This will be approximated as
             the final batch size depends on data augmentation (streamline
@@ -216,6 +215,10 @@ class BatchStreamlinesSampler(Sampler):
         self.step_size = step_size
         self.avoid_cpu_computations = avoid_cpu_computations
         self.normalize_directions = normalize_directions
+
+        # Find idx of streamline group
+        self.streamline_group = self.data_source.streamline_groups.index(
+            self.streamline_group_name)
 
         # Set device
         if avoid_cpu_computations and torch.cuda.is_available():
@@ -340,7 +343,10 @@ class BatchStreamlinesSampler(Sampler):
             tractogram).
         """
         # This is the list of all possible streamline ids
-        global_streamlines_ids = np.arange(len(self.data_source))
+        global_streamlines_ids = np.arange(
+            self.data_source.total_streamlines[self.streamline_group])
+        ids_per_subjs = \
+            self.data_source.streamline_ids_per_subj[self.streamline_group]
 
         # This contains one bool per streamline:
         #   1 = this streamline has not been used yet.
@@ -356,8 +362,7 @@ class BatchStreamlinesSampler(Sampler):
             # Weight subjects by their number of remaining streamlines
             streamlines_per_subj = np.array(
                 [np.sum(global_unused_streamlines[subj_id_slice])
-                 for _, subj_id_slice in
-                 self.data_source.streamline_id_slice_per_subj.items()])
+                 for _, subj_id_slice in ids_per_subjs.items()])
             assert (np.sum(streamlines_per_subj) ==
                     np.sum(global_unused_streamlines)), \
                 "Unexpected error, the total number of streamlines per " \
@@ -384,8 +389,7 @@ class BatchStreamlinesSampler(Sampler):
                     size=n_subjects, replace=False, p=weights)
             else:
                 # Sampling from all subjects
-                sampled_subjs = \
-                    self.data_source.streamline_id_slice_per_subj.keys()
+                sampled_subjs = ids_per_subjs.keys()
                 n_subjects = len(sampled_subjs)
             self.log.debug('    Sampled subjects for this batch: {}'
                            .format(sampled_subjs))
@@ -414,8 +418,7 @@ class BatchStreamlinesSampler(Sampler):
                 for subj in sampled_subjs:
                     # Get the global streamline ids corresponding to this
                     # subject
-                    subj_id_slice = \
-                        self.data_source.streamline_id_slice_per_subj[subj]
+                    subj_id_slice = ids_per_subjs[subj]
 
                     # We will continue iterating on this subject until we
                     # break (i.e. when we reach the maximum batch size for this
@@ -425,7 +428,7 @@ class BatchStreamlinesSampler(Sampler):
                         # Find streamlines that have not been used yet.
                         subj_unused_ids_in_global = np.flatnonzero(
                             global_unused_streamlines[subj_id_slice]) + \
-                            subj_id_slice.start
+                                                    subj_id_slice.start
 
                         self.log.debug("    Available streamlines for this "
                                        "subject: {}"
@@ -441,15 +444,17 @@ class BatchStreamlinesSampler(Sampler):
                             subj_unused_ids_in_global, CHUNK_SIZE)
 
                         subj_data = self.data_source.get_subject_data(subj)
+                        subj_sft_data = \
+                            subj_data.sft_data_list[self.streamline_group]
                         if self.step_size:
                             # batch_size is in mm.
                             sample_heaviness = \
-                                subj_data.sft_data.streamlines.lengths_mm[
+                                subj_sft_data.streamlines.lengths_mm[
                                     subj_chosen_global_ids]
                         else:
                             # batch size in in number of points
                             sample_heaviness = \
-                                subj_data.sft_data.streamlines.lengths[
+                                subj_sft_data.streamlines.lengths[
                                     subj_chosen_global_ids]
 
                         # If batch_size has been passed, taking a little less
@@ -544,6 +549,8 @@ class BatchStreamlinesSampler(Sampler):
             self.streamlines_data_preparation(streamline_ids_per_subj)
 
         if self.avoid_cpu_computations:
+            self.log.debug("            Not computing directions because user "
+                           "prefers to do it later on GPU.")
             return batch_streamlines, final_s_ids_per_subj
         else:
             directions = self.compute_and_normalize_directions(
@@ -570,29 +577,31 @@ class BatchStreamlinesSampler(Sampler):
         -------
         batch_streamlines: List[np.array]
             The new streamlines after data augmentation
-        final_streamline_ids_per_subj: Dict[int, slice]
+        final_s_ids_per_subj: Dict[int, slice]
             The new streamline ids per subj in this augmented batch.
         """
-
-        self.log.debug("        Processing data preparation for streamlines "
-                       "{}:".format(streamline_ids_per_subj))
 
         # The batch's streamline ids will change throughout processing because
         # of data augmentation, so we need to do it subject by subject to
         # keep track of the streamline ids. These final ids will correspond to
         # the loaded, processed streamlines, not to the ids in the hdf5 file.
-        final_streamline_ids_per_subj = defaultdict(slice)
+        final_s_ids_per_subj = defaultdict(slice)
         batch_streamlines = []
         for subj, s_ids in streamline_ids_per_subj:
             self.log.debug("        => Subj: {}".format(subj))
 
+            self.log.debug(
+                "          Processing data preparation for streamlines ids:\n"
+                "{}".format(s_ids))
+
             subj_data = self.data_source.get_subject_data(subj)
+            subj_sft_data = subj_data.sft_data_list[self.streamline_group]
 
             # Get streamlines as sft
-            sft = subj_data.sft_data.from_chosen_streamlines(s_ids)
+            sft = subj_sft_data.from_chosen_streamlines(s_ids)
 
             # Resampling streamlines to a fixed step size
-            self.log.debug("            Resampling (if True)")
+            self.log.debug("            Resampling: {}".format(self.step_size))
             if self.step_size:
                 # Note that we could skip resampling if it had already the same
                 # step size, but computing current step size is not straight-
@@ -606,8 +615,10 @@ class BatchStreamlinesSampler(Sampler):
             # Adding noise to coordinates
             # Noise is considered in mm so we need to make sure the sft is in
             # rasmm space
-            self.log.debug("            Adding noise (if True)")
-            if self.noise_gaussian_size and self.noise_gaussian_size > 0:
+            add_noise = bool(self.noise_gaussian_size and
+                             self.noise_gaussian_size > 0)
+            self.log.debug("            Adding noise: {}".format(add_noise))
+            if add_noise:
                 sft.to_rasmm()
                 sft = add_noise_to_streamlines(sft,
                                                self.noise_gaussian_size,
@@ -617,8 +628,9 @@ class BatchStreamlinesSampler(Sampler):
             # Splitting streamlines
             # This increases the batch size, but does not change the total
             # length
-            self.log.debug("            Splitting (if True)")
-            if self.split_ratio and self.split_ratio > 0:
+            do_split = bool(self.split_ratio and self.split_ratio > 0)
+            self.log.debug("            Splitting: {}".format(do_split))
+            if do_split:
                 all_ids = np.arange(len(sft))
                 n_to_split = int(np.floor(len(sft) * self.split_ratio))
                 split_ids = self.np_rng.choice(all_ids, size=n_to_split,
@@ -626,8 +638,9 @@ class BatchStreamlinesSampler(Sampler):
                 sft = split_streamlines(sft, self.np_rng, split_ids)
 
             # Reversing streamlines
-            self.log.debug("            Reversing (if True)")
-            if self.reverse_ratio and self.reverse_ratio > 0:
+            do_reverse = self.reverse_ratio and self.reverse_ratio > 0
+            self.log.debug("            Reversing: {}".format(do_reverse))
+            if do_reverse:
                 ids = np.arange(len(sft))
                 self.np_rng.shuffle(ids)
                 reverse_ids = ids[:int(len(ids) * self.reverse_ratio)]
@@ -639,7 +652,7 @@ class BatchStreamlinesSampler(Sampler):
             # Remember the indices of this subject's (augmented) streamlines
             ids_start = len(batch_streamlines)
             ids_end = ids_start + len(sft)
-            final_streamline_ids_per_subj[subj] = slice(ids_start, ids_end)
+            final_s_ids_per_subj[subj] = slice(ids_start, ids_end)
 
             # Add all (augmented) streamlines to the batch
             # What we want is the streamline coordinates, to eventually get
@@ -647,7 +660,7 @@ class BatchStreamlinesSampler(Sampler):
             sft.to_vox()
             batch_streamlines.extend(sft.streamlines)
 
-            return batch_streamlines, final_streamline_ids_per_subj
+            return batch_streamlines, final_s_ids_per_subj
 
     def project_specific_data_augmentation(self, sft: StatefulTractogram):
         """Please override in your child class if you want to do more than
@@ -669,8 +682,7 @@ class BatchStreamlinesSampler(Sampler):
             - Computing the directions from streamlines coordinates
             - Normalization of the directions.
         """
-        self.log.debug("            Computing and normalizing directions "
-                       "(if True)")
+        self.log.debug("            Computing and normalizing directions ")
 
         # Getting directions
         batch_directions = [torch.as_tensor(s[1:] - s[:-1],
@@ -738,8 +750,6 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         self.input_group_name = input_group_name
 
         # Find group index in the data_source
-        # Returns the first appearance.
-        # toDo If the group is present twice, no error. ok?
         idx = self.data_source.volume_groups.index(input_group_name)
         self.input_group_idx = idx
 

@@ -266,9 +266,11 @@ def check_all_experiment_parameters(conf: dict):
         conf['data_augmentation']['reverse_ratio'])
 
     # Input:
-    all_params['neighborhood_type, neighborhood_radius'] = check_neighborhood(
+    (n_type, n_radius) = check_neighborhood(
         conf['input']['neighborhood']['sphere_radius'],
         conf['input']['neighborhood']['grid_radius'])
+    all_params['neighborhood_type'] = n_type
+    all_params['neighborhood_radius'] = n_radius
     all_params['num_previous_dirs'] = check_previous_dir(
         conf['input']['num_previous_dirs'])
 

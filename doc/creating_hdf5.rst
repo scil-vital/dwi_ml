@@ -23,15 +23,17 @@ Expected json config for the groups in your hdf5:
             "files": ["dwi/dwi_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz"]
              },
         "group2": {
-            ...
+            "type": "streamlines",
+            "files": ["bundles/bundle1.trk", "bundles/bundle2.trk"]
              }
     }
 
-The group names could be 'input_volume', 'target_volume', 'target_directions', or anything. Make sure your training scripts and your model'sbatch_sampler use the same keys. The groups 'files' must exist in every subject folder inside dwi_ml_ready. The groups 'type' must be recognized in dwi_ml. Currently, accepted datatype is:
+The group names could be 'input_volume', 'target_volume', 'target_directions', or anything. Make sure your training scripts and your model's batch_sampler use the same keys. The groups 'files' must exist in every subject folder inside dwi_ml_ready. The groups 'type' must be recognized in dwi_ml. Currently, accepted datatype are:
 
     - 'volume': for instance, a dwi, an anat, mask, t1, fa, etc.
+    - 'streamlines': for instance, a .trk, .tck file (anything accepted by Dipy's Stateful Tractogram).
 
-Currently, only one group of streamlines is accepted for your data, and thus the streamlines are not integreated in the config file but are considered separately. During the data creation, see the option --bundles.
+The bundles from each group of streamlines will be concatenated in the hdf5. If no bundles are present ("files": []), we will use all files in the 'bundles' folder.
 
 Creating the hdf5
 *****************

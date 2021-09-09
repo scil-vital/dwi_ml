@@ -750,8 +750,6 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         self.input_group_name = input_group_name
 
         # Find group index in the data_source
-        # Returns the first appearance.
-        # toDo If the group is present twice, no error. ok?
         idx = self.data_source.volume_groups.index(input_group_name)
         self.input_group_idx = idx
 

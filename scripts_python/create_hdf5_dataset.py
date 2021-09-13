@@ -315,6 +315,10 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 subj_hdf[group].attrs['type'] = \
                     groups_config[group]['type']
 
+                # Adding the shape info separately to access it without loading
+                # the data (useful for lazy data!).
+                subj_hdf[group].attrs['nb_features'] = group_data.shape[-1]
+
             for group in streamline_groups:
 
                 # Add the streamlines data

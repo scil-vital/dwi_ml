@@ -41,11 +41,11 @@ def test_non_lazy():
           "        First streamline: {}... \n"
           "        First streamline as sft: {} \n"
           .format(subj0, subj0.subject_id, subj0.volume_groups,
-                  subj0.mri_data_list, subj0.mri_data_list[0]._data.shape,
+                  subj0._mri_data_list, subj0._mri_data_list[0]._data.shape,
                   subj0.streamline_groups,
-                  len(subj0.sft_data_list[0].streamlines),
-                  subj0.sft_data_list[0].streamlines[0][0],
-                  subj0.sft_data_list[0].from_chosen_streamlines(0).streamlines[0][0]))
+                  len(subj0._sft_data_list[0].streamlines),
+                  subj0._sft_data_list[0].streamlines[0][0],
+                  subj0._sft_data_list[0].from_chosen_streamlines(0).streamlines[0][0]))
 
     subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
     print("**Get_subject_mri_data_as_tensor from subject 0, volume 0: \n"

@@ -30,6 +30,7 @@ from dwi_ml.data.dataset.data_lists import (
     DataListForTorch, LazyDataListForTorch)
 from dwi_ml.data.dataset.single_subject_containers import (
     SubjectDataAbstract, SubjectData, LazySubjectData)
+from dwi_ml.data.dataset.utils import find_groups_info
 from dwi_ml.utils import TqdmLoggingHandler
 
 
@@ -84,9 +85,12 @@ class MultiSubjectDatasetAbstract(Dataset):
         self.data_list = None
         self.volume_groups = [str]
         self.streamline_groups = [str]
+        self.nb_features = [int]
         self.streamline_ids_per_subj = [slice]
         self.total_streamlines = [int]
         self.streamline_lengths_mm = [list]
+
+        self.is_lazy = None
 
     @property
     def attributes(self) -> Dict[str, Any]:
@@ -96,37 +100,11 @@ class MultiSubjectDatasetAbstract(Dataset):
             'set': self.set,
             'taskman_managed': self.taskman_managed,
             'volume_groups': self.volume_groups,
+            'nb_features': self.nb_features,
             'streamline_groups': self.streamline_groups,
+            'is_lazy': self.is_lazy
         }
         return all_params
-
-    def find_group_infos(self, hdf_file, hdf_subj0: str):
-        """
-        Separate subject's hdf5 groups intro volume groups or streamline groups
-        based on their 'type' attrs.
-        """
-        volume_groups = []
-        streamline_groups = []
-
-        groups = hdf_file[hdf_subj0]
-        for group in groups:
-            group_type = hdf_file[hdf_subj0][group].attrs['type']
-            if group_type == 'volume':
-                volume_groups.append(group)
-            elif group_type == 'streamlines':
-                streamline_groups.append(group)
-            else:
-                raise NotImplementedError(
-                    "So far, you can only add volume groups in the "
-                    "groups_config.json. As for the streamlines, they are "
-                    "added through the option --bundles. Please see the doc "
-                    "for a json file example. You tried to add data of type: "
-                    "{}".format(group_type))
-
-        self.log.info("Volume groups are: {}".format(volume_groups))
-        self.log.info("Streamline groups are: {}".format(streamline_groups))
-
-        return volume_groups, streamline_groups
 
     def load_data(self):
         """
@@ -142,11 +120,11 @@ class MultiSubjectDatasetAbstract(Dataset):
                                 .format(hdf_file.attrs["version"]))
 
             # Basing group names on the first subject
-            logging.debug("Loading the first subject (in a non-lazy way) to "
-                          "find data information such as feature sizes.")
+            logging.debug("Loading the first subject's group information. "
+                          "Others should fit")
             subject_keys = sorted(hdf_file.attrs[self.set])
-            self.volume_groups, self.streamline_groups = \
-                self.find_group_infos(hdf_file, subject_keys[0])
+            self.volume_groups, self.nb_features, self.streamline_groups = \
+                find_groups_info(hdf_file, subject_keys[0], self.log)
 
             logging.debug('hdf_file (subject) keys for the {} set '
                           'are: {}'.format(self.set, subject_keys))
@@ -167,7 +145,7 @@ class MultiSubjectDatasetAbstract(Dataset):
                 # passed so subject information will basically be empty.
                 self.log.debug('* Creating subject "{}": '.format(subject_id))
                 subj_data = self._init_subj_from_hdf(
-                    hdf_file, subject_id, self.volume_groups,
+                    hdf_file, subject_id, self.volume_groups, self.nb_features,
                     self.streamline_groups, self.log)
 
                 # Add subject to the list
@@ -231,7 +209,7 @@ class MultiSubjectDatasetAbstract(Dataset):
         raise NotImplementedError
 
     @staticmethod
-    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups,
+    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups, nb_features,
                             streamline_groups, log):
         raise NotImplementedError
 
@@ -279,15 +257,6 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
         # is_instance(data, LazyMultiSubjectDataset)
         self.is_lazy = False
 
-    @property
-    def attributes(self):
-        all_params = super().attributes
-        other_params = {
-            'is_lazy': self.is_lazy
-        }
-        all_params.update(other_params)
-        return all_params
-
     @staticmethod
     def _build_data_list(hdf_file):
         """ hdf_file not used. But this is used by load, and the lazy version
@@ -295,13 +264,11 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
         return DataListForTorch()
 
     @staticmethod
-    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups,
+    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups, nb_features,
                             streamline_groups, log):
-        """Non-lazy version: using the class's method init_from_hdf,
-        which already loads everyting. Encapsulating this call in a method
-        because the lazy version will skip the hdf_file to init subject."""
-        return SubjectData.init_from_hdf(subject_id, volume_groups,
-                                         streamline_groups, hdf_file, log)
+        return SubjectData.init_from_hdf(
+            subject_id, log, hdf_file,
+            (volume_groups, nb_features, streamline_groups))
 
     def get_subject_data(self, subj_idx: int) -> SubjectData:
         """Here, data_list is a DataListForTorch, and its elements are
@@ -349,7 +316,6 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
         all_params = super().attributes
         other_params = {
             'cache_size': self.cache_size,
-            'is_lazy': self.is_lazy
         }
         all_params.update(other_params)
         return all_params
@@ -361,15 +327,11 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
         return LazyDataListForTorch(hdf_file)
 
     @staticmethod
-    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups,
+    def _init_subj_from_hdf(hdf_file, subject_id, volume_groups, nb_features,
                             streamline_groups, log):
-        """Lazy version: not using hdf_file arg, so no hdf_handle is saved yet
-        and data is not loaded."""
-
-        hdf_file = None
-
-        return LazySubjectData.init_from_hdf(subject_id, volume_groups,
-                                             streamline_groups, hdf_file, log)
+        return LazySubjectData.init_from_hdf(
+            subject_id, log, hdf_file,
+            (volume_groups, nb_features, streamline_groups))
 
     def get_subject_data(self, item) -> LazySubjectData:
         """Contains both MRI data and streamlines. Here, data_list is a

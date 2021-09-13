@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import logging
+
+
 def find_groups_info(hdf_file, subj_id: str, log):
     """
     Separate subject's hdf5 groups intro volume groups or streamline groups
@@ -37,20 +40,20 @@ def compare_groups_info(volume_groups, nb_features, streamline_groups,
                         group_info):
     v, f, s = group_info
     if volume_groups != v:
-        raise Warning("Subject's hdf5 groups with attributes 'type' set as "
-                      "'volume' are not the same as expected with this "
-                      "dataset! Expected: {}. Found: {}"
-                      .format(v, volume_groups))
+        logging.warning("Subject's hdf5 groups with attributes 'type' set as "
+                        "'volume' are not the same as expected with this "
+                        "dataset! Expected: {}. Found: {}"
+                        .format(v, volume_groups))
     if nb_features != f:
-        raise Warning("Among subject's hdf5 groups with attributes 'type' set "
-                      " as 'volume', some data to not have the same number of "
-                      "features as expected for this dataset! Expected: {}. "
-                      "Found: {}".format(f, nb_features))
+        logging.warning("Among subject's hdf5 groups with attributes 'type' "
+                        "set as 'volume', some data to not have the same "
+                        "number of features as expected for this dataset! "
+                        "Expected: {}. Found: {}".format(f, nb_features))
     if streamline_groups != s:
-        raise Warning("Subject's hdf5 groups with attributes 'type' set as "
-                      "'streamlines' are not the same as expected with this "
-                      "dataset! Expected: {}. Found: {}"
-                      .format(s, streamline_groups))
+        logging.warning("Subject's hdf5 groups with attributes 'type' set as "
+                        "'streamlines' are not the same as expected with this "
+                        "dataset! Expected: {}. Found: {}"
+                        .format(s, streamline_groups))
 
 
 def prepare_groups_info(subject_id: str, log, hdf_file, group_info=None):

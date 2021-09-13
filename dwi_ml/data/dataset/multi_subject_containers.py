@@ -50,7 +50,7 @@ class MultisubjectSubset(Dataset):
 
         # The subjects data list will be either a SubjectsDataList or a
         # LazySubjectsDataList depending MultisubjectDataset.is_lazy.
-        self.subjs_list = None
+        self.subjs_data_list = None
 
         # To help the batch sampler: one value per streamline group
         self.streamline_ids_per_subj = []  # type: List[defaultdict[slice]]
@@ -61,7 +61,7 @@ class MultisubjectSubset(Dataset):
 
         # This is only used in the lazy case, cache_size > 0
         self.cache_size = cache_size
-        self._volume_cache_manager = None
+        self.volume_cache_manager = None
 
     @property
     def attributes(self) -> Dict[str, Any]:
@@ -96,8 +96,8 @@ class MultisubjectSubset(Dataset):
         return idx
 
     def get_volume_verify_cache(self, subj_idx: int, group_idx: int,
-                                device: torch.device = None,
-                                non_blocking: bool = False):
+                                device: torch.device = torch.device('cpu'),
+                                non_blocking: bool = False) -> torch.Tensor:
         """
         There will be one cache manager per subset. This could be moved to
         the MultiSubjectDatasetAbstract but easier to deal with here.
@@ -109,17 +109,17 @@ class MultisubjectSubset(Dataset):
 
         # First verifiy cache (if lazy)
         cache_key = str(subj_idx) + '.' + str(group_idx)
-        if self.subjs_list.is_lazy and self.cache_size > 0:
+        if self.subjs_data_list.is_lazy and self.cache_size > 0:
             # Parallel workers each build a local cache
             # (data is duplicated across workers, but there is no need to
             # serialize/deserialize everything)
-            if self._volume_cache_manager is None:
-                self._volume_cache_manager = \
+            if self.volume_cache_manager is None:
+                self.volume_cache_manager = \
                     SingleThreadCacheManager(self.cache_size)
 
             try:
                 # General case: Data is already cached
-                mri_data = self._volume_cache_manager[cache_key]
+                mri_data = self.volume_cache_manager[cache_key]
                 return mri_data
             except KeyError:
                 pass
@@ -127,14 +127,14 @@ class MultisubjectSubset(Dataset):
         # Either non-lazy or if lazy, data was not cached.
         mri_data = self._get_volume(subj_idx, group_idx, device, non_blocking)
 
-        if self.subjs_list.is_lazy and self.cache_size > 0:
+        if self.subjs_data_list.is_lazy and self.cache_size > 0:
             # Send volume_data on cache
-            self._volume_cache_manager[cache_key] = mri_data
+            self.volume_cache_manager[cache_key] = mri_data
 
         return mri_data
 
     def _get_volume(self, subj_idx: int, group_idx: int,
-                    device: torch.device = None,
+                    device: torch.device,
                     non_blocking: bool = False):
         """
         Contrary to get_volume_verify_cache, this does not send data to
@@ -142,11 +142,11 @@ class MultisubjectSubset(Dataset):
 
         Loads volume as a tensor.
         """
-        if self.subjs_list.is_lazy:
-            subj_data = self.subjs_list.open_handle_and_getitem(
+        if self.subjs_data_list.is_lazy:
+            subj_data = self.subjs_data_list.open_handle_and_getitem(
                 subj_idx)
         else:
-            subj_data = self.subjs_list[subj_idx]
+            subj_data = self.subjs_data_list[subj_idx]
 
         volume_data = subj_data.mri_data_list[group_idx].as_tensor
         volume_data.to(device=device, non_blocking=non_blocking)
@@ -162,16 +162,16 @@ class MultiSubjectDataset:
     Based on torch's dataset class. Provides functions for a DataLoader to
     iterate over data and process batches.
     """
-    def __init__(self, hdf5_filename: str, name: str = None,
-                 taskman_managed: bool = False, lazy: bool = False,
-                 cache_size: int = 0, **_):
+    def __init__(self, hdf5_filename: str, experiment_name: str,
+                 taskman_managed: bool, lazy: bool,
+                 cache_size: Union[int, None], **_):
         """
         Parameters
         ----------
         hdf5_filename: str
             Path to the hdf5 file containing the data.
-        name: str
-           Name of the dataset, optional.
+        experiment_name: str
+           Name of the dataset. If None, using the hdf5 file name.
         taskman_managed: bool
             Enable or disable que tqdm progress bar.
         lazy: bool
@@ -179,13 +179,17 @@ class MultiSubjectDataset:
             when asked explicitely. Non-lazy loads everything at once in the
             load_data method.
         cache_size: int
-            Only useful with the non-lazy data. NOTE: Real cache size will
-            actually be twice this value as the training and validation subsets
-            each have their cache.
+            Only useful with lazy data (else, you can set it to None.
+            Non-optional to ensure arg is there with lazy data). Size of the
+            cache in terms of number of length of the queue (i.e. number of
+            volumes).
+            NOTE: Real cache size will actually be twice this value as the
+            training and validation subsets each have their cache.
         """
         # Dataset info
         self.hdf5_path = hdf5_filename
-        self.name = name if name else os.path.basename(self.hdf5_path)
+        self.name = experiment_name if experiment_name else \
+            os.path.basename(self.hdf5_path)
 
         # Concerning the memory usage:
         self.taskman_managed = taskman_managed
@@ -275,7 +279,7 @@ class MultiSubjectDataset:
                       'are: {}'.format(subset.set_name, subject_keys))
 
         # Build empty data_list (lazy or not) and initialize values
-        subset.subjs_list = self._build_empty_data_list()
+        subset.subjs_data_list = self._build_empty_data_list()
         subset.streamline_ids_per_subj = \
             [defaultdict(slice) for _ in self.streamline_groups]
         subset.total_streamlines = [0 for _ in self.streamline_groups]
@@ -294,12 +298,12 @@ class MultiSubjectDataset:
 
             # Add subject to the list
             self.log.debug("Dataset: Adding subject to the list.")
-            subj_idx = subset.subjs_list.add_subject(subj_data)
+            subj_idx = subset.subjs_data_list.add_subject(subj_data)
 
             if subj_data.is_lazy:
                 self.log.debug("Dataset: Temporarily adding hdf handle to "
                                "subj to arrange streamlines.")
-                subj_data = subset.subjs_list[(subj_idx, hdf_file)]
+                subj_data = subset.subjs_data_list[(subj_idx, hdf_file)]
                 self.log.debug("--> Handle: {}".format(subj_data.hdf_handle))
 
             # Arrange streamlines

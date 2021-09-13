@@ -41,15 +41,13 @@ class DWIMLTrainer:
     def __init__(self,
                  batch_sampler_training: BatchStreamlinesSampler,
                  batch_sampler_validation: BatchStreamlinesSampler,
-                 model: MainModelAbstract,
-                 experiment_path: str, experiment_name: str,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
-                 max_epochs: int = None, max_batches_per_epoch: int = 10000,
-                 patience: int = None, device: torch.device = None,
-                 nb_cpu_workers: int = None, taskman_managed: bool = None,
-                 use_gpu: bool = None, comet_workspace: str = None,
-                 comet_project: str = None, from_checkpoint: bool = False,
-                 **_):
+                 model: MainModelAbstract, experiment_path: str,
+                 experiment_name: str, learning_rate: float,
+                 weight_decay: float, max_epochs: int,
+                 max_batches_per_epoch: int, patience: int,
+                 nb_cpu_workers: int, taskman_managed: bool, use_gpu: bool,
+                 comet_workspace: str, comet_project: str,
+                 from_checkpoint: bool, **_):
         """
         Parameters
         ----------
@@ -69,32 +67,32 @@ class DWIMLTrainer:
             Name of this experiment. This will also be the name that will
             appear online for comet.ml experiment.
         learning_rate: float
-            Learning rate. Default: 0.001 (torch's default)
+            Learning rate. Suggestion: 0.001 (torch's default)
         weight_decay: float
-            Add a weight decay penalty on the parameters. Default: 0.01.
+            Add a weight decay penalty on the parameters. Suggestion: 0.01.
             (torch's default).
         max_epochs: int
             Maximum number of epochs. Note that we supervise this maximum to
             make sure it is not too big for general usage. Epochs lengths will
             be capped at max_batches_per_epoch.
         max_batches_per_epoch: int
-            Maximum number of batches per epoch. Default: 10000.
+            Maximum number of batches per epoch. Exemple: 10000.
         patience: int
-            Use early stopping. Defines the number of epochs after which the
-            model should stop if the loss hasn't improved.
+            If not None, use early stopping. Defines the number of epochs after
+            which the model should stop if the loss hasn't improved.
         nb_cpu_workers: int
-            Number of parallel CPU workers.
+            Number of parallel CPU workers. Use 0 to avoid parallel threads.
         taskman_managed: bool
             If True, taskman manages the experiment. Do not output progress
             bars and instead output special messages for taskman.
         use_gpu: bool
             If true, use GPU device when possible instead of CPU.
-
+        comet_workspace: str
             Your comet workspace. If None, comet.ml will not be used. See our
             docs/Getting Started for more information on comet and its API key.
         comet_project: str
-             Optional. Send your experiment to a specific comet.ml project.
-             Otherwise will be sent to Uncategorized Experiments.
+             Send your experiment to a specific comet.ml project. If None, it
+             will be sent to Uncategorized Experiments.
         """
         # To developpers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
@@ -136,7 +134,6 @@ class DWIMLTrainer:
         self.current_epoch = 0
 
         # Memory:
-        self.device = device
         self.nb_cpu_workers = nb_cpu_workers
         self.taskman_managed = taskman_managed
         self.taskman_report = {
@@ -173,14 +170,26 @@ class DWIMLTrainer:
         htime = os.environ.get('HANGUP_TIME', None)
         if htime is not None:
             self.hangup_time = int(htime)
-            print('Will hang up at ' + htime)
+            logging.info('Will hang up at ' + htime)
 
-        # A voir....
         self.use_gpu = use_gpu
-        if self.use_gpu:
-            # Says error, but ok.
-            # toDo valid_batch_sampler.rng should be the same.
-            torch.cuda.manual_seed(self.train_batch_sampler.rng)
+        if use_gpu:
+            if torch.cuda.is_available():
+                self.device = torch.device('cuda')
+
+                # Setting the rng seed
+                if self.train_batch_sampler.rng != \
+                        self.valid_batch_sampler.rng:
+                    raise ValueError("Training and validation batch samplers "
+                                     "do not have the same rng. Please verify "
+                                     "the code.")
+                # If you see a hint error below, upgrade torch.
+                torch.cuda.manual_seed(self.train_batch_sampler.rng)
+            else:
+                raise ValueError("You chose GPU (cuda) device but it is not "
+                                 "available!")
+        else:
+            self.device = torch.device('cpu')
 
         # Setup monitors
         self.train_loss_monitor = ValueHistoryMonitor("Training loss")
@@ -437,8 +446,8 @@ class DWIMLTrainer:
 
             # (For taskman) Check if time is running out
             if self._should_quit(iter_timer):
-                print('Seems like I should quit, so I quit.')
-                print('Remaining: {:.0f} s'.format(
+                logging.info('Seems like I should quit, so I quit.')
+                logging.info('Remaining: {:.0f} s'.format(
                     self.hangup_time - time.time()))
                 self._update_taskman_report({'resubmit': True})
                 exit(2)
@@ -750,7 +759,7 @@ class DWIMLTrainer:
     def _update_taskman_report(self, updates):
         self.taskman_report.update(updates)
         self.taskman_report['time'] = time.time()
-        print('!taskman' + json.dumps(self.taskman_report), flush=True)
+        logging.info('!taskman' + json.dumps(self.taskman_report), flush=True)
 
     def _save_log_from_array(self, array: np.ndarray, fname: str):
         log_dir = os.path.join(self.experiment_dir, "logs")

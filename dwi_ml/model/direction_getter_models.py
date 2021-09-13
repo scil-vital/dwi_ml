@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch import Tensor
 from torch.distributions import Categorical, MultivariateNormal
-from torch.nn import (Linear, Dropout, ReLU, CosineSimilarity)
+from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
 from dwi_ml.model.main_models import ModelAbstract
@@ -102,7 +102,7 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
     h1_size = ceil(input_size / 2)
     h1 = Linear(input_size, h1_size)
     h2 = Linear(h1_size, output_size)
-    layers = [h1, h2]
+    layers = ModuleList([h1, h2])
 
     return layers
 
@@ -133,7 +133,12 @@ class AbstractDirectionGetterModel(ModelAbstract):
             self.dropout_sublayer = Dropout(self.dropout)
         else:
             self.dropout_sublayer = lambda x: x
+
         self.relu_sublayer = ReLU()
+
+    @property
+    def hyperparameters(self):
+        return {}
 
     @property
     def attributes(self):

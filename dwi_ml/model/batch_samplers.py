@@ -96,16 +96,13 @@ class BatchStreamlinesSampler(Sampler):
 
     def __init__(self, dataset: MultisubjectSubset,
                  streamline_group_name: str, batch_size: int, rng: int,
-                 n_subjects_per_batch: int = None, cycles: int = None,
-                 step_size: float = None, neighborhood_type: str = None,
-                 neighborhood_radius_vox: Union[int, float,
-                                                Iterable[float]] = None,
-                 split_streamlines_ratio: float = 0.,
-                 noise_gaussian_size: float = 0.,
-                 noise_gaussian_variability: float = 0.,
-                 reverse_streamlines_ratio: float = 0.5,
-                 avoid_cpu_computations: bool = None,
-                 normalize_directions: bool = True, **_):
+                 nb_subjects_per_batch: int, cycles: int,
+                 step_size: float, neighborhood_type: Union[str, None],
+                 neighborhood_radius: Union[int, float, Iterable[float], None],
+                 split_ratio: float, noise_gaussian_size: float,
+                 noise_gaussian_variability: float,
+                 reverse_ratio: float, wait_for_gpu: bool,
+                 normalize_directions: bool, **_):
         """
         Parameters
         ----------
@@ -115,58 +112,57 @@ class BatchStreamlinesSampler(Sampler):
             The name of the group to use to load the sequences among all
             streamline_groups in the data_source.
         batch_size : int
-            Number of required points in a batch. This will be approximated as
-            the final batch size depends on data augmentation (streamline
+            Number of required points in a batch. Batches will be approximated
+            as the final batch size depends on data augmentation (streamline
             cutting or resampling). Note that approximation of the number of
             streamlines to fit this batch size will depend on the type of
             step_size: fixed or compressed data.
         rng : int
             Seed for the random number generator.
-        n_subjects_per_batch : int
-            Optional; maximum number of subjects to be used in a single batch.
-            Depending on the model, this can avoid loading too many input
-            volumes at the same time, for example. If None, always sample
-            from all subjects.
+        nb_subjects_per_batch : int
+            Maximum number of subjects to be used in a single batch. Depending
+            on the model, this can avoid loading too many input volumes at the
+            same time, for example. If None, always sample from all subjects.
         cycles : int
-            Optional, but required if `n_subjects_per_batch` is given.
-            Number of batches re-using the same subjects (and thus the same
-            volumes) before sampling new ones.
+            Used if `nb_subjects_per_batch` is given. Number of batches
+            re-using the same subjects (and thus the same volumes) before
+            sampling new ones.
         step_size : float
             Constant step size that every streamline should have between points
             (in mm). If None, train on streamlines as they are (ex,
             compressed). Note that you probably already fixed a step size when
             creating your dataset, but you could use a different one here if
             you wish. [None]
-        neighborhood_type: str, One of 'axes', 'grid' or None
-            The type of neighborhood to add. If None, don't add any. See
+        neighborhood_type: str
+            The type of neighborhood to add. One of 'axes', 'grid' or None. If
+            None, don't add any. See
             dwi_ml.data.processing.space.Neighborhood for more information.
-        neighborhood_radius_vox : Union[int, float, Iterable[float]]
+        neighborhood_radius : Union[int, float, Iterable[float]]
             Add neighborhood points at the given distance (in voxels) in each
-            direction (nb_neighborhood_axes). [None]
+            direction (nb_neighborhood_axes). (Can be none)
                 - For a grid neighborhood: type must be int.
                 - For an axes neighborhood: type must be float. If it is an
                 iterable of floats, we will use a multi-radius neighborhood.
-        split_streamlines_ratio : float
+        split_ratio : float
             DATA AUGMENTATION: Percentage of streamlines to randomly split
             into 2, in each batch (keeping both segments as two independent
             streamlines).
             The reason for cutting is to help the ML algorithm to track from
             the middle of WM by having already seen half-streamlines. If you
-            are using interface seeding, this is not necessary. Default: 0.
+            are using interface seeding, this is not necessary.
         noise_gaussian_size : float
             DATA AUGMENTATION: Add random Gaussian noise to streamline
             coordinates with given variance. This corresponds to the std of the
             Gaussian. If step_size is not given, make sure it is smaller than
             your step size to avoid flipping direction. Ex, you could choose
             0.1 * step-size. Noise is truncated to +/- 2*noise_sigma and to
-            +/- 0.5 * step-size (if given). Default: 0.
+            +/- 0.5 * step-size (if given).
         noise_gaussian_variability: float
             DATA AUGMENTATION: If this is given, a variation is applied to the
             streamline_noise_gaussian_size to have more noisy streamlines and
             less noisy streamlines. This means that the real gaussian_size will
             be a random number between [size - variability, size + variability]
-            Default: 0.
-        reverse_streamlines_ratio: float
+        reverse_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
             the batch. You could want to reverse ALL your data and then use
             both the initial data and reversed data. But this would take twice
@@ -178,11 +174,11 @@ class BatchStreamlinesSampler(Sampler):
             time, we could use a flag and at each epoch, reverse those with
             unreversed flag. But that adds a bool for each streamline in your
             dataset and probably not so useful.
-        avoid_cpu_computations: bool
+        wait_for_gpu: bool
             If set, all computations that can be avoided in the batch sampler
             (which is computed on CPU) will be skipped and should be performed
-            by the user later. Ex: computing directions from the streamline
-            coordinates, computing input interpolation, etc.
+            by the user later on GPU. Ex: computing directions from the
+            streamline coordinates, computing input interpolation, etc.
         normalize_directions: bool
             If true, directions will be normalized. If the step size is fixed,
             it shouldn't make any difference. If streamlines are compressed,
@@ -199,30 +195,24 @@ class BatchStreamlinesSampler(Sampler):
                              "value, but got batch_size={}".format(batch_size))
 
         # Checking that n_volumes was given if cycles was given
-        if cycles and not n_subjects_per_batch:
+        if cycles and not nb_subjects_per_batch:
             raise ValueError("If `cycles` is defined, "
-                             "`n_subjects_per_batch` should be defined. Got: "
-                             "n_subjects_per_batch={}, cycles={}"
-                             .format(n_subjects_per_batch, cycles))
+                             "`nb_subjects_per_batch` should be defined. Got: "
+                             "nb_subjects_per_batch={}, cycles={}"
+                             .format(nb_subjects_per_batch, cycles))
 
         # Batch sampler variables
         self.dataset = dataset
         self.streamline_group_name = streamline_group_name
-        self.n_subjects_per_batch = n_subjects_per_batch
+        self.nb_subjects_per_batch = nb_subjects_per_batch
         self.cycles = cycles
         self.step_size = step_size
-        self.avoid_cpu_computations = avoid_cpu_computations
+        self.wait_for_gpu = wait_for_gpu
         self.normalize_directions = normalize_directions
 
         # Find idx of streamline group
         self.streamline_group = self.dataset.streamline_groups.index(
             self.streamline_group_name)
-
-        # Set device
-        if avoid_cpu_computations and torch.cuda.is_available():
-            self.device = torch.device('cuda')
-        else:
-            self.device = torch.device('cpu')
 
         # Set random numbers
         self.rng = rng
@@ -248,8 +238,8 @@ class BatchStreamlinesSampler(Sampler):
         # Data augmentation for streamlines:
         self.noise_gaussian_size = noise_gaussian_size
         self.noise_gaussian_variability = noise_gaussian_variability
-        self.split_ratio = split_streamlines_ratio
-        self.reverse_ratio = reverse_streamlines_ratio
+        self.split_ratio = split_ratio
+        self.reverse_ratio = reverse_ratio
         if self.split_ratio and not 0 <= self.split_ratio <= 1:
             raise ValueError('Split ratio must be a float between 0 and 1.')
         if self.reverse_ratio and not 0 <= self.reverse_ratio <= 1:
@@ -261,23 +251,23 @@ class BatchStreamlinesSampler(Sampler):
             raise ValueError("neighborhood type must be either 'axes', 'grid' "
                              "or None!")
         self.neighborhood_type = neighborhood_type
-        self.neighborhood_radius_vox = neighborhood_radius_vox
-        if self.neighborhood_type is None and neighborhood_radius_vox:
+        self.neighborhood_radius = neighborhood_radius
+        if self.neighborhood_type is None and neighborhood_radius:
             logging.warning("You have chosen not to add a neighborhood (value "
                             "None), but you have given a neighborhood radius. "
                             "Discarded.")
-        if self.neighborhood_type and neighborhood_radius_vox is None:
+        if self.neighborhood_type and neighborhood_radius is None:
             raise ValueError("You must provide neighborhood radius to add a "
                              "neighborhood.")
         self.neighborhood_points = prepare_neighborhood_information(
-            neighborhood_type, neighborhood_radius_vox)
+            neighborhood_type, neighborhood_radius)
 
         self.log = logging.getLogger()  # Gets the root logger
 
     @property
     def hyperparameters(self):
         hyperparameters = {
-            'neighborhood_radius_vox': self.neighborhood_radius_vox,
+            'neighborhood_radius': self.neighborhood_radius,
             'nb_neighbors': len(self.neighborhood_points) if
             self.neighborhood_points else None,
             'noise_gaussian_size': self.noise_gaussian_size,
@@ -298,11 +288,10 @@ class BatchStreamlinesSampler(Sampler):
         attrs = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'avoid_cpu_computations': self.avoid_cpu_computations,
-            'device': self.device,
+            'wait_for_gpu': self.wait_for_gpu,
             'batch_size': self.batch_size,
             'cycles': self.cycles,
-            'n_subjects_per_batch': self.n_subjects_per_batch,
+            'nb_subjects_per_batch': self.nb_subjects_per_batch,
             'type': type(self)
         }
         return attrs
@@ -374,25 +363,25 @@ class BatchStreamlinesSampler(Sampler):
                 break
 
             # Choose subjects from which to sample streamlines for this batch
-            if self.n_subjects_per_batch:
+            if self.nb_subjects_per_batch:
                 # Sampling first from subjects that were not seed a lot yet
                 weights = streamlines_per_subj / np.sum(streamlines_per_subj)
 
                 # Choosing only non-empty subjects
-                n_subjects = min(self.n_subjects_per_batch,
+                nb_subjects = min(self.nb_subjects_per_batch,
                                  np.count_nonzero(weights))
                 sampled_subjs = self.np_rng.choice(
-                    np.arange(len(self.dataset.subjs_list)),
-                    size=n_subjects, replace=False, p=weights)
+                    np.arange(len(self.dataset.subjs_data_list)),
+                    size=nb_subjects, replace=False, p=weights)
             else:
                 # Sampling from all subjects
                 sampled_subjs = ids_per_subjs.keys()
-                n_subjects = len(sampled_subjs)
+                nb_subjects = len(sampled_subjs)
             self.log.debug('    Sampled subjects for this batch: {}'
                            .format(sampled_subjs))
 
             # if step_size, this is in mm. Else, it is is number of points.
-            batch_size_per_subj = self.batch_size / n_subjects
+            batch_size_per_subj = self.batch_size / nb_subjects
 
             # Preparing to iterate on these chosen subjects for a predefined
             # number of cycles
@@ -415,86 +404,40 @@ class BatchStreamlinesSampler(Sampler):
                 for subj in sampled_subjs:
                     # Get the global streamline ids corresponding to this
                     # subject
-                    subj_id_slice = ids_per_subjs[subj]
+                    subj_slice = ids_per_subjs[subj]
 
                     # We will continue iterating on this subject until we
                     # break (i.e. when we reach the maximum batch size for this
                     # subject)
                     total_subj_batch_size = 0
                     while True:
-                        # Find streamlines that have not been used yet.
-                        subj_unused_ids_in_global = np.flatnonzero(
-                            global_unused_streamlines[subj_id_slice]) + \
-                                                    subj_id_slice.start
+                        (subbatch_global_ids, subbatch_rel_ids,
+                         subbatch_heaviness) = \
+                            self._prepare_subj_subbatch(
+                                subj, subj_slice, global_unused_streamlines,
+                                total_subj_batch_size, batch_size_per_subj)
 
-                        self.log.debug("    Available streamlines for this "
-                                       "subject: {}"
-                                       .format(len(subj_unused_ids_in_global)))
-
-                        # No streamlines remain for this subject
-                        if len(subj_unused_ids_in_global) == 0:
+                        if subbatch_heaviness == 0:
+                            # No streamlines remaining. Get next subject.
                             break
-
-                        # Sample a sub-batch of streamlines and get their
-                        # heaviness
-                        subj_chosen_global_ids = self.np_rng.choice(
-                            subj_unused_ids_in_global, CHUNK_SIZE)
-
-                        subj_data = \
-                            self.dataset.subjs_list.open_handle_and_getitem(subj)
-                        subj_sft_data = \
-                            subj_data.sft_data_list[self.streamline_group]
-                        if self.step_size:
-                            # batch_size is in mm.
-                            sample_heaviness = \
-                                subj_sft_data.streamlines.lengths_mm[
-                                    subj_chosen_global_ids]
-                        else:
-                            # batch size in in number of points
-                            sample_heaviness = \
-                                subj_sft_data.streamlines.lengths[
-                                    subj_chosen_global_ids]
-
-                        # If batch_size has been passed, taking a little less
-                        # streamlines for this last sub_batch.
-                        if (total_subj_batch_size + np.sum(sample_heaviness) >=
-                                batch_size_per_subj):
-                            cumulative_sum = np.cumsum(sample_heaviness)
-                            selected = cumulative_sum < (batch_size_per_subj -
-                                                         total_subj_batch_size)
-                            subj_chosen_global_ids = \
-                                subj_chosen_global_ids[selected]
-                            sample_heaviness = sample_heaviness[selected]
-                            batch_size_reached = True
-                        else:
-                            batch_size_reached = False
-
-                        self.log.debug("    Chunk_size was {} but after "
-                                       "verifying heaviness, keeping only {} "
-                                       "streamlines."
-                                       .format(CHUNK_SIZE,
-                                               len(subj_chosen_global_ids)))
-
-                        # Add this sub-batch's heaviness to total heaviness
-                        total_subj_batch_size += np.sum(sample_heaviness)
 
                         # Mask the sampled streamlines
-                        global_unused_streamlines[subj_chosen_global_ids] = 0
+                        global_unused_streamlines[subbatch_global_ids] = 0
 
-                        # Fetch subject-relative ids and add sample to batch
-                        subj_chosen_rel_ids = \
-                            subj_chosen_global_ids - subj_id_slice.start
-                        batch_ids_per_subj.append((subj, subj_chosen_rel_ids))
+                        # Add sample to batch
+                        batch_ids_per_subj.append((subj, subbatch_rel_ids))
 
-                        if batch_size_reached:
-                            self.log.debug("    Batch is big enough. Stopping "
-                                           "loop.")
+                        # Add this sub-batch's heaviness to total heaviness
+                        total_subj_batch_size += subbatch_heaviness
+                        if total_subj_batch_size > batch_size_per_subj:
+                            # Batch size reached for this subject. Get next
+                            # subject.
                             break
-
                 self.log.debug("    Finished loop on subjects. Now yielding.\n"
                                "    (If this was called through a dataloader, "
                                "it should start using load_batch and even "
-                               "training \non this batch while we prepare a "
+                               "training \n"
+                               "     on this batch while we prepare a "
                                "batch for the next cycle, if any).")
 
                 if len(batch_ids_per_subj) == 0:
@@ -508,6 +451,53 @@ class BatchStreamlinesSampler(Sampler):
             self.log.info("  Finished the cycles for these subject. Choosing "
                           "new ones.")
 
+    def _prepare_subj_subbatch(self, subj, subj_slice,
+                               global_unused_streamlines, total_heaviness,
+                               max_heaviness):
+
+        # Find streamlines that have not been used yet for this subj
+        subj_unused_ids_in_global = np.flatnonzero(
+            global_unused_streamlines[subj_slice]) + subj_slice.start
+
+        self.log.debug("    Available streamlines for this subject: {}"
+                       .format(len(subj_unused_ids_in_global)))
+
+        # No streamlines remain for this subject
+        if len(subj_unused_ids_in_global) == 0:
+            return [], [], 0
+
+        # Sample a sub-batch of streamlines
+        chosen_global_ids = self.np_rng.choice(subj_unused_ids_in_global,
+                                                    CHUNK_SIZE)
+
+        # Get their heaviness
+        subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(subj)
+        subj_sft_data = subj_data.sft_data_list[self.streamline_group]
+        if self.step_size:
+            # batch_size is in mm.
+            lengths = subj_sft_data.streamlines.lengths_mm[chosen_global_ids]
+        else:
+            # batch size in in number of points
+            lengths = subj_sft_data.streamlines.lengths[chosen_global_ids]
+
+        # If batch_size has been passed, taking a little less
+        # streamlines for this last sub_batch.
+        if total_heaviness + np.sum(lengths) >= max_heaviness:
+            cumulative_sum = np.cumsum(lengths)
+            selected = cumulative_sum < (max_heaviness - total_heaviness)
+            chosen_global_ids = chosen_global_ids[selected]
+            lengths = lengths[selected]
+
+        sample_heaviness = np.sum(lengths)
+        self.log.debug("    Chunk_size was {} but after verifying heaviness, "
+                       "keeping only {} streamlines."
+                       .format(CHUNK_SIZE, len(chosen_global_ids)))
+
+        # Fetch subject-relative ids
+        chosen_relative_ids = chosen_global_ids - subj_slice.start
+
+        return chosen_global_ids, chosen_relative_ids, sample_heaviness,
+
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]) \
             -> Union[Tuple[List, Dict], Tuple[List, List, List]]:
         """
@@ -515,11 +505,7 @@ class BatchStreamlinesSampler(Sampler):
         Pocesses data augmentation.
 
         Torch uses this function to process the data with the dataloader
-        workers. To be used as collate_fn. This part is ran on CPU.
-
-        With self.avoid_cpu_computations options: directions are not computed.
-        If you want to compute it later, use
-        >> self.compute_and_normalize_directions(self, batch_streamlines)
+        parallel workers (on cpu). To be used as collate_fn.
 
         Parameters
         ----------
@@ -529,7 +515,7 @@ class BatchStreamlinesSampler(Sampler):
 
         Returns
         -------
-        If self.avoid_cpu_computations:
+        If self.wait_for_gpu:
             (batch_streamlines, final_s_ids_per_subj)
         Else:
             (batch_streamlines, final_s_ids_per_subj, batch_directions)
@@ -546,7 +532,7 @@ class BatchStreamlinesSampler(Sampler):
         (batch_streamlines, final_s_ids_per_subj) = \
             self.streamlines_data_preparation(streamline_ids_per_subj)
 
-        if self.avoid_cpu_computations:
+        if self.wait_for_gpu:
             self.log.debug("            Not computing directions because user "
                            "prefers to do it later on GPU.")
             return batch_streamlines, final_s_ids_per_subj
@@ -592,7 +578,7 @@ class BatchStreamlinesSampler(Sampler):
                 "          Processing data preparation for streamlines ids:\n"
                 "{}".format(s_ids))
 
-            subj_data = self.dataset.subjs_list.open_handle_and_getitem(subj)
+            subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(subj)
             subj_sft_data = subj_data.sft_data_list[self.streamline_group]
 
             # Get streamlines as sft
@@ -670,22 +656,34 @@ class BatchStreamlinesSampler(Sampler):
 
         return sft
 
-    def compute_and_normalize_directions(self, batch_streamlines):
+    def compute_and_normalize_directions(self, batch_streamlines,
+                                         device=torch.device('cpu')):
         """
         Computations that can be computed either right when loading batch with
-        self.load_batch() if avoid_cpu_computations is false, or later when
-        GPU is used if avoid_cpu_computations is true.
+        self.load_batch() if wait_for_gpu is false, or later when GPU is used
+        if true.
 
-        For this sampler, separable computations are:
-            - Computing the directions from streamlines coordinates
-            - Normalization of the directions.
+        Params
+        ------
+        batch_streamlines: list[np.array]
+                The streamlines (after data augmentation)
+        device: torch device
+            If this function is called by load_batch (through the Dataloader's
+            collate_fn), device will be set to its default: 'cpu'. We do not
+            want the dataloader to use GPU because each parallel worker would
+            be sending data to GPU at the same time, with risks of errors.
+            If self.wait_for_gpu, non-mendatory steps will be skipped. For this
+            batch sampler: computing and normalizing directions. You can then
+            compute them later, using the the cuda device.
+            >> self.compute_and_normalize_directions(
+                   self, batch_streamlines, device=torch.device('cuda')
         """
         self.log.debug("            Computing and normalizing directions ")
 
         # Getting directions
         batch_directions = [torch.as_tensor(s[1:] - s[:-1],
                                             dtype=torch.float32,
-                                            device=self.device)
+                                            device=device)
                             for s in batch_streamlines]
 
         # Normalization:
@@ -712,18 +710,14 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
 
     def __init__(self, dataset: MultisubjectSubset,
                  streamline_group_name: str, input_group_name: str,
-                 batch_size: int, rng: int,
-                 n_subjects_per_batch: int = None, cycles: int = None,
-                 step_size: float = None, neighborhood_type: str = None,
-                 neighborhood_radius_vox: Union[int, float,
-                                                Iterable[float]] = None,
-                 split_streamlines_ratio: float = 0.,
-                 noise_gaussian_size: float = 0.,
-                 noise_gaussian_variability: float = 0.,
-                 reverse_streamlines_ratio: float = 0.5,
-                 avoid_cpu_computations: bool = None,
-                 normalize_directions: bool = True, nb_previous_dirs: int = 0,
-                 **_):
+                 batch_size: int, rng: int, nb_subjects_per_batch: int,
+                 cycles: int, step_size: float,
+                 neighborhood_type: Union[str, None],
+                 neighborhood_radius: Union[int, float, Iterable[float], None],
+                 split_ratio: float, noise_gaussian_size: float,
+                 noise_gaussian_variability: float,
+                 reverse_ratio: float, wait_for_gpu: bool,
+                 normalize_directions: bool, nb_previous_dirs: int, **_):
         """
         Additional parameters compared to super:
 
@@ -734,12 +728,11 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
             [0].
         """
         super().__init__(dataset, streamline_group_name, batch_size, rng,
-                         n_subjects_per_batch, cycles, step_size,
-                         neighborhood_type, neighborhood_radius_vox,
-                         split_streamlines_ratio,
-                         noise_gaussian_size, noise_gaussian_variability,
-                         reverse_streamlines_ratio, avoid_cpu_computations,
-                         normalize_directions)
+                         nb_subjects_per_batch, cycles, step_size,
+                         neighborhood_type, neighborhood_radius,
+                         split_ratio, noise_gaussian_size,
+                         noise_gaussian_variability, reverse_ratio,
+                         wait_for_gpu, normalize_directions)
 
         # This is probably the same as data_source.volume_groups, but asking
         # user again in case the dataset contain more than one input group
@@ -792,7 +785,8 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         Torch uses this function to process the data with the dataloader
         workers. To be used as collate_fn. This part is ran on CPU.
 
-        With self.avoid_cpu_computations options: directions are not computed,
+        With self.wait_for_gpu option: avoiding non-necessary operations in the
+        batch sampler, computed on cpu. Here, directions are not computed,
         and interpolation is not done. If you want to compute them later, use
         >> directions = sampler.compute_and_normalize_directions(
                batch_streamlines, streamline_ids_per_subj)
@@ -806,14 +800,14 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
             each subject's tractogram).
         save_batch_input_mask: bool
             Debugging purposes. Saves the input coordinates as a mask. Must be
-            used together with avoid_cpu_computations=False. The inputs will
-            be modified to a tuple containing the batch_streamlines (or else,
-            with avoid_cpu_computations=False, the directions only would be
-            returned), to compare the streamlines with masks.
+            used together with wait_for_gpu=False. The inputs will be modified
+            to a tuple containing the batch_streamlines (with wait_for_gpu set
+            to False, the directions only would be returned), to compare the
+            streamlines with masks.
 
         Returns
         -------
-        If self.avoid_cpu_computations::
+        If self.wait_for_gpu:
             batch_streamlines : List of np.ndarray with shape (N_i,3)
                 The streamlines coordinates in voxel space, ordered by subject.
             final_streamline_ids_per_subj : Dict[int, slice]
@@ -835,7 +829,7 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         """
         batch = super().load_batch(streamline_ids_per_subj)
 
-        if self.avoid_cpu_computations:
+        if self.wait_for_gpu:
             # Only returning the streamlines for now.
             # Note that this is the same as using data_preparation_cpu_step
             self.log.debug("            Not loading the input data because "
@@ -860,18 +854,41 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
 
     def compute_inputs(self, batch_streamlines: List[np.ndarray],
                        streamline_ids_per_subj: Dict[int, slice],
-                       save_batch_input_mask: bool = False):
+                       save_batch_input_mask: bool = False,
+                       device=torch.device('cpu')):
         """
         Get the DWI (depending on volume: as raw, SH, fODF, etc.) volume for
         each point in each streamline (+ depending on options: neighborhood,
         and preceding diretion)
 
+        Params
+        ------
+        batch_streamlines: list[np.array]
+            The streamlines (after data augmentation)
+        streamline_ids_per_subj: Dict[int, slice]
+            The ids corresponding to each subject (so we can load the
+            associated subject's input volume).
         save_batch_input_mask: bool
             Debugging purposes. Saves the input coordinates as a mask. Must be
-            used together with avoid_cpu_computations=False. The inputs will
-            be modified to a tuple containing the batch_streamlines (or else,
-            with avoid_cpu_computations=False, the directions only would be
-            returned), to compare the streamlines with masks.
+            used together with wait_for_gpu=False. The inputs will be modified
+            to a tuple containing the batch_streamlines (with wait_for_gpu set
+            to False, the directions only would be returned), to compare the
+            streamlines with masks.
+        device: torch device
+            If this function is called by load_batch (through the Dataloader's
+            collate_fn), device will be set to its default: 'cpu'. We do not
+            want the dataloader to use GPU because each parallel worker would
+            be sending data to GPU at the same time, with risks of errors.
+            If self.wait_for_gpu, non-mendatory steps will be skipped. For this
+            batch sampler: computing and normalizing directions. You can then
+            compute them later, using the the cuda device.
+            >> self.compute_and_normalize_directions(
+                   self, batch_streamlines, device=torch.device('cuda'))
+            >> self.compute_inputs(
+                   self, batch_streamlines, streamline_ids_per_subj,
+                   device=torch.device('cuda'))
+            >> self.compute_prev_dirs(
+                   self, batch_streamlines, device=torch.device('cuda'))
 
         Returns
         -------
@@ -892,8 +909,7 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
             # If data is lazy, get volume from cache or send to cache if
             # it wasn't there yet.
             data_volume = self.dataset.get_volume_verify_cache(
-                subj, self.input_group_idx, device=self.device,
-                non_blocking=True)
+                subj, self.input_group_idx, device=device, non_blocking=True)
 
             # If user chose to add neighborhood:
             if self.neighborhood_type:
@@ -906,7 +922,7 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
                 # Interpolate signal for each (new) point
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
-                                               device=self.device)
+                                               device=device)
                 flat_subj_x_data, coords_clipped = \
                     torch_trilinear_interpolation(data_volume, coords_torch)
 
@@ -923,7 +939,7 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
                 # Interpolate signal for each point
                 coords_torch = torch.as_tensor(flat_subj_x_coords,
                                                dtype=torch.float,
-                                               device=self.device)
+                                               device=device)
                 subj_x_data, coords_clipped = \
                     torch_trilinear_interpolation(data_volume.data,
                                                   coords_torch)
@@ -945,12 +961,15 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
 
         return batch_x_data
 
-    def compute_prev_dirs(self, batch_directions):
+    def compute_prev_dirs(self, batch_directions, device=torch.device('cpu')):
+        """
+        About device: see compute_inputs
+        """
         # Compute previous directions
         previous_dirs = []
         if self.nb_previous_dirs > 0:
             empty_coord = torch.zeros((1, 3), dtype=torch.float32,
-                                      device=self.device) * float('NaN')
+                                      device=device) * float('NaN')
             previous_dirs = \
                 [torch.cat([torch.cat((empty_coord.repeat(i + 1, 1),
                                        s[:-(i + 1)]))

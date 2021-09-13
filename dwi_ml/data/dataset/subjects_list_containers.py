@@ -6,7 +6,7 @@ from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
                                                            LazySubjectData)
 
 
-class DataListForTorchAbstract(object):
+class SubjectsDataListAbstract(object):
     """
     Remembers the list of subjects and their common properties, such as the
     size of the features for the dwi volumes.
@@ -84,7 +84,7 @@ class DataListForTorchAbstract(object):
         raise NotImplementedError
 
 
-class DataListForTorch(DataListForTorchAbstract):
+class SubjectsDataList(SubjectsDataListAbstract):
 
     def __init__(self):
         super().__init__()
@@ -98,7 +98,7 @@ class DataListForTorch(DataListForTorchAbstract):
         return self.subjects_data_list[subject_idx]
 
 
-class LazyDataListForTorch(DataListForTorch):
+class LazySubjectsDataList(SubjectsDataListAbstract):
     def __init__(self, default_hdf_handle):
         super().__init__()
         self.hdf_handle = default_hdf_handle

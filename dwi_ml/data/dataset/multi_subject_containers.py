@@ -26,8 +26,8 @@ from torch.utils.data import Dataset
 import tqdm
 
 from dwi_ml.cache.cache_manager import SingleThreadCacheManager
-from dwi_ml.data.dataset.data_lists import (
-    DataListForTorch, LazyDataListForTorch)
+from dwi_ml.data.dataset.subjects_list_containers import (
+    SubjectsDataList, LazySubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (
     SubjectDataAbstract, SubjectData, LazySubjectData)
 from dwi_ml.data.dataset.utils import find_groups_info
@@ -261,7 +261,7 @@ class MultiSubjectDataset(MultiSubjectDatasetAbstract):
     def _build_data_list(hdf_file):
         """ hdf_file not used. But this is used by load, and the lazy version
         uses this parameter. Keeping the same signature."""
-        return DataListForTorch()
+        return SubjectsDataList()
 
     @staticmethod
     def _init_subj_from_hdf(hdf_file, subject_id, volume_groups, nb_features,
@@ -324,7 +324,7 @@ class LazyMultiSubjectDataset(MultiSubjectDatasetAbstract):
     def _build_data_list(hdf_file):
         assert hdf_file is not None
 
-        return LazyDataListForTorch(hdf_file)
+        return LazySubjectsDataList(hdf_file)
 
     @staticmethod
     def _init_subj_from_hdf(hdf_file, subject_id, volume_groups, nb_features,

@@ -445,7 +445,7 @@ class BatchStreamlinesSampler(Sampler):
 
                         subj_data = self.data_source.get_subject_data(subj)
                         subj_sft_data = \
-                            subj_data.sft_data_list[self.streamline_group]
+                            subj_data._sft_data_list[self.streamline_group]
                         if self.step_size:
                             # batch_size is in mm.
                             sample_heaviness = \
@@ -595,7 +595,7 @@ class BatchStreamlinesSampler(Sampler):
                 "{}".format(s_ids))
 
             subj_data = self.data_source.get_subject_data(subj)
-            subj_sft_data = subj_data.sft_data_list[self.streamline_group]
+            subj_sft_data = subj_data._sft_data_list[self.streamline_group]
 
             # Get streamlines as sft
             sft = subj_sft_data.from_chosen_streamlines(s_ids)

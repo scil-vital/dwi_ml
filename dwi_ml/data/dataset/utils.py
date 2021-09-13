@@ -27,7 +27,7 @@ def find_groups_info(hdf_file, subj_id: str, log):
 
     log.info("Volume groups are: {}".format(volume_groups))
     log.info("Number of features in each of these groups: {}"
-                  .format(nb_features))
+             .format(nb_features))
     log.info("Streamline groups are: {}".format(streamline_groups))
 
     return volume_groups, nb_features, streamline_groups

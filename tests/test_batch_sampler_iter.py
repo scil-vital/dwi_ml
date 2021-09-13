@@ -6,8 +6,7 @@ from os import path
 
 from torch.utils.data.dataloader import DataLoader
 
-from dwi_ml.data.dataset.multi_subject_containers import (
-    LazyMultiSubjectDataset, MultiSubjectDataset)
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.model.batch_samplers import (BatchStreamlinesSampler1IPV)
 
 
@@ -28,8 +27,10 @@ def parse_args():
 def test_sampler(fake_dataset, batch_size, step_size):
     # Initialize batch sampler
     print('Initializing sampler...')
+    training_set = fake_dataset.training_set
+
     batch_sampler = BatchStreamlinesSampler1IPV(
-        fake_dataset, 'streamlines', 'input', batch_size, 1234,
+        training_set, 'streamlines', 'input', batch_size, 1234,
         step_size=step_size)
 
     # Use it in the dataloader
@@ -37,7 +38,7 @@ def test_sampler(fake_dataset, batch_size, step_size):
     # supposed to work with dict too.
     # See https://github.com/PyTorchLightning/pytorch-lightning/issues/1918
     print('Initializing DataLoader')
-    dataloader = DataLoader(fake_dataset, batch_sampler=batch_sampler,
+    dataloader = DataLoader(training_set, batch_sampler=batch_sampler,
                             collate_fn=batch_sampler.load_batch)
     print(dataloader)
 
@@ -62,7 +63,7 @@ def test_non_lazy():
 
     # Initialize dataset
     print('Initializing dataset...')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, 'training_subjs')
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False)
     fake_dataset.load_data()
 
     print('\n=============================Test with batch size 1000')
@@ -80,8 +81,7 @@ def test_lazy():
 
     # Initialize dataset
     print('Initializing dataset...')
-    fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename,
-                                           'training_subjs')
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True)
     fake_dataset.load_data()
 
     print('\n=============================Test with batch size 1000')

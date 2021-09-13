@@ -4,8 +4,7 @@ from argparse import RawTextHelpFormatter
 import logging
 from os import path
 
-from dwi_ml.data.dataset.multi_subject_containers import (
-    LazyMultiSubjectDataset, MultiSubjectDataset)
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 
 
 def parse_args():
@@ -24,12 +23,14 @@ def parse_args():
 
 def test_non_lazy():
     print("\n\n**========= NON-LAZY =========\n\n")
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, 'training_subjs')
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False)
     fake_dataset.load_data()
     print("**Created a MultiSubjectDataset and loaded training set. "
           "Testing properties : \n\n")
 
-    subj0 = fake_dataset.get_subject_data(0)
+    training_set = fake_dataset.training_set
+
+    subj0 = training_set.subjects_data_list[0]
     print("**Get_subject_data: \n"
           "    Subject 0, should be SubjectData : {}. \n"
           "    ID: {}. \n"
@@ -47,27 +48,30 @@ def test_non_lazy():
                   subj0._sft_data_list[0].streamlines[0][0],
                   subj0._sft_data_list[0].from_chosen_streamlines(0).streamlines[0][0]))
 
-    subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
-    print("**Get_subject_mri_data_as_tensor from subject 0, volume 0: \n"
+    subj0_volume0 = training_set.get_volume_verify_cache(0, 0)
+    print("**Subject 0, volume 0: \n"
           "     Shape {} \n"
           "     First data : {} \n"
-          .format(subj0_volume0_tensor.shape, subj0_volume0_tensor[0][0][0]))
+          .format(subj0_volume0.shape, subj0_volume0[0][0][0]))
 
     del fake_dataset
 
 
 def test_lazy():
-    print("**========= LAZY =========")
-    fake_dataset = LazyMultiSubjectDataset(args.hdf5_filename,
-                                           'training_subjs')
+    print("\n\n**========= LAZY =========\n\n")
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True)
     fake_dataset.load_data()
-    print("**Created a LazyMultiSubjectDataset and loaded training set. "
-          "Testing properties : \n\n")
 
-    subj0 = fake_dataset.get_subject_data(0)
+    print("\n\n\n"
+          "Created a LazyMultiSubjectDataset.")
+
+    print("Testing properties : \n\n")
+
+    training_set = fake_dataset.training_set
+    subj0 = training_set.subjects_data_list.open_handle_and_getitem(0)
     print("**Get_subject_data (in this case, loading from hdf_handle): \n"
           "    Subject 0, should be LazySubjectData : {}. \n"
-          "    Handle should be added by now: {}"
+          "    Handle should be added by now: {} \n"
           "    ID: {}. \n"
           "    Volume groups: {}. \n"
           "    Lazy mri data should be a list of LazyMRIData: {}. \n"
@@ -83,11 +87,11 @@ def test_lazy():
                   subj0.sft_data_list[0].streamlines[0][0],
                   subj0.sft_data_list[0].from_chosen_streamlines(0).streamlines[0][0]))
 
-    subj0_volume0_tensor = fake_dataset.get_subject_mri_group_as_tensor(0, 0)
-    print("**Get_subject_mri_data_as_tensor: subject 0, volume 0. \n"
+    subj0_volume0 = training_set.get_volume_verify_cache(0, 0)
+    print("**Subject 0, volume 0. \n"
           "     Shape {} \n"
           "     First data: {} \n"
-          .format(subj0_volume0_tensor.shape, subj0_volume0_tensor[0][0][0]))
+          .format(subj0_volume0.shape, subj0_volume0[0][0][0]))
 
     del fake_dataset
 

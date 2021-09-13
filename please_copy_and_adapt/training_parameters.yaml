@@ -69,10 +69,10 @@ input:
     #     radius 1, that's 27 points. With radius 2, that's 125 points.
     #     * Can't be used together with sphere_radius.
     grid_radius: null
-  # num_previous_dirs: int
+  # nb_previous_dirs: int
   #     Concatenate X previous streamline directions to the input vector. Null
   #     is equivalent to 0.
-  num_previous_dirs: 0
+  nb_previous_dirs: 0
 
 model:
   # Add your model's parameters
@@ -121,11 +121,11 @@ memory:
   #     skipped in the batch sampler. Ex: interpolation, directions
   #     computations from the streamlines coordinates, etc.
   avoid_cpu_computations: True
-  # num_cpu_workers: int
+  # nb_cpu_workers: int
   #     Number of parallel CPU workers.
-  num_cpu_workers: 0
+  nb_cpu_workers: 0
   # worker_interpolation: bool
-  #     If set, if using num_cpu_workers > 0, interpolation will be done on CPU
+  #     If set, if using nb_cpu_workers > 0, interpolation will be done on CPU
   #     by the workers instead of on the main thread using the chosen device.
   worker_interpolation: False
   # taskman_managed: bool

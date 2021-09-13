@@ -20,6 +20,7 @@ from os import path
 
 import yaml
 
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.experiment.monitoring import EarlyStoppingError
 from dwi_ml.experiment.timer import Timer
 from dwi_ml.model.main_models import MainModelAbstract
@@ -29,14 +30,11 @@ from dwi_ml.training.trainers import (DWIMLTrainer)
 from dwi_ml.utils import format_dict_to_str
 
 # These are model-dependant. Choose the best classes and functions for you
-# 1. Change this init_dataset function if you prefer! This loads either a
-#    MultiSubjectDataset or a LazyMultiSubjectDataset.
-from dwi_ml.data.dataset.multi_subject_containers import init_dataset
-# 2. Change this init_batch_sampler if you prefer!
+# 1. Change this init_batch_sampler if you prefer!
 #    This is one possibility, others could be implemented.
 from dwi_ml.model.batch_samplers import (
     BatchStreamlinesSampler1IPV as ChosenBatchSampler)
-# 3. Implement the build_model function below
+# 2. Implement the build_model function below
 
 
 def parse_args():
@@ -86,31 +84,34 @@ def build_model(input_size, **_):
     return model
 
 
-def prepare_data_and_model(train_data_params, valid_data_params,
-                           train_sampler_params, valid_sampler_params,
-                           model_params):
+def prepare_data_and_model(dataset_params, train_sampler_params,
+                           valid_sampler_params, model_params):
     # Instantiate dataset classes
     with Timer("\n\nPreparing testing and validation sets",
                newline=True, color='blue'):
-        training_dataset = init_dataset(**train_data_params)
-        validation_dataset = init_dataset(**valid_data_params)
+        dataset = MultiSubjectDataset(**dataset_params)
+        dataset.load_data()
+
+        logging.debug("\n\nDataset attributes: \n" +
+                      format_dict_to_str(dataset.attributes))
 
     # Instantiate batch
-    with Timer("\n\nPreparing batch samplers with volume: {}"
-               .format(training_dataset.volume_groups[0]),
+    # In this example, using one input volume, the first one.
+    with Timer("\n\nPreparing batch samplers with volume: '{}' and "
+               "streamlines '{}'"
+               .format(train_sampler_params['input_group_name'],
+                       train_sampler_params['streamline_group_name']),
                newline=True, color='green'):
-        training_batch_sampler = ChosenBatchSampler(training_dataset,
+        training_batch_sampler = ChosenBatchSampler(dataset.training_set,
                                                     **train_sampler_params)
-        validation_batch_sampler = ChosenBatchSampler(validation_dataset,
+        validation_batch_sampler = ChosenBatchSampler(dataset.validation_set,
                                                       **valid_sampler_params)
 
     # Instantiate model.
     # Hint: input_size is :
-    size = training_batch_sampler.data_source.data_list.feature_sizes[0]
-    # Instantiate batch
-    with Timer("\n\nPreparing model",
-               newline=True, color='yellow'):
-        model = build_model(size)
+    size = dataset.nb_features[0]
+    with Timer("\n\nPreparing model", newline=True, color='yellow'):
+        model = build_model(size, **model_params)
 
     return training_batch_sampler, validation_batch_sampler, model
 
@@ -154,15 +155,13 @@ def main():
         # Prepare the trainer from checkpoint_state
         (training_batch_sampler, validation_batch_sampler,
          model) = prepare_data_and_model(
-            checkpoint_state['train_data_params'],
-            checkpoint_state['valid_data_params'],
+            checkpoint_state['dataset_params'],
             checkpoint_state['train_sampler_params'],
             checkpoint_state['valid_sampler_params'],
             None)
 
         # Instantiate trainer
-        with Timer("\n\nPreparing trainer",
-                   newline=True, color='red'):
+        with Timer("\n\nPreparing trainer", newline=True, color='red'):
             trainer = DWIMLTrainer.init_from_checkpoint(
                 training_batch_sampler, validation_batch_sampler, model,
                 checkpoint_state)
@@ -186,12 +185,7 @@ def main():
         all_params['experiment_path'] = args.experiment_path
         all_params['experiment_name'] = args.experiment_name
 
-        logging.debug("All params: " + format_dict_to_str(all_params))
-
-        train_params = all_params.copy()
-        train_params['subjs_set'] = 'training_subjs'
-        valid_params = all_params.copy()
-        valid_params['subjs_set'] = 'validation_subjs'
+        logging.debug("All params: \n" + format_dict_to_str(all_params))
 
         # If you wish to have different parameters for the batch sampler during
         # trainnig and validation, change values below.
@@ -199,11 +193,10 @@ def main():
         sampler_params['input_group_name'] = args.input_group
         sampler_params['streamline_group_name'] = args.target_group
 
-        # Prepare the trainer from checkpoint_state
+        # Prepare the trainer from params
         (training_batch_sampler, validation_batch_sampler,
-         model) = prepare_data_and_model(train_params, valid_params,
-                                         sampler_params, sampler_params,
-                                         None)
+         model) = prepare_data_and_model(all_params, sampler_params,
+                                         sampler_params, dict())
 
         # Instantiate trainer
         with Timer("\n\nPreparing trainer", newline=True, color='red'):

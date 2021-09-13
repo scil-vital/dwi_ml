@@ -29,11 +29,11 @@ class ValueHistoryMonitor(object):
         self.current_epoch_history = []  # The list of values in current epoch
 
     @property
-    def num_updates(self):
+    def nb_updates(self):
         return len(self.all_updates_history)
 
     @property
-    def num_epochs(self):
+    def nb_epochs(self):
         return len(self.epochs_means_history)
 
     def update(self, value):

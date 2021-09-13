@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-from typing import List
+import logging
 
+import h5py
 from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
                                                            SubjectData,
                                                            LazySubjectData)
@@ -13,107 +14,92 @@ class SubjectsDataListAbstract(object):
     Everything is loaded into memory until it is needed.
     Will be used by multi_subjects_containers.
     """
-    def __init__(self):
-        self.subjects_data_list = []  # type: List[SubjectDataAbstract]
+    def __init__(self, hdf5_path: str, log):
+        self.hdf5_path = hdf5_path
+        self.is_lazy = None
+        self._log = log
 
-        # Feature sizes should be common to all subjects.
-        # One value per volume group. Will be set by the first subj.
-        # Others must fit.
-        self.feature_sizes = []  # type: List[int]
-        self.volume_groups = []  # type: List[str]
+        # Do not access it directly. Use get_subj.
+        # Will be a list of SubjectData or LazySubjectData
+        self._subjects_data_list = []
 
-    def _set_feature_sizes(self, log):
-        """
-        Sets the number of information per voxel in each group's dMRI volume
-        based on subject 0. This must be called only when subj 0 will exist.
-        """
-        if len(self.feature_sizes) > 0:
-            raise ValueError("You have already set the feature sizes based on "
-                             "the first subject!")
-        if len(self.subjects_data_list) == 0:
-            raise ValueError('First subject must be added to the list before '
-                             'verifying its feature sizes.')
-
-        for i in range(len(self.volume_groups)):
-            self.feature_sizes.append(self._get_group_feature_size(0, i))
-            log.debug("     => Group #{}: feature size set to {}"
-                      .format(i, self.feature_sizes[i]))
-
-    def _get_group_feature_size(self, subj_idx, group: int):
-        """Get subject group's feature size (i.e. last dim)"""
-        # Depends on lazy or not.
-        raise NotImplementedError
-
-    def add_subject(self, subject_data: SubjectDataAbstract, log=None):
+    def add_subject(self, subject_data: SubjectDataAbstract):
         """
         Adds subject's data to subjects_data_list.
         Returns idx of where subject is inserted.
         """
-        log.debug('* Adding already created subject to subjects_data_list')
-        subject_idx = len(self.subjects_data_list)
-        self.subjects_data_list.append(subject_data)
+        subject_idx = len(self._subjects_data_list)
+        self._subjects_data_list.append(subject_data)
 
-        # Make sure all volumes are there and have the same feature sizes
-        if subject_idx == 0:
-            # Set values from the first subject
-            assert len(self.volume_groups) == 0
-            log.debug('     => Subj 0. Saving group informations as reference '
-                      'for the next subjects.')
-            self.volume_groups = subject_data.volume_groups
-            log.debug('     => Volume groups: {}'.format(self.volume_groups))
-            self._set_feature_sizes(log)
-        else:
-            # Make sure we have the right number of groups
-            if len(subject_data.volume_groups) != len(self.volume_groups):
-                raise ValueError("Tried to add a subjects who had a different "
-                                 "number of volume groups than previous!")
-
-            for i in range(len(self.volume_groups)):
-                group_size = self._get_group_feature_size(subject_idx, i)
-                if self.feature_sizes != group_size:
-                    raise ValueError(
-                        "Tried to add a subject whose dMRI volume's feature "
-                        "size was different from previous! Previous: {}, "
-                        "current: {}".format(self.feature_sizes, group_size))
         return subject_idx
 
     def __len__(self):
-        return len(self.subjects_data_list)
+        return len(self._subjects_data_list)
 
     def __getitem__(self, subject_idx):
         raise NotImplementedError
 
+    def open_handle_and_getitem(self, subject_idx):
+        raise NotImplementedError
+
 
 class SubjectsDataList(SubjectsDataListAbstract):
-
-    def __init__(self):
-        super().__init__()
-
-    def _get_group_feature_size(self, subj: int, group: int):
-        s = self.subjects_data_list[subj].mri_data_list[group].shape[-1]
-        return int(s)
+    def __init__(self, hdf5_path: str, log):
+        """
+        The subjects_data_list will now be a list of SubjectData
+        """
+        super().__init__(hdf5_path, log)
+        self.is_lazy = False
 
     def __getitem__(self, subject_idx) -> SubjectData:
         """ Necessary for torch"""
-        return self.subjects_data_list[subject_idx]
+        return self._subjects_data_list[subject_idx]
+
+    def open_handle_and_getitem(self, subject_idx):
+        # Non-lazy. No need to add a handle.
+        return self[subject_idx]
 
 
 class LazySubjectsDataList(SubjectsDataListAbstract):
-    def __init__(self, default_hdf_handle):
-        super().__init__()
-        self.hdf_handle = default_hdf_handle
-
-    def _get_group_feature_size(self, subj: int, group: int):
-        # Uses __getitem__ which means that a handle will be used.
-        return int(self.__getitem__((subj, self.hdf_handle)
-                                    ).mri_data_list[group].shape[-1])
+    def __init__(self, hdf5_path: str, log):
+        """
+        The subjects_data_list will now be a list of LazySubjectData
+        """
+        super().__init__(hdf5_path, log)
+        self.is_lazy = True
 
     def __getitem__(self, subject_item) -> LazySubjectData:
+        """
+        Getting an item (i.e. loading).
+        Params
+        ------
+        subject_item: Tuple(int, hdf_handle)
+            The subject id to get and the handle to add if necessary.
+        """
         assert type(subject_item) == tuple, \
-            "Trying to get an item, but item should be a tuple: " \
-            "(subj_idx, hdf_handle)"
+            "Lazy SubjectsDataList: Trying to get an item, but item should " \
+            "be a tuple: (subj_idx, hdf_handle)"
 
         subject_idx, subject_hdf_handle = subject_item
-        partial_subjectdata = self.subjects_data_list[subject_idx]
-        subj_with_handle = partial_subjectdata.with_handle(subject_hdf_handle)
-        return subj_with_handle
+        subj_data = self._subjects_data_list[subject_idx]
+
+        if subj_data.hdf_handle:
+            if subject_hdf_handle and subj_data.hdf_handle.id.valid:
+                logging.debug("Getting item from the subjects list. You "
+                              "provided a hdf handle but subject already had "
+                              "a valid one: {}. Using new handle."
+                              .format(subj_data.hdf_handle))
+
+        subj_data.add_handle(subject_hdf_handle)
+
+        return subj_data
+
+    def open_handle_and_getitem(self, subject_idx) -> LazySubjectData:
+        """
+        Same as get item, but instead of using provided handle, we open a new
+        one.
+        """
+        hdf_handle = h5py.File(self.hdf5_path, 'r')
+        logging.debug("Opened a new handle: {}".format(hdf_handle))
+
+        return self[(subject_idx, hdf_handle)]

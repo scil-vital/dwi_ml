@@ -25,7 +25,7 @@ class SubjectDataAbstract(object):
             from which data was loaded.
         nb_features: List[int]
             The number of expected feature per group.
-        streamline_groups: str
+        streamline_groups: List[str]
             The name of the streamline group. This should be 'streamlines'.
         subject_id: str
             The subject key in the hdf file
@@ -34,6 +34,7 @@ class SubjectDataAbstract(object):
         self.nb_features = nb_features
         self.streamline_groups = streamline_groups
         self.subject_id = subject_id
+        self.is_lazy = None
 
     @property
     def mri_data_list(self):
@@ -47,9 +48,7 @@ class SubjectDataAbstract(object):
     def init_from_hdf(cls, subject_id: str, log, hdf_file, group_info=None):
         raise NotImplementedError
 
-    def with_handle(self, hdf_handle):
-        """This will simply return data in the non-lazy version. In the lazy
-        version, this will add the hdf handle and load the data."""
+    def add_handle(self, hdf_handle):
         raise NotImplementedError
 
 
@@ -60,19 +59,16 @@ class SubjectData(SubjectDataAbstract):
                  mri_data_list: List[MRIData] = None,
                  sft_data_list: List[SFTData] = None):
         """
-        mri_data: List[SubjectMRIData]
-            Volumes of MRI data in the format of SubjectMRIData classes. Each
-            value of the list corresponds to a specific group from the config
-            file, whose name is saved in groups.
-        streamlines: nib.streamlines.ArraySequence
-            The loaded streamlines. They contain ._data, ._offsets, ._lengths.
-        lengths_mm: np.array
-            The streamlines' euclidean lengths.
+        Additional params compared to super:
+        sft_data_list: List[SFTData]
+            The loaded streamlines in a format copying the SFT. They contain
+            ._data, ._offsets, ._lengths, ._lengths_mm.
         """
         super().__init__(volume_groups, nb_features, streamline_groups,
                          subject_id)
         self._mri_data_list = mri_data_list
         self._sft_data_list = sft_data_list
+        self.is_lazy = False
 
     @property
     def mri_data_list(self):
@@ -117,9 +113,8 @@ class SubjectData(SubjectDataAbstract):
 
         return subj_data
 
-    def with_handle(self, hdf_handle):
-        # data is already loaded. No need to add a handle here.
-        return self
+    def add_handle(self, hdf_handle):
+        pass
 
 
 class LazySubjectData(SubjectDataAbstract):
@@ -132,6 +127,7 @@ class LazySubjectData(SubjectDataAbstract):
                  streamline_groups: List[str], subject_id: str,
                  hdf_handle=None):
         """
+        Additional params compared to super:
         hdf_handle:
             Opened hdf file, if any. If None, data loading is deactivated.
         """
@@ -158,6 +154,7 @@ class LazySubjectData(SubjectDataAbstract):
     def mri_data_list(self) -> Union[List[LazyMRIData], None]:
         """As a property, this is only computed if called by the user.
         Returns a List[LazyMRIData]"""
+
         if self.hdf_handle is not None:
             mri_data_list = []
             for group in self.volume_groups:
@@ -165,32 +162,38 @@ class LazySubjectData(SubjectDataAbstract):
                 mri_data_list.append(LazyMRIData.init_from_hdf_info(hdf_group))
 
             return mri_data_list
+        elif not self.hdf_handle.id.valid:
+            logging.warning("Tried to access subject's volumes but its hdf "
+                            "handle is not valid (closed file?)")
         else:
             logging.debug("Can't provide mri_data_list: hdf_handle not set.")
-            return None
+        return None
 
     @property
     def sft_data_list(self) -> Union[List[LazySFTData], None]:
         """As a property, this is only computed if called by the user.
         Returns a List[LazyMRIData]"""
         if self.hdf_handle is not None:
-            mri_data_list = []
+            sft_data_list = []
             for group in self.streamline_groups:
                 hdf_group = self.hdf_handle[self.subject_id][group]
-                mri_data_list.append(LazySFTData.init_from_hdf_info(hdf_group))
+                sft_data_list.append(LazySFTData.init_from_hdf_info(hdf_group))
 
-            return mri_data_list
+            return sft_data_list
         else:
-            logging.debug("Can't provide mri_data_list: hdf_handle not set.")
-            return None
+            logging.debug("Can't provide sft_data_list: hdf_handle not set.")
+        return None
 
-    def with_handle(self, hdf_handle):
+    def add_handle(self, hdf_handle):
         """We could find groups directly from the subject's keys but this way
         is safer in case one subject had different keys than others. Always
         using only the wanted groups."""
-        if hdf_handle is None:
-            logging.warning('Using with_handle(), but hdf_handle is None!')
+        if hdf_handle is None or not hdf_handle.id.valid:
+            logging.warning('Adding handle(), but provided handle is None or'
+                            'is non valid (probably closed)!')
 
-        return LazySubjectData(self.volume_groups, self.nb_features,
-                               self.streamline_groups, self.subject_id,
-                               hdf_handle)
+        self.hdf_handle = hdf_handle
+
+    def __del__(self):
+        if self.hdf_handle is not None:
+            self.hdf_handle.close()

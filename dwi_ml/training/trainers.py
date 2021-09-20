@@ -14,7 +14,7 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
 from dwi_ml.experiment.monitoring import (
-    EarlyStopping, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
+    BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
 from dwi_ml.model.batch_samplers import BatchStreamlinesSampler
 from dwi_ml.model.main_models import MainModelAbstract
 from dwi_ml.utils import TqdmLoggingHandler
@@ -127,10 +127,13 @@ class DWIMLTrainer:
         self.nb_valid_batches_per_epoch = None
         self.patience = patience
         if patience:
-            self.early_stopping = EarlyStopping(patience=self.patience)
+            self.best_epoch_monitoring = BestEpochMonitoring(
+                patience=self.patience)
         else:
-            self.early_stopping = None
-        self.best_epoch = None
+            # We won't use early stopping to stop the epoch, but we will use
+            # it as monitor of the best epochs.
+            self.best_epoch_monitoring = BestEpochMonitoring(
+                patience=self.max_batches_per_epochs + 1)
         self.current_epoch = 0
 
         # Memory:
@@ -392,42 +395,48 @@ class DWIMLTrainer:
             self.validate_one_epoch(valid_dataloader, valid_context, epoch,
                                     *args)
 
+            # Updating infos
+            last_loss = self.valid_loss_monitor.epochs_means_history[-1]
+            self.best_epoch_monitoring.update(last_loss, epoch)
+
             # Check for early stopping
-            if self.early_stopping.step(
-                    self.valid_loss_monitor.epochs_means_history[-1]):
+            if self.best_epoch_monitoring.is_patience_reached:
                 self.save_checkpoint()
                 raise EarlyStoppingError(
                     "Early stopping! Loss has not improved after {} epochs!\n"
                     "Best result: {}; At epoch #{}"
                     .format(self.patience,
-                            self.early_stopping.best, self.best_epoch))
+                            self.best_epoch_monitoring.best_value,
+                            self.best_epoch_monitoring.best_epoch))
 
-            # Check for current best
-            if self.valid_loss_monitor.epochs_means_history[-1] < (
-                    self.early_stopping.best + self.early_stopping.min_eps):
+            # Else, check if current best has been reached
+            # If that is the case, the monitor has just resetted its
+            # n_bad_epochs to 0
+            if self.best_epoch_monitoring.n_bad_epochs == 0:
                 logging.info("Best epoch yet! Saving model and loss history.")
-                self.model.best_model_state = self.model.state_dict()
 
-                # Save in path
+                # Save model
+                self.model.update_best_model()
                 self.model.save(self.experiment_dir)
 
                 # Save losses (i.e. mean over all batches)
-                self.best_epoch = self.current_epoch
                 losses = {
                     'train_loss': self.train_loss_monitor.epochs_means_history[
-                        self.best_epoch],
-                    'valid_loss': self.early_stopping.best}
+                        self.best_epoch_monitoring.best_epoch],
+                    'valid_loss': self.best_epoch_monitoring.best_value}
                 with open(os.path.join(self.experiment_dir, "losses.json"),
                           'w') as json_file:
-                    json_file.write(
-                        json.dumps(losses, indent=4, separators=(',', ': ')))
+                    json_file.write(json.dumps(losses, indent=4,
+                                               separators=(',', ': ')))
 
                 # Save information online
                 if self.comet_exp:
-                    self.comet_exp.log_metric("best_validation",
-                                              self.early_stopping.best)
-                    self.comet_exp.log_metric("best_epoch",
-                                              self.best_epoch)
+                    self.comet_exp.log_metric(
+                        "best_validation_loss",
+                        self.best_epoch_monitoring.best_value)
+                    self.comet_exp.log_metric(
+                        "best_epoch",
+                        self.best_epoch_monitoring.best_epoch)
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
@@ -439,8 +448,8 @@ class DWIMLTrainer:
                     'loss_valid':
                         self.valid_loss_monitor.epochs_means_history[-1],
                     'epoch': self.current_epoch,
-                    'best_epoch': self.best_epoch,
-                    'best_loss': self.early_stopping.best
+                    'best_epoch': self.best_epoch_monitoring.best_epoch,
+                    'best_loss': self.best_epoch_monitoring.best_value
                 }
                 self._update_taskman_report(updates)
 
@@ -451,9 +460,6 @@ class DWIMLTrainer:
                     self.hangup_time - time.time()))
                 self._update_taskman_report({'resubmit': True})
                 exit(2)
-
-        # Training is over, save checkpoint
-        self.save_checkpoint()
 
     def train_one_epoch(self, train_dataloader, train_context, epoch, *args):
         """
@@ -503,7 +509,7 @@ class DWIMLTrainer:
                             'loss_valid': vh[-1] if len(vh) > 0 else None,
                             'epoch': self.current_epoch,
                             'best_epoch': self.best_epoch,
-                            'best_loss': self.early_stopping.best,
+                            'best_loss': self.best_epoch_monitoring.best_value,
                             'update': batch_id,
                             'update_loss': mean_loss
                         }
@@ -577,7 +583,7 @@ class DWIMLTrainer:
                     break
 
                 # Validate this batch: forward propagation + loss
-                mean_loss = self.run_one_batch(
+                mean_loss, _ = self.run_one_batch(
                     data, is_training=False,
                     batch_sampler=self.valid_batch_sampler, *args)
                 self.valid_loss_monitor.update(mean_loss)
@@ -664,7 +670,7 @@ class DWIMLTrainer:
             checkpoint_state['nb_train_batches_per_epoch']
         experiment.nb_valid_batches_per_epoch = \
             checkpoint_state['nb_valid_batches_per_epoch']
-        experiment.early_stopping.set_state(
+        experiment.best_epoch_monitoring.set_state(
             checkpoint_state['early_stopping_state'])
         experiment.train_loss_monitor.set_state(
             checkpoint_state['train_loss_monitor_state'])
@@ -738,7 +744,7 @@ class DWIMLTrainer:
                 None,
             'numpy_rng_state': self.train_batch_sampler.np_rng.get_state(),
             'early_stopping_state':
-                self.early_stopping.get_state() if self.early_stopping else
+                self.best_epoch_monitoring.get_state() if self.best_epoch_monitoring else
                 None,
             'train_loss_monitor_state': self.train_loss_monitor.get_state(),
             'valid_loss_monitor_state': self.valid_loss_monitor.get_state()

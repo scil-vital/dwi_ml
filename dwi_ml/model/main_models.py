@@ -8,6 +8,9 @@ import torch
 
 
 class ModelAbstract(torch.nn.Module):
+    """
+    To be used for all sub-models (ex, layers in a main model).
+    """
     def __init__(self):
         super().__init__()
         self.log = logging.getLogger()  # Gets the root
@@ -30,9 +33,17 @@ class ModelAbstract(torch.nn.Module):
 
 
 class MainModelAbstract(ModelAbstract):
+    """
+    To be used for all models that will be trained. Defines the way to save
+    the model.
+
+    It should also define a forward() method.
+    """
     def __init__(self):
         super().__init__()
+        self.best_model_state = None
 
+    def update_best_model(self):
         # Initialize best model
         # Uses torch's module state_dict.
         self.best_model_state = self.state_dict()
@@ -45,19 +56,19 @@ class MainModelAbstract(ModelAbstract):
         # the new.
         to_remove = None
         if os.path.exists(model_dir):
-            to_remove = os.path.join(self.saving_dir, "model_old")
+            to_remove = os.path.join(saving_dir, "model_old")
             shutil.move(model_dir, to_remove)
         os.makedirs(model_dir)
 
         # Save attributes
-        with open(os.path.join(model_dir, "attributes.json"), 'w') as json_file:
-            json_file.write(
-                json.dumps(self.attributes, indent=4,
-                           separators=(',', ': ')))
+        attributes_filename = os.path.join(model_dir, "attributes.json")
+        with open(attributes_filename, 'w') as json_file:
+            json_file.write(json.dumps(self.attributes, indent=4,
+                                       separators=(',', ': ')))
 
         # Save hyperparams
-        with open(os.path.join(model_dir, "hyperparameters.json"),
-                  'w') as json_file:
+        hyperparams_filename = os.path.join(model_dir, "hyperparameters.json")
+        with open(hyperparams_filename, 'w') as json_file:
             json_file.write(json.dumps(self.hyperparameters, indent=4,
                                        separators=(',', ': ')))
 
@@ -67,9 +78,6 @@ class MainModelAbstract(ModelAbstract):
 
         if to_remove:
             shutil.rmtree(to_remove)
-
-    def forward(self, *args):
-        pass
 
     def compute_loss(self, outputs, targets):
         raise NotImplementedError

@@ -65,6 +65,9 @@ rm $test_tractograms_path/test_batch1*
 # Further testing was done with Learn2track's model.
 ###########
 mkdir $database_folder/experiments
+rm -r $database_folder/experiments/test_experiment1/checkpoint
+# If bugged before:
+rm -r $database_folder/experiments/test_experiment1/model_old/model
 python please_copy_and_adapt/train_model.py --logging debug \
       --input_group 'input' --target_group 'streamlines' \
       --hdf5_filename $database_folder/hdf5/ismrm2015_noArtefact_test.hdf5 \

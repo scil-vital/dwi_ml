@@ -31,7 +31,10 @@ def test_sampler(fake_dataset, batch_size, step_size):
 
     batch_sampler = BatchStreamlinesSampler1IPV(
         training_set, 'streamlines', 'input', batch_size, 1234,
-        step_size=step_size)
+        step_size=step_size, nb_subjects_per_batch=1, cycles=1,
+        neighborhood_type=None, neighborhood_radius=None, split_ratio=0,
+        noise_gaussian_size=0, noise_gaussian_variability=0, reverse_ratio=0,
+        wait_for_gpu=True, normalize_directions=True, nb_previous_dirs=1)
 
     # Use it in the dataloader
     # it says error, that the collate_fn should receive a list, but it is
@@ -63,7 +66,9 @@ def test_non_lazy():
 
     # Initialize dataset
     print('Initializing dataset...')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False)
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
+                                       experiment_name='test',
+                                       taskman_managed=True, cache_size=None)
     fake_dataset.load_data()
 
     print('\n=============================Test with batch size 1000')
@@ -81,7 +86,9 @@ def test_lazy():
 
     # Initialize dataset
     print('Initializing dataset...')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True)
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
+                                       experiment_name='test',
+                                       taskman_managed=True, cache_size=1)
     fake_dataset.load_data()
 
     print('\n=============================Test with batch size 1000')

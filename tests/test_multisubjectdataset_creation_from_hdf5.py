@@ -23,14 +23,15 @@ def parse_args():
 
 def test_non_lazy():
     print("\n\n**========= NON-LAZY =========\n\n")
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False)
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
+                                       experiment_name='test',
+                                       taskman_managed=True, cache_size=None)
     fake_dataset.load_data()
     print("**Created a MultiSubjectDataset and loaded training set. "
           "Testing properties : \n\n")
 
     training_set = fake_dataset.training_set
-
-    subj0 = training_set.subjects_data_list[0]
+    subj0 = training_set.subjs_data_list[0]
     print("**Get_subject_data: \n"
           "    Subject 0, should be SubjectData : {}. \n"
           "    ID: {}. \n"
@@ -59,7 +60,9 @@ def test_non_lazy():
 
 def test_lazy():
     print("\n\n**========= LAZY =========\n\n")
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True)
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
+                                       experiment_name='test',
+                                       taskman_managed=True, cache_size=1)
     fake_dataset.load_data()
 
     print("\n\n\n"
@@ -68,7 +71,7 @@ def test_lazy():
     print("Testing properties : \n\n")
 
     training_set = fake_dataset.training_set
-    subj0 = training_set.subjects_data_list.open_handle_and_getitem(0)
+    subj0 = training_set.subjs_data_list.open_handle_and_getitem(0)
     print("**Get_subject_data (in this case, loading from hdf_handle): \n"
           "    Subject 0, should be LazySubjectData : {}. \n"
           "    Handle should be added by now: {} \n"

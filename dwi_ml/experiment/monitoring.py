@@ -71,7 +71,7 @@ class ValueHistoryMonitor(object):
         self.epochs_means_history = state['epochs_means_history']
 
 
-class EarlyStopping(object):
+class BestEpochMonitoring(object):
     """
     Object to stop training early if the loss doesn't improve after a given
     number of epochs ("patience").
@@ -90,32 +90,41 @@ class EarlyStopping(object):
         self.patience = patience
         self.min_eps = min_eps
 
-        self.best = None
-        self.n_bad_epochs = 0
+        self.best_value = None
+        self.best_epoch = None
+        self.n_bad_epochs = None
 
-    def should_stop(self, loss):
-        """ Manage a loss step. Returns True if training should stop.
-
+    def update(self, loss, epoch):
+        """
         Parameters
         ----------
         loss : float
             Loss value for a new training epoch
+        epoch : int
+            Current epoch
+        """
+        if self.best_value is None:
+            # First epoch. Setting values.
+            self.best_value = loss
+            self.best_epoch = epoch
+            self.n_bad_epochs = 0
+        elif loss < self.best_value - self.min_eps:
+            # Improving from at least eps.
+            self.best_value = loss
+            self.best_epoch = epoch
+            self.n_bad_epochs = 0
+        else:
+            # Not improving enough
+            self.n_bad_epochs += 1
 
+    @property
+    def is_patience_reached(self):
+        """
         Returns
         -------
         True if the number of epochs without improvements is more than the
         patience.
         """
-        if self.best is None:
-            self.best = loss
-            return False
-
-        if loss < self.best - self.min_eps:
-            self.best = loss
-            self.n_bad_epochs = 0
-        else:
-            self.n_bad_epochs += 1
-
         if self.n_bad_epochs >= self.patience:
             return True
 
@@ -125,14 +134,16 @@ class EarlyStopping(object):
         """ Get object state """
         return {'patience': self.patience,
                 'min_eps': self.min_eps,
-                'best': self.best,
+                'best_value': self.best_value,
+                'best_epoch': self.best_epoch,
                 'n_bad_epochs': self.n_bad_epochs}
 
     def set_state(self, state):
         """ Set object state """
         self.patience = state['patience']
         self.min_eps = state['min_eps']
-        self.best = state['best']
+        self.best_value = state['best_value']
+        self.best_epoch = state['best_epoch']
         self.n_bad_epochs = state['n_bad_epochs']
 
 

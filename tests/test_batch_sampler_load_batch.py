@@ -49,11 +49,13 @@ def test_batch_loading_no_computations(
     rng_seed = now.minute * 100 + now.second
     batch_sampler = BatchStreamlinesSampler1IPV(
         training_set, 'streamlines', 'input', batch_size, rng_seed,
-        step_size=step_size, avoid_cpu_computations=True,
-        split_streamlines_ratio=split_ratio,
+        nb_subjects_per_batch=1, cycles=1,
+        neighborhood_type=None, neighborhood_radius=None,
+        step_size=step_size, wait_for_gpu=True, normalize_directions=False,
+        nb_previous_dirs=1, split_ratio=split_ratio,
         noise_gaussian_size=noise_size,
         noise_gaussian_variability=noise_variability,
-        reverse_streamlines_ratio=reverse_ratio)
+        reverse_ratio=reverse_ratio)
 
     batch_generator = batch_sampler.__iter__()
 
@@ -93,10 +95,12 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size,
 
     batch_sampler = BatchStreamlinesSampler1IPV(
         training_set, 'streamlines', 'input', batch_size, rng_seed,
-        step_size=step_size, avoid_cpu_computations=False,
+        nb_subjects_per_batch=1, cycles=1,
+        step_size=step_size, wait_for_gpu=False, normalize_directions=True,
         neighborhood_type=neighborhood_type,
-        neighborhood_radius_vox=neighborhood_radius,
-        nb_previous_dirs=2)
+        neighborhood_radius=neighborhood_radius,
+        nb_previous_dirs=2, noise_gaussian_size=0,
+        noise_gaussian_variability=0, split_ratio=0, reverse_ratio=0)
 
     batch_generator = batch_sampler.__iter__()
 
@@ -148,7 +152,9 @@ def test_non_lazy(ref, affine, header, saving_path):
     # Initialize dataset
     print('Initializing dataset...')
     logging.root.setLevel('INFO')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False)
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
+                                       experiment_name='test',
+                                       taskman_managed=True, cache_size=None)
     fake_dataset.load_data()
 
     print('\n\n\n=======================Test with batch size 10000 + resample '
@@ -177,7 +183,9 @@ def test_lazy(ref, affine, header, saving_path):
     # Initialize dataset
     print('Initializing dataset...')
     logging.root.setLevel('INFO')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True)
+    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
+                                       experiment_name='test',
+                                       taskman_managed=True, cache_size=1)
     fake_dataset.load_data()
 
     print('\n\n\n=======================Test with batch size 10000 + resample')

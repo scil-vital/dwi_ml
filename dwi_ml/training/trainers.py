@@ -14,7 +14,7 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
 from dwi_ml.experiment.monitoring import (
-    EarlyStopping, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
+    BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
 from dwi_ml.model.batch_samplers import BatchStreamlinesSampler
 from dwi_ml.model.main_models import MainModelAbstract
 from dwi_ml.utils import TqdmLoggingHandler
@@ -38,18 +38,17 @@ class DWIMLTrainer:
     Comet is used to save training information, but some logs will also be
     saved locally in the experiment_path.
     """
+
     def __init__(self,
                  batch_sampler_training: BatchStreamlinesSampler,
                  batch_sampler_validation: BatchStreamlinesSampler,
-                 model: MainModelAbstract,
-                 experiment_path: str, experiment_name: str,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
-                 max_epochs: int = None, max_batches_per_epoch: int = 10000,
-                 patience: int = None, device: torch.device = None,
-                 nb_cpu_workers: int = None, taskman_managed: bool = None,
-                 use_gpu: bool = None, comet_workspace: str = None,
-                 comet_project: str = None, from_checkpoint: bool = False,
-                 **_):
+                 model: MainModelAbstract, experiment_path: str,
+                 experiment_name: str, learning_rate: float,
+                 weight_decay: float, max_epochs: int,
+                 max_batches_per_epoch: int, patience: int,
+                 nb_cpu_workers: int, taskman_managed: bool, use_gpu: bool,
+                 comet_workspace: str, comet_project: str,
+                 from_checkpoint: bool, **_):
         """
         Parameters
         ----------
@@ -69,76 +68,141 @@ class DWIMLTrainer:
             Name of this experiment. This will also be the name that will
             appear online for comet.ml experiment.
         learning_rate: float
-            Learning rate. Default: 0.001 (torch's default)
+            Learning rate. Suggestion: 0.001 (torch's default)
         weight_decay: float
-            Add a weight decay penalty on the parameters. Default: 0.01.
+            Add a weight decay penalty on the parameters. Suggestion: 0.01.
             (torch's default).
         max_epochs: int
             Maximum number of epochs. Note that we supervise this maximum to
             make sure it is not too big for general usage. Epochs lengths will
             be capped at max_batches_per_epoch.
         max_batches_per_epoch: int
-            Maximum number of batches per epoch. Default: 10000.
+            Maximum number of batches per epoch. Exemple: 10000.
         patience: int
-            Use early stopping. Defines the number of epochs after which the
-            model should stop if the loss hasn't improved.
+            If not None, use early stopping. Defines the number of epochs after
+            which the model should stop if the loss hasn't improved.
         nb_cpu_workers: int
-            Number of parallel CPU workers.
+            Number of parallel CPU workers. Use 0 to avoid parallel threads.
         taskman_managed: bool
             If True, taskman manages the experiment. Do not output progress
             bars and instead output special messages for taskman.
         use_gpu: bool
             If true, use GPU device when possible instead of CPU.
-
+        comet_workspace: str
             Your comet workspace. If None, comet.ml will not be used. See our
             docs/Getting Started for more information on comet and its API key.
         comet_project: str
-             Optional. Send your experiment to a specific comet.ml project.
-             Otherwise will be sent to Uncategorized Experiments.
+             Send your experiment to a specific comet.ml project. If None, it
+             will be sent to Uncategorized Experiments.
         """
         # To developpers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
+
+        # ----------------------
+        # Values given by the user
+        # ----------------------
 
         # Experiment
         if not os.path.isdir(experiment_path):
             raise NotADirectoryError("The experiment path does not exist! "
                                      "({})".format(experiment_path))
         if from_checkpoint:
-            self.experiment_dir = experiment_path
+            self.experiment_path = experiment_path
         else:
-            self.experiment_dir = os.path.join(experiment_path,
-                                               experiment_name)
-            if not os.path.isdir(self.experiment_dir):
+            self.experiment_path = os.path.join(experiment_path,
+                                                experiment_name)
+            if not os.path.isdir(self.experiment_path):
                 logging.info('Creating directory {}'
-                             .format(self.experiment_dir))
-                os.mkdir(self.experiment_dir)
+                             .format(self.experiment_path))
+                os.mkdir(self.experiment_path)
         self.experiment_name = experiment_name
 
-        # Data
         # Note that the training/validation sets are contained in the
         # batch_samplers.data_source
         self.train_batch_sampler = batch_sampler_training
         self.valid_batch_sampler = batch_sampler_validation
         self.model = model
 
-        # Training/validation epochs:
         self.max_epochs = max_epochs
         self.max_batches_per_epochs = max_batches_per_epoch
-        # Real nb batches per epoch will be defined later
-        self.nb_train_batches_per_epoch = None
-        self.nb_valid_batches_per_epoch = None
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
         self.patience = patience
-        if patience:
-            self.early_stopping = EarlyStopping(patience=self.patience)
-        else:
-            self.early_stopping = None
-        self.best_epoch = None
-        self.current_epoch = 0
-
-        # Memory:
-        self.device = device
         self.nb_cpu_workers = nb_cpu_workers
         self.taskman_managed = taskman_managed
+        self.use_gpu = use_gpu
+
+        self.comet_workspace = comet_workspace
+        self.comet_project = comet_project
+
+        # ----------------------
+        # Values fixed by us
+        # ----------------------
+
+        # Prepare log to work with tqdm. Use self.log instead of logging
+        # inside any tqdm loop. Batch samplers will be used inside loops so
+        # we are also setting their logs.
+        self.log = logging.getLogger('for_tqdm' + str(datetime.now()))
+        self.log.setLevel(logging.root.level)
+        self.log.addHandler(TqdmLoggingHandler())
+        self.log.propagate = False
+
+        # Developpers: change level below to WARNING when developping trainer
+        # with a debug level to avoid seeing a lot of logs!
+        sub_log = logging.getLogger('log-for-samplers')
+        sub_log.setLevel(logging.root.level)
+        sub_log.propagate = False
+        self.train_batch_sampler.set_log(sub_log)
+        self.valid_batch_sampler.set_log(sub_log)
+        self.model.set_log(self.log)
+
+        # Time limited run
+        # toDo. Change this for a parameter???
+        self.hangup_time = None
+        htime = os.environ.get('HANGUP_TIME', None)
+        if htime is not None:
+            self.hangup_time = int(htime)
+            logging.info('Will hang up at ' + htime)
+
+        # Device and rng value. Note that if loading from a checkpoint, the
+        # complete state should be updated.
+        if use_gpu:
+            if torch.cuda.is_available():
+                self.device = torch.device('cuda')
+
+                # Setting the rng seed
+                if self.train_batch_sampler.rng != \
+                        self.valid_batch_sampler.rng:
+                    raise ValueError("Training and validation batch samplers "
+                                     "do not have the same rng. Please verify "
+                                     "the code.")
+                # If you see a hint error below, upgrade torch.
+                torch.cuda.manual_seed(self.train_batch_sampler.rng)
+            else:
+                raise ValueError("You chose GPU (cuda) device but it is not "
+                                 "available!")
+        else:
+            self.device = torch.device('cpu')
+
+        # ----------------------
+        # Values that will be modified later on. If initializing experiment
+        # from a checkpoint, these values shoud be updated after initialization
+        # ----------------------
+        if patience:
+            self.best_epoch_monitoring = BestEpochMonitoring(
+                patience=self.patience)
+        else:
+            # We won't use early stopping to stop the epoch, but we will use
+            # it as monitor of the best epochs.
+            self.best_epoch_monitoring = BestEpochMonitoring(
+                patience=self.max_batches_per_epochs + 1)
+
+        self.current_epoch = 0
+
+        # Nb of batches with be estimated later on
+        self.nb_train_batches_per_epoch = None
+        self.nb_valid_batches_per_epoch = None
+
         self.taskman_report = {
             'loss_train': None,
             'loss_valid': None,
@@ -150,49 +214,21 @@ class DWIMLTrainer:
             'time': 0.
         }
 
-        # Prepare log to work with tqdm. Use self.log instead of logging
-        # inside any tqdm loop. Batch samplers will be used inside loops so
-        # we are also setting their logs.
-        self.log = logging.getLogger('for_tqdm' + str(datetime.now()))
-        self.log.setLevel(logging.root.level)
-        self.log.addHandler(TqdmLoggingHandler())
-        self.log.propagate = False
-
-        # Developpers: use self.log in the batch samplers and the model if you
-        # would rather see a lot of logs!
-        silent_log = logging.getLogger('non-verbose-log-for-samplers')
-        silent_log.setLevel('WARNING')
-        silent_log.propagate = False
-        self.train_batch_sampler.set_log(silent_log)
-        self.valid_batch_sampler.set_log(silent_log)
-        self.model.set_log(self.log)
-
-        # Time limited run
-        # toDo. Change this for a parameter???
-        self.hangup_time = None
-        htime = os.environ.get('HANGUP_TIME', None)
-        if htime is not None:
-            self.hangup_time = int(htime)
-            print('Will hang up at ' + htime)
-
-        # A voir....
-        self.use_gpu = use_gpu
-        if self.use_gpu:
-            # Says error, but ok.
-            # toDo valid_batch_sampler.rng should be the same.
-            torch.cuda.manual_seed(self.train_batch_sampler.rng)
+        # RNG state
+        # Nothing to to here.
 
         # Setup monitors
         self.train_loss_monitor = ValueHistoryMonitor("Training loss")
         self.valid_loss_monitor = ValueHistoryMonitor("Validation loss")
         self.grad_norm_monitor = ValueHistoryMonitor("Grad Norm")
 
-        # Prepare comet
-        # Will be instantiated in train().
-        self.comet_workspace = comet_workspace
-        self.comet_project = comet_project
+        # Comet values will be instantiated in train().
         self.comet_exp = None
         self.comet_key = None
+
+        # ----------------------
+        # Launching optimizer!
+        # ----------------------
 
         # Prepare optimizer
         # Send model to device
@@ -202,9 +238,6 @@ class DWIMLTrainer:
 
         # Build optimizer (Optimizer is built here since it needs the model
         # parameters)
-        self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
-
         list_params = [n for n, _ in self.model.named_parameters()]
         logging.debug("Initiating trainer: {}".format(type(self)))
         logging.debug("This trainer will use Adam optimization on the "
@@ -220,12 +253,14 @@ class DWIMLTrainer:
         Return experiment attributes (anything that is not a hyperparameter).
         """
         attrs = {
-            'experiment_dir': self.experiment_dir,
+            'experiment_dir': self.experiment_path,
             'experiment_name': self.experiment_name,
             'dwi_ml_trainer_version': VERSION,
             'comet_key': self.comet_key,
-            'train_hdf5_path': self.train_batch_sampler.dataset.hdf5_path,
-            'valid_hdf5_path': self.valid_batch_sampler.dataset.hdf5_path,
+            'training_set_attributes':
+                self.train_batch_sampler.dataset.attributes,
+            'validation_set_attributes':
+                self.valid_batch_sampler.dataset.attributes,
             'train sampler attributes': self.train_batch_sampler.attributes,
             'valid sampler attributes': self.valid_batch_sampler.attributes,
             'learning_rate': self.learning_rate,
@@ -366,9 +401,10 @@ class DWIMLTrainer:
         # been reached.
         iter_timer = IterTimer(history_len=20)
 
-        # Start from current_spoch in case the experiment is resuming
+        # Start from current_epoch in case the experiment is resuming
         # Train each epoch
         for epoch in iter_timer(range(self.current_epoch, self.max_epochs)):
+            # Updating current epoch. First epoch is 0!
             self.current_epoch = epoch
 
             # Training
@@ -383,42 +419,48 @@ class DWIMLTrainer:
             self.validate_one_epoch(valid_dataloader, valid_context, epoch,
                                     *args)
 
+            # Updating infos
+            last_loss = self.valid_loss_monitor.epochs_means_history[-1]
+            self.best_epoch_monitoring.update(last_loss, epoch)
+
             # Check for early stopping
-            if self.early_stopping.step(
-                    self.valid_loss_monitor.epochs_means_history[-1]):
+            if self.best_epoch_monitoring.is_patience_reached:
                 self.save_checkpoint()
                 raise EarlyStoppingError(
                     "Early stopping! Loss has not improved after {} epochs!\n"
                     "Best result: {}; At epoch #{}"
-                    .format(self.patience,
-                            self.early_stopping.best, self.best_epoch))
+                        .format(self.patience,
+                                self.best_epoch_monitoring.best_value,
+                                self.best_epoch_monitoring.best_epoch))
 
-            # Check for current best
-            if self.valid_loss_monitor.epochs_means_history[-1] < (
-                    self.early_stopping.best + self.early_stopping.min_eps):
+            # Else, check if current best has been reached
+            # If that is the case, the monitor has just resetted its
+            # n_bad_epochs to 0
+            if self.best_epoch_monitoring.n_bad_epochs == 0:
                 logging.info("Best epoch yet! Saving model and loss history.")
-                self.model.best_model_state = self.model.state_dict()
 
-                # Save in path
-                self.model.save(self.experiment_dir)
+                # Save model
+                self.model.update_best_model()
+                self.model.save(self.experiment_path)
 
                 # Save losses (i.e. mean over all batches)
-                self.best_epoch = self.current_epoch
                 losses = {
                     'train_loss': self.train_loss_monitor.epochs_means_history[
-                        self.best_epoch],
-                    'valid_loss': self.early_stopping.best}
-                with open(os.path.join(self.experiment_dir, "losses.json"),
+                        self.best_epoch_monitoring.best_epoch],
+                    'valid_loss': self.best_epoch_monitoring.best_value}
+                with open(os.path.join(self.experiment_path, "losses.json"),
                           'w') as json_file:
-                    json_file.write(
-                        json.dumps(losses, indent=4, separators=(',', ': ')))
+                    json_file.write(json.dumps(losses, indent=4,
+                                               separators=(',', ': ')))
 
                 # Save information online
                 if self.comet_exp:
-                    self.comet_exp.log_metric("best_validation",
-                                              self.early_stopping.best)
-                    self.comet_exp.log_metric("best_epoch",
-                                              self.best_epoch)
+                    self.comet_exp.log_metric(
+                        "best_validation_loss",
+                        self.best_epoch_monitoring.best_value)
+                    self.comet_exp.log_metric(
+                        "best_epoch",
+                        self.best_epoch_monitoring.best_epoch)
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
@@ -430,21 +472,18 @@ class DWIMLTrainer:
                     'loss_valid':
                         self.valid_loss_monitor.epochs_means_history[-1],
                     'epoch': self.current_epoch,
-                    'best_epoch': self.best_epoch,
-                    'best_loss': self.early_stopping.best
+                    'best_epoch': self.best_epoch_monitoring.best_epoch,
+                    'best_loss': self.best_epoch_monitoring.best_value
                 }
                 self._update_taskman_report(updates)
 
             # (For taskman) Check if time is running out
             if self._should_quit(iter_timer):
-                print('Seems like I should quit, so I quit.')
-                print('Remaining: {:.0f} s'.format(
+                logging.info('Seems like I should quit, so I quit.')
+                logging.info('Remaining: {:.0f} s'.format(
                     self.hangup_time - time.time()))
                 self._update_taskman_report({'resubmit': True})
                 exit(2)
-
-        # Training is over, save checkpoint
-        self.save_checkpoint()
 
     def train_one_epoch(self, train_dataloader, train_context, epoch, *args):
         """
@@ -494,7 +533,7 @@ class DWIMLTrainer:
                             'loss_valid': vh[-1] if len(vh) > 0 else None,
                             'epoch': self.current_epoch,
                             'best_epoch': self.best_epoch,
-                            'best_loss': self.early_stopping.best,
+                            'best_loss': self.best_epoch_monitoring.best_value,
                             'update': batch_id,
                             'update_loss': mean_loss
                         }
@@ -568,7 +607,7 @@ class DWIMLTrainer:
                     break
 
                 # Validate this batch: forward propagation + loss
-                mean_loss = self.run_one_batch(
+                mean_loss, _ = self.run_one_batch(
                     data, is_training=False,
                     batch_sampler=self.valid_batch_sampler, *args)
                 self.valid_loss_monitor.update(mean_loss)
@@ -622,11 +661,11 @@ class DWIMLTrainer:
         raise NotImplementedError
 
     @classmethod
-    def init_from_checkpoint(cls,
-                             batch_sampler_training: BatchStreamlinesSampler,
-                             batch_sampler_validation: BatchStreamlinesSampler,
-                             model: torch.nn.Module,
-                             checkpoint_state: dict):
+    def init_from_checkpoint(
+            cls, batch_sampler_training: BatchStreamlinesSampler,
+            batch_sampler_validation: BatchStreamlinesSampler,
+            model: torch.nn.Module, checkpoint_state: dict, new_patience,
+            new_max_epochs):
         """
         During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
         back offers a dict that can be used to instantiate an experiment and
@@ -636,54 +675,67 @@ class DWIMLTrainer:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
         experiment = cls(batch_sampler_training, batch_sampler_validation,
-                         model, from_checkpoint=True, **checkpoint_state)
+                         model, from_checkpoint=True,
+                         **checkpoint_state['params_for_init'])
+
+        current_states = checkpoint_state['current_states']
+
+        # Overriding values
+        if new_patience:
+            experiment.patience = new_patience
+        if new_max_epochs:
+            experiment.max_epochs = new_max_epochs
 
         # Set RNG states
-        torch.set_rng_state(checkpoint_state['torch_rng_state'])
+        torch.set_rng_state(current_states['torch_rng_state'])
         experiment.train_batch_sampler.np_rng.set_state(
-            checkpoint_state['numpy_rng_state'])
-        experiment.valid_batch_sampler.np_rng.seed(
-            checkpoint_state['numpy_rng_state'])
+            current_states['numpy_rng_state'])
+        experiment.valid_batch_sampler.np_rng.set_state(
+            current_states['numpy_rng_state'])
         if experiment.use_gpu:
-            torch.cuda.set_rng_state(checkpoint_state['torch_cuda_state'])
+            torch.cuda.set_rng_state(current_states['torch_cuda_state'])
 
         # Set other objects
-        experiment.best_epoch = checkpoint_state['best_epoch']
-        experiment.comet_key = checkpoint_state['comet_key']
-        experiment.current_epoch = checkpoint_state['current_epoch'] + 1
+        experiment.comet_key = current_states['comet_key']
+        experiment.current_epoch = current_states['current_epoch'] + 1
         experiment.nb_train_batches_per_epoch = \
-            checkpoint_state['nb_train_batches_per_epoch']
+            current_states['nb_train_batches_per_epoch']
         experiment.nb_valid_batches_per_epoch = \
-            checkpoint_state['nb_valid_batches_per_epoch']
-        experiment.early_stopping.set_state(
-            checkpoint_state['early_stopping_state'])
+            current_states['nb_valid_batches_per_epoch']
+        experiment.best_epoch_monitoring.set_state(
+            current_states['best_epoch_monitoring_state'])
         experiment.train_loss_monitor.set_state(
-            checkpoint_state['train_loss_monitor_state'])
+            current_states['train_loss_monitor_state'])
         experiment.valid_loss_monitor.set_state(
-            checkpoint_state['valid_loss_monitor_state'])
+            current_states['valid_loss_monitor_state'])
         experiment.grad_norm_monitor.set_state(
-            checkpoint_state['grad_norm_monitor_state'])
-        experiment.optimizer.load_state_dict(
-            checkpoint_state['optimizer_state'])
-        return experiment, checkpoint_state
+            current_states['grad_norm_monitor_state'])
+        experiment.optimizer.load_state_dict(current_states['optimizer_state'])
+        experiment.model.load_state_dict(current_states['model_state'])
+
+        logging.info("Resuming from checkpoint! Next epoch will be epoch #{}"
+                     .format(experiment.current_epoch))
+
+        return experiment
 
     def save_checkpoint(self):
         """
         Save an experiment checkpoint that can be resumed from.
         """
         # Make model directory
-        checkpoint_dir = os.path.join(self.experiment_dir, "checkpoint")
+        checkpoint_dir = os.path.join(self.experiment_path, "checkpoint")
 
         # Backup old checkpoint before saving, and erase it afterwards
         to_remove = None
         if os.path.exists(checkpoint_dir):
-            to_remove = os.path.join(self.experiment_dir, "checkpoint_old")
+            to_remove = os.path.join(self.experiment_path, "checkpoint_old")
             shutil.move(checkpoint_dir, to_remove)
 
         os.mkdir(checkpoint_dir)
 
         # Save experiment
-        # Separated function to be re-implemented by child classes.
+        # Separated function to be re-implemented by child classes to fit your
+        # needs. Below is one working example.
         checkpoint_state = self._prepare_checkpoint_state()
         torch.save(checkpoint_state,
                    os.path.join(checkpoint_dir, "checkpoint_state.pkl"))
@@ -692,51 +744,55 @@ class DWIMLTrainer:
             shutil.rmtree(to_remove)
 
     def _prepare_checkpoint_state(self) -> dict:
-        # These are the parameters necessary to load data (see train_model.py)
-        checkpoint_state = {
-            'train_sampler_params': self.train_batch_sampler.attributes,
-            'valid_sampler_params': self.valid_batch_sampler.attributes,
-            'train_data_params': self.train_batch_sampler.dataset.attributes,
-            'valid_data_params': self.valid_batch_sampler.dataset.attributes,
-            'model_params': self.model.attributes,
-        }
 
         # These are the parameters necessary to use _init_
         params_for_init = {
-            'experiment_path': self.experiment_dir,
+            'experiment_path': self.experiment_path,
             'experiment_name': self.experiment_name,
+            'learning_rate': self.learning_rate,
+            'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
             'max_batches_per_epoch': self.max_batches_per_epochs,
             'patience': self.patience,
-            'device': self.device,
             'nb_cpu_workers': self.nb_cpu_workers,
             'taskman_managed': self.taskman_managed,
             'use_gpu': self.use_gpu,
-            'comet_workspace': self.comet_project,
+            'comet_workspace': self.comet_workspace,
             'comet_project': self.comet_project
         }
 
         # These are parameters that should be updated after instantiating cls.
-        other_params = {
-            'best_epoch': self.best_epoch,
+        current_states = {
             'comet_key': self.comet_key,
             'current_epoch': self.current_epoch,
             'nb_train_batches_per_epoch': self.nb_train_batches_per_epoch,
             'nb_valid_batches_per_epoch': self.nb_valid_batches_per_epoch,
             'torch_rng_state': torch.random.get_rng_state(),
             'torch_cuda_state':
-                torch.cuda.get_rng_state() if self.use_gpu else
-                None,
+                torch.cuda.get_rng_state() if self.use_gpu else None,
             'numpy_rng_state': self.train_batch_sampler.np_rng.get_state(),
-            'early_stopping_state':
-                self.early_stopping.get_state() if self.early_stopping else
-                None,
+            'best_epoch_monitoring_state':
+                self.best_epoch_monitoring.get_state() if
+                self.best_epoch_monitoring else None,
             'train_loss_monitor_state': self.train_loss_monitor.get_state(),
-            'valid_loss_monitor_state': self.valid_loss_monitor.get_state()
+            'valid_loss_monitor_state': self.valid_loss_monitor.get_state(),
+            'grad_norm_monitor_state': self.grad_norm_monitor.get_state(),
+            'optimizer_state': self.optimizer.state_dict(),
+            'model_state': self.model.state_dict(),
         }
 
-        checkpoint_state.update(params_for_init)
-        checkpoint_state.update(other_params)
+        # Additional params are the parameters necessary to load data, batch
+        # samplers and model (see train_model.py). Note that the training set
+        # and validation set attributes should be the same.
+        checkpoint_state = {
+            'train_sampler_params': self.train_batch_sampler.attributes,
+            'valid_sampler_params': self.valid_batch_sampler.attributes,
+            'train_data_params': self.train_batch_sampler.dataset.attributes,
+            'valid_data_params': self.valid_batch_sampler.dataset.attributes,
+            'model_params': self.model.attributes,
+            'params_for_init': params_for_init,
+            'current_states': current_states
+        }
         return checkpoint_state
 
     def _should_quit(self, iter_timer):
@@ -750,19 +806,21 @@ class DWIMLTrainer:
     def _update_taskman_report(self, updates):
         self.taskman_report.update(updates)
         self.taskman_report['time'] = time.time()
-        print('!taskman' + json.dumps(self.taskman_report), flush=True)
+        logging.info('!taskman' + json.dumps(self.taskman_report), flush=True)
 
     def _save_log_from_array(self, array: np.ndarray, fname: str):
-        log_dir = os.path.join(self.experiment_dir, "logs")
+        log_dir = os.path.join(self.experiment_path, "logs")
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         fpath = os.path.join(log_dir, fname)
         np.save(fpath, array)
 
     @staticmethod
-    def load_params_from_checkpoint(experiment_path: str):
+    def load_params_from_checkpoint(experiment_path: str,
+                                    experiment_name: str):
         total_path = os.path.join(
-            experiment_path, "checkpoint", "checkpoint_state.pkl")
+            experiment_path, experiment_name, "checkpoint",
+            "checkpoint_state.pkl")
         if not os.path.isfile(total_path):
             raise FileNotFoundError('Checkpoint was not found! ({})'
                                     .format(total_path))
@@ -771,15 +829,43 @@ class DWIMLTrainer:
         return checkpoint_state
 
     @staticmethod
-    def check_early_stopping(checkpoint_state, new_patience=None):
-        msg = "Resumed experiment was stopped because of early stopping, " \
-              "increase patience in order to resume training!"
+    def check_stopping_cause(checkpoint_state, new_patience=None,
+                             new_max_epochs=None):
 
+        # 1. Check if early stopping had been triggered.
+        best_monitoring_state = \
+            checkpoint_state['current_states']['best_epoch_monitoring_state']
+        bad_epochs = best_monitoring_state['n_bad_epochs']
         if new_patience is None:
-            if (checkpoint_state['early_stopping_state']['n_bad_epochs'] >=
-                    checkpoint_state['early_stopping_state']['patience']):
-                raise EarlyStoppingError(msg)
+            # No new patience: checking if early stopping had been triggered.
+            if bad_epochs >= best_monitoring_state['patience']:
+                raise EarlyStoppingError(
+                    "Resumed experiment was stopped because of early "
+                    "stopping, increase patience in order to resume training!")
+        elif bad_epochs >= new_patience:
+            # New patience: checking if will be able to continue
+            raise EarlyStoppingError(
+                "In resumed experiment, we had reach {} bad epochs (i.e. with "
+                "no improvement). You have now overriden patience to {} but "
+                "that won't be enough. Please increase that value in "
+                "order to resume training."
+                .format(best_monitoring_state['n_bad_epochs'], new_patience))
+
+        # 2. Checking that max_epochs had not been reached.
+        current_epoch = checkpoint_state['current_states']['current_epoch']
+        if new_max_epochs is None:
+            if current_epoch == \
+                    checkpoint_state['params_for_init']['max_epochs'] - 1:
+                raise ValueError(
+                    "Resumed experiment had stopped after reaching the "
+                    "maximum number of epochs allowed (max_epochs = {}). "
+                    "Please increase that value in order to resume training."
+                    .format(checkpoint_state['params_for_init']['max_epochs']))
         else:
-            if (checkpoint_state['early_stopping_state']['n_bad_epochs'] >=
-                    new_patience):
-                raise EarlyStoppingError(msg)
+            if current_epoch > new_max_epochs:
+                raise ValueError(
+                    "In resumed experiment, we had performed {} epochs). You "
+                    "have now overriden max_epoch to {} but that won't be "
+                    "enough. Please increase that value in order to resume "
+                    "training."
+                    .format(current_epoch, new_max_epochs))

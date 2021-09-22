@@ -11,6 +11,8 @@
 ###########
 beluga="YOUR INFOS"
 ismrm2015_folder="$beluga/ismrm2015/derivatives"
+# or
+ismrm2015_folder=~/Documents/phantoms_or_simulated/ismrm2015/derivatives/
 
 database_folder="$ismrm2015_folder/noArtefact"
 subjects_list="$database_folder/subjects.txt"
@@ -65,8 +67,11 @@ rm $test_tractograms_path/test_batch1*
 # Further testing was done with Learn2track's model.
 ###########
 mkdir $database_folder/experiments
+rm -r $database_folder/experiments/test_experiment1/checkpoint
+# If bugged before:
+# rm -r $database_folder/experiments/test_experiment1/model_old
 python please_copy_and_adapt/train_model.py --logging debug \
       --input_group 'input' --target_group 'streamlines' \
-      --hdf5_filename $database_folder/hdf5/ismrm2015_noArtefact_test.hdf5 \
+      --hdf5_file $database_folder/hdf5/ismrm2015_noArtefact_test.hdf5 \
       --parameters_filename please_copy_and_adapt/training_parameters.yaml \
       --experiment_name test_experiment1 $database_folder/experiments

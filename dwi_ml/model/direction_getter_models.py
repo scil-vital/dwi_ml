@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch import Tensor
 from torch.distributions import Categorical, MultivariateNormal
-from torch.nn import (Linear, Dropout, ReLU, CosineSimilarity)
+from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
 from dwi_ml.model.main_models import ModelAbstract
@@ -102,7 +102,7 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
     h1_size = ceil(input_size / 2)
     h1 = Linear(input_size, h1_size)
     h2 = Linear(h1_size, output_size)
-    layers = [h1, h2]
+    layers = ModuleList([h1, h2])
 
     return layers
 
@@ -133,16 +133,21 @@ class AbstractDirectionGetterModel(ModelAbstract):
             self.dropout_sublayer = Dropout(self.dropout)
         else:
             self.dropout_sublayer = lambda x: x
+
         self.relu_sublayer = ReLU()
+
+    @property
+    def hyperparameters(self):
+        return {}
 
     @property
     def attributes(self):
         attributes = {
-            'dropout': self.dropout
+            'dropout': self.dropout,
         }
         return attributes
 
-    def loop_on_layers(self, inputs: Tensor, layers: List[torch.nn.Module]):
+    def loop_on_layers(self, inputs: Tensor, layers: ModuleList):
         """
         Apply a list of layers, using the ReLU activation function and dropout
         in-between layers.
@@ -203,7 +208,7 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
     def attributes(self):
         attributes = super().attributes  # type: dict
         other_params = {
-            'model': 'cosine-regression'
+            'key': 'cosine-regression',
         }
         attributes.update(other_params)
         return attributes
@@ -263,9 +268,9 @@ class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
 
     @property
     def attributes(self):
-        attributes = super().attributes
+        attributes = super().attributes  # type: dict
         attributes.update({
-            'model': 'l2-regression'
+            'key': 'l2-regression'
         })
         return attributes
 
@@ -321,9 +326,9 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
 
     @property
     def attributes(self):
-        attributes = super().attributes
+        attributes = super().attributes  # type: dict
         attributes.update({
-            'model': 'sphere-classification'
+            'key': 'sphere-classification'
         })
         return attributes
 
@@ -416,9 +421,9 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
     @property
     def attributes(self):
-        attributes = super().attributes
+        attributes = super().attributes  # type: dict
         attributes.update({
-            'model': 'gaussian'
+            'key': 'gaussian'
         })
         return attributes
 
@@ -511,7 +516,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
     def attributes(self):
         attributes = super().attributes
         attributes.update({
-            'model': 'gaussian-mixture',
+            'key': 'gaussian-mixture',
             'nb_gaussians': self.n_gaussians
         })
         return attributes
@@ -629,9 +634,9 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
 
     @property
     def attributes(self):
-        attributes = super().attributes
+        attributes = super().attributes  # type: dict
         attributes.update({
-            'model': 'fisher-von-mises',
+            'key': 'fisher-von-mises',
         })
         return attributes
 
@@ -741,7 +746,7 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
     def attributes(self):
         attributes = super().attributes
         attributes.update({
-            'model': 'fisher-von-mises-mixture',
+            'key': 'fisher-von-mises-mixture',
             'n_cluster': self.n_cluster
         })
         return attributes

@@ -283,15 +283,23 @@ class BatchStreamlinesSampler(Sampler):
     def attributes(self):
         """
         All parameters. Contains at least all parameters that would be
-        necessary to create this batch sampler again.
+        necessary to create this batch sampler again (except the dataset).
         """
         attrs = {
             'streamline_group_name': self.streamline_group_name,
-            'rng': self.rng,
-            'wait_for_gpu': self.wait_for_gpu,
             'batch_size': self.batch_size,
-            'cycles': self.cycles,
+            'rng': self.rng,
             'nb_subjects_per_batch': self.nb_subjects_per_batch,
+            'cycles': self.cycles,
+            'step_size': self.step_size,
+            'neighborhood_type': self.neighborhood_type,
+            'neighborhood_radius': self.neighborhood_radius,
+            'split_ratio': self.split_ratio,
+            'noise_gaussian_size': self.noise_gaussian_size,
+            'noise_gaussian_variability': self.noise_gaussian_variability,
+            'reverse_ratio': self.reverse_ratio,
+            'wait_for_gpu': self.wait_for_gpu,
+            'normalize_directions': self.normalize_directions,
             'type': type(self)
         }
         return attrs
@@ -448,7 +456,7 @@ class BatchStreamlinesSampler(Sampler):
 
                 yield batch_ids_per_subj
 
-            self.log.info("  Finished the cycles for these subject. Choosing "
+            self.log.info("  Finished the cycles for these subjects. Choosing "
                           "new ones.")
 
     def _prepare_subj_subbatch(self, subj, subj_slice,
@@ -771,7 +779,8 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
     @property
     def attributes(self):
         attributes = super().attributes
-        attributes.update({'input_group_name': self.input_group_name})
+        attributes.update({'input_group_name': self.input_group_name,
+                           'nb_previous_dirs': self.nb_previous_dirs})
         return attributes
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],

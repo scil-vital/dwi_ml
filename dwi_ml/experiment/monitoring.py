@@ -134,14 +134,16 @@ class BestEpochMonitoring(object):
         """ Get object state """
         return {'patience': self.patience,
                 'min_eps': self.min_eps,
-                'best': self.best_value,
+                'best_value': self.best_value,
+                'best_epoch': self.best_epoch,
                 'n_bad_epochs': self.n_bad_epochs}
 
     def set_state(self, state):
         """ Set object state """
         self.patience = state['patience']
         self.min_eps = state['min_eps']
-        self.best_value = state['best']
+        self.best_value = state['best_value']
+        self.best_epoch = state['best_epoch']
         self.n_bad_epochs = state['n_bad_epochs']
 
 

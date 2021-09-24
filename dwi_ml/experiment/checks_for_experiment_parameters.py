@@ -140,6 +140,19 @@ def check_epochs(max_epochs: int, max_batches_per_epoch: int):
     return max_epochs, max_batches_per_epoch
 
 
+def check_chunk_size(chunk_size: int):
+    check_int_or_none_instance(chunk_size, 'chunk_size')
+
+    if chunk_size is None:
+        logging.warning("Yaml parameter: chunk size was set to None. This "
+                        "will probably cause issues during sampling. Current "
+                        "batch sampler implementation can not decide the "
+                        "the number of streamlines to load for each chunk,"
+                        "it has to be given by the user.")
+
+    return chunk_size
+
+
 def check_batch_size(batch_size: int):
     check_int_or_none_instance(batch_size, 'batch_size')
 
@@ -211,13 +224,17 @@ def check_all_experiment_parameters(conf: dict):
 
     sampling_params = {
         # batch
-        'batch_size': check_batch_size(s['batch']['size']),
+        'chunk_size': check_chunk_size(s['batch']['chunk_size']),
+        'max_batch_size': check_batch_size(s['batch']['max_batch_size']),
         'nb_subjects_per_batch': nb_subjects_per_batch,
         'cycles': check_cycles(s['batch']['cycles'], nb_subjects_per_batch),
 
         # processing
         'step_size': check_step_size(
             s['streamlines']['processing']['step_size']),
+        'compress': check_bool_instance_not_none(
+            s['streamlines']['processing']['compress'],
+            'compress'),
         'normalize_directions': check_bool_instance_not_none(
             s['streamlines']['processing']['normalize_directions'],
             'normalize_directions'),

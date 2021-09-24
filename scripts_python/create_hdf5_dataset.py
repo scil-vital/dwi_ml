@@ -47,9 +47,9 @@ def _parse_args():
                         "dwi_ml_ready folder.")
     p.add_argument('config_file',
                    help="Path to the json config file defining the groups "
-                        "wanted in your hdf5. Should follow description in "
-                        "our doc, here: "
-                        "https://dwi-ml.readthedocs.io/en/latest/"
+                        "wanted in your hdf5. \n"
+                        "-> Should follow description in our doc, here: \n"
+                        "-> https://dwi-ml.readthedocs.io/en/latest/"
                         "creating_hdf5.html")
     p.add_argument('training_subjs',
                    help="txt file containing the list of subjects ids to use "
@@ -57,30 +57,35 @@ def _parse_args():
     p.add_argument('validation_subjs',
                    help="txt file containing the list of subjects ids to use "
                         "for validation.")
-    p.add_argument('--step_size', type=float,
-                   help="Common step size to resample the data. Must be in "
-                        "the same space as the streamlines.\nIf none is "
-                        "given, we will compress the streamlines instead of "
-                        "resampling.")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument('--step_size', type=float, metavar='S',
+                   help="Common step size to resample the data. \n"
+                        "-> Must be in the same space as the streamlines.")
+    g.add_argument('--compress', action="store_true",
+                   help="If set, streamlines will be compressed.\n"
+                        "-> If neither step_size nor compress are chosen, "
+                        "streamlines will be kept as they are.")
     p.add_argument('--name',
                    help="Dataset name [Default uses date and time of "
                         "processing].")
     p.add_argument('--enforce_files_presence', type=bool, default=True,
-                   help='If true, the process will stop if one file is '
+                   metavar="True/False",
+                   help='If True, the process will stop if one file is '
                         'missing for a subject. Default: True')
     p.add_argument('--std_mask',
                    help="Mask defining the voxels used for data "
-                        "standardization. Should be the name of a file inside "
-                        "dwi_ml_ready/{subj_id}\nIf none is given, all "
-                        "non-zero voxels will be used.")
+                        "standardization. \n"
+                        "-> Should be the name of a file inside "
+                        "dwi_ml_ready/{subj_id}. \n"
+                        "-> If none is given, all non-zero voxels will be "
+                        "used.")
     p.add_argument('--independent_modalities', type=bool, default=True,
+                   metavar="True/False",
                    help='If true, standardization will be computed separately '
                         'over all features in the input data. Default: True.')
     p.add_argument('--space', type=str, default='vox',
                    choices=['rasmm', 'vox', 'voxmm'],
-                   help="Default space to bring all the stateful tractograms. "
-                        "All other measures (ex, step_size) should be "
-                        "provided in that space.")
+                   help="Default space to bring all the stateful tractograms.")
     p.add_argument('--logging',
                    choices=['error', 'warning', 'info', 'debug'],
                    default='warning',
@@ -256,6 +261,10 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
         hdf_file.attrs['training_subjs'] = training_subjs
         hdf_file.attrs['validation_subjs'] = validation_subjs
 
+        # If we resample the streamlines here, the step_size is known. Else,
+        # this is None.
+        hdf_file.attrs['step_size'] = args.step_size
+
         if args.step_size is not None:
             hdf_file.attrs['step_size'] = args.step_size
         else:
@@ -332,7 +341,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                   "need a ref!")
                 sft, lengths = process_streamlines(
                     subj_input_dir, group, groups_config[group]['files'],
-                    group_header, args.step_size, space,
+                    group_header, args.step_size, args.compress, space,
                     args.save_intermediate, subj_intermediate_path)
                 streamlines = sft.streamlines
 

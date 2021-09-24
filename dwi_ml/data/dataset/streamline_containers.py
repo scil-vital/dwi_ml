@@ -7,7 +7,7 @@ the hdf5 (which contains only lists and numpy arrays) instead of loading data
 from .trk files. They will contain all information necessary to treat with
 streamlines: the data itself and _offset, _lengths, space attributes, etc.
 """
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import torch
 from dipy.io.stateful_tractogram import (set_sft_logger_level,
@@ -17,7 +17,7 @@ from nibabel.streamlines import ArraySequence
 import numpy as np
 
 
-def _init_space_from_hdf_info(hdf_group: h5py.Group):
+def _load_space_from_hdf(hdf_group: h5py.Group):
     a = np.array(hdf_group.attrs['affine'])
     d = np.array(hdf_group.attrs['dimensions'])
     vs = np.array(hdf_group.attrs['voxel_sizes'])
@@ -33,15 +33,11 @@ def _init_space_from_hdf_info(hdf_group: h5py.Group):
     return space_attributes, space
 
 
-def _init_array_sequence_from_hdf_info(hdf_group: h5py.Group):
+def _load_streamlines_from_hdf(hdf_group: h5py.Group):
     streamlines = ArraySequence()
     streamlines._data = np.array(hdf_group['data'])
     streamlines._offsets = np.array(hdf_group['offsets'])
     streamlines._lengths = np.array(hdf_group['lengths'])
-
-    # Adding non-hidden parameters for nicer later acces
-    streamlines.lengths = np.array(hdf_group['lengths'])
-    streamlines.lengths_mm = np.array(hdf_group['euclidean_lengths'])
 
     return streamlines
 
@@ -84,7 +80,7 @@ class LazyStreamlinesGetter(object):
 
     def get_array_sequence(self, item=None):
         if item is None:
-            streamlines = _init_array_sequence_from_hdf_info(self.hdf_group)
+            streamlines = _load_streamlines_from_hdf(self.hdf_group)
         else:
             streamlines = ArraySequence()
             if isinstance(item, int):
@@ -109,9 +105,11 @@ class LazyStreamlinesGetter(object):
         return streamlines
 
     @property
-    def lengths(self):
-        """Get the lengths of all streamlines without loading everything
-        into memory"""
+    def _lengths(self):
+        """
+        Get the lengths of all streamlines without loading everything into
+        memory. Private to copy non-lazy SFT streamlines (ArraySequence)
+        """
         lengths = np.array(self.hdf_group['lengths'], dtype=np.int16)
 
         return lengths
@@ -120,7 +118,7 @@ class LazyStreamlinesGetter(object):
     def lengths_mm(self):
         """Get the lengths of all streamlines without loading everything
         into memory"""
-        lengths = np.array(self.hdf_group['euclidean_lengths'], dtype=np.int16)
+        lengths = self.hdf_group['euclidean_lengths']
 
         return lengths
 
@@ -161,6 +159,7 @@ class SFTDataAbstract(object):
         self.space_attributes = space_attributes
         self.space = space
         self.streamlines = streamlines
+        self.is_lazy = None
 
     @property
     def space_attributes_as_tensor(self):
@@ -171,6 +170,14 @@ class SFTDataAbstract(object):
         voxel_sizes = torch.as_tensor(vs, dtype=torch.float)
 
         return affine, dimensions, voxel_sizes, vo
+
+    @property
+    def lengths(self):
+        raise NotImplementedError
+
+    @property
+    def lengths_mm(self):
+        raise NotImplementedError
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
@@ -190,8 +197,19 @@ class SFTDataAbstract(object):
 
 class SFTData(SFTDataAbstract):
     def __init__(self, streamlines: ArraySequence, space_attributes: Tuple,
-                 space: Space):
+                 space: Space, lengths_mm: List):
         super().__init__(streamlines, space_attributes, space)
+        self._lengths_mm = lengths_mm
+        self.is_lazy = False
+
+    @property
+    def lengths(self):
+        # Accessing private info, ok.
+        return np.array(self.streamlines._lengths, dtype=np.int16)
+
+    @property
+    def lengths_mm(self):
+        return np.array(self._lengths_mm)
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
@@ -199,12 +217,15 @@ class SFTData(SFTDataAbstract):
         Creating class instance from the hdf in cases where data is not
         loaded yet. Non-lazy = loading the data here.
         """
-        streamlines = _init_array_sequence_from_hdf_info(hdf_group)
-        space_attributes, space = _init_space_from_hdf_info(hdf_group)
+        streamlines = _load_streamlines_from_hdf(hdf_group)
+        # Adding non-hidden parameters for nicer later acces
+        lengths_mm = hdf_group['euclidean_lengths']
+
+        space_attributes, space = _load_space_from_hdf(hdf_group)
 
         # Return an instance of SubjectMRIData instantiated through __init__
         # with this loaded data:
-        return cls(streamlines, space_attributes, space)
+        return cls(streamlines, space_attributes, space, lengths_mm)
 
     def from_chosen_streamlines(self, streamline_ids=None):
         if streamline_ids is not None:
@@ -219,10 +240,22 @@ class LazySFTData(SFTDataAbstract):
     def __init__(self, streamlines: LazyStreamlinesGetter,
                  space_attributes: Tuple, space: Space):
         super().__init__(streamlines, space_attributes, space)
+        self.is_lazy = True
+
+    @property
+    def lengths(self):
+        # Fetching from the lazy streamline getter
+        # Made it private to copy the non-lazy streamlines (ArraySequence)
+        return np.array(self.streamlines._lengths, dtype=np.int16)
+
+    @property
+    def lengths_mm(self):
+        # Fetching from the lazy streamline getter
+        return np.array(self.streamlines.lengths_mm)
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
-        space_attributes, space = _init_space_from_hdf_info(hdf_group)
+        space_attributes, space = _load_space_from_hdf(hdf_group)
 
         streamlines = LazyStreamlinesGetter(hdf_group)
 

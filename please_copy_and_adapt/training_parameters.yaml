@@ -7,11 +7,20 @@
 
 sampling:
     batch:
+        # chunk_size: int
+        #     Number of streamlines to sample together while creating the
+        #     batches. If the size of the streamlines is known in terms of
+        #     number of points (resampling has been done, and no compressing is
+        #     done in the batch sampler), we iteratively add chunk_size
+        #     streamlines to the batch until the total number of sampled
+        #     timepoint reaches the max_batch_size. Else, the total number of
+        #     streamlines in the batch will be 1*chunk_size.
+        chunk_size: 256
         # batch_size: int
-        #     Number of streamline points per batch. Suggestion: 20000.
-        #     NOTE: Actual batch sizes might be different than `batch_size`
-        #     depending on chosen data augmentation.
-        size: 20000
+        #     Number of streamline points per batch.
+        #     The total number your computer will accept depends on the type of
+        #     input data. You will need to test this value. Suggestion: 20000.
+        max_batch_size: 20000
         # nb_subjects_per_batch: int
         #     Maximum number of different subjects from which to load data in
         #     each batch. This should help avoid loading too many inputs in
@@ -29,8 +38,17 @@ sampling:
         processing:
             # step_size: float
             #     Resample all streamlines to this step size (in mm). If null,
-            #     train on streamlines as they are (e.g. compressed).
+            #     train on streamlines as they are. Cannot be used together
+            #     with compress. Note that you probably may have already
+            #     resampled or compressed your data creating your dataset, but
+            #     you can use a different choice in the batch sampler if you
+            #     wish.
             step_size: null
+            # compress: bool
+            #     If true, compress streamlines. Cannot be used together with
+            #     step_size. Once again, the choice can be different in the
+            #     batch sampler than chosen when creating the hdf5.
+            compress: False
             # normalize_directions: bool
             #     If true, directions will be normalized. If the step size is
             #     fixed, it shouldn't make any difference. If streamlines are

@@ -35,9 +35,9 @@ def parse_args():
 
 
 def test_batch_loading_no_computations(
-        fake_dataset, batch_size, step_size, ref, saving_path,
-        split_ratio: float = 0, noise_size: float = 0,
-        noise_variability: float = 0, reverse_ratio: float = 0):
+        fake_dataset, ref, saving_path,
+        noise_size: float = 0, noise_variability: float = 0,
+        reverse_ratio: float = 0, split_ratio: float = 0):
 
     now = datetime.now().time()
     logging.root.setLevel('DEBUG')
@@ -48,10 +48,11 @@ def test_batch_loading_no_computations(
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
     batch_sampler = BatchStreamlinesSampler1IPV(
-        training_set, 'streamlines', 'input', batch_size, rng_seed,
+        training_set, 'streamlines', 'input', chunk_size=256,
+        max_batch_size=10000, rng=rng_seed,
         nb_subjects_per_batch=1, cycles=1,
-        neighborhood_type=None, neighborhood_radius=None,
-        step_size=step_size, wait_for_gpu=True, normalize_directions=False,
+        neighborhood_type=None, neighborhood_radius=None, step_size=0.75,
+        compress=False, wait_for_gpu=True, normalize_directions=False,
         nb_previous_dirs=1, split_ratio=split_ratio,
         noise_gaussian_size=noise_size,
         noise_gaussian_variability=noise_variability,
@@ -79,9 +80,8 @@ def test_batch_loading_no_computations(
     return batch_streamlines
 
 
-def test_batch_loading_computations(fake_dataset, batch_size, step_size,
-                                    ref, affine, header, saving_path,
-                                    neighborhood_type=None,
+def test_batch_loading_computations(fake_dataset, ref, affine, header,
+                                    saving_path, neighborhood_type=None,
                                     neighborhood_radius=None):
     set_sft_logger_level('WARNING')
     logging.root.setLevel('DEBUG')
@@ -94,9 +94,10 @@ def test_batch_loading_computations(fake_dataset, batch_size, step_size,
     rng_seed = now.minute * 100 + now.second
 
     batch_sampler = BatchStreamlinesSampler1IPV(
-        training_set, 'streamlines', 'input', batch_size, rng_seed,
-        nb_subjects_per_batch=1, cycles=1,
-        step_size=step_size, wait_for_gpu=False, normalize_directions=True,
+        training_set, 'streamlines', 'input', chunk_size=256,
+        max_batch_size=10000, rng=rng_seed,
+        nb_subjects_per_batch=1, cycles=1, step_size=0.5, compress=False,
+        wait_for_gpu=False, normalize_directions=True,
         neighborhood_type=neighborhood_type,
         neighborhood_radius=neighborhood_radius,
         nb_previous_dirs=2, noise_gaussian_size=0,
@@ -157,22 +158,21 @@ def test_non_lazy(ref, affine, header, saving_path):
                                        taskman_managed=True, cache_size=None)
     fake_dataset.load_data()
 
-    print('\n\n\n=======================Test with batch size 10000 + resample '
-          '+ reverse')
-    test_batch_loading_no_computations(fake_dataset, 10000, 0.5, ref,
-                                       saving_path, reverse_ratio=1)
+    print('\n\n\n=======================Test with reverse + split')
+    test_batch_loading_no_computations(fake_dataset, ref, saving_path,
+                                       reverse_ratio=0.5, split_ratio=0.5)
 
     print('\n\n\n=======================Test with batch size 10000 + resample '
           '+ do cpu computations + axis neighborhood')
-    test_batch_loading_computations(fake_dataset, 10000, 0.5, ref,
-                                    affine, header, saving_path,
+    test_batch_loading_computations(fake_dataset, ref, affine, header,
+                                    saving_path,
                                     neighborhood_type='axes',
                                     neighborhood_radius=[1, 2])
 
     print('\n\n\n=======================Test with batch size 10000 + resample '
           '+ do cpu computations + grid neighborhood')
-    test_batch_loading_computations(fake_dataset, 10000, 0.5, ref,
-                                    affine, header, saving_path,
+    test_batch_loading_computations(fake_dataset, ref, affine, header,
+                                    saving_path,
                                     neighborhood_type='grid',
                                     neighborhood_radius=2)
 
@@ -188,14 +188,12 @@ def test_lazy(ref, affine, header, saving_path):
                                        taskman_managed=True, cache_size=1)
     fake_dataset.load_data()
 
-    print('\n\n\n=======================Test with batch size 10000 + resample')
-    test_batch_loading_no_computations(fake_dataset, 10000, 0.5, ref,
-                                       saving_path)
+    print('\n\n\n=======================Test with asic args')
+    test_batch_loading_no_computations(fake_dataset, ref, saving_path)
 
-    print('\n\n\n=======================Test with batch size 10000 + resample '
-          '+ computations')
-    test_batch_loading_computations(fake_dataset, 10000, 0.5, ref,
-                                    affine, header, saving_path)
+    print('\n\n\n=======================Test with wait_for_gpu = false')
+    test_batch_loading_computations(fake_dataset, ref, affine, header,
+                                    saving_path)
 
 
 if __name__ == '__main__':

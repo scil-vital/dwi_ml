@@ -6,6 +6,7 @@ from typing import Dict, List, Union, Iterable, Iterator, Tuple
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
 from scilpy.tracking.tools import resample_streamlines_step_size
+from scilpy.utils.streamlines import compress_sft
 import torch
 import torch.multiprocessing
 from torch.utils.data import Sampler
@@ -38,7 +39,7 @@ to contribute to dwi_ml.
 
 BatchStreamlinesSampler1IPV
 ---------------------------
-    1IPV standard for 1 Input + Previous Dirs.
+    1IPV stands for 1 Input + Previous Dirs.
 
     x1: input = volume group named "input"
         (The underlying information under each point of the sampled
@@ -71,11 +72,6 @@ probably easier to sample all points from each sampled streamline, and then
 use them separatedly.
 """
 
-# Number of streamlines sampled at the same for a given subject (then, we
-# evaluate if the batch_size has been reached. No need to sample only one
-# streamline at the time!
-CHUNK_SIZE = 256
-
 
 class BatchStreamlinesSampler(Sampler):
     """
@@ -95,9 +91,11 @@ class BatchStreamlinesSampler(Sampler):
     """
 
     def __init__(self, dataset: MultisubjectSubset,
-                 streamline_group_name: str, batch_size: int, rng: int,
+                 streamline_group_name: str, chunk_size: int,
+                 max_batch_size: int, rng: int,
                  nb_subjects_per_batch: int, cycles: int,
-                 step_size: float, neighborhood_type: Union[str, None],
+                 step_size: float, compress: bool,
+                 neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, Iterable[float], None],
                  split_ratio: float, noise_gaussian_size: float,
                  noise_gaussian_variability: float,
@@ -111,7 +109,14 @@ class BatchStreamlinesSampler(Sampler):
         streamline_group_name: str
             The name of the group to use to load the sequences among all
             streamline_groups in the data_source.
-        batch_size : int
+        chunk_size: Number of streamlines to sample together while creating the
+            batches. If the size of the streamlines is known in terms of
+            number of points (resampling has been done, and no compressing is
+            done in the batch sampler), we iteratively add chunk_size
+            streamlines to the batch until the total number of sampled
+            timepoint reaches the max_batch_size. Else, the total number of
+            streamlines in the batch will be 1*chunk_size.
+        max_batch_size : int
             Number of required points in a batch. Batches will be approximated
             as the final batch size depends on data augmentation (streamline
             cutting or resampling). Note that approximation of the number of
@@ -129,10 +134,14 @@ class BatchStreamlinesSampler(Sampler):
             sampling new ones.
         step_size : float
             Constant step size that every streamline should have between points
-            (in mm). If None, train on streamlines as they are (ex,
-            compressed). Note that you probably already fixed a step size when
+            (in mm). If None, train on streamlines as they are.
+            Note that you probably already fixed a step size when
             creating your dataset, but you could use a different one here if
             you wish. [None]
+        compress: bool
+            If true, compress streamlines. Cannot be used together with
+            step_size. Once again, the choice can be different in the batch
+            sampler than chosen when creating the hdf5.
         neighborhood_type: str
             The type of neighborhood to add. One of 'axes', 'grid' or None. If
             None, don't add any. See
@@ -175,7 +184,7 @@ class BatchStreamlinesSampler(Sampler):
             unreversed flag. But that adds a bool for each streamline in your
             dataset and probably not so useful.
         wait_for_gpu: bool
-            If set, all computations that can be avoided in the batch sampler
+            If True, all computations that can be avoided in the batch sampler
             (which is computed on CPU) will be skipped and should be performed
             by the user later on GPU. Ex: computing directions from the
             streamline coordinates, computing input interpolation, etc.
@@ -189,10 +198,11 @@ class BatchStreamlinesSampler(Sampler):
         super().__init__(dataset)  # This does nothing but python likes it.
 
         # Checking that batch_size is correct
-        if (not isinstance(batch_size, int) or isinstance(batch_size, bool)
-                or batch_size <= 0):
-            raise ValueError("batch_size should be a positive integeral "
-                             "value, but got batch_size={}".format(batch_size))
+        if (not isinstance(max_batch_size, int) or isinstance(max_batch_size, bool)
+                or max_batch_size <= 0):
+            raise ValueError("batch_size (i.e. number of total timesteps in "
+                             "the batch) should be a positive integeral "
+                             "value, but got batch_size={}".format(max_batch_size))
 
         # Checking that n_volumes was given if cycles was given
         if cycles and not nb_subjects_per_batch:
@@ -206,9 +216,15 @@ class BatchStreamlinesSampler(Sampler):
         self.streamline_group_name = streamline_group_name
         self.nb_subjects_per_batch = nb_subjects_per_batch
         self.cycles = cycles
+        if step_size and compress:
+            raise ValueError("You may choose either resampling or compressing,"
+                             "but not both.")
         self.step_size = step_size
+        self.compress = compress
         self.wait_for_gpu = wait_for_gpu
         self.normalize_directions = normalize_directions
+        self.chunk_size = chunk_size
+        self.max_batch_size = max_batch_size
 
         # Find idx of streamline group
         self.streamline_group = self.dataset.streamline_groups.index(
@@ -218,22 +234,6 @@ class BatchStreamlinesSampler(Sampler):
         self.rng = rng
         self.np_rng = np.random.RandomState(self.rng)
         torch.manual_seed(self.rng)  # Set torch seed
-
-        # Batch size computation:
-        # If self.step_size: we can't rely on the current number of time steps
-        # because we will resample streamlines. Relying on the lenths_mm info
-        # available in the MultiSubjectData to be able to know the (eventual)
-        # number of time steps without loading the streamlines, particularly
-        # with the lazy data.
-        # If self.step_size is None: not resampling. Then we can get the real
-        # number of time steps in the streamlines, also already available in
-        # the MultiSubjectData without loading the streamlines.
-        if self.step_size:
-            # batch size is in mm
-            self.batch_size = self.step_size * batch_size
-        else:
-            # batch size is in number of points.
-            self.batch_size = batch_size
 
         # Data augmentation for streamlines:
         self.noise_gaussian_size = noise_gaussian_size
@@ -267,14 +267,16 @@ class BatchStreamlinesSampler(Sampler):
     @property
     def hyperparameters(self):
         hyperparameters = {
+            'neighborhood_type': self.neighborhood_type,
             'neighborhood_radius': self.neighborhood_radius,
             'nb_neighbors': len(self.neighborhood_points) if
             self.neighborhood_points else None,
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
-            'reverse_streamlines_ratio': self.reverse_ratio,
-            'split_streamlines_ratio': self.split_ratio,
+            'reverse_ratio': self.reverse_ratio,
+            'split_ratio': self.split_ratio,
             'step_size': self.step_size,
+            'compress': self.compress,
             'normalize_directions': self.normalize_directions
         }
         return hyperparameters
@@ -287,21 +289,14 @@ class BatchStreamlinesSampler(Sampler):
         """
         attrs = {
             'streamline_group_name': self.streamline_group_name,
-            'batch_size': self.batch_size,
+            'batch_size': self.max_batch_size,
             'rng': self.rng,
             'nb_subjects_per_batch': self.nb_subjects_per_batch,
             'cycles': self.cycles,
-            'step_size': self.step_size,
-            'neighborhood_type': self.neighborhood_type,
-            'neighborhood_radius': self.neighborhood_radius,
-            'split_ratio': self.split_ratio,
-            'noise_gaussian_size': self.noise_gaussian_size,
-            'noise_gaussian_variability': self.noise_gaussian_variability,
-            'reverse_ratio': self.reverse_ratio,
             'wait_for_gpu': self.wait_for_gpu,
-            'normalize_directions': self.normalize_directions,
             'type': type(self)
         }
+        attrs.update(self.hyperparameters)
         return attrs
 
     @property
@@ -338,7 +333,7 @@ class BatchStreamlinesSampler(Sampler):
         """
         # This is the list of all possible streamline ids
         global_streamlines_ids = np.arange(
-            self.dataset.total_streamlines[self.streamline_group])
+            self.dataset.total_nb_streamlines[self.streamline_group])
         ids_per_subjs = \
             self.dataset.streamline_ids_per_subj[self.streamline_group]
 
@@ -377,7 +372,7 @@ class BatchStreamlinesSampler(Sampler):
 
                 # Choosing only non-empty subjects
                 nb_subjects = min(self.nb_subjects_per_batch,
-                                 np.count_nonzero(weights))
+                                  np.count_nonzero(weights))
                 sampled_subjs = self.np_rng.choice(
                     np.arange(len(self.dataset.subjs_data_list)),
                     size=nb_subjects, replace=False, p=weights)
@@ -388,8 +383,7 @@ class BatchStreamlinesSampler(Sampler):
             self.log.debug('    Sampled subjects for this batch: {}'
                            .format(sampled_subjs))
 
-            # if step_size, this is in mm. Else, it is is number of points.
-            batch_size_per_subj = self.batch_size / nb_subjects
+            batch_size_per_subj = self.max_batch_size / nb_subjects
 
             # Preparing to iterate on these chosen subjects for a predefined
             # number of cycles
@@ -410,6 +404,8 @@ class BatchStreamlinesSampler(Sampler):
                 # been chosen yet.
                 batch_ids_per_subj = []
                 for subj in sampled_subjs:
+                    sampled_ids = []
+
                     # Get the global streamline ids corresponding to this
                     # subject
                     subj_slice = ids_per_subjs[subj]
@@ -419,34 +415,40 @@ class BatchStreamlinesSampler(Sampler):
                     # subject)
                     total_subj_batch_size = 0
                     while True:
-                        (subbatch_global_ids, subbatch_rel_ids,
-                         subbatch_heaviness) = \
-                            self._prepare_subj_subbatch(
-                                subj, subj_slice, global_unused_streamlines,
+                        (subbatch_global_ids, subbatch_rel_ids, subj_heaviness,
+                         no_streamlines_left, reached_max) = \
+                            self._prepare_subj_subbatch_ids(
+                                subj_slice, global_unused_streamlines,
                                 total_subj_batch_size, batch_size_per_subj)
 
-                        if subbatch_heaviness == 0:
+                        if no_streamlines_left:
                             # No streamlines remaining. Get next subject.
                             break
 
                         # Mask the sampled streamlines
                         global_unused_streamlines[subbatch_global_ids] = 0
 
-                        # Add sample to batch
-                        batch_ids_per_subj.append((subj, subbatch_rel_ids))
+                        # Add sub-sample to sub's batch
+                        sampled_ids.extend(subbatch_rel_ids)
 
-                        # Add this sub-batch's heaviness to total heaviness
-                        total_subj_batch_size += subbatch_heaviness
-                        if total_subj_batch_size > batch_size_per_subj:
+                        # Continue?
+                        if reached_max:
                             # Batch size reached for this subject. Get next
                             # subject.
                             break
-                self.log.debug("    Finished loop on subjects. Now yielding.\n"
-                               "    (If this was called through a dataloader, "
-                               "it should start using load_batch and even "
-                               "training \n"
-                               "     on this batch while we prepare a "
-                               "batch for the next cycle, if any).")
+                        else:
+                            # Update heaviness and get a new chunk
+                            total_subj_batch_size += subj_heaviness
+
+                    # Append tuple (subj, list_sampled_ids) to the batch
+                    batch_ids_per_subj.append((subj, sampled_ids))
+
+                self.log.debug(
+                    "    Finished loop on subjects. Now yielding.\n"
+                    "    (If this was called through a dataloader, it should "
+                    "start using load_batch and even training \n"
+                    "     on this batch while we prepare a batch for the next "
+                    "cycle, if any).")
 
                 if len(batch_ids_per_subj) == 0:
                     self.log.debug("No more streamlines remain in any of the "
@@ -456,55 +458,82 @@ class BatchStreamlinesSampler(Sampler):
 
                 yield batch_ids_per_subj
 
-            self.log.info("  Finished the cycles for these subjects. Choosing "
-                          "new ones.")
+            # Finished cycle. Will choose new subjs if the number of iterations
+            # is not reached for this __iter__ call.
 
-    def _prepare_subj_subbatch(self, subj, subj_slice,
-                               global_unused_streamlines, total_heaviness,
-                               max_heaviness):
+    def _prepare_subj_subbatch_ids(self, subj_slice, global_unused_streamlines,
+                                   total_heaviness, max_heaviness):
+        """
+        Returns:
+        (chosen_global_ids, chosen_relative_ids, no_streamlines_remaining,
+        reached_max_heaviness)
+        """
+        no_streamlines_remaining = False
+        reached_max_heaviness = False
 
         # Find streamlines that have not been used yet for this subj
         subj_unused_ids_in_global = np.flatnonzero(
             global_unused_streamlines[subj_slice]) + subj_slice.start
 
-        self.log.debug("    Available streamlines for this subject: {}"
+        self.log.info("    Available streamlines for this subject: {}"
                        .format(len(subj_unused_ids_in_global)))
 
         # No streamlines remain for this subject
         if len(subj_unused_ids_in_global) == 0:
-            return [], [], 0
+            no_streamlines_remaining = True
+            return [], [], no_streamlines_remaining, reached_max_heaviness
 
         # Sample a sub-batch of streamlines
         chosen_global_ids = self.np_rng.choice(subj_unused_ids_in_global,
-                                                    CHUNK_SIZE)
+                                               self.chunk_size)
 
-        # Get their heaviness
-        subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(subj)
-        subj_sft_data = subj_data.sft_data_list[self.streamline_group]
-        if self.step_size:
-            # batch_size is in mm.
-            lengths = subj_sft_data.streamlines.lengths_mm[chosen_global_ids]
+        if (self.step_size or self.dataset.step_size) and not self.compress:
+            # Relying on the lengths_mm info available in the MultiSubjectData
+            # to be able to know the (eventual, if self.step_size) number of
+            # time steps without loading the streamlines, particularly with the
+            # lazy data.
+            if self.step_size:
+                l_mm = self.dataset.streamline_lengths_mm
+                l_mm = l_mm[self.streamline_group][chosen_global_ids]
+                nb_points = l_mm / self.step_size
+            else:
+                l_points = self.dataset.streamline_lengths
+                nb_points = l_points[self.streamline_group][chosen_global_ids]
+                # Should be equal to
+                # nb_points = lengths_mm / self.dataset.step_size
+
+            # If batch_size has been passed, taking a little less
+            # streamlines for this last sub_batch.
+            if total_heaviness + np.sum(nb_points) >= max_heaviness:
+                cumulative_sum = np.cumsum(nb_points)
+                selected = cumulative_sum < (max_heaviness - total_heaviness)
+                chosen_global_ids = chosen_global_ids[selected]
+                nb_points = nb_points[selected]
+                reached_max_heaviness = True
+
+            sample_heaviness = np.sum(nb_points)
+            self.log.debug(
+                "    Chunk_size was {} streamlines, but after verifying data "
+                "heaviness in number of points (max batch size for this "
+                "subj is {}), keeping only {} streamlines for a total of {}"
+                "points."
+                .format(self.chunk_size, max_heaviness,
+                        len(chosen_global_ids), sample_heaviness))
+
         else:
-            # batch size in in number of points
-            lengths = subj_sft_data.streamlines.lengths[chosen_global_ids]
-
-        # If batch_size has been passed, taking a little less
-        # streamlines for this last sub_batch.
-        if total_heaviness + np.sum(lengths) >= max_heaviness:
-            cumulative_sum = np.cumsum(lengths)
-            selected = cumulative_sum < (max_heaviness - total_heaviness)
-            chosen_global_ids = chosen_global_ids[selected]
-            lengths = lengths[selected]
-
-        sample_heaviness = np.sum(lengths)
-        self.log.debug("    Chunk_size was {} but after verifying heaviness, "
-                       "keeping only {} streamlines."
-                       .format(CHUNK_SIZE, len(chosen_global_ids)))
+            # Either we will compress data or we are taking the data as is
+            # with no resampling: we have no way of knowing the final size of
+            # data. We will simply take the given chunk of streamlines. Thus
+            # stopping now. Setting sample_heaviness to max heaviness to stop
+            # loop.
+            sample_heaviness = None
+            reached_max_heaviness = True
 
         # Fetch subject-relative ids
-        chosen_relative_ids = chosen_global_ids - subj_slice.start
+        chosen_relative_ids = list(chosen_global_ids - subj_slice.start)
 
-        return chosen_global_ids, chosen_relative_ids, sample_heaviness,
+        return (chosen_global_ids, chosen_relative_ids, sample_heaviness,
+                no_streamlines_remaining, reached_max_heaviness)
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]) \
             -> Union[Tuple[List, Dict], Tuple[List, List, List]]:
@@ -517,7 +546,7 @@ class BatchStreamlinesSampler(Sampler):
 
         Parameters
         ----------
-        streamline_ids_per_subj: dict[int, list]
+        streamline_ids_per_subj: List[Tuple[int, list]]
             The list of streamline ids for each subject (relative ids inside
             each subject's tractogram) for this batch.
 
@@ -586,23 +615,27 @@ class BatchStreamlinesSampler(Sampler):
                 "          Processing data preparation for streamlines ids:\n"
                 "{}".format(s_ids))
 
-            subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(subj)
+            subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(
+                subj)
             subj_sft_data = subj_data.sft_data_list[self.streamline_group]
 
             # Get streamlines as sft
             sft = subj_sft_data.from_chosen_streamlines(s_ids)
 
-            # Resampling streamlines to a fixed step size
+            # Resampling streamlines to a fixed step size, if any
             self.log.debug("            Resampling: {}".format(self.step_size))
             if self.step_size:
-                # Note that we could skip resampling if it had already the same
-                # step size, but computing current step size is not straight-
-                # forward. Ex: A resampling of step_size = 1 may give a true
-                # step_size of 0.99 (nb_points = int(length/step_size) creates
-                # an approximation. We would need to define a tolerance on the
-                # variability.
-                sft = resample_streamlines_step_size(sft,
-                                                     step_size=self.step_size)
+                if self.dataset.step_size == self.step_size:
+                    self.log.debug("Step size is the same as when creating "
+                                  "the hdf5 dataset. Not resampling again.")
+                else:
+                    sft = resample_streamlines_step_size(
+                        sft, step_size=self.step_size)
+
+            # Compressing, if wanted.
+            self.log.debug("            Compressing: {}".format(self.compress))
+            if self.compress:
+                sft = compress_sft(sft)
 
             # Adding noise to coordinates
             # Noise is considered in mm so we need to make sure the sft is in
@@ -718,9 +751,9 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
 
     def __init__(self, dataset: MultisubjectSubset,
                  streamline_group_name: str, input_group_name: str,
-                 batch_size: int, rng: int, nb_subjects_per_batch: int,
-                 cycles: int, step_size: float,
-                 neighborhood_type: Union[str, None],
+                 chunk_size: int, max_batch_size: int, rng: int,
+                 nb_subjects_per_batch: int, cycles: int, compress: bool,
+                 step_size: float, neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, Iterable[float], None],
                  split_ratio: float, noise_gaussian_size: float,
                  noise_gaussian_variability: float,
@@ -735,10 +768,10 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
             If set, concatenate the n previous streamline directions as input.
             [0].
         """
-        super().__init__(dataset, streamline_group_name, batch_size, rng,
-                         nb_subjects_per_batch, cycles, step_size,
-                         neighborhood_type, neighborhood_radius,
-                         split_ratio, noise_gaussian_size,
+        super().__init__(dataset, streamline_group_name, chunk_size,
+                         max_batch_size, rng, nb_subjects_per_batch, cycles,
+                         step_size, compress, neighborhood_type,
+                         neighborhood_radius, split_ratio, noise_gaussian_size,
                          noise_gaussian_variability, reverse_ratio,
                          wait_for_gpu, normalize_directions)
 

@@ -130,7 +130,7 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
     if split_ids is None:
         split_ids = range(len(sft.streamlines))
 
-    min_final_nb_points = np.floor(min_nb_points/2)
+    min_final_nb_points = np.floor(min_nb_points / 2)
 
     all_streamlines = []
     all_dpp = defaultdict(lambda: [])
@@ -166,9 +166,10 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
             all_dpp = _extend_dict(all_dpp, old_dpp)
             all_dps = _extend_dict(all_dps, old_dps)
 
-    logging.info('{} streamlines to split were not split because they were '
-                 'too short (<{})'
-                 .format(nb_streamlines_not_cut, min_nb_points))
+    if nb_streamlines_not_cut > 0:
+        logging.info('{} streamlines to split were not split because they'
+                     'were too short (< {} points)'
+                     .format(nb_streamlines_not_cut, min_nb_points))
     new_sft = StatefulTractogram.from_sft(all_streamlines, sft,
                                           data_per_point=all_dpp,
                                           data_per_streamline=all_dps)

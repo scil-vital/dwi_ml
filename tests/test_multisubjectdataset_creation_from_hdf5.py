@@ -30,7 +30,13 @@ def test_non_lazy():
     print("**Created a MultiSubjectDataset and loaded training set. "
           "Testing properties : \n\n")
 
+    print("**Step size: {}\n".format(fake_dataset.step_size))
+
     training_set = fake_dataset.training_set
+    print("**Training lengths: {}".format(training_set.streamline_lengths))
+    print("**Training lengths_mm: {}\n"
+          .format(training_set.streamline_lengths_mm))
+
     subj0 = training_set.subjs_data_list[0]
     print("**Get_subject_data: \n"
           "    Subject 0, should be SubjectData : {}. \n"
@@ -70,7 +76,13 @@ def test_lazy():
 
     print("Testing properties : \n\n")
 
+    print("**Step size: {}".format(fake_dataset.step_size))
+
     training_set = fake_dataset.training_set
+    print("**Training lengths: {}".format(training_set.streamline_lengths))
+    print("**Training lengths_mm: {}\n"
+          .format(training_set.streamline_lengths_mm))
+
     subj0 = training_set.subjs_data_list.open_handle_and_getitem(0)
     print("**Get_subject_data (in this case, loading from hdf_handle): \n"
           "    Subject 0, should be LazySubjectData : {}. \n"

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import glob
 import logging
 import os
 from pathlib import Path
@@ -179,8 +178,8 @@ def process_volumes(group: str, file_list: List[str], save_intermediate: bool,
 
 def process_streamlines(
         subj_dir: Path, group: str, bundles: List[str],
-        header: nib.Nifti1Header, step_size: float, space: Space,
-        save_intermediate: bool, subj_output_path: Path):
+        header: nib.Nifti1Header, step_size: float, compress: bool,
+        space: Space, save_intermediate: bool, subj_output_path: Path):
     """Load and process a group of bundles and merge all streamlines
     together.
 
@@ -197,7 +196,9 @@ def process_streamlines(
         Reference used to load and send the streamlines in voxel space and to
         create final merged SFT. If the file is a .trk, 'same' is used instead.
     step_size: float
-        Step size to resample streamlines. If none, compress streamlines.
+        Step size to resample streamlines.
+    compress: bool
+        Compress streamlines.
     space: Space
         Space to place the tractograms.
     save_intermediate: bool
@@ -212,6 +213,10 @@ def process_streamlines(
     output_lengths : List[float]
         The euclidean length of each streamline
     """
+    if step_size and compress:
+        raise ValueError("Only one option can be chosen: either resampling "
+                         "to step_size or compressing, not both.")
+
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!
     set_sft_logger_level('WARNING')
@@ -257,7 +262,7 @@ def process_streamlines(
                 sft = resample_streamlines_step_size(sft, step_size)
                 logging.debug("      *Resampled streamlines' step size to {}mm"
                               .format(step_size))
-            else:
+            elif compress:
                 logging.info("          - Compressing")
                 sft = compress_sft(sft)
 

@@ -87,7 +87,7 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
             if subject_hdf_handle and subj_data.hdf_handle.id.valid:
                 logging.debug("Getting item from the subjects list. You "
                               "provided a hdf handle but subject already had "
-                              "a valid one: {}. Using new handle."
+                              "a valid one: \n {}. Using new handle."
                               .format(subj_data.hdf_handle))
 
         subj_data.add_handle(subject_hdf_handle)

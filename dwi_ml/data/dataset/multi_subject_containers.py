@@ -16,7 +16,6 @@ it to get the data from chosen groups based on your model.
 from collections import defaultdict
 from datetime import datetime
 import logging
-import os
 from typing import List, Tuple, Union, Dict, Any
 
 import h5py
@@ -29,8 +28,8 @@ from dwi_ml.cache.cache_manager import SingleThreadCacheManager
 from dwi_ml.data.dataset.utils import find_groups_info
 from dwi_ml.data.dataset.subjects_list_containers import (LazySubjectsDataList,
                                                           SubjectsDataList)
-from dwi_ml.data.dataset.single_subject_containers import (SubjectData,
-                                                           LazySubjectData)
+from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,
+                                                           SubjectData)
 from dwi_ml.utils import TqdmLoggingHandler
 
 
@@ -53,10 +52,19 @@ class MultisubjectSubset(Dataset):
         # LazySubjectsDataList depending MultisubjectDataset.is_lazy.
         self.subjs_data_list = None
 
-        # To help the batch sampler: one value per streamline group
         self.streamline_ids_per_subj = []  # type: List[defaultdict[slice]]
-        self.total_streamlines = []  # type: List[int]
+        self.total_nb_streamlines = []  # type: List[int]
+
+        # Remembering heaviness to help the batch sampler.
+        # One np array per subj per group.
+        # - streamline lengths: in number of timepoints.
+        # - lengths_mm: euclidean length (will help to compute the new number
+        # of timepoints if we intend to resample the streamlines).
         self.streamline_lengths_mm = []  # type: List[List[int]]
+        self.streamline_lengths = []  # type: List[List[int]]
+
+        # If data has been resampled in the hdf5, step_size is set, else None
+        self.step_size = None
 
         self.is_lazy = lazy
 
@@ -77,7 +85,7 @@ class MultisubjectSubset(Dataset):
         }
         return all_params
 
-    def __getitem__(self, idx: Tuple[int, int]):
+    def __getitem__(self, idx: Tuple[int, list]):
         """
         See here for more information on how the dataloader can use the
         dataset: https://pytorch.org/docs/stable/data.html
@@ -204,6 +212,7 @@ class MultiSubjectDataset:
         self.volume_groups = [str]
         self.streamline_groups = [str]
         self.nb_features = [int]
+        self.step_size = None
 
         self.is_lazy = lazy
         self.cache_size = cache_size
@@ -246,6 +255,8 @@ class MultiSubjectDataset:
                                 "database version: {}"
                                 .format(hdf_handle.attrs["version"]))
 
+            self.step_size = hdf_handle.attrs['step_size']
+
             # Basing group names on the first training subject
             logging.debug("Loading the first training subject's group "
                           "information. Others should fit")
@@ -257,10 +268,12 @@ class MultiSubjectDataset:
             self.training_set.volume_groups = self.volume_groups
             self.training_set.streamline_groups = self.streamline_groups
             self.training_set.nb_features = self.nb_features
+            self.training_set.step_size = self.step_size
 
             self.validation_set.volume_groups = self.volume_groups
             self.validation_set.streamline_groups = self.streamline_groups
             self.validation_set.nb_features = self.nb_features
+            self.validation_set.step_size = self.step_size
 
             # LOADING
             self._load_subset(self.training_set, hdf_handle)
@@ -280,8 +293,11 @@ class MultiSubjectDataset:
         subset.subjs_data_list = self._build_empty_data_list()
         subset.streamline_ids_per_subj = \
             [defaultdict(slice) for _ in self.streamline_groups]
-        subset.total_streamlines = [0 for _ in self.streamline_groups]
-        streamline_lengths_mm_list = [[] for _ in self.streamline_groups]
+        subset.total_nb_streamlines = [0 for _ in self.streamline_groups]
+
+        # Remembering heaviness. One np array per subj per group.
+        lengths = [[] for _ in self.streamline_groups]
+        lengths_mm = [[] for _ in self.streamline_groups]
 
         # Using tqdm progress bar, load all subjects from hdf_file
         for subj_id in tqdm.tqdm(subject_keys, ncols=100,
@@ -310,58 +326,48 @@ class MultiSubjectDataset:
             # For the non-lazy version, this does nothing.
             subj_data.add_handle(hdf_handle)
             for i in range(len(self.streamline_groups)):
-                streamline_lengths_mm_list[i] = self._arrange_streamlines(
-                    subset, subj_data, subj_idx, streamline_lengths_mm_list[i],
-                    i)
+                subj_sft_data = subj_data.sft_data_list[i]
+                n_streamlines = len(subj_sft_data.streamlines)
+                self._add_streamlines_ids(subset, n_streamlines, subj_idx, i)
+                lengths[i].append(subj_sft_data.lengths)
+                lengths_mm[i].append(subj_sft_data.lengths_mm)
 
         # Arrange final data properties
         subset.streamline_lengths_mm = \
-            [np.concatenate(streamline_lengths_mm_list[i], axis=0)
+            [np.concatenate(lengths_mm[i], axis=0)
+             for i in range(len(self.streamline_groups))]
+        subset.streamline_lengths = \
+            [np.concatenate(lengths[i], axis=0)
              for i in range(len(self.streamline_groups))]
 
         # No need to return 'subset': instance attributes are modified
         # in-place.
 
-    def _arrange_streamlines(
-            self, subset: MultisubjectSubset,
-            subj_data: Union[SubjectData, LazySubjectData], subj_idx: int,
-            group_streamline_lengths_mm_list: List, group_idx: int):
+    def _add_streamlines_ids(self, subset: MultisubjectSubset,
+                             n_streamlines: int, subj_idx: int,
+                             group_idx: int):
         """
-        Concatenating streamlines but remembering which id was which subject's
-        streamline.
+        Concatenating streamlines of a specific subject to group #group_idx
+        Remembering which id was which subject's streamline.
 
-        The subj_data.streamlines depend on the class: np.Array in the non-lazy
-        version, or property in the lazy version, returning streamlines only if
-        a handle is present.
+        The subj_sft_data.streamlines depend on the class: np.Array in the
+        non-lazy version, or property in the lazy version, returning
+        streamlines only if a handle is present.
         """
         group = self.streamline_groups[group_idx]
 
-        self.log.debug("     => Arranging streamlines per ID for group '{}'."
+        self.log.debug("*    => Arranging streamlines per ID for group '{}'."
                        .format(group))
-
-        if subj_data.is_lazy and subj_data.hdf_handle is None:
-            self.log.warning("*    Dataset: Subject's handle must be present! "
-                             "Will bug!")
-
-        # Assign a unique ID to every streamline
-        n_streamlines = len(subj_data.sft_data_list[group_idx].streamlines)
-        self.log.debug("*    Dataset: Subject had {} streamlines for this "
-                       "group.".format(n_streamlines))
+        self.log.debug("*    => Subject had {} streamlines for this group."
+                       .format(n_streamlines))
 
         # Assigning these id in the dict for this group
-        start = subset.total_streamlines[group_idx]
-        end = subset.total_streamlines[group_idx] + n_streamlines
+        start = subset.total_nb_streamlines[group_idx]
+        end = subset.total_nb_streamlines[group_idx] + n_streamlines
         subset.streamline_ids_per_subj[group_idx][subj_idx] = slice(start, end)
 
         # Update total nb of streamlines in the dataset for this group
-        subset.total_streamlines[group_idx] += n_streamlines
-
-        # Get number of timesteps per streamline for this group
-        group_streamline_lengths_mm_list.append(
-            np.array(subj_data.sft_data_list[group_idx].streamlines.lengths_mm,
-                     dtype=np.int16))
-
-        return group_streamline_lengths_mm_list
+        subset.total_nb_streamlines[group_idx] += n_streamlines
 
     def _build_empty_data_list(self):
         if self.is_lazy:

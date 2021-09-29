@@ -10,9 +10,9 @@ from torch.distributions import Categorical, MultivariateNormal
 from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
-from dwi_ml.model.main_models import ModelAbstract
-from dwi_ml.model.utils_for_gaussians import independent_gaussian_log_prob
-from dwi_ml.model.utils_for_fisher_von_mises import fisher_von_mises_log_prob
+from dwi_ml.models.main_models import ModelAbstract
+from dwi_ml.models.utils_for_gaussians import independent_gaussian_log_prob
+from dwi_ml.models.utils_for_fisher_von_mises import fisher_von_mises_log_prob
 
 DESCRIPTION = """
 MODELS:
@@ -81,7 +81,7 @@ OUTPUTS: Def: The model final outputs, corresponding to directions, i.e.
               (x,y,z) coordinates.
          Type: tensor
          Size:
-             - Sequence model: [batch_size*seq_len, 3]
+             - Sequence models: [batch_size*seq_len, 3]
              - Local models: [batch_size, 3]
 
 TARGETS: Def: The target values (real Y) for the batch

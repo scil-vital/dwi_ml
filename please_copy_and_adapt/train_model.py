@@ -21,7 +21,7 @@ import yaml
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.experiment.monitoring import EarlyStoppingError
 from dwi_ml.experiment.timer import Timer
-from dwi_ml.model.main_models import MainModelAbstract
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.experiment.checks_for_experiment_parameters import (
     check_all_experiment_parameters)
 from dwi_ml.training.trainers import DWIMLTrainer
@@ -31,7 +31,7 @@ from dwi_ml.utils import format_dict_to_str
 # These are model-dependant. Choose the best classes and functions for you
 # 1. Change this init_batch_sampler if you prefer!
 #    This is one possibility, others could be implemented.
-from dwi_ml.model.batch_samplers import (
+from dwi_ml.models.batch_samplers import (
     BatchStreamlinesSampler1IPV as ChosenBatchSampler)
 # 2. Implement the build_model function below
 

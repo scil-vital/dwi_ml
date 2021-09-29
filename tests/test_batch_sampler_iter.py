@@ -7,7 +7,7 @@ from os import path
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.model.batch_samplers import (BatchStreamlinesSampler1IPV)
+from dwi_ml.models.batch_samplers import (BatchStreamlinesSampler1IPV)
 
 
 def parse_args():

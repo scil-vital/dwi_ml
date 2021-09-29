@@ -15,8 +15,8 @@ from tqdm import tqdm
 
 from dwi_ml.experiment.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
-from dwi_ml.model.batch_samplers import BatchStreamlinesSampler
-from dwi_ml.model.main_models import MainModelAbstract
+from dwi_ml.models.batch_samplers import BatchStreamlinesSampler
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.utils import TqdmLoggingHandler
 
 # If the remaining time is less than one epoch + X seconds, we will quit

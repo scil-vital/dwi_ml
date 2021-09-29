@@ -1,11 +1,11 @@
 from dipy.data import get_sphere
-from dwi_ml.model.direction_getter_models import (
+from dwi_ml.models.direction_getter_models import (
     CosineRegressionDirectionGetter, FisherVonMisesDirectionGetter,
     GaussianMixtureDirectionGetter, L2RegressionDirectionGetter,
     SingleGaussianDirectionGetter, SphereClassificationDirectionGetter)
-from dwi_ml.model.utils_for_gaussians import (
+from dwi_ml.models.utils_for_gaussians import (
     independent_gaussian_log_prob_vector)
-from dwi_ml.model.utils_for_fisher_von_mises import (
+from dwi_ml.models.utils_for_fisher_von_mises import (
     fisher_von_mises_log_prob_vector)
 from nose.tools import assert_equal
 import numpy as np

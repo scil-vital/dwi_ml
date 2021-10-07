@@ -18,7 +18,7 @@ This is how your data should be organized before trying to load your data as a h
 
 **dwi_ml_ready**
 
-    This folder is the most important one and must be organized in this exact way to be able to load the data as a hdf5 using our script create_hdf5_dataset.py. An example of use can be found in please_copy_and_adapt/**02_create_dataset.sh**.
+    This folder is the most important one and must be organized in this exact way to be able to load the data as a hdf5 using our script create_hdf5_dataset.py. An example of use can be found in scripts_python/**create_hdf5_dataset.sh**.
 
 **processed**
 
@@ -30,52 +30,32 @@ Example
 .. code-block:: bash
 
     {database_name}
-    | original
+    | original  =====> Organized as you wish but if you intend on using
+                       tractoflow, you should organize it as below.
         | {subject_id}
             | dwi.nii.gz
             | bval
             | bvec
             | t1.nii.gz
-    | preprocessed
+    | preprocessed =====>  Organized as you wish.
         | {subject_id}
             | Ex: Tractoflow folders
-            | Ex: a folder Bundles with bundles from Recobundles
-    | dwi_ml_ready  =====>
+            | Ex: bundles from Recobundles
+    | dwi_ml_ready  =====> Each subject should contain the exact same sub-folders
+                           and files, such as below. It is also possible to add
+                           prefixes to the files (ex: subj1__t1.nii.gz) based on
+                           the subject id.
         | {subject_id}
             | anat
-                | {subject_id}_t1.nii.gz
-                | {subject_id}_wm_map.nii.gz
+                | t1.nii.gz
+                | wm_map.nii.gz
             | dwi
-                | {subject_id}_dwi_preprocessed.nii.gz
-                | {subject_id}_bval_preprocessed
-                | {subject_id}_bvec_preprocessed
-                | {subject_id}_fa.nii.gz
+                | dwi_preprocessed.nii.gz
+                | bval_preprocessed
+                | bvec_preprocessed
+                | fa.nii.gz
             | bundles
-                | {subject_id}_{bundle1}.tck
+                | {bundle1}.tck
             | masks
-                | {subject_id}_wm.nii.gz
-                | bundles
-                    | {subject_id}_{bundle1}.nii.gz
-                | endpoints
-                    | {subject_id}_{bundle1}.nii.gz
-                    OR
-                    | {subject_id}_{bundle1}_heads.nii.gz
-                    | {subject_id}_{bundle1}_tails.nii.gz
+                | wm.nii.gz
         | ...
-
-
-Once the hdf5 will have been created (using create_hdf5_dataset.py), if you chose the --save_intermediate option, a processed folder with the following structure will be created:
-
-.. code-block:: bash
-
-    | {database_name}
-        | processed_{experiment_name}
-            | {subject_id}
-                | input
-                    | {subject_id}_{input1}.nii.gz  # Ex: fODF (unnormalized)
-                    ...
-                    | {subject_id}_{inputN}.nii.gz
-                    | {subject_id}_model_input.nii.gz   # Final input = all inputs,
-                                                        #  normalized, concateanted.
-                | target
-                    | {subject_id}_{target1}.tck  # Ex: bundle1

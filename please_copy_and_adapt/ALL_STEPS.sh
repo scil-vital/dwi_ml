@@ -13,16 +13,14 @@ config_file="my_config_groups.json"
 training_subjs="my_training_subjs.txt"
 validation_subjs="my_validation_subjs.txt"
 name="test1"
-bundles="AF_left AF_right CC_1 CC_2 FX_left FX_right"
-# OR bundles=$(<bundles.txt) to read a list of bundles from a text file.
 mask="masks/wm_mask.nii.gz"
 space="rasmm"
-enforce_bundles_presence=True # True if you want the script to stop if a bundle is missing for some subject
 
-create_hdf5_dataset.py --name $name --bundles $bundles --std_mask $mask \
+create_hdf5_dataset.py --name $name --std_mask $mask \
     --space $space --save_intermediate --logging debug \
-    --enforce_bundles_presence $enforce_bundles_presence
-    $database_folder $config_file $training_subjs $validation_subjs
+    --enforce_files_presence True \
+    $database_folder/dwi_ml_ready $database_folder $config_file \
+    $training_subjs $validation_subjs
 
 ########################
 # 2. Training          #

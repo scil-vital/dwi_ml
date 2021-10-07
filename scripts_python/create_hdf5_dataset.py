@@ -42,9 +42,16 @@ def _parse_args():
                                 formatter_class=argparse.RawTextHelpFormatter)
 
     # Positional arguments
-    p.add_argument('database_folder',
-                   help="Path to database folder, which should contain a "
-                        "dwi_ml_ready folder.")
+    p.add_argument('dwi_ml_ready_folder',
+                   help="Path to the folder containing the data. \n"
+                        "-> Should follow description in our doc, here: \n"
+                        "-> https://dwi-ml.readthedocs.io/en/latest/"
+                        "creating_hdf5.html")
+    p.add_argument('hdf5_folder',
+                   help="Path where to save the hdf5 database and possibly "
+                        "the intermediate files. We will create a sub-folder "
+                        "/hdf5 inside. If it already exists, use -f to allow"
+                        "deleting and creating a new one.")
     p.add_argument('config_file',
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. \n"
@@ -76,7 +83,9 @@ def _parse_args():
                    help="Mask defining the voxels used for data "
                         "standardization. \n"
                         "-> Should be the name of a file inside "
-                        "dwi_ml_ready/{subj_id}. \n"
+                        "dwi_ml_ready/{subj_id}.\n"
+                        "-> You may add wildcards (*) that will be replaced "
+                        "by the subject's id."
                         "-> If none is given, all non-zero voxels will be "
                         "used.")
     p.add_argument('--independent_modalities', type=bool, default=True,
@@ -109,14 +118,13 @@ def main():
     logging.basicConfig(level=str(args.logging).upper())
 
     # Verify that dwi_ml_ready folder is found
-    dwi_ml_ready_folder = Path(args.database_folder + '/dwi_ml_ready')
-    if not dwi_ml_ready_folder.is_dir():
-        raise argparse.ArgumentError('The dwi_ml_ready folder was not found: '
-                                     '{}'.format(dwi_ml_ready_folder))
+    if not Path(args.dwi_ml_ready_folder).is_dir():
+        raise ValueError('The dwi_ml_ready folder was not found: {}'
+                         .format(args.dwi_ml_ready_folder))
     else:
         logging.info('***Creating hdf5 dataset')
         logging.debug('   Creating hdf5 data from data in the following foler:'
-                      ' {}'.format(dwi_ml_ready_folder))
+                      ' {}'.format(args.dwi_ml_ready_folder))
 
     # Read training subjs and validation subjs
     with open(args.training_subjs, 'r') as file:
@@ -128,15 +136,15 @@ def main():
 
     # Verify that subjects exist and that no subjects are forgotten
     chosen_subjs = training_subjs + validation_subjs
-    verify_subject_lists(dwi_ml_ready_folder, chosen_subjs)
+    verify_subject_lists(args.dwi_ml_ready_folder, chosen_subjs)
 
     # Read group information from the json file
     json_file = open(args.config_file, 'r')
     groups_config = json.load(json_file)
 
     # Check if hdf5 already exists and initialize database
-    hdf5_dir, hdf5_filename = _initialize_hdf5_database(args.database_folder,
-                                                        args.force, args.name)
+    hdf5_subdir, hdf5_filename = _initialize_hdf5_database(
+        args.hdf5_folder, args.force, args.name)
 
     # Check that all groups contain both "type" and "files" sub-keys
     volume_groups, streamline_groups = _check_groups_config(groups_config)
@@ -144,11 +152,11 @@ def main():
     # Check that all files exist
     if args.enforce_files_presence:
         _check_files_presence(args, chosen_subjs, groups_config,
-                              dwi_ml_ready_folder)
+                              args.dwi_ml_ready_folder)
 
     # Create dataset from config and save
-    _add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_dir,
-                               hdf5_filename, dwi_ml_ready_folder,
+    _add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_subdir,
+                               hdf5_filename, args.dwi_ml_ready_folder,
                                training_subjs, validation_subjs,
                                volume_groups, streamline_groups)
 
@@ -181,19 +189,20 @@ def _check_groups_config(groups_config):
     return volume_groups, streamline_groups
 
 
-def _initialize_hdf5_database(database_path, force, name):
+def _initialize_hdf5_database(hdf5_folder, force, name):
     # Create hdf5 dir or clean existing one
-    hdf5_dir = Path(database_path, "hdf5")
-    if hdf5_dir.is_dir():
+    hdf5_subdir = Path(hdf5_folder, "hdf5")
+    if hdf5_subdir.is_dir():
         if force:
             logging.info("    Careful! Deleting existing hdf5 data folder: "
-                         "{}".format(hdf5_dir))
-            shutil.rmtree(str(hdf5_dir))
+                         "{}".format(hdf5_subdir))
+            shutil.rmtree(str(hdf5_subdir))
         else:
             raise FileExistsError("hdf5 data folder already exists: {}. Use "
-                                  "force to allow overwrite.".format(hdf5_dir))
+                                  "force to allow overwrite."
+                                  .format(hdf5_subdir))
     logging.debug("   Creating hdf5 directory")
-    hdf5_dir.mkdir()
+    hdf5_subdir.mkdir()
 
     # Define dabase name
     if name:
@@ -202,7 +211,7 @@ def _initialize_hdf5_database(database_path, force, name):
         hdf5_filename = "{}".format(
             datetime.datetime.now().strftime("%Y_%m_%d_%H%M%S"))
 
-    return hdf5_dir, hdf5_filename
+    return hdf5_subdir, hdf5_filename
 
 
 def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
@@ -217,23 +226,29 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
     config_file_list = sum(nested_lookup('files', groups_config), [])
 
     for subj_id in chosen_subjs:
-        subj_input_dir = dwi_ml_dir.joinpath(subj_id)
+        subj_input_dir = Path(dwi_ml_dir).joinpath(subj_id)
 
         # Find subject's standardization mask
         if args.std_mask:
-            subj_std_mask_file = subj_input_dir.joinpath(args.std_mask)
+            subj_std_mask_file = subj_input_dir.joinpath(
+                args.std_mask.replace('*', subj_id))
             if not subj_std_mask_file.is_file():
                 raise FileNotFoundError("Standardization mask {} not found "
                                         "for subject {}!"
                                         .format(subj_std_mask_file, subj_id))
 
         # Find subject's files from group_config
-        for f in config_file_list:
-            this_file = subj_input_dir.joinpath(f)
-            if not this_file.is_file():
-                raise FileNotFoundError("File from groups_config ({}) not "
-                                        "found for subject {}!"
-                                        .format(f, subj_id))
+        for this_file in config_file_list:
+            this_file = this_file.replace('*', subj_id)
+            if this_file.endswith('/ALL'):
+                logging.debug("We will load all files in the folder '{}'"
+                              .format(this_file.replace('/ALL', '')))
+            else:
+                this_file = subj_input_dir.joinpath(this_file)
+                if not this_file.is_file():
+                    raise FileNotFoundError(
+                        "File from groups_config ({}) not found for subject "
+                        "{}!".format(this_file, subj_id))
 
 
 def _add_all_subjs_to_database(args, chosen_subjs: List[str],
@@ -248,6 +263,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
     """
     # Cast space from str to Space
     space = Space(args.space)
+    dwi_ml_dir = Path(dwi_ml_dir)
 
     # Add data to database
     hdf5_file_path = hdf5_dir.joinpath("{}.hdf5".format(hdf5_filename))
@@ -263,8 +279,6 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
 
         # If we resample the streamlines here, the step_size is known. Else,
         # this is None.
-        hdf_file.attrs['step_size'] = args.step_size
-
         if args.step_size is not None:
             hdf_file.attrs['step_size'] = args.step_size
         else:
@@ -294,7 +308,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             # Find subject's standardization mask
             if args.std_mask:
                 logging.info("       - Loading mask")
-                subj_std_mask_file = subj_input_dir.joinpath(args.std_mask)
+                subj_std_mask_file = subj_input_dir.joinpath(
+                    args.std_mask.replace('*', subj_id))
                 subj_std_mask_img = nib.load(subj_std_mask_file)
                 subj_std_mask_data = np.asanyarray(
                     subj_std_mask_img.dataobj).astype(np.bool)
@@ -310,7 +325,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 file_list = groups_config[group]['files']
 
                 group_data, group_affine, group_header = process_volumes(
-                    group, file_list, args.save_intermediate,
+                    group, file_list, subj_id, args.save_intermediate,
                     subj_input_dir, subj_intermediate_path,
                     subj_std_mask_data, args.independent_modalities)
                 logging.debug('      *Done. Now creating dataset from '
@@ -341,8 +356,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                   "need a ref!")
                 sft, lengths = process_streamlines(
                     subj_input_dir, group, groups_config[group]['files'],
-                    group_header, args.step_size, args.compress, space,
-                    args.save_intermediate, subj_intermediate_path)
+                    subj_id, group_header, args.step_size, args.compress,
+                    space, args.save_intermediate, subj_intermediate_path)
                 streamlines = sft.streamlines
 
                 if streamlines is None:

@@ -25,7 +25,8 @@ def verify_subject_lists(dwi_ml_folder: Path, chosen_subjs: List[str]):
     """
 
     # Find list of existing subjects from folders
-    all_subjs = [str(f.name) for f in dwi_ml_folder.iterdir() if f.is_dir()]
+    all_subjs = [str(s.name) for s in Path(dwi_ml_folder).iterdir()
+                 if s.is_dir()]
     if len(all_subjs) == 0:
         raise ValueError('No subject found in dwi_ml folder: '
                          '{}'.format(dwi_ml_folder))
@@ -78,8 +79,9 @@ def _load_volume_to4d(data_file):
     return data, affine, voxel_size, header
 
 
-def process_volumes(group: str, file_list: List[str], save_intermediate: bool,
-                    subj_input_path: Path, subj_output_path: Path,
+def process_volumes(group: str, file_list: List[str], subj_id,
+                    save_intermediate: bool, subj_input_path: Path,
+                    subj_output_path: Path,
                     subj_std_mask_data: np.ndarray = None,
                     independent_modalities: bool = True):
     """Process each group from the json config file:
@@ -92,7 +94,10 @@ def process_volumes(group: str, file_list: List[str], save_intermediate: bool,
     group: str
         Group name.
     file_list: List[str]
-        List of the files names that must be merged into a group.
+        List of the files names that must be merged into a group. Wildcards
+        will be replaced by the subject id.
+    subj_id: str
+        The subject's id.
     save_intermediate: bool
         If true, intermediate files will be saved.
     subj_input_path: Path
@@ -112,7 +117,7 @@ def process_volumes(group: str, file_list: List[str], save_intermediate: bool,
         Affine for the group.
     """
     # First file will define data dimension and affine
-    first_file = subj_input_path.joinpath(file_list[0])
+    first_file = subj_input_path.joinpath(file_list[0].replace('*', subj_id))
     group_data, group_affine, group_res, group_header = \
         _load_volume_to4d(first_file)
 
@@ -120,6 +125,7 @@ def process_volumes(group: str, file_list: List[str], save_intermediate: bool,
     # It is not a promise that data has been correctly registered, but it
     # is a minimal check.
     for data_name in file_list[1:]:
+        data_name = data_name.replace('*', subj_id)
         data_file = subj_input_path.joinpath(data_name)
 
         if not data_file.is_file():
@@ -177,7 +183,7 @@ def process_volumes(group: str, file_list: List[str], save_intermediate: bool,
 
 
 def process_streamlines(
-        subj_dir: Path, group: str, bundles: List[str],
+        subj_dir: Path, group: str, bundles: List[str], subj_id: str,
         header: nib.Nifti1Header, step_size: float, compress: bool,
         space: Space, save_intermediate: bool, subj_output_path: Path):
     """Load and process a group of bundles and merge all streamlines
@@ -190,8 +196,11 @@ def process_streamlines(
     group: str
         group name
     bundles: List[str]
-        List of the bundles filenames to load. If empty, all bundles will be
-        used.
+        List of the bundles filenames to load. Wildcards will be replaced by
+        the subject id. If the list is folderx/ALL, all bundles in the folderx
+        will be used.
+    subj_id: str
+        The subject's id.
     header : nib.Nifti1Header
         Reference used to load and send the streamlines in voxel space and to
         create final merged SFT. If the file is a .trk, 'same' is used instead.
@@ -225,68 +234,73 @@ def process_streamlines(
     final_sft = None
     output_lengths = []
 
-    # If not bundles in the config, taking everything in the subject's folder
-    if len(bundles) == 0:
-        # Take everything found in subject bundle folder
-        bundles = [str(p) for p in subj_dir.glob('/bundles/*')]
-
-    for bundle_name in bundles:
-        # Find bundle name
-        logging.debug('      *Loading bundle {}'.format(bundle_name))
-
-        bundle_file = subj_dir.joinpath(bundle_name)
-        if not bundle_file.is_file():
-            logging.debug("      Skipping bundle {} because it was not found "
-                          "in this subject's folder".format(bundle_name))
-            # Note: if args.enforce_files_presence was set to true, this case
-            # is not possible, already checked in create_hdf5_dataset.py.
+    for tmp_bundle_name in bundles:
+        if tmp_bundle_name.endswith('/ALL'):
+            bundles_dir = tmp_bundle_name.split('/ALL')
+            bundles_dir = ''.join(bundles_dir[:-1])
+            bundles2 = [str(p) for p in subj_dir.glob(bundles_dir + '/*')]
         else:
-            # Check bundle extension
-            _, file_extension = os.path.splitext(str(bundle_file))
-            if file_extension not in ['.trk', '.tck']:
-                raise ValueError("We do not support bundle's type: {}. We "
-                                 "only support .trk and .tck files."
-                                 .format(bundle_file))
-            if file_extension == '.trk':
-                header = 'same'
+            bundles2 = [tmp_bundle_name]
 
-            # Loading bundle and sending to wanted space
-            logging.info("          - Loading")
-            sft = load_tractogram(str(bundle_file), header)
-            sft.to_center()
+        # Either a loop on "ALL" or a loop on only one file, tmp_bundle_name.
+        for bundle_name in bundles2:
+            bundle_name = bundle_name.replace('*', subj_id)
 
-            # Resample or compress streamlines
-            # Note. No matter the chosen space, resampling is done in mm.
-            if step_size:
-                logging.info("          - Resampling")
-                sft = resample_streamlines_step_size(sft, step_size)
-                logging.debug("      *Resampled streamlines' step size to {}mm"
-                              .format(step_size))
-            elif compress:
-                logging.info("          - Compressing")
-                sft = compress_sft(sft)
-
-            # Compute euclidean lengths (rasmm space)
-            sft.to_space(Space.RASMM)
-            output_lengths.extend(length(sft.streamlines))
-
-            # Sending to wanted space
-            sft.to_space(space)
-
-            # Add processed bundle to output tractogram
-            if final_sft is None:
-                final_sft = sft
+            bundle_file = subj_dir.joinpath(bundle_name)
+            if not bundle_file.is_file():
+                logging.debug("      Skipping bundle {} because it was not "
+                              "found in this subject's folder"
+                              .format(bundle_name))
+                # Note: if args.enforce_files_presence was set to true, this
+                # case is not possible, already checked in create_hdf5_dataset
             else:
-                final_sft = concatenate_sft([final_sft, sft],
-                                            erase_metadata=False)
+                # Check bundle extension
+                _, file_extension = os.path.splitext(str(bundle_file))
+                if file_extension not in ['.trk', '.tck']:
+                    raise ValueError("We do not support bundle's type: {}. We "
+                                     "only support .trk and .tck files."
+                                     .format(bundle_file))
+                if file_extension == '.trk':
+                    header = 'same'
 
-            if save_intermediate:
-                output_fname = subj_output_path.joinpath(group + '.trk')
-                logging.debug('      *Saving intermediate bundle {} into {}.'
-                              .format(group, output_fname))
-                # Note. Do not remove the str below. Does not work well with
-                # Path.
-                save_tractogram(sft, str(output_fname))
+                # Loading bundle and sending to wanted space
+                logging.info("          - Loading bundle {}"
+                             .format(os.path.basename(bundle_name)))
+                sft = load_tractogram(str(bundle_file), header)
+                sft.to_center()
+
+                # Resample or compress streamlines
+                # Note. No matter the chosen space, resampling is done in mm.
+                if step_size:
+                    logging.info("          - Resampling")
+                    sft = resample_streamlines_step_size(sft, step_size)
+                    logging.debug("      *Resampled streamlines' step size to "
+                                  "{}mm".format(step_size))
+                elif compress:
+                    logging.info("          - Compressing")
+                    sft = compress_sft(sft)
+
+                # Compute euclidean lengths (rasmm space)
+                sft.to_space(Space.RASMM)
+                output_lengths.extend(length(sft.streamlines))
+
+                # Sending to wanted space
+                sft.to_space(space)
+
+                # Add processed bundle to output tractogram
+                if final_sft is None:
+                    final_sft = sft
+                else:
+                    final_sft = concatenate_sft([final_sft, sft],
+                                                erase_metadata=False)
+
+                if save_intermediate:
+                    output_fname = subj_output_path.joinpath(group + '.trk')
+                    logging.debug('      *Saving intermediate bundle {} into '
+                                  '{}.'.format(group, output_fname))
+                    # Note. Do not remove the str below. Does not work well
+                    # with Path.
+                    save_tractogram(sft, str(output_fname))
 
     # Removing invalid streamlines
     logging.debug('      *Total: {:,.0f} streamlines. Now removing invalid '

@@ -42,7 +42,8 @@ create_hdf5_dataset.py --force --name $name --save_intermediate \
         --std_mask $mask_for_standardization --independent_modalities True \
         --logging $logging --space $space \
         --enforce_files_presence True --step_size $step_size \
-        $database_folder $config_file $training_subjs $validation_subjs
+        $database_folder/dwi_ml_ready $database_folder/ $config_file \
+        $training_subjs $validation_subjs
 
 ###########
 # Tests on dataset and batch sampler

@@ -136,12 +136,14 @@ def process_volumes(group: str, file_list: List[str], subj_id,
 
         data, affine, res, _ = _load_volume_to4d(data_file)
 
-        if not np.array_equal(affine, group_affine):
+        if not np.allclose(affine, group_affine):
             raise ValueError('Data file {} does not have the same affine as '
                              'other files in group {}. Data from each group '
                              'will be concatenated, and should have the same '
-                             'affine and voxel resolution.'
-                             .format(data_name, group))
+                             'affine and voxel resolution.\n'
+                             'Affine: {}\n'
+                             'Group affine: {}'
+                             .format(data_name, group, affine, group_affine))
 
         if not np.array_equal(res, group_res):
             raise ValueError('Data file {} does not have the same resolution '

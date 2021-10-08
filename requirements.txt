@@ -5,10 +5,11 @@ nibabel>=3.0.0
 PyYAML==5.4
 comet-ml>=3.0.2
 contextlib2
+nested_lookup
 
 ## Necessary but should be installed with scilpy (Last check: 01/2020, version 1.1.0):
 future==0.17.1
-numpy==1.18.*
+numpy>=1.18.*
 scipy==1.4.*
 # h5py must absolutely be >2.4: that's when it became thread-safe
 h5py==2.10.*

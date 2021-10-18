@@ -136,14 +136,19 @@ def process_volumes(group: str, file_list: List[str], subj_id,
 
         data, affine, res, _ = _load_volume_to4d(data_file)
 
-        if not np.allclose(affine, group_affine):
+        if not np.allclose(affine, group_affine, atol=1e-5):
+            # Note. When keeping default options on tolerance, we have ran into
+            # some errors in some cases, depending on how data has been
+            # processed. Now accepting bigger error.
             raise ValueError('Data file {} does not have the same affine as '
                              'other files in group {}. Data from each group '
                              'will be concatenated, and should have the same '
                              'affine and voxel resolution.\n'
                              'Affine: {}\n'
-                             'Group affine: {}'
-                             .format(data_name, group, affine, group_affine))
+                             'Group affine: {}\n'
+                             'Biggest difference: {}'
+                             .format(data_name, group, affine, group_affine,
+                                     np.max(affine - group_affine)))
 
         if not np.allclose(res, group_res):
             raise ValueError('Data file {} does not have the same resolution '

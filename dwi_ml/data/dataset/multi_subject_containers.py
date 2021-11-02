@@ -280,12 +280,13 @@ class MultiSubjectDataset:
             self._load_subset(self.validation_set, hdf_handle)
 
     def _load_subset(self, subset: MultisubjectSubset, hdf_handle: h5py.File):
-        logging.info("\n"
-                     "=============\n"
-                     "         Dataset: Loading {} set\n"
-                     "==============".format(subset.set_name))
         subject_keys = sorted(hdf_handle.attrs[subset.set_name + '_subjs'])
+        if len(subject_keys) == 0:
+            logging.debug("No subject. Returning empty subset.")
+            return
 
+        logging.info(" Dataset: Loading {} set\n"
+                     "==============".format(subset.set_name))
         logging.debug('Dataset: hdf_file (subject) keys for the {} set '
                       'are: {}'.format(subset.set_name, subject_keys))
 

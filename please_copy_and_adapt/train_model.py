@@ -40,7 +40,7 @@ accordingly.
 """
 
 
-def project_specific_args(p):
+def add_project_specific_args(p):
     p.add_argument('--input_group', metavar='i',
                    help='Name of the input group. \n'
                         '**If a checkpoint exists, this information is '
@@ -99,7 +99,7 @@ def init_from_checkpoint(args):
     return trainer
 
 
-def init_from_args(args):
+def init_from_args(p, args):
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file, args.yaml_parameters])
 
@@ -160,6 +160,7 @@ def init_from_args(args):
 
 def main():
     p = parse_args_train_model()
+    add_project_specific_args(p)
     args = p.parse_args()
 
     if args.print_description:
@@ -174,7 +175,7 @@ def main():
                                 "checkpoint")):
         trainer = init_from_checkpoint(args)
     else:
-        trainer = init_from_args(args)
+        trainer = init_from_args(p, args)
 
     # Run (or continue) the experiment
     try:

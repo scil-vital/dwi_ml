@@ -485,6 +485,9 @@ class DWIMLTrainer:
                 self._update_taskman_report({'resubmit': True})
                 exit(2)
 
+    def save_model(self):
+        self.model.save(self.experiment_path)
+
     def train_one_epoch(self, train_dataloader, train_context, epoch, *args):
         """
         Train one epoch of the model: loop on all batches.

@@ -1,44 +1,14 @@
 .. _ref_creating_hdf5:
 
-Creating the hdf5 file
-======================
+4. Creating the hdf5 file
+=========================
 
-About hdf5
-**********
+The possibility of laziness
+***************************
 
 We chose to base our code on the hdf5 data. One reason is that it allows to regroup your data in an organized way to ensure that all you data is present. But the main reason for using hdf5 is that it is then possible to load only some chosen streamlines for each batch in the training set instead of having to keep all the streamlines in memory, which can be very heavy. This way of handling the data is called "lazy" in our project.
 
-You will use the create_hdf5_dataset.py script to create a hdf5 file. You need to prepare config files to use this script (see lower). This is the first step found in please_copy_and_adapt/run_project.sh.
-
-Config file
-***********
-
-Expected json config for the groups in your hdf5:
-
-.. code-block:: bash
-
-    {
-        "group1": {
-            "type": "volume",
-            "files": ["dwi/dwi_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz"]
-             },
-        "group2": {
-            "type": "streamlines",
-            "files": ["bundles/bundle1.trk", "bundles/bundle2.trk"]
-             }
-    }
-
-- The group names could be 'input_volume', 'target_volume', 'target_directions', or anything. Make sure your training scripts and your model's batch_sampler use the same keys.
-- The groups 'files' must exist in every subject folder inside dwi_ml_ready.
-
-    - There is the possibility to add a wildcard (*) that will be replaced by the subject's id while loading. Ex: anat/\*__t1.nii.gz would become anat/subjX__t1.nii.gz.
-    - For streamlines, there is the possibility to use 'ALL' to load all bundles present. Ex: "files": ["good_bundles/ALL", "bad_bundles/ALL"]
-    - The files from each group will be concatenated in the hdf5 (either as a final volume or as a final tractogram).
-- The groups 'type' must be recognized in dwi_ml. Currently, accepted datatype are:
-
-    - 'volume': for instance, a dwi, an anat, mask, t1, fa, etc.
-    - 'streamlines': for instance, a .trk, .tck file (anything accepted by Dipy's Stateful Tractogram).
-
+You will use the **create_hdf5_dataset.py** script to create a hdf5 file. You need to prepare config files to use this script (see lower).
 
 Creating the hdf5
 *****************
@@ -52,16 +22,14 @@ Exemple of use: (See please_copy_and_adapt/ALL_STEPS.sh) for a more thorough exa
             $database_folder/dwi_ml_ready $database_folder/hdf5 $config_file \
             $training_subjs $validation_subjs
 
-Final hdf5 file structure
-*************************
-
-If you would rather create your hdf5 file with your own script, here is the output format created by create_hdf5_dataset.py and recognized by the multi_subject_containers:
+Here is the output format created by create_hdf5_dataset.py and recognized by the multi_subject_containers:
 
 .. code-block:: bash
 
     hdf5.attrs["version"] = the database version.
     hdf5.attrs['training_subjs'] = the list of str representing the training subjects.
     hdf5.attrs['validation_subjs'] = the list of str representing the validation subjects.
+    hdf5.attrs['testing_subjs'] = the list of str representing the testing subjects.
 
     hdf5.keys() are the subjects.
     hdf5['subj1'].keys() are the groups from the config_file.
@@ -73,8 +41,7 @@ If you would rather create your hdf5 file with your own script, here is the outp
     hdf5['subj1']['group1']['lengths']
     hdf5['subj1']['group1']['euclidean_lengths']
 
-About data standardization
-**************************
+**A note about data standardization**
 
 Data is standardized (normalized) during data creation: data = (data - mean) / std. (Each features/modalities independently or not).
 

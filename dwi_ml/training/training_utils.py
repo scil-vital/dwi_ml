@@ -90,6 +90,9 @@ def prepare_batch_sampler_1i_pv(dataset, train_sampler_params,
     Instantiate a BatchStreamlinesSampler1IPV batch sampler
 
     (1i_pv = one input + previous_dirs)
+
+    Returns None if the dataset has no training subjects or no validation
+    subjects, respectively.
     """
     # Instantiate batch
     # In this example, using one input volume, the first one.
@@ -99,15 +102,21 @@ def prepare_batch_sampler_1i_pv(dataset, train_sampler_params,
                "streamlines '{}'"
                        .format(volume_group_name, streamline_group_name),
                newline=True, color='green'):
-        # Batch samplers could potentially be set differently between training
-        # and validation. Modify the code if you wish.
-        training_batch_sampler = BatchStreamlinesSampler1IPV(
-            dataset.training_set, **train_sampler_params)
-        validation_batch_sampler = BatchStreamlinesSampler1IPV(
-            dataset.validation_set, **valid_sampler_params)
-        logging.info("\n\nTraining batch sampler attributes: \n" +
-                     format_dict_to_str(training_batch_sampler.attributes))
-        logging.info("\n\nValidation batch sampler attributes: \n" +
-                     format_dict_to_str(training_batch_sampler.attributes))
 
-    return training_batch_sampler, validation_batch_sampler
+        # Batch samplers could potentially be set differently between training
+        # and validation (ex, more or less noise), so keeping two instances.
+        training_batch_sampler = None
+        valid_batch_sampler = None
+        if dataset.training_set.nb_subjects > 0:
+            training_batch_sampler = BatchStreamlinesSampler1IPV(
+                dataset.training_set, **train_sampler_params)
+            logging.info("\n\nTraining batch sampler attributes: \n" +
+                         format_dict_to_str(training_batch_sampler.attributes))
+
+        if dataset.validation_set.nb_subjects > 0:
+            valid_batch_sampler = BatchStreamlinesSampler1IPV(
+                dataset.validation_set, **valid_sampler_params)
+            logging.info("\n\nValidation batch sampler attributes: \n" +
+                         format_dict_to_str(valid_batch_sampler.attributes))
+
+    return training_batch_sampler, valid_batch_sampler

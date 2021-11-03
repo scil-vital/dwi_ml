@@ -8,6 +8,7 @@ There are a lot of parameters. We have chosen to use a yaml file to keep track
 of all parameters (instead of typing all parameters directly when calling this
 script).
 """
+import json
 import logging
 import os
 from os import path
@@ -176,12 +177,18 @@ def main():
         trainer = init_from_checkpoint(args)
     else:
         trainer = init_from_args(p, args)
+    logging.info("Trainer attributes : \n{}".format(
+        json.dumps(trainer.attributes, indent=4, sort_keys=True,
+                   default=(lambda x: str(x)))))
+    logging.info("Trainer hyperparameters: \n{}".format(
+        json.dumps(trainer.hyperparameters, indent=4, sort_keys=True,
+                   default=(lambda x: str(x)))))
 
     # Run (or continue) the experiment
     try:
         with Timer("\n\n****** Running model!!! ********",
                    newline=True, color='magenta'):
-            trainer.run_model()
+            trainer.run_experiment()
     except EarlyStoppingError as e:
         print(e)
 

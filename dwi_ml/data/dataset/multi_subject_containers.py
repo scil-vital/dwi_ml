@@ -51,6 +51,7 @@ class MultisubjectSubset(Dataset):
         # The subjects data list will be either a SubjectsDataList or a
         # LazySubjectsDataList depending MultisubjectDataset.is_lazy.
         self.subjs_data_list = None
+        self.nb_subjects = 0
 
         self.streamline_ids_per_subj = []  # type: List[defaultdict[slice]]
         self.total_nb_streamlines = []  # type: List[int]
@@ -228,6 +229,9 @@ class MultiSubjectDataset:
         self.validation_set = MultisubjectSubset(
             'validation', hdf5_file, taskman_managed, self.is_lazy, self.log,
             cache_size)
+        self.testing_set = MultisubjectSubset(
+            'testing', hdf5_file, taskman_managed, self.is_lazy, self.log,
+            cache_size)
 
     @property
     def attributes(self) -> Dict[str, Any]:
@@ -278,8 +282,14 @@ class MultiSubjectDataset:
             # LOADING
             self._load_subset(self.training_set, hdf_handle)
             self._load_subset(self.validation_set, hdf_handle)
+            self._load_subset(self.testing_set, hdf_handle)
 
     def _load_subset(self, subset: MultisubjectSubset, hdf_handle: h5py.File):
+        """
+        Load all subjects for this subjset (either training, validation or
+        testing).
+        """
+        # Checking if there are any subjects to load
         subject_keys = sorted(hdf_handle.attrs[subset.set_name + '_subjs'])
         if len(subject_keys) == 0:
             logging.debug("No subject. Returning empty subset.")
@@ -289,6 +299,7 @@ class MultiSubjectDataset:
                      "==============".format(subset.set_name))
         logging.debug('Dataset: hdf_file (subject) keys for the {} set '
                       'are: {}'.format(subset.set_name, subject_keys))
+        subset.nb_subjects = len(subject_keys)
 
         # Build empty data_list (lazy or not) and initialize values
         subset.subjs_data_list = self._build_empty_data_list()

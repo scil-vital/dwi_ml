@@ -100,7 +100,7 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
 
 
 def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
-                      split_ids: np.ndarray = None, min_nb_points: int = 6):
+                      split_ids: np.ndarray = None, min_nb_points: int = 12):
     """Splits (or cuts) streamlines into 2 random segments. Returns both
     segments as independent streamlines, so the number of output streamlines is
     higher than the input.

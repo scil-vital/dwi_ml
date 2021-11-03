@@ -346,9 +346,9 @@ class DWIMLTrainer:
         All *args will be passed all the way to _train_one_epoch and
         _train_one_batch, in case you want to override them.
         """
-        logging.info("Trainer {}: \n"
-                     "Running the model {}.\n\n"
-                     .format(type(self), type(self.model)))
+        logging.debug("Trainer {}: \n"
+                      "Running the model {}.\n\n"
+                      .format(type(self), type(self.model)))
 
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:

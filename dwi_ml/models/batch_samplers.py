@@ -198,11 +198,13 @@ class BatchStreamlinesSampler(Sampler):
         super().__init__(dataset)  # This does nothing but python likes it.
 
         # Checking that batch_size is correct
-        if (not isinstance(max_batch_size, int) or isinstance(max_batch_size, bool)
-                or max_batch_size <= 0):
+        if (not isinstance(max_batch_size, int) or
+                isinstance(max_batch_size, bool) or
+                max_batch_size <= 0):
             raise ValueError("batch_size (i.e. number of total timesteps in "
                              "the batch) should be a positive integeral "
-                             "value, but got batch_size={}".format(max_batch_size))
+                             "value, but got batch_size={}"
+                             .format(max_batch_size))
 
         # Checking that n_volumes was given if cycles was given
         if cycles and not nb_subjects_per_batch:
@@ -227,7 +229,7 @@ class BatchStreamlinesSampler(Sampler):
         self.max_batch_size = max_batch_size
 
         # Find idx of streamline group
-        self.streamline_group = self.dataset.streamline_groups.index(
+        self.streamline_group_idx = self.dataset.streamline_groups.index(
             self.streamline_group_name)
 
         # Set random numbers
@@ -249,7 +251,8 @@ class BatchStreamlinesSampler(Sampler):
         if neighborhood_type and not (neighborhood_type == 'axes' or
                                       neighborhood_type == 'grid'):
             raise ValueError("neighborhood type must be either 'axes', 'grid' "
-                             "or None!")
+                             "or None, but we received {}!"
+                             .format(neighborhood_type))
         self.neighborhood_type = neighborhood_type
         self.neighborhood_radius = neighborhood_radius
         if self.neighborhood_type is None and neighborhood_radius:
@@ -270,7 +273,7 @@ class BatchStreamlinesSampler(Sampler):
             'neighborhood_type': self.neighborhood_type,
             'neighborhood_radius': self.neighborhood_radius,
             'nb_neighbors': len(self.neighborhood_points) if
-            self.neighborhood_points else None,
+            self.neighborhood_points is not None else None,
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
             'reverse_ratio': self.reverse_ratio,
@@ -333,9 +336,9 @@ class BatchStreamlinesSampler(Sampler):
         """
         # This is the list of all possible streamline ids
         global_streamlines_ids = np.arange(
-            self.dataset.total_nb_streamlines[self.streamline_group])
+            self.dataset.total_nb_streamlines[self.streamline_group_idx])
         ids_per_subjs = \
-            self.dataset.streamline_ids_per_subj[self.streamline_group]
+            self.dataset.streamline_ids_per_subj[self.streamline_group_idx]
 
         # This contains one bool per streamline:
         #   1 = this streamline has not been used yet.
@@ -494,11 +497,11 @@ class BatchStreamlinesSampler(Sampler):
             # lazy data.
             if self.step_size:
                 l_mm = self.dataset.streamline_lengths_mm
-                l_mm = l_mm[self.streamline_group][chosen_global_ids]
+                l_mm = l_mm[self.streamline_group_idx][chosen_global_ids]
                 nb_points = l_mm / self.step_size
             else:
                 l_points = self.dataset.streamline_lengths
-                nb_points = l_points[self.streamline_group][chosen_global_ids]
+                nb_points = l_points[self.streamline_group_idx][chosen_global_ids]
                 # Should be equal to
                 # nb_points = lengths_mm / self.dataset.step_size
 
@@ -617,7 +620,7 @@ class BatchStreamlinesSampler(Sampler):
 
             subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(
                 subj)
-            subj_sft_data = subj_data.sft_data_list[self.streamline_group]
+            subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
 
             # Get streamlines as sft
             sft = subj_sft_data.from_chosen_streamlines(s_ids)

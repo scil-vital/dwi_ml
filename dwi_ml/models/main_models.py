@@ -22,7 +22,7 @@ class ModelAbstract(torch.nn.Module):
     @property
     def attributes(self):
         """All parameters necessary to create again the same model"""
-        return self.hyperparameters
+        return {}
 
     def set_log(self, log: logging.Logger):
         """Possibility to pass a tqdm-compatible logger in case the dataloader
@@ -42,6 +42,15 @@ class MainModelAbstract(ModelAbstract):
     def __init__(self):
         super().__init__()
         self.best_model_state = None
+
+    @property
+    def hyperparameters(self):
+        return {}
+
+    @property
+    def attributes(self):
+        """All parameters necessary to create again the same model"""
+        return {}
 
     def update_best_model(self):
         # Initialize best model

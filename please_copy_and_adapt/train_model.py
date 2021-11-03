@@ -21,7 +21,7 @@ from dwi_ml.experiment.timer import Timer
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.experiment.checks_for_experiment_parameters import (
     check_all_experiment_parameters)
-import dwi_ml.training.parameter_description as params_d
+import dwi_ml.experiment.parameter_description as params_d
 from dwi_ml.training.trainers import DWIMLTrainer
 from dwi_ml.training.training_utils import parse_args_train_model, \
     prepare_data, prepare_batch_sampler_1i_pv, check_unused_args_for_checkpoint

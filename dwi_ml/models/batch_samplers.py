@@ -630,7 +630,7 @@ class BatchStreamlinesSampler(Sampler):
             if self.step_size:
                 if self.dataset.step_size == self.step_size:
                     self.log.debug("Step size is the same as when creating "
-                                  "the hdf5 dataset. Not resampling again.")
+                                   "the hdf5 dataset. Not resampling again.")
                 else:
                     sft = resample_streamlines_step_size(
                         sft, step_size=self.step_size)
@@ -1009,15 +1009,37 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
     def compute_prev_dirs(self, batch_directions, device=torch.device('cpu')):
         """
         About device: see compute_inputs
+
+        Returns:
+        previous_dirs: list[tensor]
+            A list of length nb_streamlines. Each tensor is of size
+            [nb_time_step, nb_previous_dir x 3]; the n previous dirs at each
+            point of the streamline. When previous dirs do not exist (ex,
+            the 2nd previous dir at the first time step), value is NaN.
         """
         # Compute previous directions
-        previous_dirs = []
-        if self.nb_previous_dirs > 0:
-            empty_coord = torch.zeros((1, 3), dtype=torch.float32,
-                                      device=device) * float('NaN')
-            previous_dirs = \
-                [torch.cat([torch.cat((empty_coord.repeat(i + 1, 1),
-                                       s[:-(i + 1)]))
-                            for i in range(self.nb_previous_dirs)], dim=1)
-                 for s in batch_directions]
+        if self.nb_previous_dirs == 0:
+            return []
+
+        empty_coord = torch.zeros((1, 3), dtype=torch.float32,
+                                  device=device) * float('NaN')
+        # Loop equivalent:
+        # for s in batch_directions:
+        #     tmp = []
+        #     for i in range(nb_prev_dirs):
+        #         # The last i points of the streamline are not a
+        #         # "previous dir" to anyone. (i+1 because starts at 0)
+        #         useful_dirs = s[:-(i+1)]
+        #         # Adding i nan coordinates as previous dirs of the first
+        #         # points. (i+1 because starts at 0). The "first points"
+        #         # are len(s) - len(useful_dirs) = min(len(s), i+1)
+        #         e_c = empty_coord.repeat(min(len(s), i + 1), 1)
+        #         tmp.append[torch.cat(e_c, useful_dirs)]
+        #     previous_dirs = torch.cat(tmp, dim=1]
+        previous_dirs = \
+            [torch.cat([torch.cat((empty_coord.repeat(min(len(s), i + 1), 1),
+                                   s[:-(i + 1)]))
+                        for i in range(self.nb_previous_dirs)],
+                       dim=1)
+             for s in batch_directions]
         return previous_dirs

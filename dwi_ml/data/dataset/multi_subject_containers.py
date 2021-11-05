@@ -74,7 +74,7 @@ class MultisubjectSubset(Dataset):
         self.volume_cache_manager = None
 
     @property
-    def attributes(self) -> Dict[str, Any]:
+    def params(self) -> Dict[str, Any]:
         all_params = {
             'hdf5_file': self.hdf5_file,
             'taskman_managed': self.taskman_managed,
@@ -234,7 +234,7 @@ class MultiSubjectDataset:
             cache_size)
 
     @property
-    def attributes(self) -> Dict[str, Any]:
+    def params(self) -> Dict[str, Any]:
         all_params = {
             'hdf5_file': self.hdf5_file,
             'taskman_managed': self.taskman_managed,

@@ -259,50 +259,25 @@ class DWIMLTrainer:
                                           weight_decay=weight_decay)
 
     @property
-    def attributes(self) -> dict:
-        """
-        Return experiment attributes (anything that is not a hyperparameter).
-        """
-        attrs = {
+    def params(self) -> dict:
+        params = {
             'experiment_dir': self.experiment_path,
             'experiment_name': self.experiment_name,
             'dwi_ml_trainer_version': VERSION,
             'comet_key': self.comet_key,
-            'training_set_attributes':
-                self.train_batch_sampler.dataset.attributes,
-            'validation_set_attributes':
-                self.valid_batch_sampler.dataset.attributes if
-                self.use_validation else None,
-            'train sampler attributes': self.train_batch_sampler.attributes,
-            'valid sampler attributes':
-                self.valid_batch_sampler.attributes if
-                self.use_validation else None,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
-            'nb_cpu_workers': self.nb_cpu_workers
-        }
-        return attrs
-
-    @property
-    def hyperparameters(self) -> dict:
-        """
-        Return experiment hyperparameters in a dictionary
-
-        You should add your model's hyperparameter in your child class
-        """
-        hyperparameters = {
+            'nb_cpu_workers': self.nb_cpu_workers,
             'max_epochs': self.max_epochs,
-            'nb_training_batches_per_epoch': self.nb_train_batches_per_epoch,
-            'nb_validation_batches_per_epoch':
-                self.nb_valid_batches_per_epoch,
-            'training sampler hyperparameters':
-                self.train_batch_sampler.hyperparameters,
-            'validation sampler hyperparameters':
-                self.valid_batch_sampler.hyperparameters if
-                self.use_validation else None,
-            'patience': self.patience
+            'patience': self.patience,
+            'computed_values': {
+                'nb_training_batches_per_epoch':
+                    self.nb_train_batches_per_epoch,
+                'nb_validation_batches_per_epoch':
+                    self.nb_valid_batches_per_epoch
+            }
         }
-        return hyperparameters
+        return params
 
     def _init_comet(self):
         """
@@ -325,8 +300,7 @@ class DWIMLTrainer:
                     log_git_metadata=True, log_git_patch=True,
                     display_summary=False)
                 self.comet_exp.set_name(self.experiment_name)
-                self.comet_exp.log_parameters(self.attributes)
-                self.comet_exp.log_parameters(self.hyperparameters)
+                self.comet_exp.log_parameters(self.params)
                 self.comet_key = self.comet_exp.get_key()
         except ConnectionError:
             logging.warning("Could not connect to Comet.ml, metrics will not "
@@ -812,13 +786,13 @@ class DWIMLTrainer:
         # samplers and model (see train_model.py). Note that the training set
         # and validation set attributes should be the same.
         checkpoint_state = {
-            'train_sampler_params': self.train_batch_sampler.attributes,
-            'valid_sampler_params': self.valid_batch_sampler.attributes if
+            'train_sampler_params': self.train_batch_sampler.params,
+            'valid_sampler_params': self.valid_batch_sampler.params if
             self.use_validation else None,
-            'train_data_params': self.train_batch_sampler.dataset.attributes,
-            'valid_data_params': self.valid_batch_sampler.dataset.attributes if
+            'train_data_params': self.train_batch_sampler.dataset.params,
+            'valid_data_params': self.valid_batch_sampler.dataset.params if
             self.use_validation else None,
-            'model_params': self.model.attributes,
+            'model_params': self.model.params,
             'params_for_init': params_for_init,
             'current_states': current_states
         }

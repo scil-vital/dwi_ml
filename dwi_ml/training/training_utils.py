@@ -79,7 +79,7 @@ def prepare_data(dataset_params):
         dataset.load_data()
 
         logging.info("\n\nDataset attributes: \n" +
-                     format_dict_to_str(dataset.attributes))
+                     format_dict_to_str(dataset.params))
 
     return dataset
 
@@ -100,23 +100,25 @@ def prepare_batch_sampler_1i_pv(dataset, train_sampler_params,
     streamline_group_name = train_sampler_params['streamline_group_name']
     with Timer("\n\nPreparing batch samplers with volume: '{}' and "
                "streamlines '{}'"
-                       .format(volume_group_name, streamline_group_name),
+               .format(volume_group_name, streamline_group_name),
                newline=True, color='green'):
 
         # Batch samplers could potentially be set differently between training
         # and validation (ex, more or less noise), so keeping two instances.
-        training_batch_sampler = None
-        valid_batch_sampler = None
+        train_batch_sampler = None
         if dataset.training_set.nb_subjects > 0:
-            training_batch_sampler = BatchStreamlinesSampler1IPV(
+            train_batch_sampler = BatchStreamlinesSampler1IPV(
                 dataset.training_set, **train_sampler_params)
-            logging.info("\n\nTraining batch sampler attributes: \n" +
-                         format_dict_to_str(training_batch_sampler.attributes))
+            logging.info(
+                "\n\nTraining batch sampler user-defined parameters: \n" +
+                format_dict_to_str(train_batch_sampler.params))
 
+        valid_batch_sampler = None
         if dataset.validation_set.nb_subjects > 0:
             valid_batch_sampler = BatchStreamlinesSampler1IPV(
                 dataset.validation_set, **valid_sampler_params)
-            logging.info("\n\nValidation batch sampler attributes: \n" +
-                         format_dict_to_str(valid_batch_sampler.attributes))
+            logging.info(
+                "\n\nValidation batch sampler user-defined parameters: \n" +
+                format_dict_to_str(valid_batch_sampler.params))
 
-    return training_batch_sampler, valid_batch_sampler
+    return train_batch_sampler, valid_batch_sampler

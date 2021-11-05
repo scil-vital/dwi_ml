@@ -177,11 +177,11 @@ def main():
         trainer = init_from_checkpoint(args)
     else:
         trainer = init_from_args(p, args)
-    logging.info("Trainer attributes : \n{}".format(
-        json.dumps(trainer.attributes, indent=4, sort_keys=True,
+    logging.info("Trainer user-defined params : \n{}".format(
+        json.dumps(trainer.params, indent=4, sort_keys=True,
                    default=(lambda x: str(x)))))
-    logging.info("Trainer hyperparameters: \n{}".format(
-        json.dumps(trainer.hyperparameters, indent=4, sort_keys=True,
+    logging.info("Trainer: other parameters: \n{}".format(
+        json.dumps(trainer.parameters_discovered, indent=4, sort_keys=True,
                    default=(lambda x: str(x)))))
 
     # Run (or continue) the experiment

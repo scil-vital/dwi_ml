@@ -268,12 +268,23 @@ class BatchStreamlinesSampler(Sampler):
         self.log = logging.getLogger()  # Gets the root logger
 
     @property
-    def hyperparameters(self):
-        hyperparameters = {
+    def params(self):
+        """
+        All parameters. Contains at least all parameters that would be
+        necessary to create this batch sampler again (except the dataset).
+        """
+        params = {
+            'streamline_group_name': self.streamline_group_name,
+            'max_batch_size': self.max_batch_size,
+            'chunk_size': self.chunk_size,
+            'rng': self.rng,
+            'nb_subjects_per_batch': self.nb_subjects_per_batch,
+            'cycles': self.cycles,
+            'wait_for_gpu': self.wait_for_gpu,
+            'type': type(self),
             'neighborhood_type': self.neighborhood_type,
             'neighborhood_radius': self.neighborhood_radius,
-            'nb_neighbors': len(self.neighborhood_points) if
-            self.neighborhood_points is not None else None,
+            'computed_number_of_neighbors': len(self.neighborhood_points),
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
             'reverse_ratio': self.reverse_ratio,
@@ -282,25 +293,7 @@ class BatchStreamlinesSampler(Sampler):
             'compress': self.compress,
             'normalize_directions': self.normalize_directions
         }
-        return hyperparameters
-
-    @property
-    def attributes(self):
-        """
-        All parameters. Contains at least all parameters that would be
-        necessary to create this batch sampler again (except the dataset).
-        """
-        attrs = {
-            'streamline_group_name': self.streamline_group_name,
-            'batch_size': self.max_batch_size,
-            'rng': self.rng,
-            'nb_subjects_per_batch': self.nb_subjects_per_batch,
-            'cycles': self.cycles,
-            'wait_for_gpu': self.wait_for_gpu,
-            'type': type(self)
-        }
-        attrs.update(self.hyperparameters)
-        return attrs
+        return params
 
     @property
     def states(self):
@@ -807,17 +800,11 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         return expected_input_size
 
     @property
-    def hyperparameters(self):
-        hyperparameters = super().hyperparameters
-        hyperparameters.update({'nb_previous_dirs': self.nb_previous_dirs})
-        return hyperparameters
-
-    @property
-    def attributes(self):
-        attributes = super().attributes
-        attributes.update({'input_group_name': self.input_group_name,
-                           'nb_previous_dirs': self.nb_previous_dirs})
-        return attributes
+    def params(self):
+        params = super().params
+        params.update({'input_group_name': self.input_group_name,
+                       'nb_previous_dirs': self.nb_previous_dirs})
+        return params
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
                    save_batch_input_mask: bool = False) \

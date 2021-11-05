@@ -16,11 +16,7 @@ class ModelAbstract(torch.nn.Module):
         self.log = logging.getLogger()  # Gets the root
 
     @property
-    def hyperparameters(self):
-        return {}
-
-    @property
-    def attributes(self):
+    def params(self):
         """All parameters necessary to create again the same model"""
         return {}
 
@@ -44,11 +40,7 @@ class MainModelAbstract(ModelAbstract):
         self.best_model_state = None
 
     @property
-    def hyperparameters(self):
-        return {}
-
-    @property
-    def attributes(self):
+    def params(self):
         """All parameters necessary to create again the same model"""
         return {}
 
@@ -70,15 +62,9 @@ class MainModelAbstract(ModelAbstract):
         os.makedirs(model_dir)
 
         # Save attributes
-        attributes_filename = os.path.join(model_dir, "attributes.json")
-        with open(attributes_filename, 'w') as json_file:
-            json_file.write(json.dumps(self.attributes, indent=4,
-                                       separators=(',', ': ')))
-
-        # Save hyperparams
-        hyperparams_filename = os.path.join(model_dir, "hyperparameters.json")
-        with open(hyperparams_filename, 'w') as json_file:
-            json_file.write(json.dumps(self.hyperparameters, indent=4,
+        name = os.path.join(model_dir, "parametersr.json")
+        with open(name, 'w') as json_file:
+            json_file.write(json.dumps(self.params, indent=4,
                                        separators=(',', ': ')))
 
         # Save model

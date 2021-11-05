@@ -1015,14 +1015,16 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
             A list of length nb_streamlines. Each tensor is of size
             [nb_time_step, nb_previous_dir x 3]; the n previous dirs at each
             point of the streamline. When previous dirs do not exist (ex,
-            the 2nd previous dir at the first time step), value is NaN.
+            the 2nd previous dir at the first time step), value is 0.
         """
         # Compute previous directions
         if self.nb_previous_dirs == 0:
             return []
 
+        # toDo See what to do when values do not exist. See discussion here.
+        #  https://stats.stackexchange.com/questions/169887/classification-with-partially-unknown-data
         empty_coord = torch.zeros((1, 3), dtype=torch.float32,
-                                  device=device) * float('NaN')
+                                  device=device)
         # Loop equivalent:
         # for s in batch_directions:
         #     tmp = []

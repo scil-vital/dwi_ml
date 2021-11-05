@@ -60,13 +60,15 @@ def parse_args_train_model():
     return p
 
 
-def check_unused_args_for_checkpoint(args, project_specific_args):
-    all_args = ['hdf5_file', 'yaml_parameters'].extend(project_specific_args)
-    for s in all_args:
-        if args[s]:
+def check_unused_args_for_checkpoint(args, project_specific_unused_args):
+    unused_args = ['hdf5_file', 'yaml_parameters']
+    unused_args.extend(project_specific_unused_args)
+    for s in unused_args:
+        val = getattr(args, s)
+        if val:
             logging.warning('Resuming experiment from checkpoint. {} '
-                            'option was not necessary and will not be used!'
-                            .format(s))
+                            'option ({}) was not necessary and will not be '
+                            'used!'.format(s, val))
 
 
 def prepare_data(dataset_params):

@@ -35,14 +35,24 @@ class MainModelAbstract(ModelAbstract):
 
     It should also define a forward() method.
     """
-    def __init__(self):
+    def __init__(self, experiment_name='my_model'):
         super().__init__()
+        self.experiment_name = experiment_name
         self.best_model_state = None
 
     @property
     def params(self):
-        """All parameters necessary to create again the same model"""
+        """All parameters necessary to create again the same model. Will be
+        used in the trainer, when saving the checkpoint state. Params here
+        will be used to re-create the model when starting an experiment from
+        checkpoint. You should be able to re-create an instance of your
+        model with those params."""
         return {}
+
+    @classmethod
+    def init_from_checkpoint(cls, **params):
+        model = cls(**params)
+        return model
 
     def update_best_model(self):
         # Initialize best model

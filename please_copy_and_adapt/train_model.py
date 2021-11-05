@@ -28,7 +28,7 @@ from dwi_ml.training.training_utils import parse_args_train_model, \
     prepare_data, prepare_batch_sampler_1i_pv, check_unused_args_for_checkpoint
 
 """
-This example is based on an experiment that would use the 1i_pv batch sampler 
+This example is based on an experiment that would use the 1i_pv batch sampler
 (one input + the previous dirs, and the streamlines as target).
 
 Remove or add parameters to fit your needs. You should change your yaml file
@@ -54,17 +54,6 @@ def add_project_specific_args(p):
                         'necessary. Else, mandatory.')
 
 
-def prepare_model(model_params):
-    # Instantiate model.
-    with Timer("\n\nPreparing model", newline=True, color='yellow'):
-        # Possible args : input_size, **model_params
-        # Remember: you can access the input size here.
-        # input_size = dataset.nb_features[volume_group_idx]
-        model = MainModelAbstract()
-
-    return model
-
-
 def init_from_checkpoint(args):
     check_unused_args_for_checkpoint(args, ['input_group', 'target_group'])
 
@@ -79,13 +68,20 @@ def init_from_checkpoint(args):
                                       args.override_checkpoint_max_epochs)
 
     # Instantiate everything from checkpoint_state
-    dataset = prepare_data(checkpoint_state['dataset_params'])
+    dataset = prepare_data(checkpoint_state['train_data_params'])
+    # toDo Verify that valid dataset is the same.
+    #  checkpoint_state['valid_data_params']
     (training_batch_sampler,
      validation_batch_sampler) = prepare_batch_sampler_1i_pv(
         dataset,
         checkpoint_state['train_sampler_params'],
         checkpoint_state['valid_sampler_params'])
-    model = prepare_model(checkpoint_state['model_params'])
+    with Timer("\n\nPreparing model", newline=True, color='yellow'):
+        # Possible args : input_size, **model_params
+        # Remember: you can access the input size here.
+        # input_size = dataset.nb_features[volume_group_idx]
+        model = MainModelAbstract.init_from_checkpoint(
+            **checkpoint_state['model_params'])
 
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
@@ -147,7 +143,11 @@ def init_from_args(p, args):
     (training_batch_sampler,
      validation_batch_sampler) = prepare_batch_sampler_1i_pv(
         dataset, sampler_params, sampler_params)
-    model = prepare_model(model_params)
+    with Timer("\n\nPreparing model", newline=True, color='yellow'):
+        # Possible args : input_size, **model_params
+        # Remember: you can access the input size here.
+        # input_size = dataset.nb_features[volume_group_idx]
+        model = MainModelAbstract(**model_params)
 
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):

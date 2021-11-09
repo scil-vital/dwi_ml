@@ -25,18 +25,14 @@ class EmbeddingAbstract(ModelAbstract):
         self.output_size = output_size
 
     @property
-    def attributes(self):
+    def params(self):
         # We need real int types, not numpy.int64, not recognized by json
         # dumps.
-        attributes = {
+        params = {
             'input_size': int(self.input_size),
             'output_size': int(self.output_size),
         }
-        return attributes
-
-    @property
-    def hyperparameters(self):
-        return {}
+        return params
 
     def forward(self, inputs):
         raise NotImplementedError
@@ -49,20 +45,18 @@ class NNEmbedding(EmbeddingAbstract):
         self.relu = torch.nn.ReLU()
 
     @property
-    def attributes(self):
-        attrs = super().attributes  # type: dict
-        attrs.update({
+    def params(self):
+        params = super().params  # type: dict
+        params.update({
             'key': 'nn_embedding'
         })
-        return attrs
+        return params
 
     def forward(self, inputs: Tensor):
         self.log.debug("Embedding: running Neural networks' forward")
-
         # Calling forward.
         result = self.linear(inputs)
         result = self.relu(result)
-
         return result
 
 
@@ -87,12 +81,12 @@ class NoEmbedding(EmbeddingAbstract):
         return result
 
     @property
-    def attributes(self):
-        attrs = super().attributes  # type: dict
-        attrs.update({
+    def params(self):
+        params = super().params  # type: dict
+        params.update({
             'key': 'no_embedding'
         })
-        return attrs
+        return params
 
 
 class CNNEmbedding(EmbeddingAbstract):
@@ -101,8 +95,8 @@ class CNNEmbedding(EmbeddingAbstract):
         self.cnn_layer = torch.nn.Conv3d
 
     @property
-    def attributes(self):
-        params = super().attributes  # type: dict
+    def params(self):
+        params = super().params  # type: dict
         other_parameters = {
             'layers': 'non-defined-yet',
             'key': 'cnn_embedding'

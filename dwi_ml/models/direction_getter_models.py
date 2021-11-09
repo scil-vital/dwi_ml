@@ -137,15 +137,11 @@ class AbstractDirectionGetterModel(ModelAbstract):
         self.relu_sublayer = ReLU()
 
     @property
-    def hyperparameters(self):
-        return {}
-
-    @property
-    def attributes(self):
-        attributes = {
+    def params(self):
+        params = {
             'dropout': self.dropout,
         }
-        return attributes
+        return params
 
     def loop_on_layers(self, inputs: Tensor, layers: ModuleList):
         """
@@ -205,13 +201,13 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
         self.loss = CosineSimilarity(dim=-1)
 
     @property
-    def attributes(self):
-        attributes = super().attributes  # type: dict
-        other_params = {
+    def params(self):
+        params = super().params  # type: dict
+        params.update({
             'key': 'cosine-regression',
-        }
-        attributes.update(other_params)
-        return attributes
+            'loss': 'negative cosine similarity'
+        })
+        return params
 
     def forward(self, inputs: Tensor):
         """ Run the inputs through the loop on layers.  """
@@ -267,12 +263,13 @@ class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
         self.loss = PairwiseDistance()
 
     @property
-    def attributes(self):
-        attributes = super().attributes  # type: dict
-        attributes.update({
-            'key': 'l2-regression'
+    def params(self):
+        params = super().params  # type: dict
+        params.update({
+            'key': 'l2-regression',
+            'loss': 'pairwise distance'
         })
-        return attributes
+        return params
 
     def forward(self, inputs: Tensor):
         """
@@ -325,12 +322,13 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         # Loss will be defined in compute_loss, using torch distribution
 
     @property
-    def attributes(self):
-        attributes = super().attributes  # type: dict
-        attributes.update({
-            'key': 'sphere-classification'
+    def params(self):
+        params = super().params  # type: dict
+        params.update({
+            'key': 'sphere-classification',
+            'loss': 'negative log-likelihood'
         })
-        return attributes
+        return params
 
     def forward(self, inputs: Tensor):
         """
@@ -420,12 +418,13 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         # Loss will be defined in compute_loss, using torch distribution
 
     @property
-    def attributes(self):
-        attributes = super().attributes  # type: dict
-        attributes.update({
-            'key': 'gaussian'
+    def params(self):
+        params = super().params  # type: dict
+        params.update({
+            'key': 'gaussian',
+            'loss': 'negative log-likelihood'
         })
-        return attributes
+        return params
 
     def forward(self, inputs: Tensor):
         """
@@ -513,13 +512,14 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         # Loss will be defined in compute_loss, using torch distribution
 
     @property
-    def attributes(self):
-        attributes = super().attributes
-        attributes.update({
+    def params(self):
+        params = super().params
+        params.update({
             'key': 'gaussian-mixture',
-            'nb_gaussians': self.n_gaussians
+            'nb_gaussians': self.n_gaussians,
+            'loss': 'negative log-likelihood'
         })
-        return attributes
+        return params
 
     def forward(self, inputs: Tensor):
         """
@@ -633,12 +633,13 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         # Loss will be defined in compute_loss, using torch distribution
 
     @property
-    def attributes(self):
-        attributes = super().attributes  # type: dict
-        attributes.update({
+    def params(self):
+        params = super().params  # type: dict
+        params.update({
             'key': 'fisher-von-mises',
+            'loss': 'negative log-likelihood'
         })
-        return attributes
+        return params
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         """Run the inputs through the fully-connected layer.
@@ -743,13 +744,13 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
         raise NotImplementedError
 
     @property
-    def attributes(self):
-        attributes = super().attributes
-        attributes.update({
+    def params(self):
+        params = super().params
+        params.update({
             'key': 'fisher-von-mises-mixture',
             'n_cluster': self.n_cluster
         })
-        return attributes
+        return params
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         raise NotImplementedError

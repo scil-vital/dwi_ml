@@ -16,13 +16,9 @@ class ModelAbstract(torch.nn.Module):
         self.log = logging.getLogger()  # Gets the root
 
     @property
-    def hyperparameters(self):
-        return {}
-
-    @property
-    def attributes(self):
+    def params(self):
         """All parameters necessary to create again the same model"""
-        return self.hyperparameters
+        return {}
 
     def set_log(self, log: logging.Logger):
         """Possibility to pass a tqdm-compatible logger in case the dataloader
@@ -39,9 +35,24 @@ class MainModelAbstract(ModelAbstract):
 
     It should also define a forward() method.
     """
-    def __init__(self):
+    def __init__(self, experiment_name='my_model'):
         super().__init__()
+        self.experiment_name = experiment_name
         self.best_model_state = None
+
+    @property
+    def params(self):
+        """All parameters necessary to create again the same model. Will be
+        used in the trainer, when saving the checkpoint state. Params here
+        will be used to re-create the model when starting an experiment from
+        checkpoint. You should be able to re-create an instance of your
+        model with those params."""
+        return {}
+
+    @classmethod
+    def init_from_checkpoint(cls, **params):
+        model = cls(**params)
+        return model
 
     def update_best_model(self):
         # Initialize best model
@@ -61,15 +72,9 @@ class MainModelAbstract(ModelAbstract):
         os.makedirs(model_dir)
 
         # Save attributes
-        attributes_filename = os.path.join(model_dir, "attributes.json")
-        with open(attributes_filename, 'w') as json_file:
-            json_file.write(json.dumps(self.attributes, indent=4,
-                                       separators=(',', ': ')))
-
-        # Save hyperparams
-        hyperparams_filename = os.path.join(model_dir, "hyperparameters.json")
-        with open(hyperparams_filename, 'w') as json_file:
-            json_file.write(json.dumps(self.hyperparameters, indent=4,
+        name = os.path.join(model_dir, "parametersr.json")
+        with open(name, 'w') as json_file:
+            json_file.write(json.dumps(self.params, indent=4,
                                        separators=(',', ': ')))
 
         # Save model

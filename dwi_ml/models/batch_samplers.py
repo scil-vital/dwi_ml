@@ -198,11 +198,13 @@ class BatchStreamlinesSampler(Sampler):
         super().__init__(dataset)  # This does nothing but python likes it.
 
         # Checking that batch_size is correct
-        if (not isinstance(max_batch_size, int) or isinstance(max_batch_size, bool)
-                or max_batch_size <= 0):
+        if (not isinstance(max_batch_size, int) or
+                isinstance(max_batch_size, bool) or
+                max_batch_size <= 0):
             raise ValueError("batch_size (i.e. number of total timesteps in "
                              "the batch) should be a positive integeral "
-                             "value, but got batch_size={}".format(max_batch_size))
+                             "value, but got batch_size={}"
+                             .format(max_batch_size))
 
         # Checking that n_volumes was given if cycles was given
         if cycles and not nb_subjects_per_batch:
@@ -227,7 +229,7 @@ class BatchStreamlinesSampler(Sampler):
         self.max_batch_size = max_batch_size
 
         # Find idx of streamline group
-        self.streamline_group = self.dataset.streamline_groups.index(
+        self.streamline_group_idx = self.dataset.streamline_groups.index(
             self.streamline_group_name)
 
         # Set random numbers
@@ -249,7 +251,8 @@ class BatchStreamlinesSampler(Sampler):
         if neighborhood_type and not (neighborhood_type == 'axes' or
                                       neighborhood_type == 'grid'):
             raise ValueError("neighborhood type must be either 'axes', 'grid' "
-                             "or None!")
+                             "or None, but we received {}!"
+                             .format(neighborhood_type))
         self.neighborhood_type = neighborhood_type
         self.neighborhood_radius = neighborhood_radius
         if self.neighborhood_type is None and neighborhood_radius:
@@ -265,12 +268,23 @@ class BatchStreamlinesSampler(Sampler):
         self.log = logging.getLogger()  # Gets the root logger
 
     @property
-    def hyperparameters(self):
-        hyperparameters = {
+    def params(self):
+        """
+        All parameters. Contains at least all parameters that would be
+        necessary to create this batch sampler again (except the dataset).
+        """
+        params = {
+            'streamline_group_name': self.streamline_group_name,
+            'max_batch_size': self.max_batch_size,
+            'chunk_size': self.chunk_size,
+            'rng': self.rng,
+            'nb_subjects_per_batch': self.nb_subjects_per_batch,
+            'cycles': self.cycles,
+            'wait_for_gpu': self.wait_for_gpu,
+            'type': type(self),
             'neighborhood_type': self.neighborhood_type,
             'neighborhood_radius': self.neighborhood_radius,
-            'nb_neighbors': len(self.neighborhood_points) if
-            self.neighborhood_points else None,
+            'computed_number_of_neighbors': len(self.neighborhood_points),
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
             'reverse_ratio': self.reverse_ratio,
@@ -279,25 +293,7 @@ class BatchStreamlinesSampler(Sampler):
             'compress': self.compress,
             'normalize_directions': self.normalize_directions
         }
-        return hyperparameters
-
-    @property
-    def attributes(self):
-        """
-        All parameters. Contains at least all parameters that would be
-        necessary to create this batch sampler again (except the dataset).
-        """
-        attrs = {
-            'streamline_group_name': self.streamline_group_name,
-            'batch_size': self.max_batch_size,
-            'rng': self.rng,
-            'nb_subjects_per_batch': self.nb_subjects_per_batch,
-            'cycles': self.cycles,
-            'wait_for_gpu': self.wait_for_gpu,
-            'type': type(self)
-        }
-        attrs.update(self.hyperparameters)
-        return attrs
+        return params
 
     @property
     def states(self):
@@ -333,9 +329,9 @@ class BatchStreamlinesSampler(Sampler):
         """
         # This is the list of all possible streamline ids
         global_streamlines_ids = np.arange(
-            self.dataset.total_nb_streamlines[self.streamline_group])
+            self.dataset.total_nb_streamlines[self.streamline_group_idx])
         ids_per_subjs = \
-            self.dataset.streamline_ids_per_subj[self.streamline_group]
+            self.dataset.streamline_ids_per_subj[self.streamline_group_idx]
 
         # This contains one bool per streamline:
         #   1 = this streamline has not been used yet.
@@ -494,11 +490,11 @@ class BatchStreamlinesSampler(Sampler):
             # lazy data.
             if self.step_size:
                 l_mm = self.dataset.streamline_lengths_mm
-                l_mm = l_mm[self.streamline_group][chosen_global_ids]
+                l_mm = l_mm[self.streamline_group_idx][chosen_global_ids]
                 nb_points = l_mm / self.step_size
             else:
                 l_points = self.dataset.streamline_lengths
-                nb_points = l_points[self.streamline_group][chosen_global_ids]
+                nb_points = l_points[self.streamline_group_idx][chosen_global_ids]
                 # Should be equal to
                 # nb_points = lengths_mm / self.dataset.step_size
 
@@ -617,7 +613,7 @@ class BatchStreamlinesSampler(Sampler):
 
             subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(
                 subj)
-            subj_sft_data = subj_data.sft_data_list[self.streamline_group]
+            subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
 
             # Get streamlines as sft
             sft = subj_sft_data.from_chosen_streamlines(s_ids)
@@ -627,7 +623,7 @@ class BatchStreamlinesSampler(Sampler):
             if self.step_size:
                 if self.dataset.step_size == self.step_size:
                     self.log.debug("Step size is the same as when creating "
-                                  "the hdf5 dataset. Not resampling again.")
+                                   "the hdf5 dataset. Not resampling again.")
                 else:
                     sft = resample_streamlines_step_size(
                         sft, step_size=self.step_size)
@@ -804,17 +800,11 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         return expected_input_size
 
     @property
-    def hyperparameters(self):
-        hyperparameters = super().hyperparameters
-        hyperparameters.update({'nb_previous_dirs': self.nb_previous_dirs})
-        return hyperparameters
-
-    @property
-    def attributes(self):
-        attributes = super().attributes
-        attributes.update({'input_group_name': self.input_group_name,
-                           'nb_previous_dirs': self.nb_previous_dirs})
-        return attributes
+    def params(self):
+        params = super().params
+        params.update({'input_group_name': self.input_group_name,
+                       'nb_previous_dirs': self.nb_previous_dirs})
+        return params
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
                    save_batch_input_mask: bool = False) \
@@ -1006,15 +996,39 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
     def compute_prev_dirs(self, batch_directions, device=torch.device('cpu')):
         """
         About device: see compute_inputs
+
+        Returns:
+        previous_dirs: list[tensor]
+            A list of length nb_streamlines. Each tensor is of size
+            [nb_time_step, nb_previous_dir x 3]; the n previous dirs at each
+            point of the streamline. When previous dirs do not exist (ex,
+            the 2nd previous dir at the first time step), value is 0.
         """
         # Compute previous directions
-        previous_dirs = []
-        if self.nb_previous_dirs > 0:
-            empty_coord = torch.zeros((1, 3), dtype=torch.float32,
-                                      device=device) * float('NaN')
-            previous_dirs = \
-                [torch.cat([torch.cat((empty_coord.repeat(i + 1, 1),
-                                       s[:-(i + 1)]))
-                            for i in range(self.nb_previous_dirs)], dim=1)
-                 for s in batch_directions]
+        if self.nb_previous_dirs == 0:
+            return []
+
+        # toDo See what to do when values do not exist. See discussion here.
+        #  https://stats.stackexchange.com/questions/169887/classification-with-partially-unknown-data
+        empty_coord = torch.zeros((1, 3), dtype=torch.float32,
+                                  device=device)
+        # Loop equivalent:
+        # for s in batch_directions:
+        #     tmp = []
+        #     for i in range(nb_prev_dirs):
+        #         # The last i points of the streamline are not a
+        #         # "previous dir" to anyone. (i+1 because starts at 0)
+        #         useful_dirs = s[:-(i+1)]
+        #         # Adding i nan coordinates as previous dirs of the first
+        #         # points. (i+1 because starts at 0). The "first points"
+        #         # are len(s) - len(useful_dirs) = min(len(s), i+1)
+        #         e_c = empty_coord.repeat(min(len(s), i + 1), 1)
+        #         tmp.append[torch.cat(e_c, useful_dirs)]
+        #     previous_dirs = torch.cat(tmp, dim=1]
+        previous_dirs = \
+            [torch.cat([torch.cat((empty_coord.repeat(min(len(s), i + 1), 1),
+                                   s[:-(i + 1)]))
+                        for i in range(self.nb_previous_dirs)],
+                       dim=1)
+             for s in batch_directions]
         return previous_dirs

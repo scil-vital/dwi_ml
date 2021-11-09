@@ -115,7 +115,7 @@ class TrackerAbstract(object):
         self.model.eval()
 
     @staticmethod
-    def _load_model(model_path: str, hyperparameters: Dict[str, Any]):
+    def _load_model(model_path: str, parameters: Dict[str, Any]):
         raise NotImplementedError
 
     @staticmethod

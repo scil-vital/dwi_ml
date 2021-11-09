@@ -58,7 +58,8 @@ class DWIMLTrainer:
         batch_sampler_validation: BatchSequencesSamplerOneInputVolume
             Instantiated class used for sampling batches of validation
             data. Data in batch_sampler_training.source_data must be already
-            loaded.
+            loaded. Can be set to None if no validation is used. Then, best
+            model is based on training loss.
         model: MainModelAbstract
             Instatiated class containing your model.
         experiment_path: str
@@ -121,6 +122,10 @@ class DWIMLTrainer:
         # batch_samplers.data_source
         self.train_batch_sampler = batch_sampler_training
         self.valid_batch_sampler = batch_sampler_validation
+        if self.valid_batch_sampler is None:
+            self.use_validation = False
+        else:
+            self.use_validation = True
         self.model = model
 
         self.max_epochs = max_epochs
@@ -153,7 +158,12 @@ class DWIMLTrainer:
         sub_log.setLevel(logging.root.level)
         sub_log.propagate = False
         self.train_batch_sampler.set_log(sub_log)
-        self.valid_batch_sampler.set_log(sub_log)
+        if self.use_validation:
+            self.valid_batch_sampler.set_log(sub_log)
+        else:
+            sub_log.warning("WARNING! There is not validation set. Loss for "
+                            "best epoch monitoring will be the training loss. "
+                            "\nBest practice is to have a validation set.")
         self.model.set_log(self.log)
 
         # Time limited run
@@ -171,8 +181,9 @@ class DWIMLTrainer:
                 self.device = torch.device('cuda')
 
                 # Setting the rng seed
-                if self.train_batch_sampler.rng != \
-                        self.valid_batch_sampler.rng:
+                if (self.use_validation and
+                        self.train_batch_sampler.rng !=
+                        self.valid_batch_sampler.rng):
                     raise ValueError("Training and validation batch samplers "
                                      "do not have the same rng. Please verify "
                                      "the code.")
@@ -248,46 +259,25 @@ class DWIMLTrainer:
                                           weight_decay=weight_decay)
 
     @property
-    def attributes(self) -> dict:
-        """
-        Return experiment attributes (anything that is not a hyperparameter).
-        """
-        attrs = {
+    def params(self) -> dict:
+        params = {
             'experiment_dir': self.experiment_path,
             'experiment_name': self.experiment_name,
             'dwi_ml_trainer_version': VERSION,
             'comet_key': self.comet_key,
-            'training_set_attributes':
-                self.train_batch_sampler.dataset.attributes,
-            'validation_set_attributes':
-                self.valid_batch_sampler.dataset.attributes,
-            'train sampler attributes': self.train_batch_sampler.attributes,
-            'valid sampler attributes': self.valid_batch_sampler.attributes,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
-            'nb_cpu_workers': self.nb_cpu_workers
-        }
-        return attrs
-
-    @property
-    def hyperparameters(self) -> dict:
-        """
-        Return experiment hyperparameters in a dictionary
-
-        You should add your model's hyperparameter in your child class
-        """
-        hyperparameters = {
+            'nb_cpu_workers': self.nb_cpu_workers,
             'max_epochs': self.max_epochs,
-            'nb_training_batches_per_epoch': self.nb_train_batches_per_epoch,
-            'nb_validation_batches_per_epoch':
-                self.nb_valid_batches_per_epoch,
-            'training sampler hyperparameters':
-                self.train_batch_sampler.hyperparameters,
-            'validation sampler hyperparameters':
-                self.valid_batch_sampler.hyperparameters,
-            'patience': self.patience
+            'patience': self.patience,
+            'computed_values': {
+                'nb_training_batches_per_epoch':
+                    self.nb_train_batches_per_epoch,
+                'nb_validation_batches_per_epoch':
+                    self.nb_valid_batches_per_epoch
+            }
         }
-        return hyperparameters
+        return params
 
     def _init_comet(self):
         """
@@ -310,8 +300,7 @@ class DWIMLTrainer:
                     log_git_metadata=True, log_git_patch=True,
                     display_summary=False)
                 self.comet_exp.set_name(self.experiment_name)
-                self.comet_exp.log_parameters(self.attributes)
-                self.comet_exp.log_parameters(self.hyperparameters)
+                self.comet_exp.log_parameters(self.params)
                 self.comet_key = self.comet_exp.get_key()
         except ConnectionError:
             logging.warning("Could not connect to Comet.ml, metrics will not "
@@ -329,7 +318,7 @@ class DWIMLTrainer:
         """
         return self.max_batches_per_epochs, self.max_batches_per_epochs
 
-    def run_model(self, *args):
+    def run_experiment(self, *args):
         """
         Train + validates the model (+ computes loss)
 
@@ -346,9 +335,9 @@ class DWIMLTrainer:
         All *args will be passed all the way to _train_one_epoch and
         _train_one_batch, in case you want to override them.
         """
-        logging.info("Trainer {}: \n"
-                     "Running the model {}.\n\n"
-                     .format(type(self), type(self.model)))
+        logging.debug("Trainer {}: \n"
+                      "Running the model {}.\n\n"
+                      .format(type(self), type(self.model)))
 
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:
@@ -357,19 +346,12 @@ class DWIMLTrainer:
              self.nb_valid_batches_per_epoch) = \
                 self.estimate_nb_batches_per_epoch()
 
-        logging.info("Experiment attributes : \n{}".format(
-            json.dumps(self.attributes, indent=4, sort_keys=True,
-                       default=(lambda x: str(x)))))
-        logging.info("Experiment hyperparameters: \n{}".format(
-            json.dumps(self.hyperparameters, indent=4, sort_keys=True,
-                       default=(lambda x: str(x)))))
-
         # Instantiate comet experiment
         # If self.comet_key is None: new experiment, will create a key
         # Else, resuming from checkpoint. Will continue with given key.
         self._init_comet()
         if self.comet_exp:
-            train_context = self.comet_exp.run_model
+            train_context = self.comet_exp.run_experiment
             valid_context = self.comet_exp.validate
         else:
             # Instantiating contexts doing nothing instead
@@ -389,12 +371,14 @@ class DWIMLTrainer:
             collate_fn=self.train_batch_sampler.load_batch,
             pin_memory=self.use_gpu)
 
-        valid_dataloader = DataLoader(
-            self.valid_batch_sampler.dataset,
-            batch_sampler=self.valid_batch_sampler,
-            num_workers=self.nb_cpu_workers,
-            collate_fn=self.valid_batch_sampler.load_batch,
-            pin_memory=self.use_gpu)
+        valid_dataloader = None
+        if self.use_validation:
+            valid_dataloader = DataLoader(
+                self.valid_batch_sampler.dataset,
+                batch_sampler=self.valid_batch_sampler,
+                num_workers=self.nb_cpu_workers,
+                collate_fn=self.valid_batch_sampler.load_batch,
+                pin_memory=self.use_gpu)
 
         # Instantiating our IterTimer.
         # After each iteration, checks that the maximum allowed time has not
@@ -414,13 +398,17 @@ class DWIMLTrainer:
                                  *args)
 
             # Validation
-            logging.info("**********VALIDATION: Epoch #{}*************"
-                         .format(epoch))
-            self.validate_one_epoch(valid_dataloader, valid_context, epoch,
-                                    *args)
+            if self.use_validation:
+                logging.info("**********VALIDATION: Epoch #{}*************"
+                             .format(epoch))
+                self.validate_one_epoch(valid_dataloader, valid_context, epoch,
+                                        *args)
+
+                last_loss = self.valid_loss_monitor.epochs_means_history[-1]
+            else:
+                last_loss = self.train_loss_monitor.epochs_means_history[-1]
 
             # Updating infos
-            last_loss = self.valid_loss_monitor.epochs_means_history[-1]
             self.best_epoch_monitoring.update(last_loss, epoch)
 
             # Check for early stopping
@@ -429,9 +417,9 @@ class DWIMLTrainer:
                 raise EarlyStoppingError(
                     "Early stopping! Loss has not improved after {} epochs!\n"
                     "Best result: {}; At epoch #{}"
-                        .format(self.patience,
-                                self.best_epoch_monitoring.best_value,
-                                self.best_epoch_monitoring.best_epoch))
+                    .format(self.patience,
+                            self.best_epoch_monitoring.best_value,
+                            self.best_epoch_monitoring.best_epoch))
 
             # Else, check if current best has been reached
             # If that is the case, the monitor has just resetted its
@@ -445,9 +433,12 @@ class DWIMLTrainer:
 
                 # Save losses (i.e. mean over all batches)
                 losses = {
-                    'train_loss': self.train_loss_monitor.epochs_means_history[
-                        self.best_epoch_monitoring.best_epoch],
-                    'valid_loss': self.best_epoch_monitoring.best_value}
+                    'train_loss':
+                        self.train_loss_monitor.epochs_means_history[
+                            self.best_epoch_monitoring.best_epoch],
+                    'valid_loss':
+                        self.best_epoch_monitoring.best_value if
+                        self.use_validation else None}
                 with open(os.path.join(self.experiment_path, "losses.json"),
                           'w') as json_file:
                     json_file.write(json.dumps(losses, indent=4,
@@ -456,7 +447,7 @@ class DWIMLTrainer:
                 # Save information online
                 if self.comet_exp:
                     self.comet_exp.log_metric(
-                        "best_validation_loss",
+                        "best_loss",
                         self.best_epoch_monitoring.best_value)
                     self.comet_exp.log_metric(
                         "best_epoch",
@@ -470,7 +461,8 @@ class DWIMLTrainer:
                     'loss_train':
                         self.train_loss_monitor.epochs_means_history[-1],
                     'loss_valid':
-                        self.valid_loss_monitor.epochs_means_history[-1],
+                        self.valid_loss_monitor.epochs_means_history[-1] if
+                        self.use_validation else None,
                     'epoch': self.current_epoch,
                     'best_epoch': self.best_epoch_monitoring.best_epoch,
                     'best_loss': self.best_epoch_monitoring.best_value
@@ -484,6 +476,9 @@ class DWIMLTrainer:
                     self.hangup_time - time.time()))
                 self._update_taskman_report({'resubmit': True})
                 exit(2)
+
+    def save_model(self):
+        self.model.save(self.experiment_path)
 
     def train_one_epoch(self, train_dataloader, train_context, epoch, *args):
         """
@@ -524,31 +519,9 @@ class DWIMLTrainer:
                     self.train_loss_monitor.update(mean_loss)
                     self.grad_norm_monitor.update(grad_norm)
 
-                    # Update taskman every 10 updates
-                    if self.taskman_managed and batch_id % 10 == 0:
-                        th = self.train_loss_monitor.epochs_means_history
-                        vh = self.valid_loss_monitor.epochs_means_history
-                        updates = {
-                            'loss_train': th[-1] if len(th) > 0 else None,
-                            'loss_valid': vh[-1] if len(vh) > 0 else None,
-                            'epoch': self.current_epoch,
-                            'best_epoch': self.best_epoch,
-                            'best_loss': self.best_epoch_monitoring.best_value,
-                            'update': batch_id,
-                            'update_loss': mean_loss
-                        }
-                        self._update_taskman_report(updates)
-
-                    # Update Comet every 10 updates
-                    if self.comet_exp and batch_id % 10 == 0:
-                        self.comet_exp.log_metric(
-                            "loss_step",
-                            mean_loss,
-                            step=batch_id)
-                        self.comet_exp.log_metric(
-                            "gradient_norm_step",
-                            self.grad_norm_monitor.current_epoch_history[-1],
-                            step=batch_id)
+                    # Update information every 10 updates
+                    if not self.use_validation and batch_id % 10 == 0:
+                        self._update_logs(batch_id, mean_loss)
 
             # Explicitly delete iterator to kill threads and free memory before
             # running validation
@@ -612,6 +585,10 @@ class DWIMLTrainer:
                     batch_sampler=self.valid_batch_sampler, *args)
                 self.valid_loss_monitor.update(mean_loss)
 
+                # Update information every 10 updates
+                if batch_id % 10 == 0:
+                    self._update_logs(batch_id, mean_loss)
+
             # Explicitly delete iterator to kill threads and free memory before
             # running training again
             del valid_iterator
@@ -628,6 +605,29 @@ class DWIMLTrainer:
                     step=epoch)
         logging.info("Validation loss : {}"
                      .format(self.valid_loss_monitor.epochs_means_history[-1]))
+
+    def _update_logs(self, batch_id, mean_loss):
+        if self.taskman_managed:
+            th = self.train_loss_monitor.epochs_means_history
+            vh = self.valid_loss_monitor.epochs_means_history if \
+                self.use_validation else []
+            updates = {
+                'loss_train': th[-1] if len(th) > 0 else None,
+                'loss_valid': vh[-1] if len(vh) > 0 else None,
+                'epoch': self.current_epoch,
+                'best_epoch': self.best_epoch_monitoring.best_epoch,
+                'best_loss': self.best_epoch_monitoring.best_value,
+                'update': batch_id,
+                'update_loss': mean_loss
+            }
+            self._update_taskman_report(updates)
+
+        if self.comet_exp:
+            self.comet_exp.log_metric("loss_step", mean_loss, step=batch_id)
+            self.comet_exp.log_metric(
+                "gradient_norm_step",
+                self.grad_norm_monitor.current_epoch_history[-1],
+                step=batch_id)
 
     def run_one_batch(self, data, is_training: bool, batch_sampler, *args):
         """
@@ -690,8 +690,9 @@ class DWIMLTrainer:
         torch.set_rng_state(current_states['torch_rng_state'])
         experiment.train_batch_sampler.np_rng.set_state(
             current_states['numpy_rng_state'])
-        experiment.valid_batch_sampler.np_rng.set_state(
-            current_states['numpy_rng_state'])
+        if experiment.use_validation:
+            experiment.valid_batch_sampler.np_rng.set_state(
+                current_states['numpy_rng_state'])
         if experiment.use_gpu:
             torch.cuda.set_rng_state(current_states['torch_cuda_state'])
 
@@ -785,11 +786,13 @@ class DWIMLTrainer:
         # samplers and model (see train_model.py). Note that the training set
         # and validation set attributes should be the same.
         checkpoint_state = {
-            'train_sampler_params': self.train_batch_sampler.attributes,
-            'valid_sampler_params': self.valid_batch_sampler.attributes,
-            'train_data_params': self.train_batch_sampler.dataset.attributes,
-            'valid_data_params': self.valid_batch_sampler.dataset.attributes,
-            'model_params': self.model.attributes,
+            'train_sampler_params': self.train_batch_sampler.params,
+            'valid_sampler_params': self.valid_batch_sampler.params if
+            self.use_validation else None,
+            'train_data_params': self.train_batch_sampler.dataset.params,
+            'valid_data_params': self.valid_batch_sampler.dataset.params if
+            self.use_validation else None,
+            'model_params': self.model.params,
             'params_for_init': params_for_init,
             'current_states': current_states
         }

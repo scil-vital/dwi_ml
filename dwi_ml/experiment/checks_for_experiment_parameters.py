@@ -119,7 +119,7 @@ def check_neighborhood(sphere_radius: float, grid_radius: int):
         raise ValueError("You must choose maximum one neighborhood option "
                          "between sphere_radius and grid_radius!")
     elif sphere_radius:
-        return 'sphere', sphere_radius
+        return 'axes', sphere_radius
     elif grid_radius:
         return 'grid', grid_radius
     else:

@@ -12,15 +12,13 @@ required dependencies::
 Installing dependencies
 ***********************
 
-The toolkit relies on the `Scilpy`_ and `VITALabAi`_ tools and on a number of
-other packages available through the `Python Package Index (PyPI)`_.
+The toolkit relies on `Scilpy`_ and on a number of other packages available through the `Python Package Index (PyPI)`_.
 
 We strongly recommend working in a virtual environment to install all
 dependencies related to DWI_ML.
 
-- To install the `Scilpy`_ and `VITALabAi`_ tools, clone the repositories
-  locally and follow the instructions in the ``README`` files in each of the
-  repositories.
+- To install `Scilpy`_, clone the repository locally and follow the
+  instructions in the ``README`` files in each of the repositories.
 
 - To install the dependencies of DWI_ML, do::
 

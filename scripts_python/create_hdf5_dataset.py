@@ -64,6 +64,9 @@ def _parse_args():
     p.add_argument('validation_subjs',
                    help="txt file containing the list of subjects ids to use "
                         "for validation.")
+    p.add_argument('testing_subjs',
+                   help="txt file containing the list of subjects ids to use "
+                        "for testing.")
     g = p.add_mutually_exclusive_group()
     g.add_argument('--step_size', type=float, metavar='S',
                    help="Common step size to resample the data. \n"
@@ -133,9 +136,12 @@ def main():
     with open(args.validation_subjs, 'r') as file:
         validation_subjs = file.read().split()
         logging.debug('   Validation subjs: {}'.format(training_subjs))
+    with open(args.testing_subjs, 'r') as file:
+        testing_subjs = file.read().split()
+        logging.debug('   Validation subjs: {}'.format(training_subjs))
 
     # Verify that subjects exist and that no subjects are forgotten
-    chosen_subjs = training_subjs + validation_subjs
+    chosen_subjs = training_subjs + validation_subjs + testing_subjs
     verify_subject_lists(args.dwi_ml_ready_folder, chosen_subjs)
 
     # Read group information from the json file
@@ -157,7 +163,7 @@ def main():
     # Create dataset from config and save
     _add_all_subjs_to_database(args, chosen_subjs, groups_config, hdf5_subdir,
                                hdf5_filename, args.dwi_ml_ready_folder,
-                               training_subjs, validation_subjs,
+                               training_subjs, validation_subjs, testing_subjs,
                                volume_groups, streamline_groups)
 
 
@@ -254,7 +260,8 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
 def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                groups_config: Dict, hdf5_dir, hdf5_filename,
                                dwi_ml_dir, training_subjs, validation_subjs,
-                               volume_groups, streamline_groups):
+                               testing_subjs, volume_groups,
+                               streamline_groups):
     """
     Generate a dataset from a group of dMRI subjects with multiple bundles.
     All data from each group are concatenated.
@@ -276,6 +283,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
         hdf_file.attrs['groups_config'] = str(groups_config)
         hdf_file.attrs['training_subjs'] = training_subjs
         hdf_file.attrs['validation_subjs'] = validation_subjs
+        hdf_file.attrs['testing_subjs'] = testing_subjs
 
         # If we resample the streamlines here, the step_size is known. Else,
         # this is None.

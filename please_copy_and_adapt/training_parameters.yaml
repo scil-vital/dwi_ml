@@ -23,9 +23,6 @@ sampling:
             noise_variability: 0
             split_ratio: 0
             reverse_ratio: 0.5
-    input:
-        sphere_radius: null
-        grid_radius: null
 
 training:
     learning_rate: 0.001
@@ -38,6 +35,9 @@ training:
 model:
     previous_dirs:
         nb_previous_dirs: 0
+    neighborhood:
+        sphere_radius: null
+        grid_radius: null
 
 memory:
     lazy: False

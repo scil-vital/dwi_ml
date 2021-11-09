@@ -7,7 +7,7 @@ from os import path
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.models.batch_samplers import (BatchStreamlinesSampler1IPV)
+from dwi_ml.experiment.batch_samplers import (BatchStreamlinesSamplerWithInputs)
 
 
 def parse_args():
@@ -30,7 +30,7 @@ def test_sampler(fake_dataset, chunk_size, batch_size, step_size,
     print('Initializing sampler...')
     training_set = fake_dataset.training_set
 
-    batch_sampler = BatchStreamlinesSampler1IPV(
+    batch_sampler = BatchStreamlinesSamplerWithInputs(
         training_set, 'streamlines', 'input', chunk_size=chunk_size,
         max_batch_size=batch_size, rng=1234,
         step_size=step_size, compress=compress, nb_subjects_per_batch=1,

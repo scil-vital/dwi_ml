@@ -9,7 +9,7 @@ def unpack_sequence(packed_sequence: PackedSequence,
     How it works. Ex:
     streamline0 = torch.Tensor([[0,0,0], [1,1,1]])
     streamline1 = torch.Tensor([[2,2,2], [3,3,3], [4,4,4]])
-    packed_sequence = torch.nn.utils.rnn.pack_sequence(
+    packed_sequence = torch.nn.utils_to_refactor.rnn.pack_sequence(
             [streamline0, streamline1], enforce_sorted = False)
 
     Then,

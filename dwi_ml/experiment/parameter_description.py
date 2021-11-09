@@ -69,21 +69,6 @@ sampling:
                  necessary.
             reverse_ratio: float
                  Percentage of streamlines to randomly reverse in each batch.
-    input:
-        sphere_radius: float
-             If not null, a neighborhood will be added to the input
-             information. This neighborhood definition lies on a sphere. It
-             will be a list of 6 positions (up, down, left, right, behind, in
-             front) at exactly given radius around each point of the
-             streamlines, in voxel space. **Can't be used together with
-             grid_radius.
-        grid_radius: int
-             If not null, a neighborhood will be added to the input
-             information. This neighborhood definition uses a list of points
-             similar to the original voxel grid around each point of the
-             streamlines. Ex: with radius 1, that's 27 points. With radius 2,
-             that's 125 points. Radius is in voxel space. **Can't be used
-             together with sphere_radius.
 
 training:
     learning_rate: int
@@ -109,6 +94,21 @@ model:
         nb_previous_dirs: int
              Concatenate X previous streamline directions to the input vector.
              Null is equivalent to 0.
+    neighborhood:
+        sphere_radius: float
+             If not null, a neighborhood will be added to the input
+             information. This neighborhood definition lies on a sphere. It
+             will be a list of 6 positions (up, down, left, right, behind, in
+             front) at exactly given radius around each point of the
+             streamlines, in voxel space. **Can't be used together with
+             grid_radius.
+        grid_radius: int
+             If not null, a neighborhood will be added to the input
+             information. This neighborhood definition uses a list of points
+             similar to the original voxel grid around each point of the
+             streamlines. Ex: with radius 1, that's 27 points. With radius 2,
+             that's 125 points. Radius is in voxel space. **Can't be used
+             together with sphere_radius.
 
 memory:
     lazy: bool

@@ -6,7 +6,7 @@ def convert_world_to_vox(length_mm: float, affine_vox2rasmm: np.ndarray):
     """Convert a length from mm to voxel space (if the space is isometric).
 
     Note. There was a discussion as to if this should be added in
-    scilpy.utils.util.world_to_vox
+    scilpy.utils_to_refactor.util.world_to_vox
     But converting a scalar as we do instead of a coordinate as they do
     has as consequence that we need an isometric affine, which is not a
     general recommendation in scilpy, but is for us. So we keep this in

@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from dwi_ml.experiment.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
-from dwi_ml.models.batch_samplers import BatchStreamlinesSampler
+from dwi_ml.experiment.batch_samplers import BatchStreamlinesSampler
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.utils import TqdmLoggingHandler
 
@@ -723,6 +723,8 @@ class DWIMLTrainer:
         """
         Save an experiment checkpoint that can be resumed from.
         """
+        logging.info("Saving checkpoint...")
+
         # Make model directory
         checkpoint_dir = os.path.join(self.experiment_path, "checkpoint")
 

@@ -12,7 +12,7 @@ from dipy.io.stateful_tractogram import (StatefulTractogram,
 from dipy.io.streamline import (save_tractogram, Space)
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.models.batch_samplers import (BatchStreamlinesSampler1IPV)
+from dwi_ml.experiment.batch_samplers import (BatchStreamlinesSamplerWithInputs)
 
 
 def parse_args():
@@ -47,7 +47,7 @@ def test_batch_loading_no_computations(
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
-    batch_sampler = BatchStreamlinesSampler1IPV(
+    batch_sampler = BatchStreamlinesSamplerWithInputs(
         training_set, 'streamlines', 'input', chunk_size=256,
         max_batch_size=10000, rng=rng_seed,
         nb_subjects_per_batch=1, cycles=1,
@@ -93,7 +93,7 @@ def test_batch_loading_computations(fake_dataset, ref, affine, header,
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
 
-    batch_sampler = BatchStreamlinesSampler1IPV(
+    batch_sampler = BatchStreamlinesSamplerWithInputs(
         training_set, 'streamlines', 'input', chunk_size=256,
         max_batch_size=10000, rng=rng_seed,
         nb_subjects_per_batch=1, cycles=1, step_size=0.5, compress=False,

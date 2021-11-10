@@ -78,7 +78,7 @@ def load_volume_with_ref(fname: str, ref: nib.Nifti1Image) -> nib.Nifti1Image:
     """
     volume_image = nib.load(fname)
     ref_shape = ref.shape[:len(
-        volume_image.shape)]  # See dipy.io.utils.is_reference_info_valid et
+        volume_image.shape)]  # See dipy.io.utils_to_refactor.is_reference_info_valid et
     #  get_reference_info
 
     if volume_image.shape != ref_shape:

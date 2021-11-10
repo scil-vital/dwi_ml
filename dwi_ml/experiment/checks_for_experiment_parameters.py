@@ -218,10 +218,6 @@ def check_all_experiment_parameters(conf: dict):
     nb_subjects_per_batch = check_int_or_none_instance(
         s['batch']['nb_subjects_per_batch'],
         'nb_subjects_per_batch')
-    (n_type, n_radius) = check_neighborhood(
-        s['input']['sphere_radius'],
-        s['input']['grid_radius'])
-
     sampling_params = {
         # batch
         'chunk_size': check_chunk_size(s['batch']['chunk_size']),
@@ -249,11 +245,7 @@ def check_all_experiment_parameters(conf: dict):
         'split_ratio': check_split_ratio(
             s['streamlines']['data_augmentation']['split_ratio']),
         'reverse_ratio': check_reverse_ratio(
-            s['streamlines']['data_augmentation']['reverse_ratio']),
-
-        # input:
-        'neighborhood_type': n_type,
-        'neighborhood_radius': n_radius}
+            s['streamlines']['data_augmentation']['reverse_ratio'])}
 
     # Training:
     e, b = check_epochs(conf['training']['epochs']['max_epochs'],
@@ -273,10 +265,16 @@ def check_all_experiment_parameters(conf: dict):
         }
 
     # Model:
+    (n_type, n_radius) = check_neighborhood(
+        conf['model']['neighborhood']['sphere_radius'],
+        conf['model']['neighborhood']['grid_radius'])
     model_params = {
         'nb_previous_dirs': check_int_or_none_instance(
             conf['model']['previous_dirs']['nb_previous_dirs'],
-            'nb_previous_dirs', fix_none=0)}
+            'nb_previous_dirs', fix_none=0),
+        'neighborhood_type': n_type,
+        'neighborhood_radius': n_radius
+    }
 
     # Memory:
     lazy = check_bool_instance_not_none(

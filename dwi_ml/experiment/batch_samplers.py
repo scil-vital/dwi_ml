@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from collections import defaultdict
 import logging
-from typing import Dict, List, Union, Iterable, Iterator, Tuple
+from typing import Dict, List, Union, Iterator, Tuple
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
@@ -12,13 +12,9 @@ import torch.multiprocessing
 from torch.utils.data import Sampler
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
-from dwi_ml.data.processing.space.neighborhood import (
-    extend_coordinates_with_neighborhood,
-    prepare_neighborhood_information)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
-from dwi_ml.data.processing.volume.interpolation import (
-    torch_trilinear_interpolation)
+from dwi_ml.models.main_models import MainModelAbstractNeighborsPreviousDirs
 
 """
 BatchStreamlineSampler:
@@ -95,8 +91,6 @@ class BatchStreamlinesSampler(Sampler):
                  max_batch_size: int, rng: int,
                  nb_subjects_per_batch: int, cycles: int,
                  step_size: float, compress: bool,
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, Iterable[float], None],
                  split_ratio: float, noise_gaussian_size: float,
                  noise_gaussian_variability: float,
                  reverse_ratio: float, wait_for_gpu: bool,
@@ -142,16 +136,6 @@ class BatchStreamlinesSampler(Sampler):
             If true, compress streamlines. Cannot be used together with
             step_size. Once again, the choice can be different in the batch
             sampler than chosen when creating the hdf5.
-        neighborhood_type: str
-            The type of neighborhood to add. One of 'axes', 'grid' or None. If
-            None, don't add any. See
-            dwi_ml.data.processing.space.Neighborhood for more information.
-        neighborhood_radius : Union[int, float, Iterable[float]]
-            Add neighborhood points at the given distance (in voxels) in each
-            direction (nb_neighborhood_axes). (Can be none)
-                - For a grid neighborhood: type must be int.
-                - For an axes neighborhood: type must be float. If it is an
-                iterable of floats, we will use a multi-radius neighborhood.
         split_ratio : float
             DATA AUGMENTATION: Percentage of streamlines to randomly split
             into 2, in each batch (keeping both segments as two independent
@@ -247,24 +231,6 @@ class BatchStreamlinesSampler(Sampler):
         if self.reverse_ratio and not 0 <= self.reverse_ratio <= 1:
             raise ValueError('Reverse ration must be a float between 0 and 1')
 
-        # Preparing the neighborhood for use by the child classes
-        if neighborhood_type and not (neighborhood_type == 'axes' or
-                                      neighborhood_type == 'grid'):
-            raise ValueError("neighborhood type must be either 'axes', 'grid' "
-                             "or None, but we received {}!"
-                             .format(neighborhood_type))
-        self.neighborhood_type = neighborhood_type
-        self.neighborhood_radius = neighborhood_radius
-        if self.neighborhood_type is None and neighborhood_radius:
-            logging.warning("You have chosen not to add a neighborhood (value "
-                            "None), but you have given a neighborhood radius. "
-                            "Discarded.")
-        if self.neighborhood_type and neighborhood_radius is None:
-            raise ValueError("You must provide neighborhood radius to add a "
-                             "neighborhood.")
-        self.neighborhood_points = prepare_neighborhood_information(
-            neighborhood_type, neighborhood_radius)
-
         self.log = logging.getLogger()  # Gets the root logger
 
     @property
@@ -282,9 +248,6 @@ class BatchStreamlinesSampler(Sampler):
             'cycles': self.cycles,
             'wait_for_gpu': self.wait_for_gpu,
             'type': type(self),
-            'neighborhood_type': self.neighborhood_type,
-            'neighborhood_radius': self.neighborhood_radius,
-            'computed_number_of_neighbors': len(self.neighborhood_points),
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
             'reverse_ratio': self.reverse_ratio,
@@ -732,7 +695,7 @@ class BatchStreamlinesSampler(Sampler):
         return batch_directions
 
 
-class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
+class BatchStreamlinesSamplerWithInputs(BatchStreamlinesSampler):
     """
     This is used to load data under the form:
 
@@ -744,67 +707,30 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
     This is for instance the batch sampler used by Learn2Track and by
     Transformers.
     """
-
     def __init__(self, dataset: MultisubjectSubset,
-                 streamline_group_name: str, input_group_name: str,
+                 streamline_group_name: str,
                  chunk_size: int, max_batch_size: int, rng: int,
                  nb_subjects_per_batch: int, cycles: int, compress: bool,
-                 step_size: float, neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, Iterable[float], None],
-                 split_ratio: float, noise_gaussian_size: float,
+                 step_size: float, split_ratio: float,
+                 noise_gaussian_size: float,
                  noise_gaussian_variability: float,
                  reverse_ratio: float, wait_for_gpu: bool,
-                 normalize_directions: bool, nb_previous_dirs: int, **_):
+                 normalize_directions: bool,
+                 model: MainModelAbstractNeighborsPreviousDirs, **_):
         """
         Additional parameters compared to super:
-
-        input_group_name: str
-            Name of the volume group to load as input.
-        nb_previous_dirs : int
-            If set, concatenate the n previous streamline directions as input.
-            [0].
         """
         super().__init__(dataset, streamline_group_name, chunk_size,
                          max_batch_size, rng, nb_subjects_per_batch, cycles,
-                         step_size, compress, neighborhood_type,
-                         neighborhood_radius, split_ratio, noise_gaussian_size,
+                         step_size, compress, split_ratio, noise_gaussian_size,
                          noise_gaussian_variability, reverse_ratio,
                          wait_for_gpu, normalize_directions)
 
-        # This is probably the same as data_source.volume_groups, but asking
-        # user again in case the dataset contain more than one input group
-        # but you only want to use one.
-        self.input_group_name = input_group_name
-
         # Find group index in the data_source
-        idx = self.dataset.volume_groups.index(input_group_name)
+        idx = self.dataset.volume_groups.index(model.input_group_name)
         self.input_group_idx = idx
 
-        if nb_previous_dirs is None:
-            nb_previous_dirs = 0
-        self.nb_previous_dirs = nb_previous_dirs
-        self.final_nb_features = self._compute_nb_features(idx)
-
-    def _compute_nb_features(self, input_group_idx):
-        """
-        Depending on data augmentation, compute features sizes to help prepare
-        an eventual model.
-        """
-        # The nb_features is the last dim of each input volume.
-        expected_input_size = self.dataset.nb_features[input_group_idx]
-
-        if self.neighborhood_points is not None:
-            expected_input_size += len(self.neighborhood_points) * \
-                                   expected_input_size
-
-        return expected_input_size
-
-    @property
-    def params(self):
-        params = super().params
-        params.update({'input_group_name': self.input_group_name,
-                       'nb_previous_dirs': self.nb_previous_dirs})
-        return params
+        self.model = model
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
                    save_batch_input_mask: bool = False) \
@@ -943,38 +869,12 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
             data_volume = self.dataset.get_volume_verify_cache(
                 subj, self.input_group_idx, device=device, non_blocking=True)
 
-            # If user chose to add neighborhood:
-            if self.neighborhood_type:
-                n_input_points = flat_subj_x_coords.shape[0]
-
-                # Extend the coords array with the neighborhood coordinates
-                flat_subj_x_coords = extend_coordinates_with_neighborhood(
-                    flat_subj_x_coords, self.neighborhood_points)
-
-                # Interpolate signal for each (new) point
-                coords_torch = torch.as_tensor(flat_subj_x_coords,
-                                               dtype=torch.float,
-                                               device=device)
-                flat_subj_x_data, coords_clipped = \
-                    torch_trilinear_interpolation(data_volume, coords_torch)
-
-                # Reshape signal into (n_points, new_nb_features)
-                # DWI data features for each neighboor are contatenated.
-                #    dwi_feat1_neig1  dwi_feat2_neig1 ...  dwi_featn_neighbm
-                #  p1        .              .                    .
-                #  p2        .              .                    .
-                n_features = (flat_subj_x_data.shape[-1] *
-                              (self.neighborhood_points.shape[0] + 1))
-                subj_x_data = flat_subj_x_data.reshape(n_input_points,
-                                                       n_features)
-            else:  # No neighborhood:
-                # Interpolate signal for each point
-                coords_torch = torch.as_tensor(flat_subj_x_coords,
-                                               dtype=torch.float,
-                                               device=device)
-                subj_x_data, coords_clipped = \
-                    torch_trilinear_interpolation(data_volume.data,
-                                                  coords_torch)
+            # Prepare the volume data, possibly adding neighborhood
+            # (Thus new coords_torch possibly contain the neighborhood points)
+            # Coord_clipped contain the coords after interpolation
+            subj_x_data, coords_torch, coords_clipped = \
+                self.model.prepare_inputs(data_volume, flat_subj_x_coords,
+                                          device)
 
             # Split the flattened signal back to streamlines
             lengths = [len(s) - 1 for s in batch_streamlines[y_ids]]
@@ -994,41 +894,4 @@ class BatchStreamlinesSampler1IPV(BatchStreamlinesSampler):
         return batch_x_data
 
     def compute_prev_dirs(self, batch_directions, device=torch.device('cpu')):
-        """
-        About device: see compute_inputs
-
-        Returns:
-        previous_dirs: list[tensor]
-            A list of length nb_streamlines. Each tensor is of size
-            [nb_time_step, nb_previous_dir x 3]; the n previous dirs at each
-            point of the streamline. When previous dirs do not exist (ex,
-            the 2nd previous dir at the first time step), value is 0.
-        """
-        # Compute previous directions
-        if self.nb_previous_dirs == 0:
-            return []
-
-        # toDo See what to do when values do not exist. See discussion here.
-        #  https://stats.stackexchange.com/questions/169887/classification-with-partially-unknown-data
-        empty_coord = torch.zeros((1, 3), dtype=torch.float32,
-                                  device=device)
-        # Loop equivalent:
-        # for s in batch_directions:
-        #     tmp = []
-        #     for i in range(nb_prev_dirs):
-        #         # The last i points of the streamline are not a
-        #         # "previous dir" to anyone. (i+1 because starts at 0)
-        #         useful_dirs = s[:-(i+1)]
-        #         # Adding i nan coordinates as previous dirs of the first
-        #         # points. (i+1 because starts at 0). The "first points"
-        #         # are len(s) - len(useful_dirs) = min(len(s), i+1)
-        #         e_c = empty_coord.repeat(min(len(s), i + 1), 1)
-        #         tmp.append[torch.cat(e_c, useful_dirs)]
-        #     previous_dirs = torch.cat(tmp, dim=1]
-        previous_dirs = \
-            [torch.cat([torch.cat((empty_coord.repeat(min(len(s), i + 1), 1),
-                                   s[:-(i + 1)]))
-                        for i in range(self.nb_previous_dirs)],
-                       dim=1)
-             for s in batch_directions]
-        return previous_dirs
+        return self.model.prepare_previous_dirs(batch_directions, device)

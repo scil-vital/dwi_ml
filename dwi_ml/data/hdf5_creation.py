@@ -121,6 +121,11 @@ def process_volumes(group: str, file_list: List[str], subj_id,
     group_data, group_affine, group_res, group_header = \
         _load_volume_to4d(first_file)
 
+    if standardization == 'per_file':
+        logging.debug('      *Standardizing sub-data')
+        group_data = standardize_data(group_data, subj_std_mask_data,
+                                      independent=False)
+
     # Other files must fit (data shape, affine, voxel size)
     # It is not a promise that data has been correctly registered, but it
     # is a minimal check.
@@ -163,8 +168,8 @@ def process_volumes(group: str, file_list: List[str], subj_id,
 
         if standardization == 'per_file':
             logging.debug('      *Standardizing sub-data')
-            group_data = standardize_data(group_data, subj_std_mask_data,
-                                          independent=False)
+            data = standardize_data(data, subj_std_mask_data,
+                                    independent=False)
 
         try:
             group_data = np.append(group_data, data, axis=-1)

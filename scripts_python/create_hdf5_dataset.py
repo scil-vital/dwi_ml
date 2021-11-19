@@ -49,9 +49,9 @@ def _parse_args():
                         "creating_hdf5.html")
     p.add_argument('hdf5_folder',
                    help="Path where to save the hdf5 database and possibly "
-                        "the intermediate files. We will create a sub-folder "
-                        "/hdf5 inside. If it already exists, use -f to allow"
-                        "deleting and creating a new one.")
+                        "the intermediate files. \nWe will create a sub-"
+                        "folder /hdf5 inside. \nIf it already exists, use -f "
+                        "to allow deleting and creating a new one.")
     p.add_argument('config_file',
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. \n"
@@ -68,29 +68,28 @@ def _parse_args():
                    help="txt file containing the list of subjects ids to use "
                         "for testing.")
     g = p.add_mutually_exclusive_group()
-    g.add_argument('--step_size', type=float, metavar='S',
+    g.add_argument('--step_size', type=float, metavar='s',
                    help="Common step size to resample the data. \n"
                         "-> Must be in the same space as the streamlines.")
     g.add_argument('--compress', action="store_true",
                    help="If set, streamlines will be compressed.\n"
                         "-> If neither step_size nor compress are chosen, "
-                        "streamlines will be kept as they are.")
+                        "streamlines will be kept \nas they are.")
     p.add_argument('--name',
                    help="Dataset name [Default uses date and time of "
                         "processing].")
     p.add_argument('--enforce_files_presence', type=bool, default=True,
                    metavar="True/False",
                    help='If True, the process will stop if one file is '
-                        'missing for a subject. Default: True')
-    p.add_argument('--std_mask',
-                   help="Mask defining the voxels used for data "
-                        "standardization. \n"
-                        "-> Should be the name of a file inside "
-                        "dwi_ml_ready/{subj_id}.\n"
-                        "-> You may add wildcards (*) that will be replaced "
-                        "by the subject's id."
-                        "-> If none is given, all non-zero voxels will be "
-                        "used.")
+                        'missing for a subject. \nDefault: True')
+    p.add_argument(
+        '--std_mask', nargs='*',
+        help="Mask defining the voxels used for data standardization. \n"
+             "-> Should be the name of a file inside dwi_ml_ready/{subj_id}.\n"
+             "-> You may add wildcards (*) that will be replaced by the "
+             "subject's id. \n"
+             "-> If none is given, all non-zero voxels will be used.\n"
+             "-> If more than one are given, masks will be combined.")
     p.add_argument('--space', type=str, default='vox',
                    choices=['rasmm', 'vox', 'voxmm'],
                    help="Default space to bring all the stateful tractograms.")
@@ -100,7 +99,8 @@ def _parse_args():
                    help="Choose logging level. [warning]")
     p.add_argument('--save_intermediate', action="store_true",
                    help="If set, save intermediate processing files for "
-                        "each subject inside")
+                        "each subject inside the \nhdf5 folder, in sub-"
+                        "folders named subjid_intermediate.")
     p.add_argument('-f', '--force', action='store_true',
                    help="If set, overwrite existing hdf5 folder.")
 
@@ -186,7 +186,7 @@ def _check_groups_config(groups_config):
             std_choices = ['all', 'independent', 'per_file', 'none']
             if 'standardization' not in groups_config[group]:
                 raise KeyError(
-                    "Group {}'s 'standardization' was not defined. It should " 
+                    "Group {}'s 'standardization' was not defined. It should "
                     "be one of {}. See the doc for a groups_config.json "
                     "example."
                     .format(group, std_choices))
@@ -249,13 +249,13 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
         subj_input_dir = Path(dwi_ml_dir).joinpath(subj_id)
 
         # Find subject's standardization mask
-        if args.std_mask:
-            subj_std_mask_file = subj_input_dir.joinpath(
-                args.std_mask.replace('*', subj_id))
-            if not subj_std_mask_file.is_file():
+        for sub_mask in args.std_mask:
+            sub_std_mask_file = subj_input_dir.joinpath(
+                sub_mask.replace('*', subj_id))
+            if not sub_std_mask_file.is_file():
                 raise FileNotFoundError("Standardization mask {} not found "
                                         "for subject {}!"
-                                        .format(subj_std_mask_file, subj_id))
+                                        .format(sub_std_mask_file, subj_id))
 
         # Find subject's files from group_config
         for this_file in config_file_list:
@@ -329,15 +329,19 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 subj_intermediate_path.mkdir()
 
             # Find subject's standardization mask
-            if args.std_mask:
-                logging.info("    - Loading standardization mask")
-                subj_std_mask_file = subj_input_dir.joinpath(
-                    args.std_mask.replace('*', subj_id))
-                subj_std_mask_img = nib.load(subj_std_mask_file)
-                subj_std_mask_data = np.asanyarray(
-                    subj_std_mask_img.dataobj).astype(np.bool)
-            else:
-                subj_std_mask_data = None
+            subj_std_mask_data = None
+            for sub_mask in args.std_mask:
+                sub_mask = sub_mask.replace('*', subj_id)
+                logging.info("    - Loading standardization mask {}"
+                             .format(sub_mask))
+                sub_mask_file = subj_input_dir.joinpath(sub_mask)
+                sub_mask_img = nib.load(sub_mask_file)
+                sub_mask_data = np.asanyarray(sub_mask_img.dataobj) > 0
+                if subj_std_mask_data is None:
+                    subj_std_mask_data = sub_mask_data
+                else:
+                    subj_std_mask_data = np.logical_or(sub_mask_data,
+                                                       subj_std_mask_data)
 
             # Add the subj data based on groups in the json config file
             # (inputs and others. All nifti)

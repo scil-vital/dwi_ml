@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import logging
+
 from dipy.core.gradients import GradientTable
 from dipy.core.sphere import Sphere
 from dipy.data import get_sphere
@@ -7,6 +9,8 @@ import nibabel as nib
 import numpy as np
 from scilpy.io.utils import validate_sh_basis_choice
 from scilpy.reconst.raw_signal import compute_sh_coefficients
+
+eps = 1e-6
 
 
 def standardize_data(data: np.ndarray, mask: np.ndarray = None,
@@ -54,12 +58,15 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
     if independent:
         mean = np.mean(data[mask], axis=0)
         std = np.std(data[mask], axis=0)
-        std[std == 0] = 1
     else:
         mean = np.mean(data[mask])
         std = np.std(data[mask])
-        if std == 0:
-            std = 1
+
+    # If std ~ 0, replace by eps.
+    std = np.maximum(std, eps)
+
+    logging.debug("          => Mean and std were: {:.2f} and {:.2f}"
+                  .format(mean, std))
 
     standardized_data = (data - mean) / std
     # standardized_data[~mask] = np.nan

@@ -17,7 +17,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List
 
-from dipy.io.stateful_tractogram import Space
+from dipy.io.stateful_tractogram import Space, set_sft_logger_level
 import h5py
 import nibabel as nib
 import numpy as np
@@ -49,9 +49,9 @@ def _parse_args():
                         "creating_hdf5.html")
     p.add_argument('hdf5_folder',
                    help="Path where to save the hdf5 database and possibly "
-                        "the intermediate files. We will create a sub-folder "
-                        "/hdf5 inside. If it already exists, use -f to allow"
-                        "deleting and creating a new one.")
+                        "the intermediate files. \nWe will create a sub-"
+                        "folder /hdf5 inside. \nIf it already exists, use -f "
+                        "to allow deleting and creating a new one.")
     p.add_argument('config_file',
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. \n"
@@ -68,33 +68,28 @@ def _parse_args():
                    help="txt file containing the list of subjects ids to use "
                         "for testing.")
     g = p.add_mutually_exclusive_group()
-    g.add_argument('--step_size', type=float, metavar='S',
+    g.add_argument('--step_size', type=float, metavar='s',
                    help="Common step size to resample the data. \n"
                         "-> Must be in the same space as the streamlines.")
     g.add_argument('--compress', action="store_true",
                    help="If set, streamlines will be compressed.\n"
                         "-> If neither step_size nor compress are chosen, "
-                        "streamlines will be kept as they are.")
+                        "streamlines will be kept \nas they are.")
     p.add_argument('--name',
                    help="Dataset name [Default uses date and time of "
                         "processing].")
     p.add_argument('--enforce_files_presence', type=bool, default=True,
                    metavar="True/False",
                    help='If True, the process will stop if one file is '
-                        'missing for a subject. Default: True')
-    p.add_argument('--std_mask',
-                   help="Mask defining the voxels used for data "
-                        "standardization. \n"
-                        "-> Should be the name of a file inside "
-                        "dwi_ml_ready/{subj_id}.\n"
-                        "-> You may add wildcards (*) that will be replaced "
-                        "by the subject's id."
-                        "-> If none is given, all non-zero voxels will be "
-                        "used.")
-    p.add_argument('--independent_modalities', type=bool, default=True,
-                   metavar="True/False",
-                   help='If true, standardization will be computed separately '
-                        'over all features in the input data. Default: True.')
+                        'missing for a subject. \nDefault: True')
+    p.add_argument(
+        '--std_mask', nargs='*',
+        help="Mask defining the voxels used for data standardization. \n"
+             "-> Should be the name of a file inside dwi_ml_ready/{subj_id}.\n"
+             "-> You may add wildcards (*) that will be replaced by the "
+             "subject's id. \n"
+             "-> If none is given, all non-zero voxels will be used.\n"
+             "-> If more than one are given, masks will be combined.")
     p.add_argument('--space', type=str, default='vox',
                    choices=['rasmm', 'vox', 'voxmm'],
                    help="Default space to bring all the stateful tractograms.")
@@ -104,7 +99,8 @@ def _parse_args():
                    help="Choose logging level. [warning]")
     p.add_argument('--save_intermediate', action="store_true",
                    help="If set, save intermediate processing files for "
-                        "each subject inside")
+                        "each subject inside the \nhdf5 folder, in sub-"
+                        "folders named subjid_intermediate.")
     p.add_argument('-f', '--force', action='store_true',
                    help="If set, overwrite existing hdf5 folder.")
 
@@ -119,6 +115,11 @@ def main():
 
     # Initialize logger
     logging.basicConfig(level=str(args.logging).upper())
+
+    # Silencing SFT's logger if our logging is in DEBUG mode, because it
+    # typically produces a lot of outputs!
+    # toDo Not sure why it's not working. Because of my python 3.9?
+    set_sft_logger_level('WARNING')
 
     # Verify that dwi_ml_ready folder is found
     if not Path(args.dwi_ml_ready_folder).is_dir():
@@ -182,6 +183,19 @@ def _check_groups_config(groups_config):
                            "See the doc for a groups_config.json example."
                            .format(group))
         if groups_config[group]['type'] == 'volume':
+            std_choices = ['all', 'independent', 'per_file', 'none']
+            if 'standardization' not in groups_config[group]:
+                raise KeyError(
+                    "Group {}'s 'standardization' was not defined. It should "
+                    "be one of {}. See the doc for a groups_config.json "
+                    "example."
+                    .format(group, std_choices))
+            if groups_config[group]['standardization'] not in std_choices:
+                raise KeyError(
+                    "Group {}'s 'standardization' should be one of {}, but we "
+                    "got {}. See the doc for a groups_config.json "
+                    "example.".format(group, std_choices,
+                                      groups_config[group]['standardization']))
             volume_groups.append(group)
         elif groups_config[group]['type'] == 'streamlines':
             streamline_groups.append(group)
@@ -227,7 +241,7 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
      - all files in the group_config file
      - the bundles
     """
-    logging.debug("   Verifying files presence")
+    logging.debug("Verifying files presence")
     # concatenating files from all groups files:
     config_file_list = sum(nested_lookup('files', groups_config), [])
 
@@ -235,19 +249,20 @@ def _check_files_presence(args, chosen_subjs: List[str], groups_config: Dict,
         subj_input_dir = Path(dwi_ml_dir).joinpath(subj_id)
 
         # Find subject's standardization mask
-        if args.std_mask:
-            subj_std_mask_file = subj_input_dir.joinpath(
-                args.std_mask.replace('*', subj_id))
-            if not subj_std_mask_file.is_file():
+        for sub_mask in args.std_mask:
+            sub_std_mask_file = subj_input_dir.joinpath(
+                sub_mask.replace('*', subj_id))
+            if not sub_std_mask_file.is_file():
                 raise FileNotFoundError("Standardization mask {} not found "
                                         "for subject {}!"
-                                        .format(subj_std_mask_file, subj_id))
+                                        .format(sub_std_mask_file, subj_id))
 
         # Find subject's files from group_config
         for this_file in config_file_list:
             this_file = this_file.replace('*', subj_id)
             if this_file.endswith('/ALL'):
-                logging.debug("We will load all files in the folder '{}'"
+                logging.debug("    Keyword 'ALL' detected; we will load all "
+                              "files in the folder '{}'"
                               .format(this_file.replace('/ALL', '')))
             else:
                 this_file = subj_input_dir.joinpath(this_file)
@@ -295,12 +310,12 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
 
         # Add data one subject at the time
         nb_subjs = len(chosen_subjs)
-        logging.debug("   Processing {} subjects : {}"
+        logging.debug("Processing {} subjects : {}"
                       .format(nb_subjs, chosen_subjs))
         nb_processed = 0
         for subj_id in chosen_subjs:
             nb_processed = nb_processed + 1
-            logging.info("       *Processing subject {}/{}: {}"
+            logging.info("*Processing subject {}/{}: {}"
                          .format(nb_processed, nb_subjs, subj_id))
             subj_input_dir = dwi_ml_dir.joinpath(subj_id)
 
@@ -314,38 +329,41 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 subj_intermediate_path.mkdir()
 
             # Find subject's standardization mask
-            if args.std_mask:
-                logging.info("       - Loading mask")
-                subj_std_mask_file = subj_input_dir.joinpath(
-                    args.std_mask.replace('*', subj_id))
-                subj_std_mask_img = nib.load(subj_std_mask_file)
-                subj_std_mask_data = np.asanyarray(
-                    subj_std_mask_img.dataobj).astype(np.bool)
-            else:
-                subj_std_mask_data = None
+            subj_std_mask_data = None
+            for sub_mask in args.std_mask:
+                sub_mask = sub_mask.replace('*', subj_id)
+                logging.info("    - Loading standardization mask {}"
+                             .format(sub_mask))
+                sub_mask_file = subj_input_dir.joinpath(sub_mask)
+                sub_mask_img = nib.load(sub_mask_file)
+                sub_mask_data = np.asanyarray(sub_mask_img.dataobj) > 0
+                if subj_std_mask_data is None:
+                    subj_std_mask_data = sub_mask_data
+                else:
+                    subj_std_mask_data = np.logical_or(sub_mask_data,
+                                                       subj_std_mask_data)
 
             # Add the subj data based on groups in the json config file
             # (inputs and others. All nifti)
             group_header = None
             for group in volume_groups:
-                logging.info("       - Processing volume group '{}'..."
+                logging.info("    - Processing volume group '{}'..."
                              .format(group))
                 file_list = groups_config[group]['files']
+                standardization = groups_config[group]['standardization']
 
                 group_data, group_affine, group_header = process_volumes(
                     group, file_list, subj_id, args.save_intermediate,
-                    subj_input_dir, subj_intermediate_path,
-                    subj_std_mask_data, args.independent_modalities)
-                logging.debug('      *Done. Now creating dataset from '
-                              'group.')
+                    subj_input_dir, subj_intermediate_path, standardization,
+                    subj_std_mask_data)
+                logging.debug('      *Done. Now creating dataset from group.')
                 hdf_group = subj_hdf.create_group(group)
                 hdf_group.create_dataset('data', data=group_data)
                 logging.debug('      *Done.')
 
                 # Saving data information.
                 subj_hdf[group].attrs['affine'] = group_affine
-                subj_hdf[group].attrs['type'] = \
-                    groups_config[group]['type']
+                subj_hdf[group].attrs['type'] = groups_config[group]['type']
 
                 # Adding the shape info separately to access it without loading
                 # the data (useful for lazy data!).
@@ -354,7 +372,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
             for group in streamline_groups:
 
                 # Add the streamlines data
-                logging.info('       - Processing bundles...')
+                logging.info('    - Processing bundles...')
 
                 if group_header is None:
                     logging.debug("No group_header! This means no 'volume' "
@@ -395,6 +413,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                         'Data not kept.')
 
                     # Accessing private Dipy values, but necessary.
+                    # We need to deconstruct the streamlines into arrays with
+                    # types recognizable by the hdf5.
                     streamlines_group.create_dataset('data',
                                                      data=streamlines._data)
                     streamlines_group.create_dataset('offsets',

@@ -28,15 +28,15 @@ def parse_args():
 def test_sampler(fake_dataset, model, chunk_size, batch_size, step_size,
                  compress=False):
     # Initialize batch sampler
-    print('Initializing sampler...')
+    print('\nInitializing sampler...')
     training_set = fake_dataset.training_set
 
     batch_sampler = BatchStreamlinesSamplerWithInputs(
         training_set, 'streamlines', chunk_size=chunk_size,
         max_batch_size=batch_size, rng=1234,
         step_size=step_size, compress=compress, nb_subjects_per_batch=1,
-        cycles=1, neighborhood_type=None, neighborhood_radius=None,
-        split_ratio=0, noise_gaussian_size=0, noise_gaussian_variability=0,
+        cycles=1, split_ratio=0, noise_gaussian_size=0,
+        noise_gaussian_variability=0,
         reverse_ratio=0, wait_for_gpu=True, normalize_directions=True,
         model=model)
 
@@ -44,11 +44,12 @@ def test_sampler(fake_dataset, model, chunk_size, batch_size, step_size,
     # it says error, that the collate_fn should receive a list, but it is
     # supposed to work with dict too.
     # See https://github.com/PyTorchLightning/pytorch-lightning/issues/1918
-    print('Initializing DataLoader')
+    print('\nUsing it in a dataLoader')
     dataloader = DataLoader(training_set, batch_sampler=batch_sampler,
                             collate_fn=batch_sampler.load_batch)
     print(dataloader)
 
+    print('\nOr iterating on batch_generator')
     batch_generator = batch_sampler.__iter__()
 
     # Loop on batches

@@ -136,25 +136,25 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
         self.input_size = nb_features * (len(self.neighborhood_points) + 1)
 
     def _prepare_neighborhood(self):
-        if self.neighborhood_type and not (self.neighborhood_type == 'axes' or
-                                           self.neighborhood_type == 'grid'):
-            raise ValueError("neighborhood type must be either 'axes', 'grid' "
-                             "or None, but we received {}!"
-                             .format(self.neighborhood_type))
+        if self.neighborhood_type is None:
+            if self.neighborhood_radius:
+                logging.warning(
+                    "You have chosen not to add a neighborhood (value None), "
+                    "but you have given a neighborhood radius. Discarded.")
+            return []
 
-        if self.neighborhood_type is None and self.neighborhood_radius:
-            logging.warning("You have chosen not to add a neighborhood (value "
-                            "None), but you have given a neighborhood radius. "
-                            "Discarded.")
+        else:
+            if self.neighborhood_radius is None:
+                raise ValueError("You must provide neighborhood radius to add "
+                                 "a neighborhood.")
+            elif self.neighborhood_type not in ['axes', 'grid']:
+                raise ValueError(
+                    "Neighborhood type must be either 'axes', 'grid' or None, "
+                    "but we received {}!".format(self.neighborhood_type))
+            neighborhood_points = prepare_neighborhood_information(
+                self.neighborhood_type, self.neighborhood_radius)
 
-        if self.neighborhood_type and self.neighborhood_radius is None:
-            raise ValueError("You must provide neighborhood radius to add a "
-                             "neighborhood.")
-
-        neighborhood_points = prepare_neighborhood_information(
-            self.neighborhood_type, self.neighborhood_radius)
-
-        return neighborhood_points
+            return neighborhood_points
 
     @property
     def params(self):

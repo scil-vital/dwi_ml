@@ -6,4 +6,4 @@ tests/test_batch_sampler_iter.py $hdf5_filename
 tests/test_batch_sampler_load_batch.py $hdf5_filename $ref $test_tractograms_path
 
 # check results and then:
-rm $test_tractograms_path/test_batch1*
+rm $test_tractograms_path/test_batch*

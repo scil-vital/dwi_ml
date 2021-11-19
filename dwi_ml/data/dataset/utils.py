@@ -28,10 +28,10 @@ def find_groups_info(hdf_file, subj_id: str, log):
                 "for a json file example. You tried to add data of type: "
                 "{}".format(group_type))
 
-    log.debug("Volume groups are: {}".format(volume_groups))
-    log.debug("Number of features in each of these groups: {}"
-             .format(nb_features))
-    log.debug("Streamline groups are: {}".format(streamline_groups))
+    log.debug("        Volume groups are: {}".format(volume_groups))
+    log.debug("        Number of features in each of these groups: {}"
+              .format(nb_features))
+    log.debug("        Streamline groups are: {}".format(streamline_groups))
 
     return volume_groups, nb_features, streamline_groups
 

@@ -12,7 +12,8 @@ from dipy.io.stateful_tractogram import (StatefulTractogram,
 from dipy.io.streamline import (save_tractogram, Space)
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.experiment.batch_samplers import (BatchStreamlinesSamplerWithInputs)
+from dwi_ml.experiment.batch_samplers import BatchStreamlinesSamplerWithInputs
+from dwi_ml.models.main_models import MainModelAbstractNeighborsPreviousDirs
 
 
 def parse_args():
@@ -35,12 +36,11 @@ def parse_args():
 
 
 def test_batch_loading_no_computations(
-        fake_dataset, ref, saving_path,
+        fake_dataset, ref, saving_path, model,
         noise_size: float = 0, noise_variability: float = 0,
         reverse_ratio: float = 0, split_ratio: float = 0):
 
     now = datetime.now().time()
-    logging.root.setLevel('DEBUG')
 
     training_set = fake_dataset.training_set
 
@@ -48,23 +48,24 @@ def test_batch_loading_no_computations(
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
     batch_sampler = BatchStreamlinesSamplerWithInputs(
-        training_set, 'streamlines', 'input', chunk_size=256,
+        training_set, 'streamlines', chunk_size=256,
         max_batch_size=10000, rng=rng_seed,
-        nb_subjects_per_batch=1, cycles=1,
-        neighborhood_type=None, neighborhood_radius=None, step_size=0.75,
+        nb_subjects_per_batch=1, cycles=1, step_size=0.75,
         compress=False, wait_for_gpu=True, normalize_directions=False,
-        nb_previous_dirs=1, split_ratio=split_ratio,
-        noise_gaussian_size=noise_size,
+        split_ratio=split_ratio, noise_gaussian_size=noise_size,
         noise_gaussian_variability=noise_variability,
-        reverse_ratio=reverse_ratio)
+        reverse_ratio=reverse_ratio, model=model)
 
+    print('Iterating once on sampler...')
     batch_generator = batch_sampler.__iter__()
-
     # Loop on batches but get the first one
     batch = []
     for batch in batch_generator:
         break
 
+    logging.root.setLevel('DEBUG')
+
+    print('\nLoading batch')
     batch_streamlines, _ = batch_sampler.load_batch(batch)
 
     print('Nb loaded processed batch streamlines: {}. Streamline 1: {}'
@@ -74,17 +75,19 @@ def test_batch_loading_no_computations(
     now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
 
     print("Saving subj 0's tractogram {}".format('test_batch1_' + now_s))
+
+    logging.root.setLevel('INFO')
+
     sft = StatefulTractogram(batch_streamlines, ref, space=Space.VOX)
-    save_tractogram(sft, saving_path + '/test_batch1_' + now_s + '.trk')
+    save_tractogram(sft, saving_path + '/test_batch_reverse_split_' +
+                    now_s + '.trk')
 
     return batch_streamlines
 
 
-def test_batch_loading_computations(fake_dataset, ref, affine, header,
-                                    saving_path, neighborhood_type=None,
-                                    neighborhood_radius=None):
+def test_batch_loading_computations(
+        fake_dataset, ref, affine, header, saving_path, model):
     set_sft_logger_level('WARNING')
-    logging.root.setLevel('DEBUG')
     now = datetime.now().time()
 
     training_set = fake_dataset.training_set
@@ -92,19 +95,16 @@ def test_batch_loading_computations(fake_dataset, ref, affine, header,
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
-
     batch_sampler = BatchStreamlinesSamplerWithInputs(
-        training_set, 'streamlines', 'input', chunk_size=256,
+        training_set, 'streamlines', chunk_size=256,
         max_batch_size=10000, rng=rng_seed,
         nb_subjects_per_batch=1, cycles=1, step_size=0.5, compress=False,
-        wait_for_gpu=False, normalize_directions=True,
-        neighborhood_type=neighborhood_type,
-        neighborhood_radius=neighborhood_radius,
-        nb_previous_dirs=2, noise_gaussian_size=0,
-        noise_gaussian_variability=0, split_ratio=0, reverse_ratio=0)
+        wait_for_gpu=False, normalize_directions=True, noise_gaussian_size=0,
+        noise_gaussian_variability=0, split_ratio=0, reverse_ratio=0,
+        model=model)
 
+    print('Iterating once on sampler...')
     batch_generator = batch_sampler.__iter__()
-
     # Loop on batches but get the first one
     batch = []
     for batch in batch_generator:
@@ -113,7 +113,9 @@ def test_batch_loading_computations(fake_dataset, ref, affine, header,
         print("Batch # 1 streamline #1's id: {}".format(batch[0][0]))
         break
 
-    print("\n\n TEST 1: Debug mode. Saving input coordinates as mask.")
+    logging.root.setLevel('DEBUG')
+
+    print("\n TEST 1: Debug mode. Saving input coordinates as mask.")
     inputs, directions, previous_dirs = batch_sampler.load_batch(
         batch, save_batch_input_mask=True)
 
@@ -127,14 +129,14 @@ def test_batch_loading_computations(fake_dataset, ref, affine, header,
 
     print("Saving subj 0's tractogram {}".format('test_batch1_' + now_s))
     sft = StatefulTractogram(batch_streamlines, ref, space=Space.VOX)
-    save_tractogram(sft, saving_path + '/test_batch1_' + now_s + '.trk')
+    save_tractogram(sft, saving_path + '/test_batch_underlying_mask_' + now_s + '.trk')
 
     print("Saving subj 0's underlying coords mask: {}"
           .format('test_batch1_underlying_mask_' + now_s))
     mask = batch_input_masks[0]
     data_nii = nib.Nifti1Image(np.asarray(mask, dtype=bool), affine,
                                header)
-    nib.save(data_nii, saving_path + '/test_batch1_underlying_mask_' +
+    nib.save(data_nii, saving_path + '/test_batch_underlying_mask_' +
              now_s + '.nii.gz')
 
     print("\n\n TEST 2: Loading batch normally and checking result.")
@@ -145,9 +147,10 @@ def test_batch_loading_computations(fake_dataset, ref, affine, header,
           .format(len(inputs), inputs[0].shape,
                   len(directions), directions[0].shape,
                   len(previous_dirs), previous_dirs[0].shape))
+    logging.root.setLevel('INFO')
 
 
-def test_non_lazy(ref, affine, header, saving_path):
+def test_non_lazy(args, affine, header):
     print("\n\n========= NON-LAZY =========\n\n")
 
     # Initialize dataset
@@ -158,26 +161,26 @@ def test_non_lazy(ref, affine, header, saving_path):
                                        taskman_managed=True, cache_size=None)
     fake_dataset.load_data()
 
-    print('\n\n\n=======================Test with reverse + split')
-    test_batch_loading_no_computations(fake_dataset, ref, saving_path,
-                                       reverse_ratio=0.5, split_ratio=0.5)
+    print('\n\n===================== A. Test with reverse + split')
+    model = create_model(fake_dataset, None, None)
+    test_batch_loading_no_computations(
+        fake_dataset, args.ref, args.saving_path, model,
+        reverse_ratio=0.5, split_ratio=0.5)
 
-    print('\n\n\n=======================Test with batch size 10000 + resample '
+    print('\n\n==================== B. Test with batch size 10000 + resample '
           '+ do cpu computations + axis neighborhood')
-    test_batch_loading_computations(fake_dataset, ref, affine, header,
-                                    saving_path,
-                                    neighborhood_type='axes',
-                                    neighborhood_radius=[1, 2])
+    model = create_model(fake_dataset, 'axes', [2, 4])
+    test_batch_loading_computations(
+        fake_dataset, args.ref, affine, header, args.saving_path, model)
 
-    print('\n\n\n=======================Test with batch size 10000 + resample '
+    print('\n\n\n=================== C. Test with batch size 10000 + resample '
           '+ do cpu computations + grid neighborhood')
-    test_batch_loading_computations(fake_dataset, ref, affine, header,
-                                    saving_path,
-                                    neighborhood_type='grid',
-                                    neighborhood_radius=2)
+    model = create_model(fake_dataset, 'grid', 2)
+    test_batch_loading_computations(
+        fake_dataset, args.ref, affine, header, args.saving_path, model)
 
 
-def test_lazy(ref, affine, header, saving_path):
+def test_lazy(args, affine, header):
     print("\n\n========= LAZY =========\n\n")
 
     # Initialize dataset
@@ -187,16 +190,26 @@ def test_lazy(ref, affine, header, saving_path):
                                        experiment_name='test',
                                        taskman_managed=True, cache_size=1)
     fake_dataset.load_data()
+    model = create_model(fake_dataset, None, None)
 
-    print('\n\n\n=======================Test with asic args')
-    test_batch_loading_no_computations(fake_dataset, ref, saving_path)
+    print('\n\n\n=================== A. Test with basic args')
+    test_batch_loading_no_computations(
+        fake_dataset, args.ref, args.saving_path, model)
 
-    print('\n\n\n=======================Test with wait_for_gpu = false')
-    test_batch_loading_computations(fake_dataset, ref, affine, header,
-                                    saving_path)
+    print('\n\n\n==================== B. Test with wait_for_gpu = false')
+    test_batch_loading_computations(
+        fake_dataset, args.ref, affine, header, args.saving_path, model)
 
 
-if __name__ == '__main__':
+def create_model(dataset, neighb_type, neighb_radius):
+    # print("Nb previous dirs: 3")
+    model = MainModelAbstractNeighborsPreviousDirs(
+        'test', dataset.nb_features[0], dataset.volume_groups[0], 3,
+        neighb_type, neighb_radius)
+    return model
+
+
+def main():
     args = parse_args()
     logging.basicConfig(level='INFO')
 
@@ -207,10 +220,13 @@ if __name__ == '__main__':
     img = nib.load(args.ref)
     affine = img.affine
     header = img.header
-    print('Saving path = {}'.format(args.saving_path))
 
     set_sft_logger_level('WARNING')
 
-    test_non_lazy(args.ref, affine, header, args.saving_path)
+    test_non_lazy(args, affine, header)
     print('\n\n')
-    test_lazy(args.ref, affine, header, args.saving_path)
+    test_lazy(args, affine, header)
+
+
+if __name__ == '__main__':
+    main()

@@ -579,7 +579,7 @@ class BatchStreamlinesSampler(Sampler):
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
 
             # Get streamlines as sft
-            sft = subj_sft_data.from_chosen_streamlines(s_ids)
+            sft = subj_sft_data.as_sft(s_ids)
 
             # Resampling streamlines to a fixed step size, if any
             self.log.debug("            Resampling: {}".format(self.step_size))
@@ -716,7 +716,7 @@ class BatchStreamlinesSamplerWithInputs(BatchStreamlinesSampler):
                  noise_gaussian_variability: float,
                  reverse_ratio: float, wait_for_gpu: bool,
                  normalize_directions: bool,
-                 model: MainModelAbstractNeighborsPreviousDirs, **_):
+                 model: MainModelAbstractNeighborsPreviousDirs, **kwargs):
         """
         Additional parameters compared to super:
         """
@@ -731,6 +731,9 @@ class BatchStreamlinesSamplerWithInputs(BatchStreamlinesSampler):
         self.input_group_idx = idx
 
         self.model = model
+
+        if kwargs:
+            logging.warning("Unused args: {}".format(kwargs))
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
                    save_batch_input_mask: bool = False) \

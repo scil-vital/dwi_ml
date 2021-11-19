@@ -7,7 +7,8 @@ from os import path
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.experiment.batch_samplers import (BatchStreamlinesSamplerWithInputs)
+from dwi_ml.experiment.batch_samplers import BatchStreamlinesSamplerWithInputs
+from dwi_ml.models.main_models import MainModelAbstractNeighborsPreviousDirs
 
 
 def parse_args():
@@ -24,30 +25,31 @@ def parse_args():
     return p.parse_args()
 
 
-def test_sampler(fake_dataset, chunk_size, batch_size, step_size,
+def test_sampler(fake_dataset, model, chunk_size, batch_size, step_size,
                  compress=False):
     # Initialize batch sampler
-    print('Initializing sampler...')
+    print('\nInitializing sampler...')
     training_set = fake_dataset.training_set
 
     batch_sampler = BatchStreamlinesSamplerWithInputs(
-        training_set, 'streamlines', 'input', chunk_size=chunk_size,
+        training_set, 'streamlines', chunk_size=chunk_size,
         max_batch_size=batch_size, rng=1234,
         step_size=step_size, compress=compress, nb_subjects_per_batch=1,
-        cycles=1, neighborhood_type=None, neighborhood_radius=None,
-        split_ratio=0, noise_gaussian_size=0, noise_gaussian_variability=0,
+        cycles=1, split_ratio=0, noise_gaussian_size=0,
+        noise_gaussian_variability=0,
         reverse_ratio=0, wait_for_gpu=True, normalize_directions=True,
-        nb_previous_dirs=1)
+        model=model)
 
     # Use it in the dataloader
     # it says error, that the collate_fn should receive a list, but it is
     # supposed to work with dict too.
     # See https://github.com/PyTorchLightning/pytorch-lightning/issues/1918
-    print('Initializing DataLoader')
+    print('\nUsing it in a dataLoader')
     dataloader = DataLoader(training_set, batch_sampler=batch_sampler,
                             collate_fn=batch_sampler.load_batch)
     print(dataloader)
 
+    print('\nOr iterating on batch_generator')
     batch_generator = batch_sampler.__iter__()
 
     # Loop on batches
@@ -64,7 +66,7 @@ def test_sampler(fake_dataset, chunk_size, batch_size, step_size,
             break
 
 
-def test_non_lazy():
+def test_non_lazy(args):
     print("\n\n========= NON-LAZY =========\n\n")
 
     # Initialize dataset
@@ -74,23 +76,26 @@ def test_non_lazy():
                                        taskman_managed=True, cache_size=None)
     fake_dataset.load_data()
 
+    print("Creating model...")
+    model = create_model(fake_dataset)
+
     print('\n=============================Test with batch size 1000')
-    test_sampler(fake_dataset, 256, 1000, None)
+    test_sampler(fake_dataset, model, 256, 1000, None)
 
     logging.getLogger().setLevel('INFO')
 
     print('\n=============================Test with batch size 1000000')
-    test_sampler(fake_dataset, 256, 100000, None)
+    test_sampler(fake_dataset, model, 256, 100000, None)
 
     print('\n===========================Test with batch size 10000 + resample')
-    test_sampler(fake_dataset, 256, 10000, 0.5)
+    test_sampler(fake_dataset, model, 256, 10000, 0.5)
 
     print('\n===========================Test with batch size 10000 + compress'
           '(Batch size should be equal to chunk size: 256)')
-    test_sampler(fake_dataset, 256, 10000, None, True)
+    test_sampler(fake_dataset, model, 256, 10000, None, True)
 
 
-def test_lazy():
+def test_lazy(args):
     print("\n\n========= LAZY =========\n\n")
 
     # Initialize dataset
@@ -100,18 +105,31 @@ def test_lazy():
                                        taskman_managed=True, cache_size=1)
     fake_dataset.load_data()
 
+    print("Creating model...")
+    model = create_model(fake_dataset)
+
     print('\n=============================Test with batch size 1000')
-    test_sampler(fake_dataset, 256, 1000, None)
+    test_sampler(fake_dataset,  model,256, 1000, None)
+
+    logging.getLogger().setLevel('INFO')
 
     print('\n===========================Test with batch size 10000 + resample')
-    test_sampler(fake_dataset, 256, 10000, 0.5)
+    test_sampler(fake_dataset, model, 256, 10000, 0.5)
 
     print('\n===========================Test with batch size 10000 + compress'
           '(Batch size should be equal to chunk size: 256)')
-    test_sampler(fake_dataset, 256, 10000, None, True)
+    test_sampler(fake_dataset, model, 256, 10000, None, True)
 
 
-if __name__ == '__main__':
+def create_model(dataset):
+    print("Nb previous dirs: 3")
+    model = MainModelAbstractNeighborsPreviousDirs(
+        'test', dataset.nb_features[0], dataset.volume_groups[0], 3, 'axes',
+        2)
+    return model
+
+
+def main():
     args = parse_args()
 
     if not path.exists(args.hdf5_filename):
@@ -119,10 +137,12 @@ if __name__ == '__main__':
                          .format(args.hdf5_filename))
 
     logging.basicConfig(level='DEBUG')
-
-    test_non_lazy()
+    test_non_lazy(args)
     print('\n\n')
 
-    logging.basicConfig(level='DEBUG')
+    logging.getLogger().setLevel('DEBUG')
+    test_lazy(args)
 
-    test_lazy()
+
+if __name__ == '__main__':
+    main()

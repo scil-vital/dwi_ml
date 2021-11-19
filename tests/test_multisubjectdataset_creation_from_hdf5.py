@@ -21,97 +21,115 @@ def parse_args():
     return p.parse_args()
 
 
-def test_non_lazy():
+def test_non_lazy(args):
     print("\n\n**========= NON-LAZY =========\n\n")
     fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
                                        experiment_name='test',
                                        taskman_managed=True, cache_size=None)
     fake_dataset.load_data()
-    print("**Created a MultiSubjectDataset and loaded training set. "
-          "Testing properties : \n\n")
 
-    print("**Step size: {}\n".format(fake_dataset.step_size))
+    print("\n====== Testing properties of the main MultiSubjectDataset: \n")
+    print("  - Type: {}".format(type(fake_dataset)))
+    print("  - Step size of the original data: {}"
+          .format(fake_dataset.step_size))
+    print("  - Volume group, features, streamlines: {}, {}, {}"
+          .format(fake_dataset.volume_groups, fake_dataset.nb_features,
+                  fake_dataset.streamline_groups))
 
+    print("\n====== Testing properties of the training set:\n")
     training_set = fake_dataset.training_set
-    print("**Training lengths: {}".format(training_set.streamline_lengths))
-    print("**Training lengths_mm: {}\n"
-          .format(training_set.streamline_lengths_mm))
+    print("  - Type: {}".format(type(training_set)))
+    print("  - Nb subjects: {}".format(training_set.nb_subjects))
+    print("  - Volume group, features, streamlines: {}, {}, {}"
+          .format(training_set.volume_groups, training_set.nb_features,
+                  training_set.streamline_groups))
+    print("  - Cache size: {}".format(training_set.cache_size))
+    print("  - Total nb streamlines: {}"
+          .format(training_set.total_nb_streamlines))
+    print("  - Lengths: {}".format(training_set.streamline_lengths))
+    print("  - Lengths_mm: {}".format(training_set.streamline_lengths_mm))
+    print("  - Streamline ids per subj: {}"
+          .format(training_set.streamline_ids_per_subj))
 
+    print("\n====== Testing properties of the SubjectDataList:\n")
+    subj_data_list = training_set.subjs_data_list
+    print("  - type: {}".format(subj_data_list))
+
+    print("\n====== Testing properties of a SingleSubjectDataset:\n")
     subj0 = training_set.subjs_data_list[0]
-    print("**Get_subject_data: \n"
-          "    Subject 0, should be SubjectData : {}. \n"
-          "    ID: {}. \n"
-          "    Volume groups: {}. \n"
-          "    Non-lazy mri data should be a list of MRIData: {}. \n"
-          "        First volume's _data (is a tensor), shape: {} \n"
-          "    Streamline group: '{}' \n"
-          "        Number of streamlines: {} \n"
-          "        First streamline: {}... \n"
-          "        First streamline as sft: {} \n"
-          .format(subj0, subj0.subject_id, subj0.volume_groups,
-                  subj0._mri_data_list, subj0._mri_data_list[0]._data.shape,
-                  subj0.streamline_groups,
-                  len(subj0._sft_data_list[0].streamlines),
-                  subj0._sft_data_list[0].streamlines[0][0],
-                  subj0._sft_data_list[0].from_chosen_streamlines(0).streamlines[0][0]))
+    print("  - Type: {}".format(type(subj0)))
+    print("  - Subj id: {}".format(subj0.subject_id))
+    print("  - Volume group, features, streamlines: {}, {}, {}"
+          .format(subj0.volume_groups, subj0.nb_features,
+                  subj0.streamline_groups))
 
-    subj0_volume0 = training_set.get_volume_verify_cache(0, 0)
-    print("**Subject 0, volume 0: \n"
-          "     Shape {} \n"
-          "     First data : {} \n"
-          .format(subj0_volume0.shape, subj0_volume0[0][0][0]))
+    print("\n====== Testing properties of the first group's MRIData:\n")
+    mri_data = subj0.mri_data_list[0]
+    print("  - Type: {}".format(type(subj0)))
+    print("  - _data (non-lazy, should be an array): {}, shape {}"
+          .format(type(mri_data._data), mri_data._data.shape))
+    print("  - as tensor (non-lazy, should be the same): {}"
+          .format(type(mri_data.as_tensor)))
+    volume0 = training_set.get_volume_verify_cache(0, 0)
+    print("  - Getting volume from cache: type: {}".format(type(volume0)))
 
-    del fake_dataset
+    print("\n====== Testing properties of the first group's SFTData:\n")
+    sft_data = subj0.sft_data_list[0]
+    print("  - Type: {}".format(type(sft_data)))
+    print("  - Number of streamlines: {} \n"
+          "  - First streamline: {}... \n"
+          "  - As SFT: {}"
+          .format(len(sft_data.streamlines),
+                  sft_data.streamlines[0][0],
+                  sft_data.as_sft()))
 
 
-def test_lazy():
+def test_lazy(args):
     print("\n\n**========= LAZY =========\n\n")
     fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
                                        experiment_name='test',
                                        taskman_managed=True, cache_size=1)
     fake_dataset.load_data()
-
-    print("\n\n\n"
-          "Created a LazyMultiSubjectDataset.")
-
-    print("Testing properties : \n\n")
-
-    print("**Step size: {}".format(fake_dataset.step_size))
-
     training_set = fake_dataset.training_set
-    print("**Training lengths: {}".format(training_set.streamline_lengths))
-    print("**Training lengths_mm: {}\n"
-          .format(training_set.streamline_lengths_mm))
 
+    print("\n====== Testing properties of the LAZY SubjectDataList:\n")
+    subj_data_list = training_set.subjs_data_list
+    print("  - type: {}".format(subj_data_list))
+
+    print("\n====== Testing properties of a LAZY SingleSubjectDataset:\n")
+    print("  - Directly accessing (_getitem_) should bug: need to send "
+          "a hdf_handle.")
+    try:
+        subj0 = training_set.subjs_data_list[0]
+    except AssertionError:
+        print("    Try, catch: Yes, bugged.")
+    print("  - Accessing through open_handle_and_getitem")
     subj0 = training_set.subjs_data_list.open_handle_and_getitem(0)
-    print("**Get_subject_data (in this case, loading from hdf_handle): \n"
-          "    Subject 0, should be LazySubjectData : {}. \n"
-          "    Handle should be added by now: {} \n"
-          "    ID: {}. \n"
-          "    Volume groups: {}. \n"
-          "    Lazy mri data should be a list of LazyMRIData: {}. \n"
-          "        First volume _data (is not a tensor!): {} \n"
-          "    Streamline group: {} \n"
-          "        Streamlines (getter not loaded!): {} \n"
-          "        First streamline: {} \n"
-          "        First streamline as sft: {} \n"
-          .format(subj0, subj0.hdf_handle, subj0.subject_id,
-                  subj0.volume_groups,
-                  subj0.mri_data_list, subj0.mri_data_list[0]._data,
-                  subj0.streamline_groups, subj0.sft_data_list[0].streamlines,
-                  subj0.sft_data_list[0].streamlines[0][0],
-                  subj0.sft_data_list[0].from_chosen_streamlines(0).streamlines[0][0]))
+    print("  - Subj id: {}".format(subj0.subject_id))
+    print("  - Volume group, features, streamlines: {}, {}, {}"
+          .format(subj0.volume_groups, subj0.nb_features,
+                  subj0.streamline_groups))
 
-    subj0_volume0 = training_set.get_volume_verify_cache(0, 0)
-    print("**Subject 0, volume 0. \n"
-          "     Shape {} \n"
-          "     First data: {} \n"
-          .format(subj0_volume0.shape, subj0_volume0[0][0][0]))
+    print("\n====== Testing properties of the first group's LAZYMRIData:\n")
+    mri_data = subj0.mri_data_list[0]
+    print("  - Type: {}".format(type(subj0)))
+    print("  - _data (lazy, should be a hdf5 group): {}"
+          .format(type(mri_data._data)))
+    print("  - as tensor (lazy, should load): {}"
+          .format(type(mri_data.as_tensor)))
+    volume0 = training_set.get_volume_verify_cache(0, 0)
+    print("  - Getting volume from cache: type: {}".format(type(volume0)))
 
-    del fake_dataset
+    print("\n====== Testing properties of the first group's LazySFTData:\n")
+    sft_data = subj0.sft_data_list[0]
+    print("  - Type: {}".format(type(sft_data)))
+    streamlines = sft_data.streamlines
+    print("  - Streamlines not loaded: {}".format(type(streamlines)))
+    sft = sft_data.as_sft()
+    print("  - as sft: {}".format(type(sft)))
 
 
-if __name__ == '__main__':
+def main():
     args = parse_args()
 
     if not path.exists(args.hdf5_filename):
@@ -120,6 +138,10 @@ if __name__ == '__main__':
 
     logging.basicConfig(level='DEBUG')
 
-    test_non_lazy()
+    test_non_lazy(args)
     print('\n\n')
-    test_lazy()
+    test_lazy(args)
+
+
+if __name__ == '__main__':
+    main()

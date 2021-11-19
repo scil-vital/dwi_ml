@@ -62,7 +62,6 @@ def _load_volume_to4d(data_file):
                          'but you provided {}. Please check again your config '
                          'file.'.format(data_file))
 
-    logging.debug('    Loading {}'.format(data_file))
     img = nib.load(data_file)
     data = img.get_fdata(dtype=np.float32)
     affine = img.affine
@@ -81,9 +80,8 @@ def _load_volume_to4d(data_file):
 
 def process_volumes(group: str, file_list: List[str], subj_id,
                     save_intermediate: bool, subj_input_path: Path,
-                    subj_output_path: Path,
-                    subj_std_mask_data: np.ndarray = None,
-                    independent_modalities: bool = True):
+                    subj_output_path: Path, standardization: str,
+                    subj_std_mask_data: np.ndarray = None):
     """Process each group from the json config file:
     - Load data from each file of the group and combine them. All datasets from
       a given group must have the same affine, voxel resolution and data shape.
@@ -104,10 +102,10 @@ def process_volumes(group: str, file_list: List[str], subj_id,
         Path where the files from file_list should be found.
     subj_output_path: Path
         Path where to save the intermediate files.
+    standardization: str
+        One of ['all', 'independent', 'per_file', 'none'].
     subj_std_mask_data: np.ndarray of bools, optional
         Binary mask that will be used for data standardization.
-    independent_modalities: bool
-        If True, modalities will be standardized separately.
 
     Returns
     -------
@@ -117,20 +115,24 @@ def process_volumes(group: str, file_list: List[str], subj_id,
         Affine for the group.
     """
     # First file will define data dimension and affine
-    first_file = subj_input_path.joinpath(file_list[0].replace('*', subj_id))
+    file_name = file_list[0].replace('*', subj_id)
+    first_file = subj_input_path.joinpath(file_name)
+    logging.info("       - Processing file {}".format(file_name))
     group_data, group_affine, group_res, group_header = \
         _load_volume_to4d(first_file)
 
     # Other files must fit (data shape, affine, voxel size)
     # It is not a promise that data has been correctly registered, but it
     # is a minimal check.
-    for data_name in file_list[1:]:
-        data_name = data_name.replace('*', subj_id)
-        data_file = subj_input_path.joinpath(data_name)
+    for file_name in file_list[1:]:
+        file_name = file_name.replace('*', subj_id)
+        data_file = subj_input_path.joinpath(file_name)
+
+        logging.info("       - Processing file {}".format(file_name))
 
         if not data_file.is_file():
             logging.debug("      Skipping volume {} because it was not found "
-                          "in this subject's folder".format(data_name))
+                          "in this subject's folder".format(file_name))
             # Note: if args.enforce_files_presence was set to true, this case
             # is not possible, already checked in create_hdf5_dataset.py.
 
@@ -147,7 +149,7 @@ def process_volumes(group: str, file_list: List[str], subj_id,
                              'Affine: {}\n'
                              'Group affine: {}\n'
                              'Biggest difference: {}'
-                             .format(data_name, group, affine, group_affine,
+                             .format(file_name, group, affine, group_affine,
                                      np.max(affine - group_affine)))
 
         if not np.allclose(res, group_res):
@@ -157,33 +159,36 @@ def process_volumes(group: str, file_list: List[str], subj_id,
                              'same affine and voxel resolution.\n'
                              'Resolution: {}\n'
                              'Group resolution: {}'
-                             .format(data_name, group, res, group_res))
+                             .format(file_name, group, res, group_res))
+
+        if standardization == 'per_file':
+            logging.debug('      *Standardizing sub-data')
+            group_data = standardize_data(group_data, subj_std_mask_data,
+                                          independent=False)
 
         try:
             group_data = np.append(group_data, data, axis=-1)
         except ImportError:
             raise ImportError('Data file {} could not be added to data group '
-                              '{}. Wrong dimensions?'.format(data_name, group))
-
-    # Save unnormalized data
-    if save_intermediate:
-        output_fname = subj_output_path.joinpath(group +
-                                                 "_nonstandardized.nii.gz")
-        logging.debug('      *Saving intermediate non standardized files into '
-                      '{}.'.format(output_fname))
-        group_image = nib.Nifti1Image(group_data, group_affine)
-        nib.save(group_image, str(output_fname))
+                              '{}. Wrong dimensions?'.format(file_name, group))
 
     # Standardize data (per channel)
-    logging.debug('      *Standardizing data')
-    group_data = standardize_data(group_data, subj_std_mask_data,
-                                  independent=independent_modalities)
+    if standardization == 'independent':
+        logging.debug('      *Standardizing data on each feature.')
+        group_data = standardize_data(group_data, subj_std_mask_data,
+                                      independent=True)
+    elif standardization == 'all':
+        logging.debug('      *Standardizing data as a whole.')
+        group_data = standardize_data(group_data, subj_std_mask_data,
+                                      independent=False)
+    elif standardization not in ['none', 'per_file']:
+        raise ValueError("standardization must be one of "
+                         "['all', 'independent', 'per_file', 'none']")
 
     # Save standardized data
     if save_intermediate:
-        output_fname = subj_output_path.joinpath(group +
-                                                 "_standardized.nii.gz")
-        logging.debug('      *Saving intermediate standardized files into {}.'
+        output_fname = subj_output_path.joinpath(group + ".nii.gz")
+        logging.debug('      *Saving intermediate files into {}.'
                       .format(output_fname))
         standardized_img = nib.Nifti1Image(group_data, group_affine)
         nib.save(standardized_img, str(output_fname))
@@ -273,7 +278,7 @@ def process_streamlines(
                     header = 'same'
 
                 # Loading bundle and sending to wanted space
-                logging.info("          - Loading bundle {}"
+                logging.info("          - Processing bundle {}"
                              .format(os.path.basename(bundle_name)))
                 sft = load_tractogram(str(bundle_file), header)
                 sft.to_center()
@@ -303,13 +308,13 @@ def process_streamlines(
                     final_sft = concatenate_sft([final_sft, sft],
                                                 erase_metadata=False)
 
-                if save_intermediate:
-                    output_fname = subj_output_path.joinpath(group + '.trk')
-                    logging.debug('      *Saving intermediate bundle {} into '
-                                  '{}.'.format(group, output_fname))
-                    # Note. Do not remove the str below. Does not work well
-                    # with Path.
-                    save_tractogram(sft, str(output_fname))
+    if save_intermediate:
+        output_fname = subj_output_path.joinpath(group + '.trk')
+        logging.debug('      *Saving intermediate bundle {} into '
+                      '{}.'.format(group, output_fname))
+        # Note. Do not remove the str below. Does not work well
+        # with Path.
+        save_tractogram(final_sft, str(output_fname))
 
     # Removing invalid streamlines
     logging.debug('      *Total: {:,.0f} streamlines. Now removing invalid '

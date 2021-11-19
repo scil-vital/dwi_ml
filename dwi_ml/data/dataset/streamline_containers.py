@@ -7,6 +7,7 @@ the hdf5 (which contains only lists and numpy arrays) instead of loading data
 from .trk files. They will contain all information necessary to treat with
 streamlines: the data itself and _offset, _lengths, space attributes, etc.
 """
+import logging
 from typing import Tuple, Union, List
 
 import torch
@@ -183,13 +184,18 @@ class SFTDataAbstract(object):
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
         raise NotImplementedError
 
-    def from_chosen_streamlines(self, streamlines: ArraySequence):
+    def _subset_streamlines(self, streamline_ids):
+        raise NotImplementedError
+
+    def as_sft(self, streamline_ids=None):
         """
         streamline_ids: list of chosen ids. If None, take all streamlines.
 
         Returns chosen streamlines in a StatefulTractogram format.
         """
         set_sft_logger_level('WARNING')
+        streamlines = self._subset_streamlines(streamline_ids)
+
         sft = StatefulTractogram(streamlines, self.space_attributes,
                                  self.space)
         return sft
@@ -227,13 +233,12 @@ class SFTData(SFTDataAbstract):
         # with this loaded data:
         return cls(streamlines, space_attributes, space, lengths_mm)
 
-    def from_chosen_streamlines(self, streamline_ids=None):
+    def _subset_streamlines(self, streamline_ids):
         if streamline_ids is not None:
             streamlines = self.streamlines[streamline_ids]
         else:
             streamlines = self.streamlines
-
-        return super().from_chosen_streamlines(streamlines)
+        return streamlines
 
 
 class LazySFTData(SFTDataAbstract):
@@ -261,11 +266,6 @@ class LazySFTData(SFTDataAbstract):
 
         return cls(streamlines, space_attributes, space)
 
-    def from_chosen_streamlines(self, streamline_ids):
-        """
-        streamline_ids: int, list or slice
-
-        Returns chosen streamlines in a StatefulTractogram format.
-        """
+    def _subset_streamlines(self, streamline_ids):
         streamlines = self.streamlines.get_array_sequence(streamline_ids)
-        return super().from_chosen_streamlines(streamlines)
+        return streamlines

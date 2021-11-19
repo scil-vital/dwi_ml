@@ -94,7 +94,7 @@ class SubjectData(SubjectDataAbstract):
         subject_sft_data_list = []
 
         for group in volume_groups:
-            log.debug('*    => Loading volume group "{}": '.format(group))
+            log.debug('        Loading volume group "{}": '.format(group))
             # Creating a SubjectMRIData or a LazySubjectMRIData based on
             # lazy or non-lazy version.
             subject_mri_group_data = MRIData.init_from_hdf_info(
@@ -103,7 +103,7 @@ class SubjectData(SubjectDataAbstract):
 
         # Currently only one streamline group.
         for group in streamline_groups:
-            log.debug("*    => Loading subject's streamlines")
+            log.debug("        Loading subject's streamlines")
             sft_data = SFTData.init_from_hdf_info(hdf_file[subject_id][group])
             subject_sft_data_list.append(sft_data)
 
@@ -145,7 +145,7 @@ class LazySubjectData(SubjectDataAbstract):
         volume_groups, nb_features, streamline_groups = prepare_groups_info(
             subject_id, log, hdf_file, group_info)
 
-        log.debug('*    => Lazy: not loading data.')
+        log.debug('     Lazy: not loading data.')
 
         return cls(volume_groups, nb_features, streamline_groups, subject_id,
                    hdf_handle=None)

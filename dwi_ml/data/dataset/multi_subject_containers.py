@@ -280,8 +280,11 @@ class MultiSubjectDataset:
             self.validation_set.step_size = self.step_size
 
             # LOADING
+            logging.info("---> LOADING TRAINING SET")
             self._load_subset(self.training_set, hdf_handle)
+            logging.info("---> LOADING VALIDATION SET")
             self._load_subset(self.validation_set, hdf_handle)
+            logging.info("---> LOADING TESTING SET")
             self._load_subset(self.testing_set, hdf_handle)
 
     def _load_subset(self, subset: MultisubjectSubset, hdf_handle: h5py.File):
@@ -292,13 +295,8 @@ class MultiSubjectDataset:
         # Checking if there are any subjects to load
         subject_keys = sorted(hdf_handle.attrs[subset.set_name + '_subjs'])
         if len(subject_keys) == 0:
-            logging.debug("No subject. Returning empty subset.")
+            logging.debug("    No subject. Returning empty subset.")
             return
-
-        logging.info(" Dataset: Loading {} set\n"
-                     "==============".format(subset.set_name))
-        logging.debug('Dataset: hdf_file (subject) keys for the {} set '
-                      'are: {}'.format(subset.set_name, subject_keys))
         subset.nb_subjects = len(subject_keys)
 
         # Build empty data_list (lazy or not) and initialize values
@@ -317,17 +315,16 @@ class MultiSubjectDataset:
             # Create subject's container
             # Uses SubjectData or LazySubjectData based on the class
             # calling this method.
-            self.log.debug("Dataset: Creating subject '{}':".format(subj_id))
+            self.log.debug("     Creating subject '{}':".format(subj_id))
             subj_data = self._init_subj_from_hdf(
                 hdf_handle, subj_id, self.volume_groups, self.nb_features,
                 self.streamline_groups, self.log)
 
             # Add subject to the list
-            self.log.debug("Dataset: Adding subject to the list.")
             subj_idx = subset.subjs_data_list.add_subject(subj_data)
 
             if subj_data.is_lazy:
-                self.log.debug("Dataset: Temporarily adding hdf handle to "
+                self.log.debug("     Temporarily adding hdf handle to "
                                "subj to arrange streamlines.")
                 subj_data = subset.subjs_data_list[(subj_idx, hdf_handle)]
                 self.log.debug("--> Handle: {}".format(subj_data.hdf_handle))
@@ -355,7 +352,8 @@ class MultiSubjectDataset:
         # No need to return 'subset': instance attributes are modified
         # in-place.
 
-    def _add_streamlines_ids(self, subset: MultisubjectSubset,
+    @staticmethod
+    def _add_streamlines_ids(subset: MultisubjectSubset,
                              n_streamlines: int, subj_idx: int,
                              group_idx: int):
         """
@@ -366,13 +364,6 @@ class MultiSubjectDataset:
         non-lazy version, or property in the lazy version, returning
         streamlines only if a handle is present.
         """
-        group = self.streamline_groups[group_idx]
-
-        self.log.debug("*    => Arranging streamlines per ID for group '{}'."
-                       .format(group))
-        self.log.debug("*    => Subject had {} streamlines for this group."
-                       .format(n_streamlines))
-
         # Assigning these id in the dict for this group
         start = subset.total_nb_streamlines[group_idx]
         end = subset.total_nb_streamlines[group_idx] + n_streamlines

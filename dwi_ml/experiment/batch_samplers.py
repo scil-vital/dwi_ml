@@ -579,7 +579,7 @@ class BatchStreamlinesSampler(Sampler):
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
 
             # Get streamlines as sft
-            sft = subj_sft_data.from_chosen_streamlines(s_ids)
+            sft = subj_sft_data.as_sft(s_ids)
 
             # Resampling streamlines to a fixed step size, if any
             self.log.debug("            Resampling: {}".format(self.step_size))

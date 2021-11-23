@@ -797,14 +797,14 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
             # Getting the subject's volume and sending to CPU/GPU
             # If data is lazy, get volume from cache or send to cache if
             # it wasn't there yet.
-            data_volume = self.dataset.get_volume_verify_cache(
+            data_tensor = self.dataset.get_volume_verify_cache(
                 subj, self.input_group_idx, device=device, non_blocking=True)
 
             # Prepare the volume data, possibly adding neighborhood
             # (Thus new coords_torch possibly contain the neighborhood points)
             # Coord_clipped contain the coords after interpolation
             subj_x_data, coords_torch = interpolate_volume_in_neighborhoods(
-                data_volume, flat_subj_x_coords, self.neighborhood_points,
+                data_tensor, flat_subj_x_coords, self.neighborhood_points,
                 device)
 
             # Split the flattened signal back to streamlines
@@ -819,12 +819,12 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
                 # Clipping used coords (i.e. possibly with neighborhood)
                 # outside volume
                 lower = torch.as_tensor([0, 0, 0], device=device)
-                upper = torch.as_tensor(data_volume.shape[:3], device=device)
+                upper = torch.as_tensor(data_tensor.shape[:3], device=device)
                 upper -= 1
                 coords_to_idx_clipped = torch.min(
                     torch.max(torch.floor(coords_torch).long(), lower),
                     upper)
-                input_mask = torch.tensor(np.zeros(data_volume.shape[0:3]))
+                input_mask = torch.tensor(np.zeros(data_tensor.shape[0:3]))
                 for s in range(len(coords_torch)):
                     input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
                 batch_input_masks.append(input_mask)

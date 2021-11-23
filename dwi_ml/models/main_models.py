@@ -82,5 +82,54 @@ class MainModelAbstract(torch.nn.Module):
         if to_remove:
             shutil.rmtree(to_remove)
 
+    @classmethod
+    def load(cls, loading_dir):
+        """
+        loading_dir: path to the trained parameters
+        """
+        # Make model directory
+        model_dir = os.path.join(loading_dir)
+
+        # Load attributes and hyperparameters from json file
+        params_filename = os.path.join(model_dir, "parameters.json")
+        params = json.load(open(params_filename))
+
+        best_model_filename = os.path.join(model_dir, "best_model_state.pkl")
+        best_model_state = torch.load(best_model_filename)
+
+        model = cls(**params)
+        model.load_state_dict(best_model_state)  # using torch's method
+        model.eval()
+
+        return model
+
     def compute_loss(self, outputs, targets):
+        raise NotImplementedError
+
+    def get_tracking_direction_det(self, model_outputs):
+        """
+        This needs to be implemented in order to use the model for
+        generative tracking, as in dwi_ml.tracking.tracker_abstract.
+
+        Probably calls a directionGetter.get_tracking_directions_det.
+
+        Returns
+        -------
+        next_dir: array(3,)
+            Numpy array with x,y,z value.
+        """
+        raise NotImplementedError
+
+    def sample_tracking_direction_prob(self, model_outputs):
+        """
+        This needs to be implemented in order to use the model for
+        generative tracking, as in dwi_ml.tracking.tracker_abstract.
+
+        Probably calls a directionGetter.sample_tracking_directions_prob.
+
+        Returns
+        -------
+        next_dir: array(3,)
+            Numpy array with x,y,z value.
+        """
         raise NotImplementedError

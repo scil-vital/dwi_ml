@@ -130,23 +130,24 @@ class MultisubjectSubset(Dataset):
 
             try:
                 # General case: Data is already cached
-                mri_data = self.volume_cache_manager[cache_key]
-                return mri_data
+                mri_data_tensor = self.volume_cache_manager[cache_key]
+                return mri_data_tensor
             except KeyError:
                 pass
 
         # Either non-lazy or if lazy, data was not cached.
-        mri_data = self._get_volume(subj_idx, group_idx, device, non_blocking)
+        mri_data_tensor = self._get_volume_as_tensor(subj_idx, group_idx,
+                                                     device, non_blocking)
 
         if self.subjs_data_list.is_lazy and self.cache_size > 0:
             # Send volume_data on cache
-            self.volume_cache_manager[cache_key] = mri_data
+            self.volume_cache_manager[cache_key] = mri_data_tensor
 
-        return mri_data
+        return mri_data_tensor
 
-    def _get_volume(self, subj_idx: int, group_idx: int,
-                    device: torch.device,
-                    non_blocking: bool = False):
+    def _get_volume_as_tensor(self, subj_idx: int, group_idx: int,
+                              device: torch.device,
+                              non_blocking: bool = False):
         """
         Contrary to get_volume_verify_cache, this does not send data to
         cache for later use.
@@ -159,10 +160,10 @@ class MultisubjectSubset(Dataset):
         else:
             subj_data = self.subjs_data_list[subj_idx]
 
-        volume_data = subj_data.mri_data_list[group_idx].as_tensor
-        volume_data.to(device=device, non_blocking=non_blocking)
+        mri_data_tensor = subj_data.mri_data_list[group_idx].as_tensor
+        mri_data_tensor.to(device=device, non_blocking=non_blocking)
 
-        return volume_data
+        return mri_data_tensor
 
 
 class MultiSubjectDataset:

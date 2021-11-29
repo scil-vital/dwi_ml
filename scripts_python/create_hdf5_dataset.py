@@ -352,7 +352,8 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 file_list = groups_config[group]['files']
                 standardization = groups_config[group]['standardization']
 
-                group_data, group_affine, group_header = process_volumes(
+                (group_data, group_affine,
+                 group_header, group_res) = process_volumes(
                     group, file_list, subj_id, args.save_intermediate,
                     subj_input_dir, subj_intermediate_path, standardization,
                     subj_std_mask_data)
@@ -364,6 +365,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 # Saving data information.
                 subj_hdf[group].attrs['affine'] = group_affine
                 subj_hdf[group].attrs['type'] = groups_config[group]['type']
+                subj_hdf[group].attrs['voxres'] = group_res
 
                 # Adding the shape info separately to access it without loading
                 # the data (useful for lazy data!).

@@ -7,7 +7,6 @@ the hdf5 (which contains only lists and numpy arrays) instead of loading data
 from .trk files. They will contain all information necessary to treat with
 streamlines: the data itself and _offset, _lengths, space attributes, etc.
 """
-import logging
 from typing import Tuple, Union, List
 
 import torch
@@ -224,7 +223,7 @@ class SFTData(SFTDataAbstract):
         loaded yet. Non-lazy = loading the data here.
         """
         streamlines = _load_streamlines_from_hdf(hdf_group)
-        # Adding non-hidden parameters for nicer later acces
+        # Adding non-hidden parameters for nicer later access
         lengths_mm = hdf_group['euclidean_lengths']
 
         space_attributes, space = _load_space_from_hdf(hdf_group)

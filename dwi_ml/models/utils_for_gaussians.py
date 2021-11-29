@@ -79,7 +79,7 @@ def independent_gaussian_log_prob_vector(x, mus, sigmas):
     mu = mean of the gaussian (x,y,z directions)
     sigmas = standard deviation of the gaussian (x,y,z directions)
     """
-    # The inverse of a diagonal matrix is just inversing values on the
+    # The inverse of a diagonal matrix is just inverting values on the
     # diagonal
     cov_inv = np.eye(d) * (1 / sigmas ** 2)
 

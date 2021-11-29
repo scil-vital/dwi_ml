@@ -61,7 +61,7 @@ def test_sampler(fake_dataset, model, chunk_size, batch_size, step_size,
         print('Batch # {}: nb sampled streamlines subj 0 was {}'
               .format(i, len(subj0_streamlines)))
         total_sampled_ids_sub0.append(batch[0])
-        i = i + 1
+        i += 1
         if i > 3:
             break
 
@@ -109,7 +109,7 @@ def test_lazy(args):
     model = create_model(fake_dataset)
 
     print('\n=============================Test with batch size 1000')
-    test_sampler(fake_dataset,  model,256, 1000, None)
+    test_sampler(fake_dataset, model, 256, 1000, None)
 
     logging.getLogger().setLevel('INFO')
 

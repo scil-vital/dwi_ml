@@ -96,7 +96,7 @@ class DWIMLTrainer:
              Send your experiment to a specific comet.ml project. If None, it
              will be sent to Uncategorized Experiments.
         """
-        # To developpers: do not forget that changes here must be reflected
+        # To developers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
 
         # ----------------------
@@ -152,7 +152,7 @@ class DWIMLTrainer:
         self.log.addHandler(TqdmLoggingHandler())
         self.log.propagate = False
 
-        # Developpers: change level below to WARNING when developping trainer
+        # Developers: change level below to WARNING when developing trainer
         # with a debug level to avoid seeing a lot of logs!
         sub_log = logging.getLogger('log-for-samplers')
         sub_log.setLevel(logging.root.level)
@@ -197,7 +197,8 @@ class DWIMLTrainer:
 
         # ----------------------
         # Values that will be modified later on. If initializing experiment
-        # from a checkpoint, these values shoud be updated after initialization
+        # from a checkpoint, these values should be updated after
+        # initialization.
         # ----------------------
         if patience:
             self.best_epoch_monitoring = BestEpochMonitoring(
@@ -408,7 +409,7 @@ class DWIMLTrainer:
             else:
                 last_loss = self.train_loss_monitor.epochs_means_history[-1]
 
-            # Updating infos
+            # Updating info
             self.best_epoch_monitoring.update(last_loss, epoch)
 
             # Check for early stopping
@@ -422,8 +423,8 @@ class DWIMLTrainer:
                             self.best_epoch_monitoring.best_epoch))
 
             # Else, check if current best has been reached
-            # If that is the case, the monitor has just resetted its
-            # n_bad_epochs to 0
+            # If that is the case, the monitor has just reset its n_bad_epochs
+            # to 0
             if self.best_epoch_monitoring.n_bad_epochs == 0:
                 logging.info("Best epoch yet! Saving model and loss history.")
 

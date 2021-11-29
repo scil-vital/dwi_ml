@@ -88,4 +88,3 @@ def prepare_data(dataset_params):
                      format_dict_to_str(dataset.params))
 
     return dataset
-

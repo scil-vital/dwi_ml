@@ -1,12 +1,6 @@
 # -*- coding: utf-8 -*-
-from typing import List, Union
+from torch.nn.utils.rnn import PackedSequence
 
-import torch
-from torch import Tensor
-from torch.nn.utils.rnn import (PackedSequence, pack_sequence)
-
-from dwi_ml.data.packed_sequences import (unpack_sequence,
-                                          unpack_tensor_from_indices)
 from dwi_ml.models.embeddings_on_tensors import (NNEmbedding as NNe,
                                                  NoEmbedding as Noe,
                                                  CNNEmbedding as CNNe)

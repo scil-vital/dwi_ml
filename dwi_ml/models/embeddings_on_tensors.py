@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
-from typing import List, Union
-
 import torch
 from torch import Tensor
-from torch.nn.utils.rnn import (PackedSequence, pack_sequence)
 
 from dwi_ml.models.main_models import ModelAbstract
 

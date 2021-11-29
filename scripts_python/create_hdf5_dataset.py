@@ -224,7 +224,7 @@ def _initialize_hdf5_database(hdf5_folder, force, name):
     logging.debug("   Creating hdf5 directory")
     hdf5_subdir.mkdir()
 
-    # Define dabase name
+    # Define database name
     if name:
         hdf5_filename = name
     else:
@@ -314,7 +314,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                       .format(nb_subjs, chosen_subjs))
         nb_processed = 0
         for subj_id in chosen_subjs:
-            nb_processed = nb_processed + 1
+            nb_processed += 1
             logging.info("*Processing subject {}/{}: {}"
                          .format(nb_processed, nb_subjs, subj_id))
             subj_input_dir = dwi_ml_dir.joinpath(subj_id)

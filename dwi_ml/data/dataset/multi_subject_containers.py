@@ -118,7 +118,7 @@ class MultisubjectSubset(Dataset):
         cache before returning.
         """
 
-        # First verifiy cache (if lazy)
+        # First verify cache (if lazy)
         cache_key = str(subj_idx) + '.' + str(group_idx)
         if self.subjs_data_list.is_lazy and self.cache_size > 0:
             # Parallel workers each build a local cache

@@ -185,7 +185,7 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
             coords_torch = torch.as_tensor(coords, dtype=torch.float,
                                            device=device)
             flat_subj_x_data = torch_trilinear_interpolation(data_volume,
-                                                                coords_torch)
+                                                             coords_torch)
 
             # Reshape signal into (n_points, new_nb_features)
             # DWI data features for each neighbor are concatenated.

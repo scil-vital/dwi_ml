@@ -80,7 +80,7 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
     # Clip indices to make sure we don't go out-of-bounds
     # Origin = corner means the minimum is 0.
     #                       the maximum is shape.
-    # Ex, for shape 150, last voxel is #149, with possible coords up to 149.999.
+    # Ex, for shape 150, last voxel is #149, with possible coords up to 149.99.
     lower = torch.as_tensor([0, 0, 0], device=device)
     upper = torch.as_tensor(volume.shape[:3], device=device) - 1
     idx_box_clipped = torch.min(torch.max(idx_box_unclipped, lower), upper)

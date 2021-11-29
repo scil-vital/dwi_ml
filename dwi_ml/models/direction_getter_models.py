@@ -86,11 +86,10 @@ OUTPUTS: Def: The model final outputs, corresponding to directions, i.e.
 
 TARGETS: Def: The target values (real Y) for the batch
          Type: Could be `PackedSequence.data`
-         Size: 
+         Size:
              - Sequence models: [batch_size*seq_len, 3]
              - Local models: [batch_size, 3]
 """
-CHOSEN_SPHERE = 'symmetric724'
 eps = 1e-6
 
 
@@ -118,14 +117,34 @@ class AbstractDirectionGetterModel(ModelAbstract):
                   |                     |
                   -----------------------
     """
-    supportsCompressedStreamlines = False
+    def __init__(self, input_size, dropout: float, key: str,
+                 supports_compressed_streamlines: bool,
+                 loss_description: str = ''):
+        """ Prepares the dropout and ReLU sub-layers
 
-    def __init__(self, input_size, dropout: float = 0.):
-        """ Prepares the dropout and ReLU sub-layers"""
+        Parameters
+        ----------
+        input_size: Any
+            Should be computed directly. Probably the output size of the first
+            layers of your model.
+        dropout: float
+            Dropout rate.
+        supports_compressed_streamlines: bool
+            Whether this model supports compressed streamlines.
+        loss_description: str
+            Will be added to params to help user remember the direction getter
+            version (when printing params).
+        """
         super().__init__()
 
         self.input_size = input_size
 
+        # Info on this Direction Getter
+        self.key = key
+        self.supports_compressed_streamlines = supports_compressed_streamlines
+        self.loss_description = loss_description
+
+        # Preparing layers
         if dropout and (dropout < 0 or dropout > 1):
             raise ValueError('Dropout rate should be between 0 and 1.')
         self.dropout = dropout
@@ -138,9 +157,20 @@ class AbstractDirectionGetterModel(ModelAbstract):
 
     @property
     def params(self):
+        """
+        Necessary params to create a new instance of the same model.
+        """
         params = {
+            'input_size': self.input_size,
             'dropout': self.dropout,
         }
+        # Adding stuff for nicer print in logs, although not necessary to
+        # instantiate a new model.
+        params.update({
+            'key': self.key,
+            'loss': self.loss_description
+        })
+
         return params
 
     def loop_on_layers(self, inputs: Tensor, layers: ModuleList):
@@ -164,14 +194,16 @@ class AbstractDirectionGetterModel(ModelAbstract):
         # Will be implemented by each class
         raise NotImplementedError
 
-    def compute_loss(self, outputs: Any, targets: Tensor) -> Tensor:
+    def compute_loss(self, outputs: Any, target_directions: Tensor) -> Tensor:
         # Will be implemented by each class
         raise NotImplementedError
 
-    def sample_tracking_directions(self, outputs: Tensor) -> Tensor:
+    def sample_tracking_direction_prob(self, outputs: Tensor) -> Tensor:
         # Will be implemented by each class
-        # For deterministic models, this is straightforward.
-        # For probabilistic models, we need to sample the tracking directions.
+        raise NotImplementedError
+
+    def get_tracking_direction_det(self, outputs: Tensor) -> Tensor:
+        # Will be implemented by each class
         raise NotImplementedError
 
 
@@ -179,7 +211,7 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
     """
     Regression model.
 
-    Here we use fully-connected (linear) layers converting the outputs
+    We use fully-connected (linear) network converting the outputs
     (at every step) to a 3D vector. Will use super to loop on layers, where
     layers are:
         1. Linear1:  output size = ceil(input_size/2)
@@ -188,88 +220,17 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
     Loss = negative cosine similarity.
     * If sequence: averaged on time steps and sequences.
     """
-    # Compressed streamlines not supported
-    supportsCompressedStreamlines = False
-
     def __init__(self, input_size: int, dropout: float = None):
-        # Prepare the dropout, Relu, loop:
-        super().__init__(input_size, dropout)
+        super().__init__(input_size, dropout,
+                         key='cosine-regression',
+                         supports_compressed_streamlines=False,
+                         loss_description='negative cosine similarity')
 
+        # Regression: output is of size 3.
         self.layers = init_2layer_fully_connected(input_size, 3)
 
         # Loss will be applied on the last dimension.
         self.loss = CosineSimilarity(dim=-1)
-
-    @property
-    def params(self):
-        params = super().params  # type: dict
-        params.update({
-            'key': 'cosine-regression',
-            'loss': 'negative cosine similarity'
-        })
-        return params
-
-    def forward(self, inputs: Tensor):
-        """ Run the inputs through the loop on layers.  """
-        output = self.loop_on_layers(inputs, self.layers)
-        return output
-
-    def compute_loss(self, outputs: Tensor, targets: Tensor):
-        """
-        Compute the average negative cosine similarity between the computed
-        directions and the target directions.
-
-        Returns
-        -------
-        mean_loss : torch.Tensor
-            The loss between the outputs and the targets, averaged across
-            timesteps (and sequences).
-        """
-        # loss has shape [n_sequences*seq_len]
-        losses = -self.loss(outputs, targets)
-        mean_loss = losses.mean()
-        return mean_loss
-
-    def sample_tracking_directions(self, outputs: Tensor) -> Tensor:
-        """
-        In this case, the output is directly a direction, so we can use it as
-        is for the tracking.
-        """
-        return outputs
-
-
-class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
-    """
-    Regression model.
-
-    Same as in CosineRegressionOutput, we use a 2-layer NN:
-        1. Linear1:  output size = ceil(input_size/2)
-        2. Linear2:  output size = 3
-
-    Loss = Pairwise distance = p_root(sum(|x_i|^P))
-    * If sequence: averaged on time steps and sequences.
-    """
-    # L2 Distance loss supports compressed streamlines
-    supportsCompressedStreamlines = True
-
-    def __init__(self, input_size: int, dropout: float = None):
-        # Prepare the dropout, Relu, loop:
-        super().__init__(input_size, dropout)
-
-        self.layers = init_2layer_fully_connected(input_size, 3)
-
-        # Loss will be applied on the last dimension, by default in
-        # PairWiseDistance
-        self.loss = PairwiseDistance()
-
-    @property
-    def params(self):
-        params = super().params  # type: dict
-        params.update({
-            'key': 'l2-regression',
-            'loss': 'pairwise distance'
-        })
-        return params
 
     def forward(self, inputs: Tensor):
         """
@@ -278,55 +239,131 @@ class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
         output = self.loop_on_layers(inputs, self.layers)
         return output
 
-    def compute_loss(self, outputs: Tensor, targets: Tensor):
-        """Compute the average negative cosine similarity between the computed
-        directions and the target directions.
+    def compute_loss(self, learned_directions: Tensor,
+                     target_directions: Tensor):
         """
-        # If outputs and targets are of shape (N, D), losses is of shape N
-        losses = self.loss(outputs, targets)
+        Compute the average negative cosine similarity between the computed
+        directions and the target directions (both tensors should contain
+        x,y,z values).
+
+        Returns
+        -------
+        mean_loss : torch.Tensor
+            The loss between the outputs and the targets, averaged across
+            timesteps (and sequences).
+        """
+        # loss has shape [n_sequences*seq_len]
+        losses = -self.loss(learned_directions, target_directions)
         mean_loss = losses.mean()
         return mean_loss
 
-    def sample_tracking_directions(self, outputs: Tensor) -> Tensor:
+    def sample_tracking_direction_prob(self, learned_directions: Tensor):
+        raise NotImplementedError("This regression model does not support "
+                                  "probabilistic tractography.")
+
+    def get_tracking_direction_det(self, learned_directions: Tensor):
         """
-        In this case, the output is directly a direction, so we can use it as
-        is for the tracking.
+        In this case, the output is directly a 3D direction, so we can use it
+        as is for the tracking.
         """
-        return outputs
+        return learned_directions
+
+
+class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
+    """
+    Regression model.
+
+    We use fully-connected (linear) network converting the outputs
+    (at every step) to a 3D vector. Will use super to loop on layers, where
+    layers are:
+        1. Linear1:  output size = ceil(input_size/2)
+        2. Linear2:  output size = 3
+
+    Loss = Pairwise distance = p_root(sum(|x_i|^P))
+    * If sequence: averaged on time steps and sequences.
+    """
+    def __init__(self, input_size: int, dropout: float = None):
+        # L2 Distance loss supports compressed streamlines
+        super().__init__(input_size, dropout,
+                         key='l2-regression',
+                         supports_compressed_streamlines=True,
+                         loss_description="torch's pairwise distance")
+
+        # Regression: output is of size 3.
+        self.layers = init_2layer_fully_connected(input_size, 3)
+
+        # Loss will be applied on the last dimension, by default in
+        # PairWiseDistance
+        self.loss = PairwiseDistance()
+
+    def forward(self, inputs: Tensor):
+        """
+        Run the inputs through the loop on layers.
+        """
+        output = self.loop_on_layers(inputs, self.layers)
+        return output
+
+    def compute_loss(self, learned_directions: Tensor,
+                     target_directions: Tensor):
+        """
+        Compute the average negative cosine similarity between the computed
+        directions and the target directions.
+        """
+        # If outputs and targets are of shape (N, D), losses is of shape N
+        losses = self.loss(learned_directions, target_directions)
+        mean_loss = losses.mean()
+        return mean_loss
+
+    def sample_tracking_direction_prob(self, learned_directions: Tensor):
+        raise NotImplementedError("This regression model does not support "
+                                  "probabilistic tractography.")
+
+    def get_tracking_direction_det(self, learned_directions: Tensor):
+        """
+        In this case, the output is directly a 3D direction, so we can use it
+        as is for the tracking.
+        """
+        return learned_directions
 
 
 class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
     """
     Classification model.
 
-    Classes: 724 points on the sphere (dipy.data.get_sphere('symmetric724'))
+    Classes: Points on the sphere.
 
-    Model: Same as before, a 2-layer NN.
+    Model: We use fully-connected (linear) network converting the outputs
+    (at every step) to a 3D vector. Will use super to loop on layers, where
+    layers are:
+        1. Linear1:  output size = ceil(input_size/2)
+        2. Linear2:  output size = 3
 
     Loss = negative log-likelihood.
     """
-    supportsCompressedStreamlines = False
-
-    def __init__(self, input_size: int, dropout: float = None):
-        # Prepare the dropout, Relu, loop:
-        super().__init__(input_size, dropout)
+    def __init__(self, input_size: int, dropout: float = None,
+                 sphere: str = 'symmetric724'):
+        super().__init__(input_size, dropout,
+                         key='sphere-classification',
+                         supports_compressed_streamlines=False,
+                         loss_description='negative log-likelihood')
 
         # Classes
-        self.sphere = dipy.data.get_sphere(CHOSEN_SPHERE)
+        self.sphere_name = sphere
+        self.sphere = dipy.data.get_sphere(sphere)
         self.vertices = torch.as_tensor(self.sphere.vertices,
                                         dtype=torch.float32)
-        output_size = self.sphere.vertices.shape[0]
+        nb_classes = self.sphere.vertices.shape[0]
 
-        self.layers = init_2layer_fully_connected(input_size, output_size)
+        self.layers = init_2layer_fully_connected(input_size, nb_classes)
 
         # Loss will be defined in compute_loss, using torch distribution
 
     @property
     def params(self):
-        params = super().params  # type: dict
+        params = super().params
+
         params.update({
-            'key': 'sphere-classification',
-            'loss': 'negative log-likelihood'
+            'sphere': self.sphere_name
         })
         return params
 
@@ -337,20 +374,21 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         logits = self.loop_on_layers(inputs, self.layers)
         return logits
 
-    def compute_loss(self, outputs: Tensor, targets: Tensor):
+    def compute_loss(self, logits_per_class: Tensor,
+                     target_directions: Tensor):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
         """
 
         # Find the closest class for each target direction
-        target_idx = self._find_closest_vertex(targets)
+        target_idx = self._find_closest_vertex(target_directions)
         target_idx_tensor = torch.as_tensor(target_idx, dtype=torch.int16,
-                                            device=outputs.device)
+                                            device=logits_per_class.device)
 
         # Create an official probability distribution from the logits
         # Applies a softmax
-        distribution = Categorical(logits=outputs)
+        distribution = Categorical(logits=logits_per_class)
 
         # Compute loss between distribution and target vertex
         nll_losses = -distribution.log_prob(target_idx_tensor)
@@ -360,20 +398,25 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
 
         return mean_loss
 
-    def sample_tracking_directions(self, outputs: Tensor) -> Tensor:
+    def sample_tracking_direction_prob(self, logits_per_class: Tensor):
         """
         Sample a tracking direction on the sphere from the predicted class
         logits (=probabilities).
         """
-
         # Sample a direction on the sphere
-        sampler = Categorical(logits=outputs)
+        sampler = Categorical(logits=logits_per_class)
         idx = sampler.sample()
 
         # One direction per time step per sequence
         direction = self.vertices[idx]
 
         return direction
+
+    def get_tracking_direction_det(self, logits_per_class: Tensor):
+        """
+        Get the predicted class with highest logits (=probabilities).
+        """
+        return self.vertices[logits_per_class.argmax()]
 
     def _find_closest_vertex(self, directions):
         """
@@ -396,35 +439,25 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
 
 class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
     """
-    Classification model
+    Regression model. The output is not a x,y,z value but the learned
+    parameters of the gaussian representing the local direction.
 
-    Classes: 3D multivariate gaussian.
-
-    Model: 2-layer NN for the mean 2-layer NN for the variance
+    Model: 2-layer NN for the mean + 2-layer NN for the variance
 
     Loss: Negative log-likelihood.
     """
-    # 3D gaussian supports compressed streamlines
-    supportsCompressedStreamlines = True
-
     def __init__(self, input_size: int, dropout: float = None):
-        # Prepare the dropout, Relu, loop:
-        super().__init__(input_size, dropout)
+        # 3D gaussian supports compressed streamlines
+        super().__init__(input_size, dropout,
+                         key='gaussian',
+                         supports_compressed_streamlines=True,
+                         loss_description='negative log-likelihood')
 
         # Layers
         self.layers_mean = init_2layer_fully_connected(input_size, 3)
-        self.layers_variance = init_2layer_fully_connected(input_size, 3)
+        self.layers_sigmas = init_2layer_fully_connected(input_size, 3)
 
         # Loss will be defined in compute_loss, using torch distribution
-
-    @property
-    def params(self):
-        params = super().params  # type: dict
-        params.update({
-            'key': 'gaussian',
-            'loss': 'negative log-likelihood'
-        })
-        return params
 
     def forward(self, inputs: Tensor):
         """
@@ -433,41 +466,50 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         means = self.loop_on_layers(inputs, self.layers_mean)
 
         log_sigmas = self.loop_on_layers(inputs, self.layers_sigma)
-        variances = torch.exp(log_sigmas)
+        sigmas = torch.exp(log_sigmas)
 
-        return means, variances
+        return means, sigmas
 
-    def compute_loss(self, outputs: Tuple[Tensor, Tensor], targets: Tensor):
-        """Compute the negative log-likelihood for the targets using the
+    def compute_loss(self, learned_gaussian_params: Tuple[Tensor, Tensor],
+                     target_directions: Tensor):
+        """
+        Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
         """
-        means, variances = outputs
+        means, sigmas = learned_gaussian_params
 
         # Create an official function-probability distribution from the means
         # and variances
         distribution = MultivariateNormal(
-            means, covariance_matrix=torch.diag_embed(variances ** 2))
+            means, covariance_matrix=torch.diag_embed(sigmas ** 2))
 
         # Compute the negative log-likelihood from the difference between the
         # distribution and each target.
-        nll_losses = -distribution.log_prob(targets)
+        nll_losses = -distribution.log_prob(target_directions)
         mean_loss = nll_losses.mean()
         return mean_loss
 
-    def sample_tracking_directions(self, outputs: Tuple[Tensor, Tensor]) \
-            -> Tensor:
+    def sample_tracking_direction_prob(
+            self, learned_gaussian_params: Tuple[Tensor, Tensor]):
         """
         From the gaussian parameters, sample a direction.
         """
-        means, variances = outputs
+        means, sigmas = learned_gaussian_params
 
         # Sample a final function in the chosen Gaussian
         # One direction per time step per sequence
         distribution = MultivariateNormal(
-            means, covariance_matrix=torch.diag_embed(variances ** 2))
+            means, covariance_matrix=torch.diag_embed(sigmas ** 2))
         direction = distribution.sample()
 
         return direction
+
+    def get_tracking_direction_det(self, learned_gaussian_params: Tensor):
+        """
+        Get the predicted class with highest logits (=probabilities).
+        """
+        # toDo. principal eigenvector?
+        raise NotImplementedError
 
 
 class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
@@ -475,6 +517,9 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
     Same as SingleGaussian but with more than one Gaussian. This should account
     for branching bundles, distributing probability across space at branching
     points.
+
+    Regression model. The output is not a x,y,z value but the learned
+    parameters of the gaussian(s) representing the local direction.
 
     Model: (a 2-layer NN for the mean and a 2-layer NN for the sigma.) for
     each of N Gaussians.
@@ -488,26 +533,26 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
     Refs:
     [1] https://github.com/jych/cle/blob/master/cle/cost/__init__.py
     """
-    # 3D Gaussian mixture supports compressed streamlines
-    supportsCompressedStreamlines = True
-
     def __init__(self, input_size: int, dropout: float = None,
                  nb_gaussians: int = 3):
-        # Prepare the dropout, Relu, loop:
-        super().__init__(dropout)
+        # 3D Gaussian mixture supports compressed streamlines
+        super().__init__(input_size, dropout,
+                         key='gaussian-mixture',
+                         supports_compressed_streamlines=True,
+                         loss_description='negative log-likelihood')
 
-        self.n_gaussians = nb_gaussians
+        self.nb_gaussians = nb_gaussians
 
         # N Gaussians * (1 mixture param + 3 means + 3 sigmas)
         # (no correlations between each Gaussian)
         # Use separate *heads* for the mu and sigma, but concatenate gaussians
 
         self.layers_mixture = init_2layer_fully_connected(
-            input_size, 1 * self.n_gaussians)
+            input_size, 1 * self.nb_gaussians)
         self.layers_mean = init_2layer_fully_connected(
-            input_size, 3 * self.n_gaussians)
+            input_size, 3 * self.nb_gaussians)
         self.layers_sigmas = init_2layer_fully_connected(
-            input_size, 3 * self.n_gaussians)
+            input_size, 3 * self.nb_gaussians)
 
         # Loss will be defined in compute_loss, using torch distribution
 
@@ -515,9 +560,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
     def params(self):
         params = super().params
         params.update({
-            'key': 'gaussian-mixture',
-            'nb_gaussians': self.n_gaussians,
-            'loss': 'negative log-likelihood'
+            'nb_gaussians': self.nb_gaussians,
         })
         return params
 
@@ -534,8 +577,9 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         return mixture_logits, means, sigmas
 
-    def compute_loss(self, outputs: Tuple[Tensor, Tensor, Tensor],
-                     targets: Tensor):
+    def compute_loss(
+            self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
+            target_directions: Tensor):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
@@ -544,13 +588,14 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         # Shape : [batch_size*seq_len, n_gaussians, 3] or
         #         [batch_size, n_gaussians, 3]
-        mixture_logits, means, sigmas = self._get_gaussian_parameters(outputs)
+        mixture_logits, means, sigmas = \
+            self._get_gaussian_parameters(learned_gaussian_params)
 
         # Take softmax for the mixture parameters
         mixture_probs = torch.softmax(mixture_logits, dim=-1)
 
-        gaussians_log_prob = independent_gaussian_log_prob(targets[:, None, :],
-                                                           means, sigmas)
+        gaussians_log_prob = independent_gaussian_log_prob(
+            target_directions[:, None, :], means, sigmas)
 
         nll_losses = -torch.logsumexp(mixture_probs.log() + gaussians_log_prob,
                                       dim=-1)
@@ -558,15 +603,15 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         return mean_loss
 
-    def sample_tracking_directions(self,
-                                   outputs: Tuple[Tensor, Tensor, Tensor]) \
-            -> Tensor:
+    def sample_tracking_direction_prob(
+            self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor]):
         """
         From the gaussian mixture parameters, sample one of the gaussians
         using the mixture probabilities, then sample a direction from the
         selected gaussian.
         """
-        mixture_logits, means, sigmas = self._get_gaussian_parameters(outputs)
+        mixture_logits, means, sigmas = \
+            self._get_gaussian_parameters(learned_gaussian_params)
 
         # Create probability distribution and sample a gaussian per point
         # (or per time step per sequence)
@@ -588,23 +633,29 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         return direction
 
-    def _get_gaussian_parameters(self,
-                                 model_output: Tuple[Tensor, Tensor, Tensor]) \
-            -> Tuple[Tensor, Tensor, Tensor]:
+    def get_tracking_direction_det(self, learned_gaussian_params: Tensor):
+        # toDo. max of the principal eigenvector for each gaussian?
+        raise NotImplementedError
+
+    def _get_gaussian_parameters(
+            self, gaussian_params: Tuple[Tensor, Tensor, Tensor]):
         """From the model output, extract the mixture parameters, the means
         and the sigmas, all reshaped according to the number of components
         and the dimensions (3D). i.e. [batch_size, n_gaussians] for the mixture
         logit and [batch_size, n_gaussians, 3] for the means and sigmas.
         """
-        mixture_logits = model_output[0].squeeze(dim=1)
-        means = model_output[1].reshape((-1, self.n_gaussians, 3))
-        sigmas = model_output[2].reshape((-1, self.n_gaussians, 3))
+        mixture_logits = gaussian_params[0].squeeze(dim=1)
+        means = gaussian_params[1].reshape((-1, self.nb_gaussians, 3))
+        sigmas = gaussian_params[2].reshape((-1, self.nb_gaussians, 3))
 
         return mixture_logits, means, sigmas
 
 
 class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
     """
+    Regression model. The output is not a x,y,z value but the learned
+    parameters of the distribution representing the local direction.
+
     This model provides probabilistic outputs using the Fisher - von Mises
     distribution [1][2], which resembles a gaussian on the sphere. As such,
     it does not require unit normalization when sampling, and should be more
@@ -621,25 +672,16 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
     [3]: Directional Statistics (Mardia and Jupp, 1999)
     [4]: https://github.com/jasonlaska/spherecluster
     """
-    supportsCompressedStreamlines = False
-
     def __init__(self, input_size: int, dropout: float = None):
-        # Prepare the dropout, Relu, loop:
-        super().__init__(input_size, dropout)
+        super().__init__(input_size, dropout,
+                         key='fisher-von-mises',
+                         supports_compressed_streamlines=False,
+                         loss_description='negative log-likelihood')
 
         self.layers_mean = init_2layer_fully_connected(input_size, 3)
         self.layers_kappa = init_2layer_fully_connected(input_size, 1)
 
         # Loss will be defined in compute_loss, using torch distribution
-
-    @property
-    def params(self):
-        params = super().params  # type: dict
-        params.update({
-            'key': 'fisher-von-mises',
-            'loss': 'negative log-likelihood'
-        })
-        return params
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         """Run the inputs through the fully-connected layer.
@@ -664,26 +706,27 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
 
         return means, kappas
 
-    def compute_loss(self, outputs: Tuple[Tensor, Tensor], targets: Tensor):
+    def compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
+                     target_directions: Tensor):
         """Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
         """
         # mu.shape : [flattened_sequences, 3]
-        mu, kappa = outputs
+        mu, kappa = learned_fisher_params
 
-        log_prob = fisher_von_mises_log_prob(mu, kappa, targets, eps)
+        log_prob = fisher_von_mises_log_prob(mu, kappa, target_directions, eps)
         nll_losses = -log_prob
 
         mean_loss = nll_losses.mean()
 
         return mean_loss
 
-    def sample_tracking_directions(self, outputs: Tuple[Tensor, Tensor]) \
-            -> Tensor:
+    def sample_tracking_direction_prob(
+            self, learned_fisher_params: Tuple[Tensor, Tensor]):
         """Sample directions from a fisher von mises distribution.
         """
         # mu.shape : [flattened_sequences, 3]
-        mus, kappas = outputs
+        mus, kappas = learned_fisher_params
 
         n_samples = mus.shape[0]
 
@@ -705,6 +748,10 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         directions = torch.as_tensor(result, dtype=torch.float32)
 
         return directions
+
+    def get_tracking_direction_det(self, learned_fisher_params: Tensor):
+        # toDo. ?
+        raise NotImplementedError
 
     @staticmethod
     def _sample_weight(kappa):
@@ -738,7 +785,10 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
     """
     def __init__(self, input_size: int, dropout: float = None,
                  n_cluster: int = 3):
-        super().__init__(input_size, dropout)
+        super().__init__(input_size, dropout,
+                         key='fisher-von-mises-mixture',
+                         supports_compressed_streamlines=False,
+                         loss_description='negative log-likelihood')
 
         self.n_cluster = n_cluster
         raise NotImplementedError
@@ -747,7 +797,6 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
     def params(self):
         params = super().params
         params.update({
-            'key': 'fisher-von-mises-mixture',
             'n_cluster': self.n_cluster
         })
         return params
@@ -755,11 +804,14 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         raise NotImplementedError
 
-    def compute_loss(self, outputs: Tuple[Tensor, Tensor], targets: Tensor):
+    def compute_loss(self, outputs: Tuple[Tensor, Tensor],
+                     target_directions: Tensor):
         raise NotImplementedError
 
-    def sample_tracking_directions(self, outputs: Tuple[Tensor, Tensor]) \
-            -> Tensor:
+    def sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor]):
+        raise NotImplementedError
+
+    def get_tracking_direction_det(self, learned_fisher_params: Tensor):
         raise NotImplementedError
 
 

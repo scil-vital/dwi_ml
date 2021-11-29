@@ -198,7 +198,7 @@ def process_volumes(group: str, file_list: List[str], subj_id,
         standardized_img = nib.Nifti1Image(group_data, group_affine)
         nib.save(standardized_img, str(output_fname))
 
-    return group_data, group_affine, group_header
+    return group_data, group_affine, group_header, group_res
 
 
 def process_streamlines(
@@ -283,7 +283,7 @@ def process_streamlines(
                     header = 'same'
 
                 # Loading bundle and sending to wanted space
-                logging.info("          - Processing bundle {}"
+                logging.info("       - Processing bundle {}"
                              .format(os.path.basename(bundle_name)))
                 sft = load_tractogram(str(bundle_file), header)
                 sft.to_center()

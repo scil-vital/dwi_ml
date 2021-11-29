@@ -54,9 +54,9 @@ class SubjectDataAbstract(object):
 
 class SubjectData(SubjectDataAbstract):
     """Non-lazy version"""
-    def __init__(self, volume_groups: List[str], nb_features: List[int],
-                 streamline_groups: List[str], subject_id: str,
-                 mri_data_list: List[MRIData] = None,
+    def __init__(self, subject_id: str, volume_groups: List[str],
+                 nb_features: List[int], mri_data_list: List[MRIData] = None,
+                 streamline_groups: List[str] = None,
                  sft_data_list: List[SFTData] = None):
         """
         Additional params compared to super:
@@ -107,9 +107,9 @@ class SubjectData(SubjectDataAbstract):
             sft_data = SFTData.init_from_hdf_info(hdf_file[subject_id][group])
             subject_sft_data_list.append(sft_data)
 
-        subj_data = cls(volume_groups, nb_features, streamline_groups,
-                        subject_id, subject_mri_data_list,
-                        subject_sft_data_list)
+        subj_data = cls(subject_id,
+                        volume_groups, nb_features, subject_mri_data_list,
+                        streamline_groups, subject_sft_data_list)
 
         return subj_data
 
@@ -141,6 +141,19 @@ class LazySubjectData(SubjectDataAbstract):
         Instantiating a single subject data: NOT LOADING info and use __init__
         (so in short: this does basically nothing, the lazy data is kept
         as hdf5 file.
+
+        Parameters
+        ----------
+        subject_id: str
+            Name of the subject
+        log: logging.Logger
+            Logger. Useful to use tqdm-compatible logger if instantiating
+            subjects in a tqdm loop.
+        hdf_file: h5py.File
+            hdf handle.
+        group_info: Tuple(str, int, str)
+            Tuple containing (volume_groups, nb_features, streamline_groups)
+            for this subject.
         """
         volume_groups, nb_features, streamline_groups = prepare_groups_info(
             subject_id, log, hdf_file, group_info)
@@ -156,18 +169,18 @@ class LazySubjectData(SubjectDataAbstract):
         Returns a List[LazyMRIData]"""
 
         if self.hdf_handle is not None:
+            if not self.hdf_handle.id.valid:
+                logging.warning("Tried to access subject's volumes but its "
+                                "hdf handle is not valid (closed file?)")
             mri_data_list = []
             for group in self.volume_groups:
                 hdf_group = self.hdf_handle[self.subject_id][group]
                 mri_data_list.append(LazyMRIData.init_from_hdf_info(hdf_group))
 
             return mri_data_list
-        elif not self.hdf_handle.id.valid:
-            logging.warning("Tried to access subject's volumes but its hdf "
-                            "handle is not valid (closed file?)")
         else:
             logging.debug("Can't provide mri_data_list: hdf_handle not set.")
-        return None
+            return None
 
     @property
     def sft_data_list(self) -> Union[List[LazySFTData], None]:

@@ -14,40 +14,55 @@ import h5py
 import numpy as np
 import torch
 
+from scilpy.image.datasets import DataVolume
+from torch import Tensor
+
 
 class MRIDataAbstract(object):
     """For a subject, MRI data volume with its properties such as the vox2rasmm
     affine and the subject_id. Ex: dMRI, T1, masks, etc.
     """
     def __init__(self, data: Union[np.ndarray, h5py.Group],
-                 affine: np.ndarray):
+                 affine: np.ndarray, voxres: np.ndarray,
+                 interpolation: str = None):
         """
         Encapsulating data, affine and subject ID.
 
         Parameters
+        ----------
         data: np.ndarray or h5py.Group
             In the non-lazy version, data is a vector of loaded data
             (np.ndarray), one per group. In the lazy version, data is the
             h5py.Group containing the data.
-        affine_vox2rasmm: np.ndarray
+        affine: np.ndarray
             Affine is a loaded array in both the lazy and non-lazy version.
+        voxres: np.array(3,)
+            The pixel resolution, ex, using img.header.get_zooms()[:3].
+        interpolation: str or None
+            The interpolation choice amongst "trilinear" or "nearest". If
+            None, functions getting a coordinate in mm instead of voxel
+            coordinates on the data are not available.
         """
         # Data management depends on lazy or not
-        self._data = self._get_internal_data(data)
+        self.voxres = voxres
+        self.interpolation = interpolation
         self.affine = torch.as_tensor(affine, dtype=torch.float)
 
-    @classmethod
-    def init_from_hdf_info(cls, hdf_group: h5py.Group):
-        raise NotImplementedError
+        # _data: in lazy, it is a hdf5 group. In non-lazy, it is the already
+        # loaded data.
+        self._data = data
 
-    @staticmethod
-    def _get_internal_data(data):
-        """In non-lazy, the data is simply self._data, already loaded. In lazy,
-        this returns non-loaded data."""
+    @classmethod
+    def init_from_hdf_info(cls, hdf_group: h5py.Group,
+                           interpolation: str = None):
         raise NotImplementedError
 
     @property
-    def as_tensor(self):
+    def as_data_volume(self) -> DataVolume:
+        raise NotImplementedError
+
+    @property
+    def as_tensor(self) -> Tensor:
         raise NotImplementedError
 
     @property
@@ -56,60 +71,64 @@ class MRIDataAbstract(object):
 
 
 class MRIData(MRIDataAbstract):
-    def __init__(self, data: np.ndarray, affine: np.ndarray):
-        super().__init__(data, affine)
+    def __init__(self, data: np.ndarray, affine: np.ndarray,
+                 voxres: np.ndarray, interpolation: str = None):
+        super().__init__(data, affine, voxres, interpolation)
 
     @classmethod
-    def init_from_hdf_info(cls, hdf_group: h5py.Group):
+    def init_from_hdf_info(cls, hdf_group: h5py.Group,
+                           interpolation: str = None):
         """
         Creating class instance from the hdf in cases where data is not
         loaded yet. Non-lazy = loading the data here.
         """
         data = np.array(hdf_group['data'], dtype=np.float32)
         affine = np.array(hdf_group.attrs['affine'], dtype=np.float32)
+        voxres = np.array(hdf_group.attrs['voxres'], dtype=np.float32)
 
-        # Return an instance of SubjectMRIData instantiated through __init__
-        # with this loaded data:
-        return cls(data, affine)
+        return cls(data, affine, voxres, interpolation)
 
-    @staticmethod
-    def _get_internal_data(data):
-        return torch.as_tensor(data, dtype=torch.float)
+    @property
+    def as_data_volume(self) -> DataVolume:
+        """Data is a np array"""
+        return DataVolume(self._data, self.voxres, self.interpolation)
 
     @property
     def as_tensor(self):
-        """Returns data as a torch tensor. _data is already set as such."""
-        return self._data
+        """Returns data as a torch tensor."""
+        return torch.as_tensor(self._data, dtype=torch.float)
 
 
 class LazyMRIData(MRIDataAbstract):
     """Class used to encapsulate MRI metadata alongside a lazy data volume,
     such as the vox2rasmm affine or the subject_id."""
 
-    def __init__(self, data: h5py.Group = None, affine: np.ndarray = None):
-        super().__init__(data, affine)
+    def __init__(self, data: h5py.Group = None, affine: np.ndarray = None,
+                 voxres: np.ndarray = None, interpolation: str = None):
+        super().__init__(data, affine, voxres, interpolation)
 
     @classmethod
-    def init_from_hdf_info(cls, hdf_group: h5py.Group):
-        """Creating class instance from the hdf in cases where data is not
-        loaded yet. Not loading the data, but loading the affine."""
-
+    def init_from_hdf_info(cls, hdf_group: h5py.Group,
+                           interpolation: str = None):
+        """
+        Creating class instance from the hdf in cases where data is not
+        loaded yet. Not loading the data, but loading the affine and res.
+        """
         data = hdf_group['data']
         affine = np.array(hdf_group.attrs['affine'], dtype=np.float32)
+        voxres = np.array(hdf_group.attrs['voxres'], dtype=np.float32)
 
-        # Return an instance of LazySubjectMRIData instantiated through
-        # __init__ with this non-loaded data:
-        return cls(data, affine)
+        return cls(data, affine, voxres, interpolation)
 
-    @staticmethod
-    def _get_internal_data(data):
-        """Different from the non-lazy version. Data is not loaded as a
-        tensor yet."""
-        return data
+    @property
+    def as_data_volume(self) -> DataVolume:
+        """Data is a np array"""
+        return DataVolume(np.array(self._data, dtype=np.float32),
+                          self.voxres, self.interpolation)
 
     @property
     def as_tensor(self):
         """Returns data as a torch tensor. Different from the non-lazy version:
-        data is not a tensor yet."""
+        data is not loaded yet."""
         return torch.as_tensor(np.array(self._data, dtype=np.float32),
                                dtype=torch.float)

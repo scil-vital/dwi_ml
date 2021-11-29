@@ -435,7 +435,7 @@ class BatchStreamlinesSampler(Sampler):
             global_unused_streamlines[subj_slice]) + subj_slice.start
 
         self.log.info("    Available streamlines for this subject: {}"
-                       .format(len(subj_unused_ids_in_global)))
+                      .format(len(subj_unused_ids_in_global)))
 
         # No streamlines remain for this subject
         if len(subj_unused_ids_in_global) == 0:
@@ -640,8 +640,10 @@ class BatchStreamlinesSampler(Sampler):
 
             # Add all (augmented) streamlines to the batch
             # What we want is the streamline coordinates, to eventually get
-            # the underlying input(s). Sending to vox
+            # the underlying input(s). Sending to vox and to corner to
+            # be able to use our trilinear interpolation
             sft.to_vox()
+            sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
 
             return batch_streamlines, final_s_ids_per_subj
@@ -798,6 +800,8 @@ class BatchStreamlinesSamplerWithInputs(BatchStreamlinesSampler):
 
             return batch
         else:
+            # At this point batch_streamlines are in voxel space with
+            # corner origin.
             batch_streamlines, final_s_ids_per_subj, batch_directions = \
                 batch
 
@@ -825,7 +829,8 @@ class BatchStreamlinesSamplerWithInputs(BatchStreamlinesSampler):
         Params
         ------
         batch_streamlines: list[np.array]
-            The streamlines (after data augmentation)
+            The streamlines (after data augmentation) in voxel space, with
+            corner origin.
         streamline_ids_per_subj: Dict[int, slice]
             The ids corresponding to each subject (so we can load the
             associated subject's input volume).
@@ -875,7 +880,7 @@ class BatchStreamlinesSamplerWithInputs(BatchStreamlinesSampler):
             # Prepare the volume data, possibly adding neighborhood
             # (Thus new coords_torch possibly contain the neighborhood points)
             # Coord_clipped contain the coords after interpolation
-            subj_x_data, coords_torch, coords_clipped = \
+            subj_x_data, coords_torch = \
                 self.model.prepare_inputs(data_volume, flat_subj_x_coords,
                                           device)
 
@@ -887,9 +892,18 @@ class BatchStreamlinesSamplerWithInputs(BatchStreamlinesSampler):
             if save_batch_input_mask:
                 logging.debug("DEBUGGING MODE. Returning batch_streamlines "
                               "and mask together with inputs.")
+
+                # Clipping used coords (i.e. possibly with neighborhood)
+                # outside volume
+                lower = torch.as_tensor([0, 0, 0], device=device)
+                upper = torch.as_tensor(data_volume.shape[:3], device=device)
+                upper -= 1
+                coords_to_idx_clipped = torch.min(
+                    torch.max(torch.floor(coords_torch).long(), lower),
+                    upper)
                 input_mask = torch.tensor(np.zeros(data_volume.shape[0:3]))
                 for s in range(len(coords_torch)):
-                    input_mask.data[tuple(coords_clipped[s, :])] = 1
+                    input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
                 batch_input_masks.append(input_mask)
 
                 return batch_streamlines, batch_input_masks, batch_x_data

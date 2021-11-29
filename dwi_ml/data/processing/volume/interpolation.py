@@ -16,14 +16,14 @@ B1 = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
 # We will use the 8 voxels surrounding current position to interpolate a
 # value. See ref https://spie.org/samples/PM159.pdf. The point p000 = [0, 0, 0]
 # is the bottom corner of the current position (using floor).
-idx = np.array([[0, 0, 0],
-                [0, 0, 1],
-                [0, 1, 0],
-                [0, 1, 1],
-                [1, 0, 0],
-                [1, 0, 1],
-                [1, 1, 0],
-                [1, 1, 1]], dtype=np.float)
+idx_box = np.array([[0, 0, 0],
+                    [0, 0, 1],
+                    [0, 1, 0],
+                    [0, 1, 1],
+                    [1, 0, 0],
+                    [1, 0, 1],
+                    [1, 1, 0],
+                    [1, 1, 1]], dtype=np.float)
 
 
 def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
@@ -41,12 +41,13 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
     volume : torch.Tensor with 3D or 4D shape
         The input volume to interpolate from
     coords : torch.Tensor with shape (N,3)
-        The coordinates where to interpolate
+        The coordinates where to interpolate. (Origin = corner, space = vox).
 
     Returns
     -------
     output : torch.Tensor with shape (N, #modalities)
         The list of interpolated values
+    coords_to_idx_clipped: the coords after floor and clipping in box.
 
     References
     ----------
@@ -59,30 +60,32 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
     device = volume.device
 
     # Send data to device
-    idx_torch = torch.as_tensor(idx, dtype=torch.float, device=device)
+    idx_box_torch = torch.as_tensor(idx_box, dtype=torch.float, device=device)
     B1_torch = torch.as_tensor(B1, dtype=torch.float, device=device)
 
     if volume.dim() <= 2 or volume.dim() >= 5:
         raise ValueError("Volume must be 3D or 4D!")
 
-    # indices are the flor of coordinates + idx, boxes with 8 corners around
-    # given coordinates.
+    # indices are the floor of coordinates + idx, boxes with 8 corners around
+    # given coordinates. (Floor means origin = corner)
     # coords' shape = [n_timesteps, 3]
     # coords[:, None, :] shape = [n_timesteps, 3]
     # coords[:, None, :] + idx_torch shape: [n_timesteps, 8, 3]
     #   -> the box around each time step
     # reshaped as (-1,3) = [n_timesteps*8, 3]
     # torch needs indices to be cast to long
-    indices_unclipped = \
-        torch.floor(coords[:, None, :] + idx_torch).reshape((-1, 3)).long()
+    idx_box_unclipped = \
+        torch.floor(coords[:, None, :] + idx_box_torch).reshape((-1, 3)).long()
 
     # Clip indices to make sure we don't go out-of-bounds
+    # Origin = corner means the minimum is 0.
+    #                       the maximum is shape.
+    # Ex, for shape 150, last voxel is #149, with possible coords up to 149.999.
     lower = torch.as_tensor([0, 0, 0], device=device)
     upper = torch.as_tensor(volume.shape[:3], device=device) - 1
-    indices = torch.min(torch.max(indices_unclipped, lower), upper)
-    coords_clipped = torch.min(torch.max(torch.round(coords).long(), lower),
-                               upper)
+    idx_box_clipped = torch.min(torch.max(idx_box_unclipped, lower), upper)
 
+    # Setting Q1 such as in equation 9.9
     d = coords - torch.floor(coords)
     dx, dy, dz = d[:, 0], d[:, 1], d[:, 2]
     Q1 = torch.stack([torch.ones_like(dx), dx, dy, dz,
@@ -90,23 +93,28 @@ def torch_trilinear_interpolation(volume: torch.Tensor, coords: torch.Tensor):
                       dx * dy * dz], dim=0)
 
     if volume.dim() == 3:
-        # Fetch volume data at indices
-        p = volume[indices[:, 0], indices[:, 1], indices[:, 2]]
+        # Fetch volume data at indices based on equation 9.11.
+        p = volume[idx_box_clipped[:, 0],
+                   idx_box_clipped[:, 1],
+                   idx_box_clipped[:, 2]]
         p = p.reshape((coords.shape[0], -1)).t()  # -1 = the 8 corners
 
+        # Finding coordinates with equation 9.12a.
         output = torch.sum(p * torch.mm(B1_torch.t(), Q1), dim=0)
 
-        return output, coords_clipped
+        return output
     elif volume.dim() == 4:
 
         # Fetch volume data at indices
-        p = volume[indices[:, 0], indices[:, 1], indices[:, 2], :]
+        p = volume[idx_box_clipped[:, 0],
+                   idx_box_clipped[:, 1],
+                   idx_box_clipped[:, 2], :]
         p = p.reshape((coords.shape[0], 8, volume.shape[-1]))
 
         output = \
             torch.sum(p * torch.mm(B1_torch.t(), Q1).t()[:, :, None], dim=1)
 
-        return output, coords_clipped
+        return output
     else:
         raise ValueError("Interpolation: There was a problem with the "
                          "volume's number of dimensions!")

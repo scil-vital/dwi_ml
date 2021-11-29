@@ -184,11 +184,11 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
             # Interpolate signal for each (new) point
             coords_torch = torch.as_tensor(coords, dtype=torch.float,
                                            device=device)
-            flat_subj_x_data, coords_clipped = \
-                torch_trilinear_interpolation(data_volume, coords_torch)
+            flat_subj_x_data = torch_trilinear_interpolation(data_volume,
+                                                                coords_torch)
 
             # Reshape signal into (n_points, new_nb_features)
-            # DWI data features for each neighboor are contatenated.
+            # DWI data features for each neighbor are concatenated.
             #    dwi_feat1_neig1  dwi_feat2_neig1 ...  dwi_featn_neighbm
             #  p1        .              .                    .
             #  p2        .              .                    .
@@ -200,10 +200,10 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
             # Interpolate signal for each point
             coords_torch = torch.as_tensor(coords, dtype=torch.float,
                                            device=device)
-            subj_x_data, coords_clipped = \
-                torch_trilinear_interpolation(data_volume.data, coords_torch)
+            subj_x_data = torch_trilinear_interpolation(data_volume.data,
+                                                        coords_torch)
 
-        return subj_x_data, coords_torch, coords_clipped
+        return subj_x_data, coords_torch
 
     def prepare_previous_dirs(self, all_previous_dirs, device):
         """

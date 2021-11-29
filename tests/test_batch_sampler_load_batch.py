@@ -9,7 +9,7 @@ import nibabel as nib
 import numpy as np
 from dipy.io.stateful_tractogram import (StatefulTractogram,
                                          set_sft_logger_level)
-from dipy.io.streamline import (save_tractogram, Space)
+from dipy.io.streamline import (save_tractogram, Space, Origin)
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.experiment.batch_samplers import BatchStreamlinesSamplerWithInputs
@@ -78,7 +78,8 @@ def test_batch_loading_no_computations(
 
     logging.root.setLevel('INFO')
 
-    sft = StatefulTractogram(batch_streamlines, ref, space=Space.VOX)
+    sft = StatefulTractogram(batch_streamlines, ref, space=Space.VOX,
+                             origin=Origin.TRACKVIS)
     save_tractogram(sft, saving_path + '/test_batch_reverse_split_' +
                     now_s + '.trk')
 
@@ -128,8 +129,10 @@ def test_batch_loading_computations(
     now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
 
     print("Saving subj 0's tractogram {}".format('test_batch1_' + now_s))
-    sft = StatefulTractogram(batch_streamlines, ref, space=Space.VOX)
-    save_tractogram(sft, saving_path + '/test_batch_underlying_mask_' + now_s + '.trk')
+    sft = StatefulTractogram(batch_streamlines, ref, space=Space.VOX,
+                             origin=Origin.TRACKVIS)
+    save_tractogram(
+        sft, saving_path + '/test_batch_underlying_mask_' + now_s + '.trk')
 
     print("Saving subj 0's underlying coords mask: {}"
           .format('test_batch1_underlying_mask_' + now_s))

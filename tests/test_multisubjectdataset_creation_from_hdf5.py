@@ -100,7 +100,7 @@ def test_lazy(args):
     print("  - Directly accessing (_getitem_) should bug: need to send "
           "a hdf_handle.")
     try:
-        subj0 = training_set.subjs_data_list[0]
+        _ = training_set.subjs_data_list[0]
     except AssertionError:
         print("    Try, catch: Yes, bugged.")
     print("  - Accessing through open_handle_and_getitem")

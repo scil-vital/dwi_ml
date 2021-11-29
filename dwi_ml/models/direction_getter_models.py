@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from math import ceil
-from typing import Any, List, Tuple
+from typing import Any, Tuple
 
 import dipy.data
 import numpy as np

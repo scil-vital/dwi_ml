@@ -4,7 +4,7 @@
 # Tip:  To set a boolean in yaml, write either True/False or On/Off. Both
 #       choices correspond to python's True/False.
 #
-# For a parameters description, see dwi_ml.training.parameter_description.
+# For the parameters' description, see dwi_ml.training.parameter_description.
 ##################
 
 sampling:

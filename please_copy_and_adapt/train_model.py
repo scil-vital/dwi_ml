@@ -16,14 +16,14 @@ import yaml
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.experiment.batch_samplers import BatchStreamlinesSamplerWithInputs
+from dwi_ml.training.batch_samplers import BatchStreamlinesSamplerOneInputAndPD
 from dwi_ml.experiment.monitoring import EarlyStoppingError
 from dwi_ml.experiment.timer import Timer
 from dwi_ml.models.main_models import \
     MainModelAbstractNeighborsPreviousDirs
-from dwi_ml.experiment.checks_for_experiment_parameters import (
+from dwi_ml.training.checks_for_training_parameters import (
     check_all_experiment_parameters)
-import dwi_ml.experiment.parameter_description as params_d
+import dwi_ml.training.training_parameters_description as params_d
 from dwi_ml.training.trainers import DWIMLTrainer
 from dwi_ml.training.training_utils import (
     parse_args_train_model,
@@ -59,7 +59,7 @@ def prepare_batchsamplers(dataset, train_sampler_params,
     """
     with Timer("\nPreparing batch samplers...", newline=True, color='green'):
         if dataset.training_set.nb_subjects > 0:
-            train_batch_sampler = BatchStreamlinesSamplerWithInputs(
+            train_batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
                 dataset.training_set, model=model, **train_sampler_params)
             logging.info(
                 "\nTraining batch sampler user-defined parameters: \n" +
@@ -68,7 +68,7 @@ def prepare_batchsamplers(dataset, train_sampler_params,
             train_batch_sampler = None
 
         if dataset.validation_set.nb_subjects > 0:
-            valid_batch_sampler = BatchStreamlinesSamplerWithInputs(
+            valid_batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
                 dataset.validation_set, model=model, **valid_sampler_params)
             logging.info(
                 "\nValidation batch sampler user-defined parameters: \n" +
@@ -207,8 +207,13 @@ def main():
         print(params_d.__doc__)
         exit(0)
 
-    # Initialize logger
-    logging.basicConfig(level=args.logging.upper())
+    # Initialize logger for preparation (loading data, model, experiment)
+    # If 'as_much_as_possible', we will modify the logging level when starting
+    # the training, else very ugly
+    logging_level = args.logging_choice.upper()
+    if args.logging_choice == 'as_much_as_possible':
+        logging_level = 'DEBUG'
+    logging.basicConfig(level=logging_level)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
     if path.exists(os.path.join(args.experiment_path, args.experiment_name,
@@ -225,9 +230,9 @@ def main():
 
     # Run (or continue) the experiment
     try:
-        with Timer("\n\n****** Running model!!! ********",
+        with Timer("\n\n****** Training and validating model!!! ********",
                    newline=True, color='magenta'):
-            trainer.run_experiment()
+            trainer.train_and_validate(args.logging_choice)
     except EarlyStoppingError as e:
         print(e)
 

@@ -118,7 +118,6 @@ def main():
 
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!
-    # toDo Not sure why it's not working. Because of my python 3.9?
     set_sft_logger_level('WARNING')
 
     # Verify that dwi_ml_ready folder is found

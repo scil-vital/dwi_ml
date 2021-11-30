@@ -12,31 +12,10 @@ from dwi_ml.data.processing.space.neighborhood import (
     prepare_neighborhood_information)
 from dwi_ml.data.processing.volume.interpolation import (
     torch_trilinear_interpolation)
+from dwi_ml.utils import TqdmLoggingHandler
 
 
-class ModelAbstract(torch.nn.Module):
-    """
-    To be used for all sub-models (ex, layers in a main model).
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.log = logging.getLogger()  # Gets the root
-
-    @property
-    def params(self):
-        """All parameters necessary to create again the same model"""
-        return {}
-
-    def set_log(self, log: logging.Logger):
-        """Possibility to pass a tqdm-compatible logger in case the dataloader
-        is iterated through a tqdm progress bar. Note that, of course, log
-        outputs will be confusing, particularly in debug mode, considering
-        that the dataloader may use more than one method in parallel."""
-        self.log = log
-
-
-class MainModelAbstract(ModelAbstract):
+class MainModelAbstract(torch.nn.Module):
     """
     To be used for all models that will be trained. Defines the way to save
     the model.
@@ -44,9 +23,29 @@ class MainModelAbstract(ModelAbstract):
     It should also define a forward() method.
     """
     def __init__(self, experiment_name='my_model'):
+        """
+        Params
+        ------
+        experiment_name: str
+            Name of the experiment
+        """
         super().__init__()
+
         self.experiment_name = experiment_name
         self.best_model_state = None
+
+        # Model's logging level can be changed separately from main scripts.
+        self.logger = logging.getLogger('model_logger')
+        self.logger.propagate = False
+        self.logger.setLevel(logging.root.level)
+
+    def set_logger_level(self, level):
+        self.logger.setLevel(level)
+
+    def make_logger_tqdm_fitted(self):
+        """Possibility to use a tqdm-compatible logger in case the model
+        is used through a tqdm progress bar."""
+        self.logger.addHandler(TqdmLoggingHandler())
 
     @property
     def params(self):
@@ -82,7 +81,7 @@ class MainModelAbstract(ModelAbstract):
         os.makedirs(model_dir)
 
         # Save attributes
-        name = os.path.join(model_dir, "parametersr.json")
+        name = os.path.join(model_dir, "parameters.json")
         with open(name, 'w') as json_file:
             json_file.write(json.dumps(self.params, indent=4,
                                        separators=(',', ': ')))
@@ -100,6 +99,11 @@ class MainModelAbstract(ModelAbstract):
 
 # One example of model
 class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
+    """
+    Abstract class for a model of type:
+        input: one volume in the hdf5 file + (optional) neighborhood
+        previous_dirs: nb of previous dirs can be 0.
+    """
     def __init__(self, experiment_name, nb_features, input_group_name,
                  nb_previous_dirs, neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, Iterable[float], None]
@@ -138,7 +142,7 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
     def _prepare_neighborhood(self):
         if self.neighborhood_type is None:
             if self.neighborhood_radius:
-                logging.warning(
+                self.logger.warning(
                     "You have chosen not to add a neighborhood (value None), "
                     "but you have given a neighborhood radius. Discarded.")
             return []
@@ -173,7 +177,20 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
 
         return params
 
-    def prepare_inputs(self, data_volume, coords, device):
+    def prepare_inputs(self, data_tensor, coords, device):
+        """
+        Params
+        ------
+        data_volume: tensor
+            The data.
+        coords: a np.array(n, 3)
+            One set of 3D coordinates per inputs points to compute.
+            Neighborhood will be added to these points based on model
+            parameters.
+            Coords must be in voxel world, origin='corner', to use
+            trilinear interpolation.
+        device: torch device.
+        """
         if self.neighborhood_type is not None:
             n_input_points = coords.shape[0]
 
@@ -184,7 +201,7 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
             # Interpolate signal for each (new) point
             coords_torch = torch.as_tensor(coords, dtype=torch.float,
                                            device=device)
-            flat_subj_x_data = torch_trilinear_interpolation(data_volume,
+            flat_subj_x_data = torch_trilinear_interpolation(data_tensor,
                                                              coords_torch)
 
             # Reshape signal into (n_points, new_nb_features)
@@ -200,19 +217,26 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
             # Interpolate signal for each point
             coords_torch = torch.as_tensor(coords, dtype=torch.float,
                                            device=device)
-            subj_x_data = torch_trilinear_interpolation(data_volume.data,
+            subj_x_data = torch_trilinear_interpolation(data_tensor.data,
                                                         coords_torch)
 
         return subj_x_data, coords_torch
 
-    def prepare_previous_dirs(self, all_previous_dirs, device):
+    def prepare_previous_dirs(self, all_dirs, device):
         """
-        About device: see compute_inputs
+        Params
+        ------
+        all_dirs: list[tensor]
+            A list of length nb_streamlines. Each tensor is of size
+            [(N-1) x 3]; where N is the length of the streamline.
+        device: Needed when this is called through the batch samplers. See
+            BatchStreamlinesSamplerOneInputAndPD.compute_inputs
 
         Returns:
+        -------
         previous_dirs: list[tensor]
             A list of length nb_streamlines. Each tensor is of size
-            [nb_time_step, nb_previous_dir x 3]; the n previous dirs at each
+            [N, nb_previous_dir x 3]; the n previous dirs at each
             point of the streamline. When previous dirs do not exist (ex,
             the 2nd previous dir at the first time step), value is 0.
         """
@@ -229,7 +253,7 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
                                    s[:-(i + 1)]))
                         for i in range(self.nb_previous_dirs)],
                        dim=1)
-             for s in all_previous_dirs]
+             for s in all_dirs]
         return previous_dirs
 
     def compute_loss(self, outputs, targets):

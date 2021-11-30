@@ -48,10 +48,16 @@ def parse_args_train_model():
                    help='If a checkpoint exists, max_epochs can be increased '
                         'to allow experiment \nto continue if the allowed '
                         'number of epochs has been previously reached.')
-    p.add_argument('--logging', choices=['error', 'warning', 'info', 'debug'],
-                   default='info',
-                   help="Logging level. One of ['error', 'warning', 'info', "
-                        "'debug']. Default: Info.")
+    p.add_argument('--logging', dest='logging_choice',
+                   choices=['error', 'warning', 'info', 'as_much_as_possible',
+                            'debug'],
+                   help="Logging level. Error, warning, info are as usual.\n"
+                        "The other options are two equivalents of 'debug' "
+                        "level. \nWith 'as_much_as_possible', we print the "
+                        "debug level only when the final result is still "
+                        "readable (even during parallel training and during "
+                        "tqdm loop). 'debug' print everything always, "
+                        "even if ugly.")
     p.add_argument('--comet_workspace', metavar='w',
                    help='Your comet workspace. If not set, comet.ml will not '
                         'be used. See our \ndocs/Getting Started for more '

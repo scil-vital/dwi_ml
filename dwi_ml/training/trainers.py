@@ -4,7 +4,6 @@ import logging
 import os
 import shutil
 import time
-from datetime import datetime
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import contextlib2
@@ -15,7 +14,7 @@ from tqdm import tqdm
 
 from dwi_ml.experiment.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
-from dwi_ml.experiment.batch_samplers import BatchStreamlinesSampler
+from dwi_ml.training.batch_samplers import BatchStreamlinesSampler
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.utils import TqdmLoggingHandler
 
@@ -124,6 +123,9 @@ class DWIMLTrainer:
         self.valid_batch_sampler = batch_sampler_validation
         if self.valid_batch_sampler is None:
             self.use_validation = False
+            logging.warning("WARNING! There is not validation set. Loss for "
+                            "best epoch monitoring will be the training loss. "
+                            "\nBest practice is to have a validation set.")
         else:
             self.use_validation = True
         self.model = model
@@ -143,28 +145,11 @@ class DWIMLTrainer:
         # ----------------------
         # Values fixed by us
         # ----------------------
-
-        # Prepare log to work with tqdm. Use self.log instead of logging
-        # inside any tqdm loop. Batch samplers will be used inside loops so
-        # we are also setting their logs.
-        self.log = logging.getLogger('for_tqdm' + str(datetime.now()))
-        self.log.setLevel(logging.root.level)
-        self.log.addHandler(TqdmLoggingHandler())
-        self.log.propagate = False
-
-        # Developers: change level below to WARNING when developing trainer
-        # with a debug level to avoid seeing a lot of logs!
-        sub_log = logging.getLogger('log-for-samplers')
-        sub_log.setLevel(logging.root.level)
-        sub_log.propagate = False
-        self.train_batch_sampler.set_log(sub_log)
-        if self.use_validation:
-            self.valid_batch_sampler.set_log(sub_log)
-        else:
-            sub_log.warning("WARNING! There is not validation set. Loss for "
-                            "best epoch monitoring will be the training loss. "
-                            "\nBest practice is to have a validation set.")
-        self.model.set_log(self.log)
+        self.logger = logging.getLogger('training')
+        self.logger.propagate = False
+        # Current level is set at root's level, but this can be changed at
+        # training time.
+        self.set_log_level()
 
         # Time limited run
         # toDo. Change this for a parameter???
@@ -259,6 +244,39 @@ class DWIMLTrainer:
                                           lr=learning_rate,
                                           weight_decay=weight_decay)
 
+    def set_log_level(self, logger_level=None):
+        """
+        Prepare log to work with tqdm. Use self.log instead of logging
+        inside any tqdm loop. Batch samplers will be used inside loops so
+        we are also setting their logs.
+        """
+        previous_level = logging.root.level
+
+        if logger_level is None:
+            logger_level = logging.root.level
+        else:
+            logger_level = logger_level.upper()
+
+        if logger_level == 'as_much_as_possible'.upper():
+            # Setting the batch sampler's and root's logging levels.
+            # We can go up to INFO, but at DEBUG level, very ugly.
+            self.train_batch_sampler.logger.setLevel('INFO')
+            if self.valid_batch_sampler:
+                self.valid_batch_sampler.logger.setLevel('INFO')
+            logging.root.setLevel('INFO')
+            self.model.logger.setLevel('INFO')
+
+            # Trainer's and model's loggers can be set to debug, it's still ok
+            self.logger.setLevel('DEBUG')
+        else:
+            self.logger.setLevel(logger_level)
+            self.model.logger.setLevel(logger_level)
+            self.train_batch_sampler.logger.setLevel(logger_level)
+            if self.valid_batch_sampler:
+                self.valid_batch_sampler.logger.setLevel(logger_level)
+
+        return previous_level
+
     @property
     def params(self) -> dict:
         params = {
@@ -319,9 +337,15 @@ class DWIMLTrainer:
         """
         return self.max_batches_per_epochs, self.max_batches_per_epochs
 
-    def run_experiment(self, *args):
+    def train_and_validate(self, tqdm_logger_level=None, *args):
         """
         Train + validates the model (+ computes loss)
+
+        Params
+        ------
+        tqdm_logger_level: str
+            Logging level for the tqdm-adapted logger. If None, will use the
+            root's level.
 
         - Starts comet,
         - Creates DataLoaders from the BatchSamplers,
@@ -352,7 +376,7 @@ class DWIMLTrainer:
         # Else, resuming from checkpoint. Will continue with given key.
         self._init_comet()
         if self.comet_exp:
-            train_context = self.comet_exp.run_experiment
+            train_context = self.comet_exp.train_and_validate
             valid_context = self.comet_exp.validate
         else:
             # Instantiating contexts doing nothing instead
@@ -385,6 +409,16 @@ class DWIMLTrainer:
         # After each iteration, checks that the maximum allowed time has not
         # been reached.
         iter_timer = IterTimer(history_len=20)
+
+        # Improving loggers for tqdm
+        self.logger.addHandler(TqdmLoggingHandler())
+        self.model.make_logger_tqdm_fitted()
+        self.train_batch_sampler.make_logger_tqdm_fitted()
+        if self.valid_batch_sampler:
+            self.valid_batch_sampler.make_logger_tqdm_fitted()
+
+        # Modifying log level before starting parallel and tdqm work
+        previous_level = self.set_log_level(tqdm_logger_level)
 
         # Start from current_epoch in case the experiment is resuming
         # Train each epoch
@@ -478,6 +512,9 @@ class DWIMLTrainer:
                 self._update_taskman_report({'resubmit': True})
                 exit(2)
 
+        # Reset logger level
+        logging.root.setLevel(previous_level)
+
     def save_model(self):
         self.model.save(self.experiment_path)
 
@@ -516,7 +553,7 @@ class DWIMLTrainer:
                         data, is_training=True,
                         batch_sampler=self.train_batch_sampler, *args)
 
-                    self.log.debug("Updated loss: {}".format(mean_loss))
+                    self.logger.debug("Updated loss: {}".format(mean_loss))
                     self.train_loss_monitor.update(mean_loss)
                     self.grad_norm_monitor.update(grad_norm)
 
@@ -529,7 +566,7 @@ class DWIMLTrainer:
             del train_iterator
 
         # Saving epoch's information
-        self.log.info("Finishing epoch...")
+        self.logger.info("Finishing epoch...")
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
         self._save_log_from_array(self.train_loss_monitor.epochs_means_history,

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
+import logging
+
 import torch
 from torch import Tensor
 
-from dwi_ml.models.main_models import ModelAbstract
 
-
-class EmbeddingAbstract(ModelAbstract):
+class EmbeddingAbstract(torch.nn.Module):
     def __init__(self, input_size: int, output_size: int = 128):
         """
         Params
@@ -23,6 +23,11 @@ class EmbeddingAbstract(ModelAbstract):
 
     @property
     def params(self):
+        """All parameters necessary to create again the same model. Will be
+        used in the trainer, when saving the checkpoint state. Params here
+        will be used to re-create the model when starting an experiment from
+        checkpoint. You should be able to re-create an instance of your
+        model with those params."""
         # We need real int types, not numpy.int64, not recognized by json
         # dumps.
         params = {
@@ -50,7 +55,6 @@ class NNEmbedding(EmbeddingAbstract):
         return params
 
     def forward(self, inputs: Tensor):
-        self.log.debug("Embedding: running Neural networks' forward")
         # Calling forward.
         result = self.linear(inputs)
         result = self.relu(result)
@@ -62,16 +66,15 @@ class NoEmbedding(EmbeddingAbstract):
         if output_size is None:
             output_size = input_size
         if input_size != output_size:
-            self.log.debug("Identity embedding should have input_size == "
-                           "output_size. Not stopping now but this won't work "
-                           "if your data does not follow the shape you are "
-                           "suggesting.")
+            logging.warning("Identity embedding should have input_size == "
+                            "output_size. Not stopping now but this won't "
+                            "work if your data does not follow the shape you "
+                            "are suggesting.")
 
         super().__init__(input_size, output_size)
         self.identity = torch.nn.Identity()
 
     def forward(self, inputs: Tensor = None):
-        self.log.debug("Embedding: running identity's forward")
         # toDo. Should check that input size = self.input_size but we don't
         #  know how the data is organized. Probably inputs.shape[0]?
         result = self.identity(inputs)

@@ -10,7 +10,6 @@ from torch.distributions import Categorical, MultivariateNormal
 from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
-from dwi_ml.models.main_models import ModelAbstract
 from dwi_ml.models.utils_for_gaussians import independent_gaussian_log_prob
 from dwi_ml.models.utils_for_fisher_von_mises import fisher_von_mises_log_prob
 
@@ -106,7 +105,7 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
     return layers
 
 
-class AbstractDirectionGetterModel(ModelAbstract):
+class AbstractDirectionGetterModel(torch.nn.Module):
     """
     Default static class attribute, to be redefined by sub-classes.
 
@@ -157,9 +156,11 @@ class AbstractDirectionGetterModel(ModelAbstract):
 
     @property
     def params(self):
-        """
-        Necessary params to create a new instance of the same model.
-        """
+        """All parameters necessary to create again the same model. Will be
+        used in the trainer, when saving the checkpoint state. Params here
+        will be used to re-create the model when starting an experiment from
+        checkpoint. You should be able to re-create an instance of your
+        model with those params."""
         params = {
             'input_size': self.input_size,
             'dropout': self.dropout,

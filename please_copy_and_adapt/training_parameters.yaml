@@ -1,5 +1,5 @@
 #################
-#  Parameters
+#  Training Parameters
 #
 # Tip:  To set a boolean in yaml, write either True/False or On/Off. Both
 #       choices correspond to python's True/False.

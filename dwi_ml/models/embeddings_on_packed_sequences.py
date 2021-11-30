@@ -11,8 +11,6 @@ class NNEmbedding(NNe):
         super().__init__(input_size, output_size)
 
     def forward(self, inputs: PackedSequence):
-        self.log.debug("Embedding: running Neural networks' forward")
-
         # Unpacking
         inputs_tensor = inputs.data
 

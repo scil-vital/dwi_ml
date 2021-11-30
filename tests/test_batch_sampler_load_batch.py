@@ -12,7 +12,7 @@ from dipy.io.stateful_tractogram import (StatefulTractogram,
 from dipy.io.streamline import (save_tractogram, Space, Origin)
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.experiment.batch_samplers import BatchStreamlinesSamplerWithInputs
+from dwi_ml.training.batch_samplers import BatchStreamlinesSamplerOneInputAndPD
 from dwi_ml.models.main_models import MainModelAbstractNeighborsPreviousDirs
 
 
@@ -47,7 +47,7 @@ def test_batch_loading_no_computations(
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
-    batch_sampler = BatchStreamlinesSamplerWithInputs(
+    batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
         training_set, 'streamlines', chunk_size=256,
         max_batch_size=10000, rng=rng_seed,
         nb_subjects_per_batch=1, cycles=1, step_size=0.75,
@@ -96,7 +96,7 @@ def test_batch_loading_computations(
     # Initialize batch sampler
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
-    batch_sampler = BatchStreamlinesSamplerWithInputs(
+    batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
         training_set, 'streamlines', chunk_size=256,
         max_batch_size=10000, rng=rng_seed,
         nb_subjects_per_batch=1, cycles=1, step_size=0.5, compress=False,

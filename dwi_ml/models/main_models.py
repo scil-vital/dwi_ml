@@ -10,6 +10,8 @@ import torch
 from dwi_ml.data.processing.space.neighborhood import (
     extend_coordinates_with_neighborhood,
     prepare_neighborhood_information)
+from dwi_ml.data.processing.streamlines.previous_dirs import \
+    compute_n_previous_dirs
 from dwi_ml.data.processing.volume.interpolation import (
     torch_trilinear_interpolation)
 from dwi_ml.utils import TqdmLoggingHandler
@@ -248,12 +250,9 @@ class MainModelAbstractNeighborsPreviousDirs(MainModelAbstract):
         #  https://stats.stackexchange.com/questions/169887/classification-with-partially-unknown-data
         empty_coord = torch.zeros((1, 3), dtype=torch.float32, device=device)
 
-        previous_dirs = \
-            [torch.cat([torch.cat((empty_coord.repeat(min(len(s), i + 1), 1),
-                                   s[:-(i + 1)]))
-                        for i in range(self.nb_previous_dirs)],
-                       dim=1)
-             for s in all_dirs]
+        previous_dirs = compute_n_previous_dirs(all_dirs, empty_coord,
+                                                self.nb_previous_dirs)
+
         return previous_dirs
 
     def compute_loss(self, outputs, targets):

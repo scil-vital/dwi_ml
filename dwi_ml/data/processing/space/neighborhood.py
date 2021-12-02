@@ -14,6 +14,14 @@ def prepare_neighborhood_information(neighborhood_type, neighborhood_radius):
     Results are in the voxel world.
     """
     if neighborhood_type is not None:
+        if neighborhood_radius is None:
+            raise ValueError("You must provide neighborhood radius to add "
+                             "a neighborhood.")
+        elif neighborhood_type not in ['axes', 'grid']:
+            raise ValueError(
+                "Neighborhood type must be either 'axes', 'grid' "
+                "but we received {}!".format(self.neighborhood_type))
+
         if neighborhood_type == 'axes':
             neighborhood_points = get_neighborhood_vectors_axes(
                 neighborhood_radius)
@@ -22,6 +30,10 @@ def prepare_neighborhood_information(neighborhood_type, neighborhood_radius):
                 neighborhood_radius)
         return neighborhood_points
     else:
+        if neighborhood_radius is not None:
+            logging.debug("You have chosen not to add a neighborhood (value "
+                          "None), but you have given a neighborhood radius. "
+                          "Discarded.")
         return None
 
 

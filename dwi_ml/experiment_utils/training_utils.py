@@ -3,8 +3,8 @@ import argparse
 import logging
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.experiment.timer import Timer
-from dwi_ml.utils import format_dict_to_str
+from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 
 
 def parse_args_train_model():

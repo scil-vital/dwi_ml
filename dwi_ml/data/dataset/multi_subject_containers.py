@@ -30,7 +30,7 @@ from dwi_ml.data.dataset.subjects_list_containers import (LazySubjectsDataList,
                                                           SubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,
                                                            SubjectData)
-from dwi_ml.utils import TqdmLoggingHandler
+from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 
 
 class MultisubjectSubset(Dataset):

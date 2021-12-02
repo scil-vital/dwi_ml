@@ -12,11 +12,11 @@ import torch
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.experiment.monitoring import (
-    BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
-from dwi_ml.training.batch_samplers import BatchStreamlinesSampler
+from dwi_ml.training.batch_samplers import AbstractBatchSampler
 from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.utils import TqdmLoggingHandler
+from dwi_ml.experiment_utils.monitoring import (
+    BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
+from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 
 # If the remaining time is less than one epoch + X seconds, we will quit
 # training now, to allow updating taskman_report.
@@ -39,22 +39,22 @@ class DWIMLTrainer:
     """
 
     def __init__(self,
-                 batch_sampler_training: BatchStreamlinesSampler,
-                 batch_sampler_validation: BatchStreamlinesSampler,
+                 batch_sampler_training: AbstractBatchSampler,
+                 batch_sampler_validation: AbstractBatchSampler,
                  model: MainModelAbstract, experiment_path: str,
                  experiment_name: str, learning_rate: float,
                  weight_decay: float, max_epochs: int,
                  max_batches_per_epoch: int, patience: int,
                  nb_cpu_workers: int, taskman_managed: bool, use_gpu: bool,
                  comet_workspace: str, comet_project: str,
-                 from_checkpoint: bool, **_):
+                 from_checkpoint: bool):
         """
         Parameters
         ----------
-        batch_sampler_training: BatchSequencesSamplerOneInputVolume
+        batch_sampler_training: AbstractBatchSampler
             Instantiated class used for sampling batches of training data.
             Data in batch_sampler_training.source_data must be already loaded.
-        batch_sampler_validation: BatchSequencesSamplerOneInputVolume
+        batch_sampler_validation: AbstractBatchSampler
             Instantiated class used for sampling batches of validation
             data. Data in batch_sampler_training.source_data must be already
             loaded. Can be set to None if no validation is used. Then, best
@@ -700,8 +700,8 @@ class DWIMLTrainer:
 
     @classmethod
     def init_from_checkpoint(
-            cls, batch_sampler_training: BatchStreamlinesSampler,
-            batch_sampler_validation: BatchStreamlinesSampler,
+            cls, batch_sampler_training: AbstractBatchSampler,
+            batch_sampler_validation: AbstractBatchSampler,
             model: torch.nn.Module, checkpoint_state: dict, new_patience,
             new_max_epochs):
         """

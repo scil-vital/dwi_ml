@@ -16,20 +16,22 @@ import yaml
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.training.batch_samplers import BatchStreamlinesSamplerOneInputAndPD
-from dwi_ml.experiment.monitoring import EarlyStoppingError
-from dwi_ml.experiment.timer import Timer
-from dwi_ml.models.main_models import \
-    MainModelAbstractNeighborsPreviousDirs
-from dwi_ml.training.checks_for_training_parameters import (
+from dwi_ml.experiment_utils.monitoring import EarlyStoppingError
+from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.experiment_utils.checks_for_training_parameters import (
     check_all_experiment_parameters)
-import dwi_ml.training.training_parameters_description as params_d
-from dwi_ml.training.trainers import DWIMLTrainer
-from dwi_ml.training.training_utils import (
+import dwi_ml.experiment_utils.training_parameters_description as params_d
+from dwi_ml.experiment_utils.training_utils import (
     parse_args_train_model,
     prepare_data,
     check_unused_args_for_checkpoint)
-from dwi_ml.utils import format_dict_to_str
+from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.training.trainer import DWIMLTrainer
+
+# For this example:
+
+from dwi_ml.training.batch_samplers import BatchStreamlinesSamplerOneInput
 
 """
 This example is based on an experiment that would use the batch sampler
@@ -59,7 +61,7 @@ def prepare_batchsamplers(dataset, train_sampler_params,
     """
     with Timer("\nPreparing batch samplers...", newline=True, color='green'):
         if dataset.training_set.nb_subjects > 0:
-            train_batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
+            train_batch_sampler = BatchStreamlinesSamplerOneInput(
                 dataset.training_set, model=model, **train_sampler_params)
             logging.info(
                 "\nTraining batch sampler user-defined parameters: \n" +
@@ -68,7 +70,7 @@ def prepare_batchsamplers(dataset, train_sampler_params,
             train_batch_sampler = None
 
         if dataset.validation_set.nb_subjects > 0:
-            valid_batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
+            valid_batch_sampler = BatchStreamlinesSamplerOneInput(
                 dataset.validation_set, model=model, **valid_sampler_params)
             logging.info(
                 "\nValidation batch sampler user-defined parameters: \n" +
@@ -102,7 +104,7 @@ def init_from_checkpoint(args):
         # Possible args : input_size, **model_params
         # Remember: you can access the input size here.
         # input_size = dataset.nb_features[volume_group_idx]
-        model = MainModelAbstractNeighborsPreviousDirs.init_from_checkpoint(
+        model = MainModelAbstract.init_from_checkpoint(
             **checkpoint_state['model_params'])
         logging.info("Model parameters: \n" +
                      format_dict_to_str(model.params))
@@ -178,7 +180,7 @@ def init_from_args(p, args):
         # Possible args : input_size, **model_params
         # Remember: you can access the input size here.
         # input_size = dataset.nb_features[volume_group_idx]
-        model = MainModelAbstractNeighborsPreviousDirs(
+        model = MainModelAbstract(
             experiment_name=args.experiment_name,
             **model_params)
         logging.info("Model parameters: " +

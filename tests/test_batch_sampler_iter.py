@@ -7,8 +7,7 @@ from os import path
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.training.batch_samplers import BatchStreamlinesSamplerOneInputAndPD
-from dwi_ml.models.main_models import MainModelAbstractNeighborsPreviousDirs
+from dwi_ml.training.batch_samplers import BatchStreamlinesSamplerOneInput
 
 
 def parse_args():
@@ -22,23 +21,25 @@ def parse_args():
     p.add_argument('hdf5_filename',
                    help='Path to the .hdf5 dataset. Should contain both your '
                         'training subjects and validation subjects.')
+    p.add_argument('input_group_name',
+                   help='Input volume group name.')
     return p.parse_args()
 
 
-def test_sampler(fake_dataset, model, chunk_size, batch_size, step_size,
-                 compress=False):
+def test_sampler(fake_dataset, input_group_name, chunk_size, batch_size,
+                 step_size, compress=False):
     # Initialize batch sampler
     print('\nInitializing sampler...')
     training_set = fake_dataset.training_set
 
-    batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
+    batch_sampler = BatchStreamlinesSamplerOneInput(
         training_set, 'streamlines', chunk_size=chunk_size,
         max_batch_size=batch_size, rng=1234,
         step_size=step_size, compress=compress, nb_subjects_per_batch=1,
         cycles=1, split_ratio=0, noise_gaussian_size=0,
         noise_gaussian_variability=0,
-        reverse_ratio=0, wait_for_gpu=True, normalize_directions=True,
-        model=model)
+        reverse_ratio=0, input_group_name=input_group_name, wait_for_gpu=True,
+        neighborhood_type='axes', neighborhood_radius=1)
 
     # Use it in the dataloader
     # it says error, that the collate_fn should receive a list, but it is
@@ -71,28 +72,25 @@ def test_non_lazy(args):
 
     # Initialize dataset
     print('Initializing dataset...')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
-                                       experiment_name='test',
-                                       taskman_managed=True, cache_size=None)
-    fake_dataset.load_data()
-
-    print("Creating model...")
-    model = create_model(fake_dataset)
+    dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
+                                  experiment_name='test',
+                                  taskman_managed=True, cache_size=None)
+    dataset.load_data()
 
     print('\n=============================Test with batch size 1000')
-    test_sampler(fake_dataset, model, 256, 1000, None)
+    test_sampler(dataset, args.input_group_name, 256, 1000, None)
 
     logging.getLogger().setLevel('INFO')
 
     print('\n=============================Test with batch size 1000000')
-    test_sampler(fake_dataset, model, 256, 100000, None)
+    test_sampler(dataset, args.input_group_name, 256, 100000, None)
 
     print('\n===========================Test with batch size 10000 + resample')
-    test_sampler(fake_dataset, model, 256, 10000, 0.5)
+    test_sampler(dataset, args.input_group_name, 256, 10000, 0.5)
 
     print('\n===========================Test with batch size 10000 + compress'
           '(Batch size should be equal to chunk size: 256)')
-    test_sampler(fake_dataset, model, 256, 10000, None, True)
+    test_sampler(dataset, args.input_group_name, 256, 10000, None, True)
 
 
 def test_lazy(args):
@@ -100,33 +98,22 @@ def test_lazy(args):
 
     # Initialize dataset
     print('Initializing dataset...')
-    fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
-                                       experiment_name='test',
-                                       taskman_managed=True, cache_size=1)
-    fake_dataset.load_data()
-
-    print("Creating model...")
-    model = create_model(fake_dataset)
+    dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
+                                  experiment_name='test',
+                                  taskman_managed=True, cache_size=1)
+    dataset.load_data()
 
     print('\n=============================Test with batch size 1000')
-    test_sampler(fake_dataset, model, 256, 1000, None)
+    test_sampler(dataset, args.input_group_name, 256, 1000, None)
 
     logging.getLogger().setLevel('INFO')
 
     print('\n===========================Test with batch size 10000 + resample')
-    test_sampler(fake_dataset, model, 256, 10000, 0.5)
+    test_sampler(dataset, args.input_group_name, 256, 10000, 0.5)
 
     print('\n===========================Test with batch size 10000 + compress'
           '(Batch size should be equal to chunk size: 256)')
-    test_sampler(fake_dataset, model, 256, 10000, None, True)
-
-
-def create_model(dataset):
-    print("Nb previous dirs: 3")
-    model = MainModelAbstractNeighborsPreviousDirs(
-        'test', dataset.nb_features[0], dataset.volume_groups[0], 3, 'axes',
-        2)
-    return model
+    test_sampler(dataset, args.input_group_name, 256, 10000, None, True)
 
 
 def main():

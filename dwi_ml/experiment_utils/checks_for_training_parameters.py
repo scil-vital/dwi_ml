@@ -5,7 +5,7 @@ import logging
 from typing import List
 
 import torch
-from dwi_ml.utils import format_dict_to_str
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 
 
 def check_similar_to_none(var, var_name: str):

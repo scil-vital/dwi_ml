@@ -52,11 +52,6 @@ class MainModelAbstract(torch.nn.Module):
             'experiment_name': self.experiment_name
         }
 
-    @classmethod
-    def init_from_checkpoint(cls, **params):
-        model = cls(**params)
-        return model
-
     def update_best_model(self):
         # Initialize best model
         # Uses torch's module state_dict.

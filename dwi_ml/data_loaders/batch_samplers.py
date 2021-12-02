@@ -419,7 +419,7 @@ class AbstractBatchSampler(Sampler):
             global_unused_streamlines[subj_slice]) + subj_slice.start
 
         self.logger.debug("    Available streamlines for this subject: {}"
-                         .format(len(subj_unused_ids_in_global)))
+                          .format(len(subj_unused_ids_in_global)))
 
         # No streamlines remain for this subject
         if len(subj_unused_ids_in_global) == 0:
@@ -526,7 +526,6 @@ class AbstractBatchSampler(Sampler):
         final_s_ids_per_subj: Dict[int, slice]
             The new streamline ids per subj in this augmented batch.
         """
-
         # The batch's streamline ids will change throughout processing because
         # of data augmentation, so we need to do it subject by subject to
         # keep track of the streamline ids. These final ids will correspond to
@@ -691,6 +690,17 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
         # Find group index in the data_source
         idx = self.dataset.volume_groups.index(input_group_name)
         self.input_group_idx = idx
+
+    @property
+    def params(self):
+        p = super().params
+        p.update({
+            'input_group_name' : self.input_group_name,
+            'neighborhood_type': self.neighborhood_type,
+            'neighborhood_radius': self.neighborhood_radius,
+            'wait_for_gpu': self.wait_for_gpu
+        })
+        return p
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
                    save_batch_input_mask: bool = False) \

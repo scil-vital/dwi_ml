@@ -150,3 +150,21 @@ def extend_coordinates_with_neighborhood(
     coords += tiled_vectors
 
     return coords
+
+
+def add_args_neighborhood(p):
+    n = p.add_mutually_exclusive_group()
+    n.add_argument(
+        '--sphere_radius', type=float,
+        help="If set, a neighborhood will be added to the input information. "
+             "This neighborhood \ndefinition lies on a sphere. It will be a "
+             "list of 6 positions \n(up, down, left, right, behind, in front) "
+             "at exactly given radius around each point \nof the streamlines, "
+             "in voxel space.")
+    n.add_argument(
+        '--grid_radius', type=int,
+        help="If set, a neighborhood will be added to the input information. "
+             "This neighborhood \ndefinition uses a list of points similar to "
+             "the original voxel grid \naround each point of the streamlines. "
+             "Ex: with radius 1, that's 27 points. \nWith radius 2, that's "
+             "125 points. Radius is in voxel space.")

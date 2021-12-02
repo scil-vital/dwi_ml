@@ -1,67 +1,40 @@
 # -*- coding: utf-8 -*-
+import argparse
 import logging
 
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 
-def find_groups_info(hdf_file, subj_id: str, log):
+
+def add_args_dataset(p: argparse.ArgumentParser):
+    dataset_group = p.add_argument_group("Dataset:")
+    dataset_group.add_argument(
+        '--cache_size', type=int, metavar='s', default=1,
+        help="Relevant only if lazy data is used. Size of the cache in terms "
+             "of length \nof the queue (i.e. number of volumes). NOTE: Real "
+             "cache size will actually be \ntwice this value as the "
+             "training and validation subsets each have their cache.\n"
+             "Default: 1.")
+    dataset_group.add_argument(
+        '--lazy', action='store_true',
+        help="If set, do not load all the dataset in memory at once. Load "
+             "only what \nis needed for a batch.")
+
+
+def prepare_multisubjectdataset(args):
     """
-    Separate subject's hdf5 groups intro volume groups or streamline groups
-    based on their 'type' attrs.
+    Instantiate a MultiSubjectDataset and load data.
     """
-    volume_groups = []
-    nb_features = []
-    streamline_groups = []
+    with Timer("\n\nPreparing testing and validation sets",
+               newline=True, color='blue'):
+        dataset = MultiSubjectDataset(
+            args.hdf5_file, cache_size=args.cache_size, lazy=args.lazy,
+            # toDo
+            taskman_managed=args.taskman_managed)
+        dataset.load_data()
 
-    groups = hdf_file[subj_id]
-    for group in groups:
-        group_type = hdf_file[subj_id][group].attrs['type']
-        if group_type == 'volume':
-            volume_groups.append(group)
-            nb_features.append(
-                hdf_file[subj_id][group].attrs['nb_features'])
-        elif group_type == 'streamlines':
-            streamline_groups.append(group)
-        else:
-            raise NotImplementedError(
-                "So far, you can only add volume groups in the "
-                "groups_config.json. As for the streamlines, they are "
-                "added through the option --bundles. Please see the doc "
-                "for a json file example. You tried to add data of type: "
-                "{}".format(group_type))
+        logging.info("Dataset attributes: \n" +
+                     format_dict_to_str(dataset.params))
 
-    log.debug("        Volume groups are: {}".format(volume_groups))
-    log.debug("        Number of features in each of these groups: {}"
-              .format(nb_features))
-    log.debug("        Streamline groups are: {}".format(streamline_groups))
-
-    return volume_groups, nb_features, streamline_groups
-
-
-def compare_groups_info(volume_groups, nb_features, streamline_groups,
-                        group_info):
-    v, f, s = group_info
-    if volume_groups != v:
-        logging.warning("Subject's hdf5 groups with attributes 'type' set as "
-                        "'volume' are not the same as expected with this "
-                        "dataset! Expected: {}. Found: {}"
-                        .format(v, volume_groups))
-    if nb_features != f:
-        logging.warning("Among subject's hdf5 groups with attributes 'type' "
-                        "set as 'volume', some data to not have the same "
-                        "number of features as expected for this dataset! "
-                        "Expected: {}. Found: {}".format(f, nb_features))
-    if streamline_groups != s:
-        logging.warning("Subject's hdf5 groups with attributes 'type' set as "
-                        "'streamlines' are not the same as expected with this "
-                        "dataset! Expected: {}. Found: {}"
-                        .format(s, streamline_groups))
-
-
-def prepare_groups_info(subject_id: str, log, hdf_file, group_info=None):
-    volume_groups, nb_features, streamline_groups = \
-        find_groups_info(hdf_file, subject_id, log)
-
-    if group_info is not None:
-        compare_groups_info(volume_groups, nb_features, streamline_groups,
-                            group_info)
-
-    return volume_groups, nb_features, streamline_groups
+    return dataset

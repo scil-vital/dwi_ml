@@ -25,7 +25,7 @@ from torch.utils.data import Dataset
 import tqdm
 
 from dwi_ml.cache.cache_manager import SingleThreadCacheManager
-from dwi_ml.data.dataset.utils import find_groups_info
+from dwi_ml.data.dataset.checks import find_groups_info
 from dwi_ml.data.dataset.subjects_list_containers import (LazySubjectsDataList,
                                                           SubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,

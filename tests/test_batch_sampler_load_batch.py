@@ -12,7 +12,7 @@ from dipy.io.stateful_tractogram import (StatefulTractogram,
 from dipy.io.streamline import (save_tractogram, Space, Origin)
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.training.batch_samplers import BatchStreamlinesSamplerOneInput
+from dwi_ml.data_loaders.batch_samplers import BatchStreamlinesSamplerOneInput
 
 
 def parse_args():

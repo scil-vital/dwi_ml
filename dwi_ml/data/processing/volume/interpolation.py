@@ -160,7 +160,7 @@ def interpolate_volume_at_coordinates(volume: np.ndarray, coords: np.ndarray,
         return np.ascontiguousarray(np.array(values_4d).T)
 
 
-def interpolate_volume_in_neighborhoods(
+def interpolate_volume_in_neighborhood(
         volume_as_tensor, coords, neighborhood_points=None,
         device=torch.device('cpu')):
     """
@@ -205,7 +205,7 @@ def interpolate_volume_in_neighborhoods(
         # Interpolate signal for each point
         coords_torch = torch.as_tensor(coords, dtype=torch.float,
                                        device=device)
-        subj_x_data = torch_trilinear_interpolation(volume_as_tensor.data,
+        subj_x_data = torch_trilinear_interpolation(volume_as_tensor,
                                                     coords_torch)
 
     return subj_x_data, coords_torch

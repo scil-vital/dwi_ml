@@ -18,7 +18,7 @@ from dwi_ml.data.processing.streamlines.data_augmentation import (
 
 # For the batch sampler with inputs
 from dwi_ml.data.processing.volume.interpolation import \
-    interpolate_volume_in_neighborhoods
+    interpolate_volume_in_neighborhood
 
 """
 Batch sampler
@@ -785,7 +785,10 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
             # Prepare the volume data, possibly adding neighborhood
             # (Thus new coords_torch possibly contain the neighborhood points)
             # Coord_clipped contain the coords after interpolation
-            subj_x_data, coords_torch = interpolate_volume_in_neighborhoods(
+            # Trilinear interpolation uses origin=corner, vox space, but ok
+            # because in load_batch, we use sft.to_vox and sft.to_corner
+            # before adding streamline to batch.
+            subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, self.neighborhood_points,
                 device)
 

@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from dwi_ml.data.processing.space.neighborhood import \
-    prepare_neighborhood_information
+import torch
 from torch.nn.utils.rnn import pack_sequence
 
 from dwi_ml.data.dataset.single_subject_containers import SubjectDataAbstract
 from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_n_previous_dirs
+from dwi_ml.data.processing.volume.interpolation import \
+    interpolate_volume_in_neighborhood
 
 
 class DWIMLAbstractTrackingField:
@@ -87,8 +86,7 @@ class DWIMLTrackingFieldOneInputAndPD(DWIMLAbstractTrackingField):
     interpolate the data.
     """
     def __init__(self, model: MainModelAbstract,
-                 subj_data: SubjectDataAbstract, input_volume_group: str,
-                 neighborhood_type, neighborhood_radius):
+                 subj_data: SubjectDataAbstract, input_volume_group: str):
         """
         Parameters
         ----------
@@ -102,17 +100,12 @@ class DWIMLTrackingFieldOneInputAndPD(DWIMLAbstractTrackingField):
         """
         super().__init__(model, subj_data)
         self.volume_group_str = input_volume_group
-        self.neighborhood_type = neighborhood_type
-        self.neighborhood_radius = neighborhood_radius
-
-        # Preparing the neighborhood
-        self.neighborhood_points = prepare_neighborhood_information(
-            neighborhood_type, neighborhood_radius)
 
         # Find group index in the data
         self.volume_group = subj_data.volume_groups.index(input_volume_group)
 
-    def get_model_outputs_at_pos(self, pos, previous_dirs=None):
+    def get_model_outputs_at_pos(self, pos, previous_dirs=None,
+                                 device=torch.device('cpu')):
         """
         Parameters
         ----------
@@ -122,18 +115,12 @@ class DWIMLTrackingFieldOneInputAndPD(DWIMLAbstractTrackingField):
             List of the previous directions
             Size: (length of the streamline - 1) x 3. If this is the first step
             of the streamline, use None.
+        device: torch device
+            Torch device.
         """
-        inputs = self.subj_data.mri_data_list[self.volume_group]
+        inputs = self._prepare_inputs_at_pos(pos, device)
 
-        # Get pos in voxel world
-        pos_vox = inputs.as_data_volume.voxmm_to_vox(*pos, self.origin)
 
-        # torch trilinear interpolation uses origin='corner'
-        if self.origin == 'center':
-            pos_vox += 0.5
-
-        inputs_arranged, _, = self.model.prepare_inputs(
-            inputs.as_tensor, np.asarray([pos_vox]), self.device)
         n_previous_dirs = self.model.prepare_previous_dirs(previous_dirs,
                                                            self.device)
 
@@ -148,3 +135,18 @@ class DWIMLTrackingFieldOneInputAndPD(DWIMLAbstractTrackingField):
         model_outputs = self.model.forward(inputs_packed, n_previous_dirs)
 
         return model_outputs
+
+    def _prepare_inputs_at_pos(self, pos, device):
+        inputs = self.subj_data.mri_data_list[self.volume_group]
+
+        # torch trilinear interpolation uses origin='corner', space=vox.
+        pos_vox = inputs.as_data_volume.voxmm_to_vox(*pos, self.origin)
+        if self.origin == 'center':
+            pos_vox += 0.5
+
+        # Same as in the batch sampler:
+        # Prepare the volume data, possibly adding neighborhood
+        subj_x_data, _ = interpolate_volume_in_neighborhood(
+            inputs.as_tensor, pos_vox, self.model.neighborhood_points,
+            device)
+        return subj_x_data

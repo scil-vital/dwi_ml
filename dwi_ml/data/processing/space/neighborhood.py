@@ -14,6 +14,15 @@ def prepare_neighborhood_information(neighborhood_type, neighborhood_radius):
     Results are in the voxel world.
     """
     if neighborhood_type is not None:
+        if neighborhood_radius is None:
+            raise ValueError("You must provide neighborhood radius to add "
+                             "a neighborhood.")
+
+        if neighborhood_type not in ['axes', 'grid']:
+            raise ValueError(
+                "Neighborhood type must be either 'axes', 'grid' "
+                "but we received {}!".format(neighborhood_type))
+
         if neighborhood_type == 'axes':
             neighborhood_points = get_neighborhood_vectors_axes(
                 neighborhood_radius)
@@ -22,6 +31,11 @@ def prepare_neighborhood_information(neighborhood_type, neighborhood_radius):
                 neighborhood_radius)
         return neighborhood_points
     else:
+        if neighborhood_radius is not None:
+            logging.debug(
+                "You have chosen not to add a neighborhood (value "
+                "None), but you have given a neighborhood radius. "
+                "Discarded.")
         return None
 
 
@@ -138,3 +152,21 @@ def extend_coordinates_with_neighborhood(
     coords += tiled_vectors
 
     return coords
+
+
+def add_args_neighborhood(p):
+    n = p.add_mutually_exclusive_group()
+    n.add_argument(
+        '--sphere_radius', type=float,
+        help="If set, a neighborhood will be added to the input information. "
+             "This neighborhood \ndefinition lies on a sphere. It will be a "
+             "list of 6 positions \n(up, down, left, right, behind, in front) "
+             "at exactly given radius around each point \nof the streamlines, "
+             "in voxel space.")
+    n.add_argument(
+        '--grid_radius', type=int,
+        help="If set, a neighborhood will be added to the input information. "
+             "This neighborhood \ndefinition uses a list of points similar to "
+             "the original voxel grid \naround each point of the streamlines. "
+             "Ex: with radius 1, that's 27 points. \nWith radius 2, that's "
+             "125 points. Radius is in voxel space.")

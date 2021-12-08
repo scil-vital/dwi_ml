@@ -3,10 +3,14 @@ import json
 import logging
 import os
 import shutil
+from typing import Union, Iterable
 
 import torch
+from dwi_ml.data.processing.space.neighborhood import \
+    prepare_neighborhood_information
 
-from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
+from dwi_ml.experiment_utils.prints import TqdmLoggingHandler, \
+    format_dict_to_str
 
 
 class MainModelAbstract(torch.nn.Module):
@@ -16,7 +20,7 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name='my_model'):
+    def __init__(self, experiment_name):
         """
         Params
         ------
@@ -85,7 +89,9 @@ class MainModelAbstract(torch.nn.Module):
     @classmethod
     def load(cls, loading_dir):
         """
-        loading_dir: path to the trained parameters
+        loading_dir: path to the trained parameters. Must contain files
+            - parameters.json
+            - best_model_state.pkl
         """
         # Make model directory
         model_dir = os.path.join(loading_dir)
@@ -93,6 +99,9 @@ class MainModelAbstract(torch.nn.Module):
         # Load attributes and hyperparameters from json file
         params_filename = os.path.join(model_dir, "parameters.json")
         params = json.load(open(params_filename))
+
+        logging.debug("Loading model from saved parameters:" +
+                      format_dict_to_str(params))
 
         best_model_filename = os.path.join(model_dir, "best_model_state.pkl")
         best_model_state = torch.load(best_model_filename)
@@ -132,4 +141,34 @@ class MainModelAbstract(torch.nn.Module):
         next_dir: array(3,)
             Numpy array with x,y,z value.
         """
+        raise NotImplementedError
+
+
+class MainModelWithNeighborhood(MainModelAbstract):
+    def __init__(self, experiment_name,
+                 neighborhood_type: Union[str, None],
+                 neighborhood_radius: Union[int, float, Iterable[float], None]
+                 ):
+        super().__init__(experiment_name)
+        self.neighborhood_radius = neighborhood_radius
+        self.neighborhood_type = neighborhood_type
+        self.neighborhood_points = prepare_neighborhood_information(
+            neighborhood_type, neighborhood_radius)
+
+    @property
+    def params(self):
+        p = super().params
+        p.update({
+            'neighborhood_type': self.neighborhood_type,
+            'neighborhood_radius': self.neighborhood_radius
+        })
+        return p
+
+    def compute_loss(self, outputs, targets):
+        raise NotImplementedError
+
+    def get_tracking_direction_det(self, model_outputs):
+        raise NotImplementedError
+
+    def sample_tracking_direction_prob(self, model_outputs):
         raise NotImplementedError

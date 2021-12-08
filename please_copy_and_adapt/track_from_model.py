@@ -44,7 +44,7 @@ from dwi_ml.models.main_models import MainModelAbstract
 # You might need to implement a child version of these classes.
 from dwi_ml.tracking.tracker import DWIMLTrackerOneInputAndPD
 from dwi_ml.tracking.propagator import DWIMLPropagatorOneInputAndPD
-from dwi_ml.tracking.tracking_field import DWIMLTrackingFieldOneInputAndPD
+from dwi_ml.data_loaders.tracking_field import DWIMLTrackingFieldOneInputAndPD
 
 
 def build_argparser():

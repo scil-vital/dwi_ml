@@ -3,12 +3,10 @@ import logging
 import math
 
 import numpy as np
-import torch
-import torch.nn.functional as f
 
 from scilpy.tracking.propagator import AbstractPropagator
 
-from dwi_ml.tracking.tracking_field import DWIMLAbstractTrackingField, \
+from dwi_ml.data_loaders.tracking_field import DWIMLAbstractTrackingField, \
                                            DWIMLTrackingFieldOneInputAndPD
 
 

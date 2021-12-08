@@ -66,10 +66,9 @@ class NoEmbedding(EmbeddingAbstract):
         if output_size is None:
             output_size = input_size
         if input_size != output_size:
-            logging.warning("Identity embedding should have input_size == "
-                            "output_size. Not stopping now but this won't "
-                            "work if your data does not follow the shape you "
-                            "are suggesting.")
+            raise ValueError("Identity embedding should have input_size == "
+                             "output_size but you gave {} and {}"
+                             .format(input_size, output_size))
 
         super().__init__(input_size, output_size)
         self.identity = torch.nn.Identity()

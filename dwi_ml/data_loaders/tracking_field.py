@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from dwi_ml.data.dataset.single_subject_containers import SubjectDataAbstract
-from dwi_ml.models.main_models import MainModelAbstract, \
-                                      MainModelAbstractNeighborsPreviousDirs
+from dwi_ml.data.processing.space.neighborhood import \
+    prepare_neighborhood_information
 from torch.nn.utils.rnn import pack_sequence
+
+from dwi_ml.data.dataset.single_subject_containers import SubjectDataAbstract
+from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_n_previous_dirs
 
 
 class DWIMLAbstractTrackingField:
@@ -24,6 +28,8 @@ class DWIMLAbstractTrackingField:
         - theta would be very complex to include here (to restrain the list of
         possible directions, as they depend on the model) and should rather be
         used as stopping criteria, later.
+
+    Acts similarly to the batch sampler during training.
     """
     def __init__(self, model: MainModelAbstract,
                  subj_data: SubjectDataAbstract, device=None):
@@ -75,9 +81,14 @@ class DWIMLTrackingFieldOneInputAndPD(DWIMLAbstractTrackingField):
     p: the n previous directions of the streamline.
 
     The class is used to get outputs from the model.
+
+    This is in fact similar to our batch sampler (with inputs): it needs to get
+    the data points from the volume (+possibly add a neighborhood) and
+    interpolate the data.
     """
-    def __init__(self, model: MainModelAbstractNeighborsPreviousDirs,
-                 subj_data: SubjectDataAbstract, input_volume_group: str):
+    def __init__(self, model: MainModelAbstract,
+                 subj_data: SubjectDataAbstract, input_volume_group: str,
+                 neighborhood_type, neighborhood_radius):
         """
         Parameters
         ----------
@@ -91,6 +102,14 @@ class DWIMLTrackingFieldOneInputAndPD(DWIMLAbstractTrackingField):
         """
         super().__init__(model, subj_data)
         self.volume_group_str = input_volume_group
+        self.neighborhood_type = neighborhood_type
+        self.neighborhood_radius = neighborhood_radius
+
+        # Preparing the neighborhood
+        self.neighborhood_points = prepare_neighborhood_information(
+            neighborhood_type, neighborhood_radius)
+
+        # Find group index in the data
         self.volume_group = subj_data.volume_groups.index(input_volume_group)
 
     def get_model_outputs_at_pos(self, pos, previous_dirs=None):

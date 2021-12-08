@@ -14,8 +14,7 @@ from os import path
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data_loaders.utils import (
-    add_args_batch_sampler, add_input_args_batch_sampler,
-    prepare_batchsamplers_oneinput)
+    add_args_batch_sampler, prepare_batchsamplers_oneinput)
 from dwi_ml.data.dataset.utils import (
     add_args_dataset, prepare_multisubjectdataset)
 from dwi_ml.training.utils import (add_training_args, prepare_trainer,
@@ -77,19 +76,16 @@ def prepare_arg_parser():
     add_model_args(p)
     # For the abstract batch sampler class:
     add_args_batch_sampler(p)
-    # For the batch sampler sub-class with inputs:
-    add_input_args_batch_sampler(p)
     add_training_args(p)
 
     return p
 
 
 def init_from_args(p, args):
-
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args)
 
-    # Preparing the batch samplers
+    # Preparing the model
     if args.grid_radius:
         args.neighborhood_radius = args.grid_radius
         args.neighborhood_type = 'grid'
@@ -99,23 +95,15 @@ def init_from_args(p, args):
     else:
         args.neighborhood_radius = None
         args.neighborhood_type = None
+    input_group_idx = dataset.volume_groups.index(args.input_group_name)
+    args.nb_features = dataset.nb_features[input_group_idx]
+    model = prepare_model(args)
+
+    # Preparing the batch samplers
     args.wait_for_gpu = args.use_gpu
     training_batch_sampler, validation_batch_sampler = \
-        prepare_batchsamplers_oneinput(dataset, args, args)
-
-    # Preparing the model
-    input_group_idx = dataset.volume_groups.index(args.input_group_name)
-    nb_features = dataset.nb_features[input_group_idx]
-    if training_batch_sampler.neighborhood_points:
-        nb_neighbors = len(training_batch_sampler.neighborhood_points)
-    else:
-        nb_neighbors = 0
-
-    print("\nInput size = {} features * ({} neighbors + 1)"
-          .format(nb_features, nb_neighbors))
-
-    input_size = nb_features * (nb_neighbors + 1)
-    model = prepare_model(args, input_size)
+        prepare_batchsamplers_oneinput(dataset, args, args,
+                                       model.neighborhood_points)
 
     # Preparing the trainer
     trainer = prepare_trainer(training_batch_sampler, validation_batch_sampler,

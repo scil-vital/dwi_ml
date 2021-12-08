@@ -12,21 +12,23 @@ import torch
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.data_loaders.batch_samplers import AbstractBatchSampler
-from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.experiment_utils.monitoring import (
+from dwi_ml.experiment.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
-from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
+from dwi_ml.training.batch_samplers import BatchStreamlinesSampler
+from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.utils import TqdmLoggingHandler
 
 # If the remaining time is less than one epoch + X seconds, we will quit
 # training now, to allow updating taskman_report.
 QUIT_TIME_DELAY_SECONDS = 30
+# This trainer's version
+VERSION = 0
 
 
 class DWIMLTrainer:
     """
     This Trainer class's train() method:
-        - Creates DataLoaders from the data_loaders. Collate_fn will be the
+        - Creates DataLoaders from the batch_samplers. Collate_fn will be the
         sampler.load_batch() method, and the dataset will be
         sampler.source_data.
         - Trains each epoch by using compute_batch_loss, which should be
@@ -37,22 +39,22 @@ class DWIMLTrainer:
     """
 
     def __init__(self,
-                 batch_sampler_training: AbstractBatchSampler,
-                 batch_sampler_validation: AbstractBatchSampler,
+                 batch_sampler_training: BatchStreamlinesSampler,
+                 batch_sampler_validation: BatchStreamlinesSampler,
                  model: MainModelAbstract, experiment_path: str,
                  experiment_name: str, learning_rate: float,
                  weight_decay: float, max_epochs: int,
                  max_batches_per_epoch: int, patience: int,
-                 nb_cpu_processes: int, taskman_managed: bool, use_gpu: bool,
+                 nb_cpu_workers: int, taskman_managed: bool, use_gpu: bool,
                  comet_workspace: str, comet_project: str,
-                 from_checkpoint: bool):
+                 from_checkpoint: bool, **_):
         """
         Parameters
         ----------
-        batch_sampler_training: AbstractBatchSampler
+        batch_sampler_training: BatchSequencesSamplerOneInputVolume
             Instantiated class used for sampling batches of training data.
             Data in batch_sampler_training.source_data must be already loaded.
-        batch_sampler_validation: AbstractBatchSampler
+        batch_sampler_validation: BatchSequencesSamplerOneInputVolume
             Instantiated class used for sampling batches of validation
             data. Data in batch_sampler_training.source_data must be already
             loaded. Can be set to None if no validation is used. Then, best
@@ -79,7 +81,7 @@ class DWIMLTrainer:
         patience: int
             If not None, use early stopping. Defines the number of epochs after
             which the model should stop if the loss hasn't improved.
-        nb_cpu_processes: int
+        nb_cpu_workers: int
             Number of parallel CPU workers. Use 0 to avoid parallel threads.
         taskman_managed: bool
             If True, taskman manages the experiment. Do not output progress
@@ -116,14 +118,14 @@ class DWIMLTrainer:
         self.experiment_name = experiment_name
 
         # Note that the training/validation sets are contained in the
-        # data_loaders.data_source
+        # batch_samplers.data_source
         self.train_batch_sampler = batch_sampler_training
         self.valid_batch_sampler = batch_sampler_validation
         if self.valid_batch_sampler is None:
             self.use_validation = False
             logging.warning("WARNING! There is not validation set. Loss for "
                             "best epoch monitoring will be the training loss. "
-                            "\n    Best practice is to have a validation set.")
+                            "\nBest practice is to have a validation set.")
         else:
             self.use_validation = True
         self.model = model
@@ -133,7 +135,7 @@ class DWIMLTrainer:
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.patience = patience
-        self.nb_cpu_processes = nb_cpu_processes
+        self.nb_cpu_workers = nb_cpu_workers
         self.taskman_managed = taskman_managed
         self.use_gpu = use_gpu
 
@@ -280,10 +282,11 @@ class DWIMLTrainer:
         params = {
             'experiment_dir': self.experiment_path,
             'experiment_name': self.experiment_name,
+            'dwi_ml_trainer_version': VERSION,
             'comet_key': self.comet_key,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
-            'nb_cpu_processes': self.nb_cpu_processes,
+            'nb_cpu_workers': self.nb_cpu_workers,
             'max_epochs': self.max_epochs,
             'patience': self.patience,
             'computed_values': {
@@ -389,7 +392,7 @@ class DWIMLTrainer:
         train_dataloader = DataLoader(
             self.train_batch_sampler.dataset,
             batch_sampler=self.train_batch_sampler,
-            num_workers=self.nb_cpu_processes,
+            num_workers=self.nb_cpu_workers,
             collate_fn=self.train_batch_sampler.load_batch,
             pin_memory=self.use_gpu)
 
@@ -398,7 +401,7 @@ class DWIMLTrainer:
             valid_dataloader = DataLoader(
                 self.valid_batch_sampler.dataset,
                 batch_sampler=self.valid_batch_sampler,
-                num_workers=self.nb_cpu_processes,
+                num_workers=self.nb_cpu_workers,
                 collate_fn=self.valid_batch_sampler.load_batch,
                 pin_memory=self.use_gpu)
 
@@ -523,7 +526,7 @@ class DWIMLTrainer:
         implement, in case you need some variables.
         """
         # Make sure there are no existing HDF handles if using parallel workers
-        if (self.nb_cpu_processes > 0 and
+        if (self.nb_cpu_workers > 0 and
                 self.train_batch_sampler.dataset.is_lazy):
             self.train_batch_sampler.dataset.hdf_handle = None
             self.train_batch_sampler.dataset.volume_cache_manager = None
@@ -597,7 +600,7 @@ class DWIMLTrainer:
         logging.debug('Unused args in validate: {}'.format(args))
 
         # Make sure there are no existing HDF handles if using parallel workers
-        if (self.nb_cpu_processes > 0 and
+        if (self.nb_cpu_workers > 0 and
                 self.valid_batch_sampler.dataset.is_lazy):
             self.valid_batch_sampler.dataset.hdf_handle = None
             self.valid_batch_sampler.dataset.volume_cache_manager = None
@@ -697,8 +700,8 @@ class DWIMLTrainer:
 
     @classmethod
     def init_from_checkpoint(
-            cls, batch_sampler_training: AbstractBatchSampler,
-            batch_sampler_validation: AbstractBatchSampler,
+            cls, batch_sampler_training: BatchStreamlinesSampler,
+            batch_sampler_validation: BatchStreamlinesSampler,
             model: torch.nn.Module, checkpoint_state: dict, new_patience,
             new_max_epochs):
         """
@@ -792,7 +795,7 @@ class DWIMLTrainer:
             'max_epochs': self.max_epochs,
             'max_batches_per_epoch': self.max_batches_per_epochs,
             'patience': self.patience,
-            'nb_cpu_processes': self.nb_cpu_processes,
+            'nb_cpu_workers': self.nb_cpu_workers,
             'taskman_managed': self.taskman_managed,
             'use_gpu': self.use_gpu,
             'comet_workspace': self.comet_workspace,

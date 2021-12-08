@@ -7,7 +7,7 @@ from typing import List, Union
 
 from dwi_ml.data.dataset.mri_data_containers import LazyMRIData, MRIData
 from dwi_ml.data.dataset.streamline_containers import LazySFTData, SFTData
-from dwi_ml.data.dataset.checks import prepare_groups_info
+from dwi_ml.data.dataset.utils import prepare_groups_info
 
 
 class SubjectDataAbstract(object):

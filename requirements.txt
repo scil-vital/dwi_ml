@@ -3,6 +3,7 @@ scilpy
 torch
 tqdm==4.34.0
 nibabel>=3.0.0
+PyYAML==5.4
 comet-ml>=3.0.2
 contextlib2
 nested_lookup

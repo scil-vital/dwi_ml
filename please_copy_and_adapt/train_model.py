@@ -8,20 +8,28 @@ There are a lot of parameters. We have chosen to use a yaml file to keep track
 of all parameters (instead of typing all parameters directly when calling this
 script).
 """
-import argparse
 import logging
 import os
 from os import path
 
+import yaml
+
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.data_loaders.utils import (
-    add_args_batch_sampler, add_input_args_batch_sampler,
-    prepare_batchsamplers_oneinput)
-from dwi_ml.data.dataset.utils import (add_args_dataset,
-                                       prepare_multisubjectdataset)
-from dwi_ml.training.utils import (add_training_args, prepare_trainer,
-                                   run_experiment)
+from dwi_ml.training.batch_samplers import BatchStreamlinesSamplerOneInputAndPD
+from dwi_ml.experiment.monitoring import EarlyStoppingError
+from dwi_ml.experiment.timer import Timer
+from dwi_ml.models.main_models import \
+    MainModelAbstractNeighborsPreviousDirs
+from dwi_ml.training.checks_for_training_parameters import (
+    check_all_experiment_parameters)
+import dwi_ml.training.training_parameters_description as params_d
+from dwi_ml.training.trainers import DWIMLTrainer
+from dwi_ml.training.training_utils import (
+    parse_args_train_model,
+    prepare_data,
+    check_unused_args_for_checkpoint)
+from dwi_ml.utils import format_dict_to_str
 
 """
 This example is based on an experiment that would use the batch sampler
@@ -30,116 +38,174 @@ This example is based on an experiment that would use the batch sampler
 Remove or add parameters to fit your needs. You should change your yaml file
 accordingly.
 
+- Change prepare_data() if the MultiSubjectDataset doesn't fit your needs
 - Change the batch sampler if it doesn't fit your needs
 - Implement a model
 - Implement a child version of the trainer and implement run_one_batch.
 """
 
 
-def prepare_arg_parser():
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument(
-        'experiment_path',
-        help='Path where to save your experiment. \nComplete path will be '
-             'experiment_path/experiment_name.')
-    p.add_argument(
-        'experiment_name',
-        help='If given, name for the experiment. Else, model will decide the '
-             'name to \ngive based on time of day.')
-    p.add_argument(
-        'hdf5_file',
-        help='Path to the .hdf5 dataset. Should contain both your training '
-             'and \nvalidation subjects.')
-    p.add_argument(
-        'input_group_name',
-        help='Name of the input volume in the hdf5 dataset.')
-    p.add_argument(
-        'streamline_group_name',
-        help="Name of the streamlines group in the hdf5 dataset.")
+def prepare_batchsamplers(dataset, train_sampler_params,
+                          valid_sampler_params, model):
+    """
+    Instantiate a batch sampler (one for training + one for validation).
 
-    p.add_argument(
-        '--logging', dest='logging_choice',
-        choices=['error', 'warning', 'info', 'as_much_as_possible', 'debug'],
-        help="Logging level. Error, warning, info are as usual.\n The other "
-             "options are two equivalents of 'debug' level. \nWith "
-             "'as_much_as_possible', we print the debug level only when the "
-             "final \nresult is still readable (even during parallel training "
-             "and during tqdm \nloop). 'debug' prints everything always, even "
-             "if ugly.")
-    p.add_argument(
-        '--taskman_managed', action='store_true',
-        help="If set, instead of printing progression, print taskman-relevant "
-             "data.")
+    There could be a discussion about merging the training and validation
+    samplers, but user could potentially set params differently between
+    training and validation (ex, more or less noise), so keeping two instances.
 
-    # Memory options both for the batch sampler and the trainer:
-    m_g = p.add_argument_group("Memory options :")
-    m_g.add_argument(
-        '--use_gpu', action='store_true',
-        help="If set, avoids computing and interpolating the inputs (and "
-             "their neighborhood) \ndirectly in the batch sampler (which is "
-             "computed on CPU). Will be computed later on GPU, \nin the "
-             "trainer.")
-    m_g.add_argument(
-        '--processes', type=int, default=1,
-        help="Number of parallel CPU processes, when working on CPU.")
-    m_g.add_argument(
-        '--rng', type=int, default=1234,
-        help="Random seed. Default=1234.")
+    Returns None if the dataset has no training subjects or no validation
+    subjects, respectively.
+    """
+    with Timer("\nPreparing batch samplers...", newline=True, color='green'):
+        if dataset.training_set.nb_subjects > 0:
+            train_batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
+                dataset.training_set, model=model, **train_sampler_params)
+            logging.info(
+                "\nTraining batch sampler user-defined parameters: \n" +
+                format_dict_to_str(train_batch_sampler.params))
+        else:
+            train_batch_sampler = None
 
-    add_args_dataset(p)
-    add_model_args(p)
-    # For the abstract batch sampler class:
-    add_args_batch_sampler(p)
-    # For the batch sampler sub-class with inputs:
-    add_input_args_batch_sampler(p)
-    add_training_args(p)
+        if dataset.validation_set.nb_subjects > 0:
+            valid_batch_sampler = BatchStreamlinesSamplerOneInputAndPD(
+                dataset.validation_set, model=model, **valid_sampler_params)
+            logging.info(
+                "\nValidation batch sampler user-defined parameters: \n" +
+                format_dict_to_str(valid_batch_sampler.params))
+        else:
+            valid_batch_sampler = None
 
-    return p
+    return train_batch_sampler, valid_batch_sampler
+
+
+def init_from_checkpoint(args):
+    check_unused_args_for_checkpoint(args, ['input_group', 'target_group'])
+
+    # Loading checkpoint
+    checkpoint_state = DWIMLTrainer.load_params_from_checkpoint(
+        args.experiment_path,
+        args.experiment_name)
+
+    # Stop now if early stopping was triggered
+    DWIMLTrainer.check_stopping_cause(checkpoint_state,
+                                      args.override_checkpoint_patience,
+                                      args.override_checkpoint_max_epochs)
+
+    # Prepare data
+    dataset = prepare_data(checkpoint_state['train_data_params'])
+    # toDo Verify that valid dataset is the same.
+    #  checkpoint_state['valid_data_params']
+
+    # Prepare model
+    with Timer("\n\nPreparing model", newline=True, color='yellow'):
+        # Possible args : input_size, **model_params
+        # Remember: you can access the input size here.
+        # input_size = dataset.nb_features[volume_group_idx]
+        model = MainModelAbstractNeighborsPreviousDirs.init_from_checkpoint(
+            **checkpoint_state['model_params'])
+        logging.info("Model parameters: \n" +
+                     format_dict_to_str(model.params))
+
+    # Prepare batch samplers
+    (training_batch_sampler,
+     validation_batch_sampler) = prepare_batchsamplers(
+        dataset,
+        checkpoint_state['train_sampler_params'],
+        checkpoint_state['valid_sampler_params'], model)
+
+    # Instantiate trainer
+    with Timer("\n\nPreparing trainer", newline=True, color='red'):
+        trainer = DWIMLTrainer.init_from_checkpoint(
+            training_batch_sampler,
+            validation_batch_sampler,
+            model,
+            checkpoint_state,
+            args.override_checkpoint_patience,
+            args.override_checkpoint_max_epochs)
+
+    return trainer
 
 
 def init_from_args(p, args):
+    # Check that all files exist
+    assert_inputs_exist(p, [args.hdf5_file, args.yaml_parameters])
+    assert_outputs_exist(p, args, args.experiment_path)
+
+    # Load parameters
+    with open(args.yaml_parameters) as f:
+        yaml_parameters = yaml.safe_load(f.read())
+
+    # Perform checks
+    # We have decided to use yaml for a more rigorous way to store
+    # parameters, compared, say, to bash. However, no argparser is used so
+    # we need to make our own checks.
+    (sampling_params, training_params, model_params, memory_params,
+     randomization) = check_all_experiment_parameters(yaml_parameters)
+
+    # Modifying params to copy the checkpoint_state params.
+    # Params coming from the yaml file must have the same keys as when
+    # using a checkpoint.
+    experiment_params = {
+        'hdf5_file': args.hdf5_file,
+        'experiment_path': args.experiment_path,
+        'experiment_name': args.experiment_name,
+        'comet_workspace': args.comet_workspace,
+        'comet_project': args.comet_project}
+
+    # MultiSubjectDataset parameters
+    dataset_params = {**memory_params,
+                      **experiment_params}
+
+    # BatchSampler parameters
+    # If you wish to have different parameters for the batch sampler during
+    # training and validation, change values below.
+    sampler_params = {**sampling_params,
+                      **model_params,
+                      **randomization,
+                      **memory_params,
+                      'input_group_name': args.input_group,
+                      'streamline_group_name': args.target_group,
+                      'wait_for_gpu': memory_params['use_gpu']}
+
+    model_params.update(memory_params)
 
     # Prepare the dataset
-    dataset = prepare_multisubjectdataset(args)
-
-    # Preparing the batch samplers
-    if args.grid_radius:
-        args.neighborhood_radius = args.grid_radius
-        args.neighborhood_type = 'grid'
-    elif args.sphere_radius:
-        args.neighborhood_radius = args.sphere_radius
-        args.neighborhood_type = 'axes'
-    else:
-        args.neighborhood_radius = None
-        args.neighborhood_type = None
-    training_batch_sampler, validation_batch_sampler = \
-        prepare_batchsamplers_oneinput(dataset, args, args)
+    dataset = prepare_data(dataset_params)
 
     # Preparing the model
-    input_group_idx = dataset.volume_groups.index(args.input_group_name)
-    nb_features = dataset.nb_features[input_group_idx]
-    if training_batch_sampler.neighborhood_points:
-        nb_neighbors = len(training_batch_sampler.neighborhood_points)
-    else:
-        nb_neighbors = 0
+    with Timer("\n\nPreparing model", newline=True, color='yellow'):
+        # Possible args : input_size, **model_params
+        # Remember: you can access the input size here.
+        # input_size = dataset.nb_features[volume_group_idx]
+        model = MainModelAbstractNeighborsPreviousDirs(
+            experiment_name=args.experiment_name,
+            **model_params)
+        logging.info("Model parameters: " +
+                     format_dict_to_str(model.params) + '\n')
 
-    print("\nInput size = {} features * ({} neighbors + 1)"
-          .format(nb_features, nb_neighbors))
+    # Preparing the batch sampler
+    (training_batch_sampler,
+     validation_batch_sampler) = prepare_batchsamplers(
+        dataset, sampler_params, sampler_params, model)
 
-    input_size = nb_features * (nb_neighbors + 1)
-    model = prepare_model(args, input_size)
-
-    # Preparing the trainer
-    trainer = prepare_trainer(training_batch_sampler, validation_batch_sampler,
-                              model, args)
+    # Instantiate trainer
+    with Timer("\n\nPreparing trainer", newline=True, color='red'):
+        trainer = DWIMLTrainer(
+            training_batch_sampler, validation_batch_sampler, model,
+            **training_params, **experiment_params, **memory_params,
+            from_checkpoint=False)
 
     return trainer
 
 
 def main():
-    p = prepare_arg_parser()
+    p = parse_args_train_model()
     args = p.parse_args()
+
+    if args.print_description:
+        print(params_d.__doc__)
+        exit(0)
 
     # Initialize logger for preparation (loading data, model, experiment)
     # If 'as_much_as_possible', we will modify the logging level when starting
@@ -149,19 +215,35 @@ def main():
         logging_level = 'DEBUG'
     logging.basicConfig(level=logging_level)
 
-    # Check that all files exist
-    assert_inputs_exist(p, [args.hdf5_file])
-    assert_outputs_exist(p, args, args.experiment_path)
-
     # Verify if a checkpoint has been saved. Else create an experiment.
     if path.exists(os.path.join(args.experiment_path, args.experiment_name,
                                 "checkpoint")):
-        raise FileExistsError("This experiment already exists. Delete or use "
-                              "script resume_training_from_checkpoint.py.")
+        if args.resume:
+            trainer = init_from_checkpoint(args)
+        else:
+            raise ValueError("This experiment already exists. Use --resume to "
+                             "load previous state from checkpoint and resume "
+                             "experiment.")
+    else:
+        trainer = init_from_args(p, args)
+    logging.info("Trainer params : " + format_dict_to_str(trainer.params))
 
-    trainer = init_from_args(p, args)
+    # Run (or continue) the experiment
+    try:
+        with Timer("\n\n****** Training and validating model!!! ********",
+                   newline=True, color='magenta'):
+            trainer.train_and_validate(args.logging_choice)
+    except EarlyStoppingError as e:
+        print(e)
 
-    run_experiment(trainer, args.logging_choice)
+    trainer.save_model()
+
+    print("Script terminated successfully. Saved experiment in folder : ")
+    print(trainer.experiment_path)
+    print("Summary: ran {} epochs. Best loss was {} at epoch {}"
+          .format(trainer.current_epoch,
+                  trainer.best_epoch_monitoring.best_value,
+                  trainer.best_epoch_monitoring.best_epoch))
 
 
 if __name__ == '__main__':

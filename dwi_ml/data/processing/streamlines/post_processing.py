@@ -1,9 +1,38 @@
 # -*- coding: utf-8 -*-
 import torch
 
+"""
+Utils to prepare directions on torch tensors.
+"""
 
-def compute_n_previous_dirs(streamlines_dirs, unexisting_val,
-                            nb_previous_dirs):
+
+def compute_and_normalize_directions(streamlines, device=torch.device('cpu'),
+                                     normalize_directions: bool = True):
+    """
+    Params
+    ------
+    batch_streamlines: list[np.array]
+            The streamlines (after data augmentation)
+    device: torch device
+    normalize_directions: bool
+    """
+    # Getting directions
+    batch_directions = [torch.as_tensor(s[1:] - s[:-1],
+                                        dtype=torch.float32,
+                                        device=device)
+                        for s in streamlines]
+
+    # Normalization:
+    if normalize_directions:
+        batch_directions = [s / torch.sqrt(torch.sum(s ** 2, dim=-1,
+                                                     keepdim=True))
+                            for s in batch_directions]
+
+    return batch_directions
+
+
+def compute_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
+                            unexisting_val=None, device=torch.device('cpu')):
     """
     Params
     ------
@@ -45,6 +74,15 @@ def compute_n_previous_dirs(streamlines_dirs, unexisting_val,
         n_previous_dirs.append(
             torch.cat(tuple(streamline_n_previous_dirs), dim=1))
     """
+    # Compute previous directions
+    if nb_previous_dirs == 0:
+        return []
+
+    if unexisting_val is None:
+        # toDo See what to do when values do not exist. See discussion here.
+        #  https://stats.stackexchange.com/questions/169887/classification-with-partially-unknown-data
+        unexisting_val = torch.zeros((1, 3), dtype=torch.float32,
+                                     device=device)
 
     n_previous_dirs = [
         torch.cat([

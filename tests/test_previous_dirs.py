@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import torch
-from dwi_ml.data.processing.streamlines.previous_dirs import \
+from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs
 
 
@@ -31,7 +31,7 @@ def main():
         print("Streamlines dirs:\n{}".format(streamline_dirs))
 
         print("Four previous dirs")
-        test = compute_n_previous_dirs(streamline_dirs, empty_coord, 4)
+        test = compute_n_previous_dirs(streamline_dirs, 4, empty_coord)
         print(test)
 
         print("\n\n")

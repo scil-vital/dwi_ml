@@ -9,6 +9,8 @@ from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import contextlib2
 import numpy as np
 import torch
+from dwi_ml.experiment_utils.learning_utils import compute_gradient_norm
+from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
@@ -23,7 +25,7 @@ from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 QUIT_TIME_DELAY_SECONDS = 30
 
 
-class DWIMLTrainer:
+class DWIMLAbstractTrainer:
     """
     This Trainer class's train() method:
         - Creates DataLoaders from the data_loaders. Collate_fn will be the
@@ -666,34 +668,148 @@ class DWIMLTrainer:
 
     def run_one_batch(self, data, is_training: bool, batch_sampler, *args):
         """
-        PLEASE DEFINE IN YOUR CHILD CLASS
-
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
 
-        In the trainer, this is called inside the loop:
-        for epochs: (goes in train_one_epoch)
-            for batches: (goes in train_one_batch)
-                self.model.run_model_and_compute_loss
+        If the sampler was instantiated with wait_for_gpu, then we need to
+        compute the inputs here; not done yet.
 
-        Hint 1: With torch models, you can use self.model.train() or
-        self.model.eval() to allow gradients modification or not.
-
-        Hint 2: If your sampler was instantiated with avoid_cpu_computations,
-        you need to deal with your data accordingly here!
-        Use the sampler's self.load_batch_final_step method.
-
+        Parameters
+        ----------
+        data : tuple of (List, dict)
+            This is the output of the BatchSequencesSampleOneInputVolume's
+            load_batch() function. If wait_for_gpu, data is
+            (batch_streamlines, final_streamline_ids_per_subj). Else, data is
+            (batch_streamlines, final_streamline_ids_per_subj, inputs)
+        batch_sampler: BatchSequencesSamplerOneInputVolume
+            Either self.train_batch_sampler or valid_batch_sampler, depending
+            on the case.
+        is_training : bool
+            If True, record the computation graph and backprop through the
+            model parameters.
         Returns
         -------
-        mean_loss: float
-            The mean loss for this batch
-        grad_norm: float
-            The total grad_norm (total norm: sqrt(sum(params**2)))
-            for this batch.
+        mean_loss : float
+            The mean loss of the provided batch
+        total_norm: float
+            The total norm (sqrt(sum(params**2))) of parameters before gradient
+            clipping, if any.
         """
-        # logging.debug('Unused args in train: {}'.format(args))
+        if is_training:
+            # If training, enable gradients for backpropagation.
+            # Uses torch's module train(), which "turns on" the training mode.
+            self.model.train()
+            grad_context = torch.enable_grad
+        else:
+            # If evaluating, turn gradients off for back-propagation
+            # Uses torch's module eval(), which "turns off" the training mode.
+            self.model.eval()
+            grad_context = torch.no_grad
 
-        raise NotImplementedError
+        with grad_context():
+            if batch_sampler.wait_for_gpu:
+                if not self.use_gpu:
+                    logging.warning(
+                        "Batch sampler has been created with use_gpu=True, so "
+                        "some computations have been skipped to allow user to "
+                        "compute them later on GPU. Now in training, however, "
+                        "you are using CPU, so this was not really useful.\n"
+                        "Maybe this is an error in the code?")
+                # Data interpolation has not been done yet. GPU computations
+                # need to be done here in the main thread. Running final steps
+                # of data preparation.
+                self.logger.debug('Finalizing input data preparation on GPU.')
+                batch_streamlines, final_s_ids_per_subj = data
+
+                # Getting the inputs points from the volumes. Usually done in
+                # load_batch but we preferred to wait here to have a chance to
+                # run things on GPU.
+                batch_inputs = batch_sampler.compute_inputs(
+                    batch_streamlines, final_s_ids_per_subj)
+
+            else:
+                # Data is already ready
+                batch_streamlines, _, batch_inputs = data
+
+            if is_training:
+                # Reset parameter gradients
+                # See here for some explanation
+                # https://stackoverflow.com/questions/48001598/why-do-we-need-
+                # to-call-zero-grad-in-pytorch
+                self.optimizer.zero_grad()
+
+            self.logger.debug('\n=== Computing forward propagation ===')
+            model_outputs = self.run_model(batch_inputs, batch_streamlines)
+
+            # Compute loss
+            self.logger.debug('\n=== Computing loss ===')
+            mean_loss = self.compute_loss(model_outputs, batch_streamlines)
+            self.logger.info("Loss is : {}".format(mean_loss))
+
+            if is_training:
+                self.logger.debug('\n=== Computing back propagation ===')
+
+                # Explanation on the backward here:
+                # - Each parameter in the model have been created with the flag
+                #   requires_grad=True by torch.
+                #   ==> gradients = [i.grad for i in self.model.parameters()]
+                # - When using parameters to compute something (ex, outputs)
+                #   torch.autograd creates a computational graph, remembering
+                #   all the functions that were used from parameters that
+                #   contain the requires_grad.
+                # - When calling backward, the backward of each sub-function is
+                #   called iteratively, each time computing the partial
+                #   derivative dloss/dw and modifying the parameters' .grad
+                #   ==> model_outputs.grad_fn shows the last used function,
+                #       and thus the first backward to be used, here:
+                #       MeanBackward0  (last function was a mean)
+                #   ==> model_outputs.grad_fn shows the last used fct.
+                #       Ex, AddmmBackward  (addmm = matrix multiplication)
+                mean_loss.backward()
+
+                self.fix_parameters()
+
+                grad_norm = compute_gradient_norm(self.model.parameters())
+                self.logger.debug("Gradient norm: {}".format(grad_norm))
+
+                # Update parameters
+                self.optimizer.step()
+            else:
+                grad_norm = None
+
+            if self.use_gpu:
+                log_gpu_memory_usage(self.logger)
+
+        return mean_loss.cpu().item(), grad_norm
+
+    def run_model(self, batch_inputs, batch_streamlines):
+        """
+        Calls the forward method of the model. Reimplement in a child class if
+        inputs needs to be formatted in any way before the call. Batch
+        streamlines included in case user need it for their model (ex, to
+        compute previous directions).
+        """
+        model_outputs, _ = self.model(batch_inputs)
+        return model_outputs
+
+    def compute_loss(self, model_outputs, targets):
+        """
+        Calls the compute_loss method of the model. Reimplement in a child
+        class if targets needs to be formatted in any way before the call.
+        """
+        mean_loss = self.model.compute_loss(model_outputs, targets)
+        return mean_loss
+
+    def fix_parameters(self):
+        """
+        This function is called during training, after the forward and
+        backward propagation, but before updating the parameters through the
+        optimizer. User may define their own functions here if some
+        modification on the parameters is necessary.
+        Ex: in the case of vanishing or exploding gradients problem, this would
+        be the place to fix the parameters based on the gradient.
+        """
+        pass
 
     @classmethod
     def init_from_checkpoint(

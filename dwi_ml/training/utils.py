@@ -5,7 +5,7 @@ import logging
 from dwi_ml.experiment_utils.monitoring import EarlyStoppingError
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.trainers import DWIMLTrainer
+from dwi_ml.training.trainers import DWIMLAbstractTrainer
 
 
 def add_training_args(p: argparse.ArgumentParser):
@@ -50,7 +50,7 @@ def prepare_trainer(training_batch_sampler, validation_batch_sampler, model,
                     args):
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
-        trainer = DWIMLTrainer(
+        trainer = DWIMLAbstractTrainer(
             training_batch_sampler, validation_batch_sampler, model,
             args.experiment_path, args.experiment_name,
             # COMET

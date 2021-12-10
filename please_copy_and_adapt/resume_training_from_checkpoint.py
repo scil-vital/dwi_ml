@@ -10,7 +10,7 @@ from dwi_ml.data_loaders.utils import prepare_batchsamplers_oneinput
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.utils import run_experiment
-from dwi_ml.training.trainers import DWIMLTrainer
+from dwi_ml.training.trainers import DWIMLAbstractTrainer
 
 
 def prepare_arg_parser():
@@ -50,11 +50,11 @@ def prepare_arg_parser():
 def init_from_checkpoint(args):
 
     # Loading checkpoint
-    checkpoint_state = DWIMLTrainer.load_params_from_checkpoint(
+    checkpoint_state = DWIMLAbstractTrainer.load_params_from_checkpoint(
         args.experiment_path, args.experiment_name)
 
     # Stop now if early stopping was triggered.
-    DWIMLTrainer.check_stopping_cause(
+    DWIMLAbstractTrainer.check_stopping_cause(
         checkpoint_state, args.new_patience, args.new_max_epochs)
 
     # Prepare data

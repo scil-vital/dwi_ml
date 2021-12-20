@@ -31,7 +31,7 @@ from scilpy.tracking.utils import (add_seeding_options,
 
 from dwi_ml.data.dataset.single_subject_containers import SubjectData
 from dwi_ml.data.dataset.mri_data_containers import MRIData
-from dwi_ml.tracking.seed import SeedGeneratorGPU
+from dwi_ml.tracking.seed import DWIMLSeedGenerator
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options)
 
@@ -43,8 +43,8 @@ from dwi_ml.models.main_models import MainModelAbstract
 
 # You might need to implement a child version of these classes.
 from dwi_ml.tracking.tracker import DWIMLTrackerOneInputAndPD
-from dwi_ml.tracking.propagator import DWIMLPropagatorOneInputAndPD
-from dwi_ml.data_loaders.tracking_field import DWIMLTrackingFieldOneInputAndPD
+from dwi_ml.tracking.propagator import DWIMLPropagatorWithMemory
+from dwi_ml.tracking.tracking_field import DWIMLTrackingFieldOneInputAndPD
 
 
 def build_argparser():
@@ -188,7 +188,7 @@ def main():
         seed_img = nib.load(args.sm_from_data)
         seed_data = seed_img.get_fdata(dtype=float)
         seed_res = seed_img.header.get_zooms()[:3]
-        seed_generator = SeedGeneratorGPU(seed_data, seed_res, device)
+        seed_generator = DWIMLSeedGenerator(seed_data, seed_res, device)
 
     if args.npv:
         nbr_seeds = len(seed_generator.seeds) * args.npv
@@ -233,8 +233,8 @@ def main():
 
     logging.debug("Instantiating propagator.")
     theta = gm.math.radians(args.theta)
-    propagator = DWIMLPropagatorOneInputAndPD(tracking_field, args.step_size,
-                                              args.rk_order, args.algo, theta)
+    propagator = DWIMLPropagatorWithMemory(tracking_field, args.step_size,
+                                           args.rk_order, args.algo, theta)
 
     logging.debug("Instantiating tracker.")
     if args.nbr_processes > 1:

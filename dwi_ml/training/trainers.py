@@ -14,7 +14,7 @@ from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.data_loaders.batch_samplers import AbstractBatchSampler
+from dwi_ml.training.batch_samplers import AbstractBatchSampler
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.experiment_utils.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
@@ -797,7 +797,8 @@ class DWIMLAbstractTrainer:
         Calls the compute_loss method of the model. Reimplement in a child
         class if targets needs to be formatted in any way before the call.
         """
-        mean_loss = self.model.compute_loss(model_outputs, targets)
+        mean_loss = self.model.compute_loss(model_outputs, targets,
+                                            self.device)
         return mean_loss
 
     def fix_parameters(self):

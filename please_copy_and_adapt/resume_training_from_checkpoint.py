@@ -6,10 +6,10 @@ import os
 from os import path
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
-from dwi_ml.data_loaders.utils import prepare_batchsamplers_oneinput
+from dwi_ml.training.utils_batch_sampler import prepare_batchsamplers_oneinput
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.training.utils import run_experiment
+from dwi_ml.training.utils_trainer import run_experiment
 from dwi_ml.training.trainers import DWIMLAbstractTrainer
 
 

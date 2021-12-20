@@ -650,7 +650,7 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
             load_batch. User can call the compute_inputs method himself later
             on. Typically, Dataloader (who call load_batch) uses CPU.
         neighborhood_points: np.ndarray
-            The list of neighborhood points
+            The list of neighborhood points (does not contain 0,0,0 point)
         """
         super().__init__(dataset, streamline_group_name, chunk_size,
                          max_batch_size, rng, nb_subjects_per_batch, cycles,

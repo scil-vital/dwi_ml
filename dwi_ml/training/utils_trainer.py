@@ -64,7 +64,7 @@ def prepare_trainer(training_batch_sampler, validation_batch_sampler, model,
             # MEMORY
             # toDo
             nb_cpu_processes=args.processes,
-            taskman_managed=args.taskman_managed, use_gpu=args.use_gpu)
+            taskman_managed=args.taskman_managed, use_gpu=args.simultanenous_tracking)
         logging.info("Trainer params : " + format_dict_to_str(trainer.params))
 
 

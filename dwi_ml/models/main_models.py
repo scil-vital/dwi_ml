@@ -8,6 +8,8 @@ from typing import Union, Iterable
 import torch
 from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_information
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_n_previous_dirs, compute_and_normalize_directions
 
 from dwi_ml.experiment_utils.prints import TqdmLoggingHandler, \
     format_dict_to_str
@@ -20,12 +22,23 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name):
+    def __init__(self, experiment_name, normalize_directions=True,
+                 neighborhood_type=None, neighborhood_radius=None):
         """
         Params
         ------
         experiment_name: str
             Name of the experiment
+        normalize_directions: bool
+            If true, direction vectors are normalized (norm=1). If the step
+            size is fixed, it shouldn't make any difference. If streamlines are
+            compressed, in theory you should normalize, but you could hope that
+            not normalizing could give back to the algorithm a sense of
+            distance between points.
+        neighborhood_type: Union[str, None]
+            For usage explanation, see prepare_neighborhood_information.
+        neighborhood_radius: Union[int, float, Iterable[float], None]
+            For usage explanation, see prepare_neighborhood_information.
         """
         super().__init__()
 
@@ -36,6 +49,21 @@ class MainModelAbstract(torch.nn.Module):
         self.logger = logging.getLogger('model_logger')
         self.logger.propagate = False
         self.logger.setLevel(logging.root.level)
+
+        # Following information is actually dealt with by the data_loaders
+        # (batch sampler during training and tracking_field during tracking)
+        # or even by the trainers.
+        # But saving the parameters directly in the model to ensure that batch
+        # sampler and tracking field will both receive the same information.
+        self.normalize_directions = normalize_directions
+
+        # Possible neighbors for each input.
+        self.neighborhood_radius = neighborhood_radius
+        self.neighborhood_type = neighborhood_type
+        self.neighborhood_points = prepare_neighborhood_information(
+            neighborhood_type, neighborhood_radius)
+
+        self.device = None
 
     def set_logger_level(self, level):
         self.logger.setLevel(level)
@@ -53,7 +81,10 @@ class MainModelAbstract(torch.nn.Module):
         checkpoint. You should be able to re-create an instance of your
         model with those params."""
         return {
-            'experiment_name': self.experiment_name
+            'experiment_name': self.experiment_name,
+            'neighborhood_type': self.neighborhood_type,
+            'neighborhood_radius': self.neighborhood_radius,
+            'normalize_directions': self.normalize_directions
         }
 
     def update_best_model(self):
@@ -112,8 +143,16 @@ class MainModelAbstract(torch.nn.Module):
 
         return model
 
-    def compute_loss(self, outputs, targets):
+    def compute_loss(self, model_outputs, streamlines, device):
+        # Probably something like:
+        # targets = self._format_directions(streamlines)
+        # Then compute loss based on model.
         raise NotImplementedError
+
+    def format_directions(self, streamlines, device):
+        targets = compute_and_normalize_directions(
+            streamlines, device, self.normalize_directions)
+        return targets
 
     def get_tracking_direction_det(self, model_outputs):
         """
@@ -144,27 +183,31 @@ class MainModelAbstract(torch.nn.Module):
         raise NotImplementedError
 
 
-class MainModelWithNeighborhood(MainModelAbstract):
-    def __init__(self, experiment_name,
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, Iterable[float], None]
-                 ):
-        super().__init__(experiment_name)
-        self.neighborhood_radius = neighborhood_radius
-        self.neighborhood_type = neighborhood_type
-        self.neighborhood_points = prepare_neighborhood_information(
-            neighborhood_type, neighborhood_radius)
+class MainModelWithPD(MainModelAbstract):
+    def __init__(self, experiment_name, nb_previous_dirs,
+                 normalize_directions=False,
+                 neighborhood_type=None, neighborhood_radius=None):
+        """
+        nb_previous_dirs: int
+            Number of previous direction (i.e. [x,y,z] information) to be
+            received.
+        """
+        super().__init__(experiment_name, normalize_directions,
+                         neighborhood_type, neighborhood_radius)
+        self.nb_previous_dirs = nb_previous_dirs
 
     @property
     def params(self):
         p = super().params
         p.update({
-            'neighborhood_type': self.neighborhood_type,
-            'neighborhood_radius': self.neighborhood_radius
+            'nb_previous_dirs': self.nb_previous_dirs,
         })
         return p
 
-    def compute_loss(self, outputs, targets):
+    def compute_loss(self, outputs, targets, device):
+        # Probably something like:
+        # targets = self._format_directions(streamlines)
+        # Then compute loss based on model.
         raise NotImplementedError
 
     def get_tracking_direction_det(self, model_outputs):
@@ -172,3 +215,18 @@ class MainModelWithNeighborhood(MainModelAbstract):
 
     def sample_tracking_direction_prob(self, model_outputs):
         raise NotImplementedError
+
+    def format_previous_dirs(self, all_streamline_dirs, device,
+                             point_idx=None):
+        """
+        Formats the previous dirs. See compute_n_previous_dirs for a
+        description of parameters.
+        """
+        if self.nb_previous_dirs == 0:
+            return None
+
+        n_previous_dirs = compute_n_previous_dirs(
+            all_streamline_dirs, self.nb_previous_dirs, device=device,
+            point_idx=point_idx)
+
+        return n_previous_dirs

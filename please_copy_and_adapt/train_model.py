@@ -13,12 +13,12 @@ from os import path
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.data_loaders.utils import (
+from dwi_ml.training.utils_batch_sampler import (
     add_args_batch_sampler, prepare_batchsamplers_oneinput)
 from dwi_ml.data.dataset.utils import (
     add_args_dataset, prepare_multisubjectdataset)
-from dwi_ml.training.utils import (add_training_args, prepare_trainer,
-                                   run_experiment)
+from dwi_ml.training.utils_trainer import (add_training_args, prepare_trainer,
+                                           run_experiment)
 
 
 def prepare_arg_parser():
@@ -100,7 +100,7 @@ def init_from_args(p, args):
     model = prepare_model(args)
 
     # Preparing the batch samplers
-    args.wait_for_gpu = args.use_gpu
+    args.wait_for_gpu = args.simultanenous_tracking
     training_batch_sampler, validation_batch_sampler = \
         prepare_batchsamplers_oneinput(dataset, args, args,
                                        model.neighborhood_points)

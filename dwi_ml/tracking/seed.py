@@ -5,7 +5,7 @@ import torch
 from scilpy.tracking.seed import SeedGenerator
 
 
-class SeedGeneratorGPU(SeedGenerator):
+class DWIMLSeedGenerator(SeedGenerator):
     """
     Seed generator with added methods to generate many seeds instead of one
     at the time, for GPU processing of many streamlines at once.

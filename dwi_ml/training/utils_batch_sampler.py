@@ -2,7 +2,7 @@
 import argparse
 import logging
 
-from dwi_ml.data_loaders.batch_samplers import \
+from dwi_ml.training.batch_samplers import \
     BatchStreamlinesSamplerOneInput
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer

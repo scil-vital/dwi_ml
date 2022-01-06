@@ -116,9 +116,9 @@ def _get_one_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
 
     n_previous_dirs = [
         torch.cat([
-            dirs[point_idx-i][None, :] if (point_idx >= 0 and i <= point_idx)
-            else dirs[point_idx-i+1][None, :] if (
-                    point_idx < 0 and i <= len(dirs) + 1 + point_idx)
+            dirs[point_idx - i][None, :] if (point_idx >= 0 and i <= point_idx)
+            else dirs[point_idx - i + 1][None, :] if (
+                point_idx < 0 and i <= len(dirs) + 1 + point_idx)
             else unexisting_val
             for i in range(1, nb_previous_dirs + 1)], dim=1)
         for dirs in streamlines_dirs

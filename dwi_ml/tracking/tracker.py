@@ -48,16 +48,16 @@ class DWIMLTracker(ScilpyTracker):
             self.simultanenous_tracking_on_gpu()
         else:
             # On CPU, with possibility of parallel processing.
-            super().track()
+            return super().track()
 
     def simultanenous_tracking_on_gpu(self):
         """
         Creating all seeds at once and propagating all streamlines together.
         """
-        random_generator, indices = self.seed_generator.init_generator(
-            self.rng_seed, self.skip)
-        seeds = self.seed_generator.get_next_n_pos(
-            random_generator, indices, self.skip)
+        # random_generator, indices = self.seed_generator.init_generator(
+        #    self.rng_seed, self.skip)
+        # seeds = self.seed_generator.get_next_n_pos(
+        #    random_generator, indices, self.skip)
 
         # toDo Finish preparing code to use an equivalent of
         #  _get_line_both_directions but working on many streamlines at once.

@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import shutil
-from typing import Union, Iterable
 
 import torch
 from dwi_ml.data.processing.space.neighborhood import \

@@ -100,7 +100,7 @@ def init_from_args(p, args):
     model = prepare_model(args)
 
     # Preparing the batch samplers
-    args.wait_for_gpu = args.simultanenous_tracking
+    args.wait_for_gpu = args.use_gpu
     training_batch_sampler, validation_batch_sampler = \
         prepare_batchsamplers_oneinput(dataset, args, args,
                                        model.neighborhood_points)

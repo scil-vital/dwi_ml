@@ -12,7 +12,6 @@ depends on the output of the model.
 import argparse
 import logging
 import math
-import time
 
 import dipy.core.geometry as gm
 from dipy.io.stateful_tractogram import (StatefulTractogram, Space,
@@ -20,8 +19,10 @@ from dipy.io.stateful_tractogram import (StatefulTractogram, Space,
 from dipy.io.streamline import save_tractogram
 import h5py
 import nibabel as nib
+import numpy as np
 import torch
 
+from scilpy.image.datasets import DataVolume
 from scilpy.io.utils import (add_sphere_arg,
                              assert_inputs_exist, assert_outputs_exist,
                              verify_compression_th, add_processes_arg)
@@ -31,6 +32,8 @@ from scilpy.tracking.utils import (add_seeding_options,
 
 from dwi_ml.data.dataset.single_subject_containers import SubjectData
 from dwi_ml.data.dataset.mri_data_containers import MRIData
+from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.tracking.seed import DWIMLSeedGenerator
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options)
@@ -39,12 +42,12 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
 # PLEASE COPY AND ADAPT:
 ##################
 # Use your own model.
-from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.models.main_models import MainModelWithPD
 
-# You might need to implement a child version of these classes.
-from dwi_ml.tracking.tracker import DWIMLTrackerOneInputAndPD
-from dwi_ml.tracking.propagator import DWIMLPropagatorWithMemory
-from dwi_ml.tracking.tracking_field import DWIMLTrackingFieldOneInputAndPD
+# Choose appropriate classes or implement your own child classes.
+# Example:
+from dwi_ml.tracking.tracker import DWIMLTracker
+from dwi_ml.tracking.propagator import DWIMLPropagatorOneInputAndPD
 
 
 def build_argparser():
@@ -55,8 +58,7 @@ def build_argparser():
     add_mandatory_options_tracking(p)
 
     track_g = add_tracking_options(p)
-    # Sphere used if the yaml parameter model:direction_getter:key is the
-    # sphere-classification.
+    # Sphere used if the direction_getter key is the sphere-classification.
     add_sphere_arg(track_g, symmetric_only=False)
 
     add_seeding_options(p)
@@ -95,30 +97,10 @@ def build_argparser():
     return p
 
 
-def load_subj_from_data(parser, args):
-    volume_img = nib.load(args.input)
-    volume_data = volume_img.get_fdata(dtype=float)
-    volume_res = volume_img.header.get_zooms()[:3]
-    mri_data = MRIData(volume_data, volume_img.affine, volume_res,
-                       interpolation=args.data_interp)
-    nb_features = volume_img.shape[-1]
-    subj_data = SubjectData(subject_id='subj_for_tracking',
-                            volume_groups=['in_data'],
-                            nb_features=[nb_features],
-                            mri_data_list=[mri_data],
-                            streamline_groups=None, sft_data_list=None)
-    return subj_data
-
-
-def main():
-    parser = build_argparser()
-    args = parser.parse_args()
-
-    logging.basicConfig(level=args.logging.upper())
-
-    #########
-    # Verifying options
-    #########
+def perform_checks(parser, args):
+    """
+    Verifying options
+    """
     if not nib.streamlines.is_supported(args.out_tractogram):
         parser.error('Invalid output streamline file format (must be trk or ' +
                      'tck): {0}'.format(args.out_tractogram))
@@ -155,6 +137,132 @@ def main():
     verify_compression_th(args.compress)
     verify_seed_options(parser, args)
 
+    return hdf5_needed
+
+
+def prepare_tracker(parser, args, hdf_handle, device,
+                    min_nbr_pts, max_nbr_pts, max_invalid_dirs,
+                    mmap_mode):
+    with Timer("\n\nPreparing everything...",
+               newline=True, color='cyan'):
+        logging.info("Loading seeding mask + preparing seed generator.")
+        seed_generator, nbr_seeds = _prepare_seed_generator(parser, args,
+                                                            hdf_handle, device)
+
+        logging.info("Loading tracking mask.")
+        mask, ref = _prepare_tracking_mask(args, hdf_handle)
+
+        logging.info("Loading subject's data.")
+        subj_data, volume_group = _prepare_data(parser, args, hdf_handle)
+
+        logging.info("Loading model.")
+        model = MainModelWithPD.load(args.experiment_path + '/model')
+        logging.info("* Loaded params: " + format_dict_to_str(model.params) +
+                     "\n")
+        logging.info("* Formatted model: " +
+                     format_dict_to_str(model.params_per_layer))
+
+        logging.debug("Instantiating propagator.")
+        theta = gm.math.radians(args.theta)
+        propagator = DWIMLPropagatorOneInputAndPD(
+            subj_data, model, volume_group, model.neighborhood_points,
+            args.step_size, args.rk_order, args.algo, theta, device)
+
+        logging.debug("Instantiating tracker.")
+        if args.nbr_processes > 1:
+            # toDo
+            raise NotImplementedError(
+                "Usage with --processes>1 not ready in dwi_ml! "
+                "See the #toDo in scilpy! It uses tracking_field.dataset.data "
+                "which does not exist in our case!")
+        tracker = DWIMLTracker(
+            propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,
+            max_nbr_pts, max_invalid_dirs, args.compress, args.nbr_processes,
+            args.save_seeds, mmap_mode, args.rng_seed, args.track_forward_only,
+            args.use_gpu)
+
+    return tracker, ref
+
+
+def _prepare_seed_generator(parser, args, hdf_handle, device):
+    if args.sm_from_hdf5:
+        seed_data = np.array(hdf_handle[args.sm_from_hdf5]['data'],
+                             dtype=np.float32)
+        seed_res = np.array(hdf_handle[args.sm_from_hdf5]['voxres'],
+                            dtype=np.float32)
+    else:
+        seed_img = nib.load(args.sm_from_data)
+        seed_data = seed_img.get_fdata(dtype=float)
+        seed_res = seed_img.header.get_zooms()[:3]
+    seed_generator = DWIMLSeedGenerator(seed_data, seed_res, device)
+
+    if len(seed_generator.seeds) == 0:
+        parser.error('Seed mask "{}" does not have any voxel with value > 0.'
+                     .format(args.in_seed))
+
+    if args.npv:
+        # toDo. Not really nb seed per voxel, just in average.
+        nbr_seeds = len(seed_generator.seeds) * args.npv
+    elif args.nt:
+        nbr_seeds = args.nt
+    else:
+        # Setting npv = 1.
+        nbr_seeds = len(seed_generator.seeds)
+
+    return seed_generator, nbr_seeds
+
+
+def _prepare_tracking_mask(args, hdf_handle):
+    if args.tm_from_hdf5:
+        mask_data = np.array(hdf_handle[args.tm_from_hdf5]['data'],
+                             dtype=np.float32)
+        mask_res = np.array(hdf_handle[args.tm_from_hdf5]['voxres'],
+                            dtype=np.float32)
+        ref = None  # ??? #toDo
+    else:
+        mask_img = nib.load(args.tm_from_data)
+        mask_data = mask_img.get_fdata(dtype=float)
+        mask_res = mask_img.header.get_zooms()[:3]
+        ref = mask_img
+
+    mask = DataVolume(mask_data, mask_res, args.mask_interp)
+    return mask, ref
+
+
+def _prepare_data(parser, args, hdf_handle):
+    if args.input_from_hdf5:
+        if not args.subj_id:
+            parser.error("Subject id must be given to retrieve data from "
+                         "hdf5.")
+        subj_data = SubjectData.init_from_hdf(
+            args.subj_id, logging.getLogger(), hdf_handle,
+            group_info=None)
+        volume_group = args.input_from_hdf5
+    else:
+        volume_img = nib.load(args.input)
+        volume_data = volume_img.get_fdata(dtype=float)
+        volume_res = volume_img.header.get_zooms()[:3]
+        mri_data = MRIData(volume_data, volume_img.affine, volume_res,
+                           interpolation=args.data_interp)
+        nb_features = volume_img.shape[-1]
+        subj_data = SubjectData(subject_id='subj_for_tracking',
+                                volume_groups=['in_data'],
+                                nb_features=[nb_features],
+                                mri_data_list=[mri_data],
+                                streamline_groups=None, sft_data_list=None)
+        volume_group = 'in_data'
+
+    return subj_data, volume_group
+
+
+def main():
+    parser = build_argparser()
+    args = parser.parse_args()
+
+    logging.basicConfig(level=args.logging.upper())
+
+    hdf5_needed = perform_checks(parser, args)
+
     max_nbr_pts = int(args.max_length / args.step_size)
     min_nbr_pts = int(args.min_length / args.step_size) + 1
     max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size))
@@ -163,9 +271,6 @@ def main():
     # rights
     mmap_mode = None if args.set_mmap_to_none else 'r+'
 
-    #########
-    # All options ok. Now let's work.
-    #########
     device = torch.device('cpu')
     if args.use_gpu:
         if args.nbr_processes > 1:
@@ -179,84 +284,16 @@ def main():
     if hdf5_needed:
         hdf_handle = h5py.File(args.hdf5_file, 'r')
 
-    logging.info("Loading seeding mask.")
-    if args.sm_from_hdf5:
-        # todo
-        seed_mask = 1
-        seed_generator = 1
-    else:
-        seed_img = nib.load(args.sm_from_data)
-        seed_data = seed_img.get_fdata(dtype=float)
-        seed_res = seed_img.header.get_zooms()[:3]
-        seed_generator = DWIMLSeedGenerator(seed_data, seed_res, device)
+    tracker, ref = prepare_tracker(parser, args, hdf_handle, device,
+                                   min_nbr_pts, max_nbr_pts, max_invalid_dirs,
+                                   mmap_mode)
 
-    if args.npv:
-        nbr_seeds = len(seed_generator.seeds) * args.npv
-    elif args.nt:
-        nbr_seeds = args.nt
-    else:
-        # Setting npv = 1.
-        nbr_seeds = len(seed_generator.seeds)
-    if len(seed_generator.seeds) == 0:
-        parser.error('Seed mask "{}" does not have any voxel with value > 0.'
-                     .format(args.in_seed))
+    with Timer("\n\nTracking...",
+               newline=True, color='blue'):
+        streamlines, seeds = tracker.track()
 
-    logging.info("Loading tracking mask.")
-    if args.tm_from_hdf5:
-        # todo
-        mask = 1
-    else:
-        mask_img = nib.load(args.tm_from_data)
-        mask_data = mask_img.get_fdata(dtype=float)
-        mask_res = mask_img.header.get_zooms()[:3]
-        mask = MRIData(mask_data, mask_img.affine, mask_res, args.mask_interp)
-
-    logging.info("Loading subject's data.")
-    if args.input_from_hdf5:
-        if not args.subj_id:
-            parser.error("Subject id must be given to retrieve data from "
-                         "hdf5.")
-        subject_data = SubjectData.init_from_hdf(
-            args.subj_id, logging.getLogger(), hdf_handle,
-            group_info=None)
-        volume_group = args.input_from_hdf5
-    else:
-        subject_data = load_subj_from_data(parser, args)
-        volume_group = 'in_data'
-
-    logging.info("Loading model.")
-    model = MainModelAbstract.load(args.experiment_path + '/model')
-
-    logging.debug("Instantiating tracking field.")
-    tracking_field = DWIMLTrackingFieldOneInputAndPD(model, subject_data,
-                                                     volume_group)
-
-    logging.debug("Instantiating propagator.")
-    theta = gm.math.radians(args.theta)
-    propagator = DWIMLPropagatorWithMemory(tracking_field, args.step_size,
-                                           args.rk_order, args.algo, theta)
-
-    logging.debug("Instantiating tracker.")
-    if args.nbr_processes > 1:
-        # toDo
-        raise NotImplementedError(
-            "Usage with --processes>1 not ready in dwi_ml! "
-            "See the #toDo in scilpy! It uses tracking_field.dataset.data "
-            "which does not exist in our case!")
-    tracker = DWIMLTrackerOneInputAndPD(
-        propagator, mask, seed_generator, nbr_seeds, min_nbr_pts, max_nbr_pts,
-        max_invalid_dirs, args.compress, args.nbr_processes,
-        args.save_seeds, mmap_mode, args.rng_seed, args.track_forward_only,
-        args.use_gpu)
-
-    start = time.time()
-    logging.debug("Tracking...")
-    streamlines, seeds = tracker.track()
-
-    str_time = "%.2f" % (time.time() - start)
-    logging.debug("Tracked {} streamlines (out of {} seeds), in {} seconds.\n"
-                  "Now saving..."
-                  .format(len(streamlines), nbr_seeds, str_time))
+        logging.debug("Tracked {} streamlines (out of {} seeds). Now saving..."
+                      .format(len(streamlines), tracker.nbr_seeds))
 
     # save seeds if args.save_seeds is given
     data_per_streamline = {'seed': lambda: seeds} if args.save_seeds else {}
@@ -265,7 +302,7 @@ def main():
     # typically produces a lot of outputs!
     set_sft_logger_level('WARNING')
 
-    sft = StatefulTractogram(streamlines, mask_img, Space.VOXMM,
+    sft = StatefulTractogram(streamlines, ref, Space.VOXMM,
                              data_per_streamline=data_per_streamline)
     save_tractogram(sft, args.out_tractogram)
 

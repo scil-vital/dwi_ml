@@ -85,7 +85,6 @@ class DWIMLPropagator(AbstractPropagator):
             Return the str 'err' if no good tracking direction can be set at
             current seeding position.
         """
-        print("NEW STREAMLINE")
         # Reset state before starting a new streamline
         self._reset_memory_state()
 
@@ -99,13 +98,17 @@ class DWIMLPropagator(AbstractPropagator):
         to deal with in memory during streamline generation (ex, memory of the
         previous directions).
         """
-        print(" ----> Resetting state.")
         pass
 
     def prepare_backward(self, line, forward_dir):
         # Prepare last dir.
-        print(" --> BACKWARD")
         self._reverse_memory_state(line)
+
+        # Note. In our case, compared to scilpy, forward dir is None. So if the
+        # forward tracking failed, we will just return None and try the
+        # backward again with v_in=None. So basically, we will recompute
+        # exactly the same model outputs as for the forward. But maybe the
+        # sampling will create a new direction.
         return super().prepare_backward(line, forward_dir)
 
     def _reverse_memory_state(self, line):
@@ -114,12 +117,9 @@ class DWIMLPropagator(AbstractPropagator):
         to deal with in memory during streamline generation (ex, memory of the
         previous directions).
         """
-        print(" ----> Reversing state.")
         pass
 
     def propagate(self, pos, v_in):
-        print(" -----> New step. Will check various possible "
-              "next directions based on Runge-Kutta integration.")
         new_pos, new_dir, is_direction_valid = super().propagate(pos, v_in)
 
         self._update_state_after_propagation_step(new_pos, new_dir)
@@ -132,7 +132,6 @@ class DWIMLPropagator(AbstractPropagator):
         needs to deal with in memory during streamline generation (ex, memory
         of the previous directions).
         """
-        print(" ----> Finishing propagation step.")
         pass
 
     def _sample_next_direction(self, pos, v_in):
@@ -154,21 +153,20 @@ class DWIMLPropagator(AbstractPropagator):
         -------
         direction: ndarray (3,)
             A valid tracking direction. None if no valid direction is found.
+            Direction should be normalized.
         """
 
         # Tracking field returns the model_outputs
-        print("         ----> Obtaining model outputs by running the model at "
-              "current position.")
         model_outputs = self._get_model_outputs_at_pos(pos)
 
         # Sampling a direction from this information.
-        print("         ----> Sampling a direction from the model's output "
-              "with algo {}".format(self.algo))
         if self.algo == 'prob':
             next_dir = self.model.sample_tracking_direction_prob(model_outputs)
         else:
             next_dir = self.model.get_tracking_direction_det(model_outputs)
-        print("         ----> Next dir = {}.".format(next_dir))
+
+        # Normalizing
+        next_dir /= np.linalg.norm(next_dir)
 
         # Verify curvature, else return None.
         # toDo could we find a better solution for proba tracking? Resampling
@@ -296,13 +294,22 @@ class DWIMLPropagatorOneInputAndPD(DWIMLPropagatorOneInput):
         # Reset state before starting a new streamline.
         self.all_previous_dirs = []
 
+    def prepare_backward(self, line, forward_dir):
+        v_in = super().prepare_backward(line, forward_dir)
+
+        # v_in is in double format (np.float64) but it looks like we need
+        # float32. From testing with Learn2track. Always true?
+        if v_in is not None:
+            return v_in.astype(np.float32)
+        return v_in
+
     def _reverse_memory_state(self, line):
         # Inverting streamline in memory
         tmp_dirs = self.all_previous_dirs.copy()
         tmp_dirs.reverse()
 
         # Inverting directions
-        self.all_previous_dirs = [-d for d in tmp_dirs]
+        self.all_previous_dirs = [[-d[0], -d[1], -d[2]] for d in tmp_dirs]
 
     def _update_state_after_propagation_step(self, new_pos, new_dir):
         """

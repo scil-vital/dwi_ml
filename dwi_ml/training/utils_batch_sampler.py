@@ -2,9 +2,8 @@
 import argparse
 import logging
 
-from dwi_ml.data_loaders.batch_samplers import \
+from dwi_ml.training.batch_samplers import \
     BatchStreamlinesSamplerOneInput
-from dwi_ml.data.processing.space.neighborhood import add_args_neighborhood
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 
@@ -89,21 +88,17 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
         help="Percentage of streamlines to randomly reverse in each batch.")
 
 
-def add_input_args_batch_sampler(p: argparse.ArgumentParser):
-    g_inputs = p.add_argument_group("Batch sampler: neighborhood")
-    add_args_neighborhood(g_inputs)
-
-
-def prepare_batchsamplers_oneinput(dataset, args_training, args_validation):
+def prepare_batchsamplers_oneinput(dataset, args_training, args_validation,
+                                   neighborhood_points):
     with Timer("\nPreparing batch samplers...", newline=True, color='green'):
         logging.info("Training batch sampler...")
         training_batch_sampler = _prepare_batchsampler_oneinput(
-            dataset.training_set, args_training)
+            dataset.training_set, args_training, neighborhood_points)
 
         if dataset.validation_set.nb_subjects > 0:
             logging.info("Validation batch sampler...")
             validation_batch_sampler = _prepare_batchsampler_oneinput(
-                dataset.training_set, args_validation)
+                dataset.training_set, args_validation, neighborhood_points)
 
         else:
             validation_batch_sampler = None
@@ -111,7 +106,7 @@ def prepare_batchsamplers_oneinput(dataset, args_training, args_validation):
     return training_batch_sampler, validation_batch_sampler
 
 
-def _prepare_batchsampler_oneinput(subset, args):
+def _prepare_batchsampler_oneinput(subset, args, neighborhood_points):
     if args.step_size and args.step_size <= 0:
         raise ValueError("Step size can't be 0 or less!")
         # Note. When using
@@ -142,9 +137,7 @@ def _prepare_batchsampler_oneinput(subset, args):
         noise_gaussian_variability=args.noise_gaussian_variability,
         reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
         # NEIGHBORHOOD
-        neighborhood_radius=args.neighborhood_radius,
-        neighborhood_type=args.neighborhood_type,
-        # toDo
+        neighborhood_points=neighborhood_points,
         rng=args.rng, wait_for_gpu=args.wait_for_gpu
     )
 

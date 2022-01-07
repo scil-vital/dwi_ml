@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from collections import defaultdict
 import logging
-from typing import Dict, List, Union, Tuple, Iterable, Iterator
+from typing import Dict, List, Union, Tuple, Iterator
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
@@ -17,10 +17,8 @@ from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
 
 # For the batch sampler with inputs
-from dwi_ml.data.processing.space.neighborhood import \
-    prepare_neighborhood_information
 from dwi_ml.data.processing.volume.interpolation import \
-    interpolate_volume_in_neighborhoods
+    interpolate_volume_in_neighborhood
 
 """
 Batch sampler
@@ -641,9 +639,7 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
                  noise_gaussian_size: float,
                  noise_gaussian_variability: float,
                  reverse_ratio: float, input_group_name, wait_for_gpu: bool,
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, Iterable[float], None]
-                 ):
+                 neighborhood_points: np.ndarray):
         """
         Additional parameters compared to super:
         --------
@@ -653,16 +649,8 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
             If true, will not compute the inputs directly when using
             load_batch. User can call the compute_inputs method himself later
             on. Typically, Dataloader (who call load_batch) uses CPU.
-        neighborhood_type: str
-            The type of neighborhood to add. One of 'axes', 'grid' or None. If
-            None, don't add any. See
-            dwi_ml.data.processing.space.Neighborhood for more information.
-        neighborhood_radius : Union[int, float, Iterable[float]]
-            Add neighborhood points at the given distance (in voxels) in each
-            direction (nb_neighborhood_axes). (Can be none)
-                - For a grid neighborhood: type must be int.
-                - For an axes neighborhood: type must be float. If it is an
-                iterable of floats, we will use a multi-radius neighborhood.
+        neighborhood_points: np.ndarray
+            The list of neighborhood points (does not contain 0,0,0 point)
         """
         super().__init__(dataset, streamline_group_name, chunk_size,
                          max_batch_size, rng, nb_subjects_per_batch, cycles,
@@ -675,12 +663,7 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
         self.wait_for_gpu = wait_for_gpu
 
         self.input_group_name = input_group_name
-        self.neighborhood_type = neighborhood_type
-        self.neighborhood_radius = neighborhood_radius
-
-        # Preparing the neighborhood
-        self.neighborhood_points = prepare_neighborhood_information(
-            neighborhood_type, neighborhood_radius)
+        self.neighborhood_points = neighborhood_points
 
         # Find group index in the data_source
         idx = self.dataset.volume_groups.index(input_group_name)
@@ -691,8 +674,7 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
         p = super().params
         p.update({
             'input_group_name': self.input_group_name,
-            'neighborhood_type': self.neighborhood_type,
-            'neighborhood_radius': self.neighborhood_radius,
+            'neighborhood_points': self.neighborhood_points,
             'wait_for_gpu': self.wait_for_gpu
         })
         return p
@@ -797,14 +779,17 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
             # Getting the subject's volume and sending to CPU/GPU
             # If data is lazy, get volume from cache or send to cache if
             # it wasn't there yet.
-            data_volume = self.dataset.get_volume_verify_cache(
+            data_tensor = self.dataset.get_volume_verify_cache(
                 subj, self.input_group_idx, device=device, non_blocking=True)
 
             # Prepare the volume data, possibly adding neighborhood
             # (Thus new coords_torch possibly contain the neighborhood points)
             # Coord_clipped contain the coords after interpolation
-            subj_x_data, coords_torch = interpolate_volume_in_neighborhoods(
-                data_volume, flat_subj_x_coords, self.neighborhood_points,
+            # Trilinear interpolation uses origin=corner, vox space, but ok
+            # because in load_batch, we use sft.to_vox and sft.to_corner
+            # before adding streamline to batch.
+            subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
+                data_tensor, flat_subj_x_coords, self.neighborhood_points,
                 device)
 
             # Split the flattened signal back to streamlines
@@ -819,12 +804,12 @@ class BatchStreamlinesSamplerOneInput(AbstractBatchSampler):
                 # Clipping used coords (i.e. possibly with neighborhood)
                 # outside volume
                 lower = torch.as_tensor([0, 0, 0], device=device)
-                upper = torch.as_tensor(data_volume.shape[:3], device=device)
+                upper = torch.as_tensor(data_tensor.shape[:3], device=device)
                 upper -= 1
                 coords_to_idx_clipped = torch.min(
                     torch.max(torch.floor(coords_torch).long(), lower),
                     upper)
-                input_mask = torch.tensor(np.zeros(data_volume.shape[0:3]))
+                input_mask = torch.tensor(np.zeros(data_tensor.shape[0:3]))
                 for s in range(len(coords_torch)):
                     input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
                 batch_input_masks.append(input_mask)

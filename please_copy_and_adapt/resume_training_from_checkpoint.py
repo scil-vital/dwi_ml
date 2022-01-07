@@ -6,10 +6,10 @@ import os
 from os import path
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
-from dwi_ml.data_loaders.utils import prepare_batchsamplers_oneinput
+from dwi_ml.training.utils_batch_sampler import prepare_batchsamplers_oneinput
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.training.utils import run_experiment
+from dwi_ml.training.utils_trainer import run_experiment
 from dwi_ml.training.trainers import DWIMLAbstractTrainer
 
 
@@ -64,16 +64,16 @@ def init_from_checkpoint(args):
     #  checkpoint_state['valid_data_params']
 
     # Prepare model
-    input_size = checkpoint_state['model_params']['input_size']
     args_model = argparse.Namespace(**checkpoint_state['model_params'])
-    model = prepare_model(args_model, input_size)
+    model = prepare_model(args_model)
 
     # Prepare batch samplers
     args_tr_s = argparse.Namespace(**checkpoint_state['train_sampler_params'])
     args_va_s = None if checkpoint_state['valid_sampler_params'] is None else \
         argparse.Namespace(**checkpoint_state['valid_sampler_params'])
     training_batch_sampler, validation_batch_sampler = \
-        prepare_batchsamplers_oneinput(dataset, args_tr_s, args_va_s)
+        prepare_batchsamplers_oneinput(dataset, args_tr_s, args_va_s,
+                                       model.neighborhood_points)
 
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):

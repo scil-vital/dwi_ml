@@ -136,7 +136,6 @@ def extend_coordinates_with_neighborhood(
     """
     n_coords = coords.shape[0]
     n_neighbors = neighborhood_translations.shape[0]
-    logging.debug('Adding {} neighboors to each point.'.format(n_neighbors))
 
     # 1. We repeat each coordinate to have the neighborhood size (+ 1 for
     # original coordinate) before applying translations.

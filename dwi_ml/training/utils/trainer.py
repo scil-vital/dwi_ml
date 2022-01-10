@@ -2,7 +2,7 @@
 import argparse
 import logging
 
-from dwi_ml.experiment_utils.monitoring import EarlyStoppingError
+from dwi_ml.training.monitoring import EarlyStoppingError
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.trainers import DWIMLAbstractTrainer

@@ -9,12 +9,12 @@ from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import contextlib2
 import numpy as np
 import torch
-from dwi_ml.experiment_utils.learning_utils import compute_gradient_norm
+from dwi_ml.training.gradient_norm import compute_gradient_norm
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.experiment_utils.monitoring import (
+from dwi_ml.training.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
 from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 from dwi_ml.models.main_models import MainModelAbstract

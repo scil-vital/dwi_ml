@@ -509,8 +509,9 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         """
         Get the predicted class with highest logits (=probabilities).
         """
-        # toDo. principal eigenvector?
-        raise NotImplementedError
+        # Returns the direction of the max of the Gaussian = the mean.
+        means, sigmas = learned_gaussian_params
+        return means
 
 
 class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):

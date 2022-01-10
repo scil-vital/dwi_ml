@@ -208,7 +208,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         raise NotImplementedError
 
 
-class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
+class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
     """
     Regression model.
 
@@ -217,6 +217,38 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
     layers are:
         1. Linear1:  output size = ceil(input_size/2)
         2. Linear2:  output size = 3
+    """
+    def __init__(self, input_size, dropout: float, key: str,
+                 supports_compressed_streamlines: bool,
+                 loss_description: str = ''):
+        super().__init__(input_size, dropout, key,
+                         supports_compressed_streamlines, loss_description)
+
+        # Regression: output is of size 3.
+        self.layers = init_2layer_fully_connected(input_size, 3)
+
+    def forward(self, inputs: Tensor):
+        """
+        Run the inputs through the loop on layers.
+        """
+        output = self.loop_on_layers(inputs, self.layers)
+        return output
+
+    def sample_tracking_direction_prob(self, learned_directions: Tensor):
+        raise NotImplementedError("Regression models do not support "
+                                  "probabilistic tractography.")
+
+    def get_tracking_direction_det(self, learned_directions: Tensor):
+        """
+        In this case, the output is directly a 3D direction, so we can use it
+        as is for the tracking.
+        """
+        return learned_directions
+
+
+class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
+    """
+    Regression model.
 
     Loss = negative cosine similarity.
     * If sequence: averaged on time steps and sequences.
@@ -227,18 +259,8 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
                          supports_compressed_streamlines=False,
                          loss_description='negative cosine similarity')
 
-        # Regression: output is of size 3.
-        self.layers = init_2layer_fully_connected(input_size, 3)
-
         # Loss will be applied on the last dimension.
         self.loss = CosineSimilarity(dim=-1)
-
-    def forward(self, inputs: Tensor):
-        """
-        Run the inputs through the loop on layers.
-        """
-        output = self.loop_on_layers(inputs, self.layers)
-        return output
 
     def compute_loss(self, learned_directions: Tensor,
                      target_directions: Tensor):
@@ -258,27 +280,10 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
         mean_loss = losses.mean()
         return mean_loss
 
-    def sample_tracking_direction_prob(self, learned_directions: Tensor):
-        raise NotImplementedError("This regression model does not support "
-                                  "probabilistic tractography.")
 
-    def get_tracking_direction_det(self, learned_directions: Tensor):
-        """
-        In this case, the output is directly a 3D direction, so we can use it
-        as is for the tracking.
-        """
-        return learned_directions
-
-
-class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
+class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
     """
     Regression model.
-
-    We use fully-connected (linear) network converting the outputs
-    (at every step) to a 3D vector. Will use super to loop on layers, where
-    layers are:
-        1. Linear1:  output size = ceil(input_size/2)
-        2. Linear2:  output size = 3
 
     Loss = Pairwise distance = p_root(sum(|x_i|^P))
     * If sequence: averaged on time steps and sequences.
@@ -290,41 +295,20 @@ class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
                          supports_compressed_streamlines=True,
                          loss_description="torch's pairwise distance")
 
-        # Regression: output is of size 3.
-        self.layers = init_2layer_fully_connected(input_size, 3)
-
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
         self.loss = PairwiseDistance()
 
-    def forward(self, inputs: Tensor):
-        """
-        Run the inputs through the loop on layers.
-        """
-        output = self.loop_on_layers(inputs, self.layers)
-        return output
-
     def compute_loss(self, learned_directions: Tensor,
                      target_directions: Tensor):
         """
-        Compute the average negative cosine similarity between the computed
-        directions and the target directions.
+        Compute the average pairwise distance between the computed directions
+        and the target directions.
         """
         # If outputs and targets are of shape (N, D), losses is of shape N
         losses = self.loss(learned_directions, target_directions)
         mean_loss = losses.mean()
         return mean_loss
-
-    def sample_tracking_direction_prob(self, learned_directions: Tensor):
-        raise NotImplementedError("This regression model does not support "
-                                  "probabilistic tractography.")
-
-    def get_tracking_direction_det(self, learned_directions: Tensor):
-        """
-        In this case, the output is directly a 3D direction, so we can use it
-        as is for the tracking.
-        """
-        return learned_directions
 
 
 class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):

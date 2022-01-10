@@ -24,6 +24,7 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
     config_file
     creating_hdf5
     model
+    formulas
     training
     tracking
 

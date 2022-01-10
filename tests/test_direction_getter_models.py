@@ -2,7 +2,7 @@
 from dipy.data import get_sphere
 from nose.tools import assert_equal
 import numpy as np
-from scipy.spatial.distance import (cosine, euclidean)
+from scipy.spatial.distance import (cosine, euclidean, mahalanobis)
 from scipy.special import logsumexp, softmax
 import torch
 from torch.nn.utils.rnn import PackedSequence
@@ -11,11 +11,30 @@ from dwi_ml.models.direction_getter_models import (
     CosineRegressionDirectionGetter, FisherVonMisesDirectionGetter,
     GaussianMixtureDirectionGetter, L2RegressionDirectionGetter,
     SingleGaussianDirectionGetter, SphereClassificationDirectionGetter)
-from dwi_ml.models.utils_for_gaussians import (
-    independent_gaussian_log_prob_vector)
-from dwi_ml.models.utils_for_fisher_von_mises import (
+from dwi_ml.models.utils.fisher_von_mises import (
     fisher_von_mises_log_prob_vector)
 
+d = 3
+
+
+def independent_gaussian_log_prob_vector(x, mus, sigmas):
+    """
+    Equivalent to the torch method in model.utils.gaussians. Easier to test.
+
+    Parameters
+    ----------
+    x = the variable
+    mu = mean of the gaussian (x,y,z directions)
+    sigmas = standard deviation of the gaussian (x,y,z directions)
+    """
+    # The inverse of a diagonal matrix is just inverting values on the
+    # diagonal
+    cov_inv = np.eye(d) * (1 / sigmas ** 2)
+
+    # sum(log) = log(prod)
+    logpdf = -d / 2 * np.log(2 * np.pi) - np.log(np.prod(sigmas)) \
+             - 0.5 * mahalanobis(x[:3], mus, cov_inv) ** 2
+    return logpdf
 
 """
 Included tests are:

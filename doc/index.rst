@@ -23,7 +23,7 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
     data_organization
     config_file
     creating_hdf5
-    params_file
+    model
     training
     tracking
 

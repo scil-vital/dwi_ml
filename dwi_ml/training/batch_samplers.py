@@ -21,32 +21,43 @@ from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 
 """
-Batch sampler
+                                Batch sampler
 
 These classes defines how to sample the streamlines available in the
-MultiSubjectData. It is possible to restrict the number of subjects in a
-batch (and thus the number of inputs to load associated with sampled
-streamlines), and to reduce the number of time we need to load new data by
-using the same subjects for a given number of "cycles".
+MultiSubjectData. 
 
-NOTE: Actual batch sizes might be different than `batch_size` depending
-on chosen data augmentation. This sampler takes streamline cutting and
-resampling into consideration, and as such, will return more (or less)
-points than the provided `batch_size`.
+AbstractBatchSampler:
 
-Data augmentation is done on-the-fly to avoid having to multiply data on
-disk.
+- Defines the __iter__ method: 
+    - Finds a list of streamlines ids and associated subj that you can later 
+    load in your favorite way.
+    
+    - It is possible to restrict the number of subjects in a batch (and thus 
+    the number of inputs to load associated with sampled streamlines), and to 
+    reduce the number of time we need to load new data by using the same 
+    subjects for a given number of "cycles".
+    
+- Define the load_batch method:
+    - Loads the streamlines associated to sampled ids. Can resample them.
+    
+    - Performs data augmentation (on-the-fly to avoid having to multiply data
+     on disk) (ex: splitting, reversing, adding noise).
 
-- Defines the __iter__ method: finds a list of streamlines ids and associated
-subj that you can later load in your favorite way. Most probably
-as done in the BatchStreamlinesSampler but we separated the
-implementation just in case.
+    NOTE: Actual loaded batch size might be different than `batch_size`
+    depending on chosen data augmentation. This sampler takes streamline
+    cutting and resampling into consideration, and as such, will return more
+    (or less) points than the provided `batch_size`.
 
-- Defines the load_batch method that loads the streamlines and processes
-them (resampling + data augmentation).
+----------
+                        Implemented child classes
 
-You can then implement a child class that fits your needs. You are encouraged
-to contribute to dwi_ml.
+BatchStreamlinesSamplerOneInput:
+
+- Redefines the load_batch method:
+    - Now also loads the input data under each point of the streamline (and 
+    possibly its neighborhood), for one input volume.
+ 
+You are encouraged to contribute to dwi_ml by adding any child class here.
 
 USAGE:
 Can be used in a torch DataLoader. For instance:

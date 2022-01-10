@@ -59,18 +59,6 @@ Here is how to create a mask of voxels touched by a bundle:
         scil_compute_density_map_from_streamlines.py BUNDLE.tck \
             preprocessed/subj/DTI_Metrics/SUBJ__fa.nii.gz OUT_NAME --binary
 
-Inverting endpoints masks
-'''''''''''''''''''''''''
-
-You can use mrtrix to invert masks.
-
-    .. code-block:: bash
-
-        # toDo
-        # ?? TO CLEAN
-        mrconvert "$head_mask" "$output_endpoints_head_mask" -strides 1,2,3
-
-
 Merging bundles
 '''''''''''''''
 

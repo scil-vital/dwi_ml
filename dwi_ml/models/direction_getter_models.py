@@ -10,62 +10,17 @@ from torch.distributions import Categorical, MultivariateNormal
 from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
-from dwi_ml.models.utils_for_gaussians import independent_gaussian_log_prob
-from dwi_ml.models.utils_for_fisher_von_mises import fisher_von_mises_log_prob
+from dwi_ml.models.utils.spheres import TorchSphere
+from dwi_ml.models.utils.gaussians import \
+    independent_gaussian_log_prob
+from dwi_ml.models.utils.fisher_von_mises import fisher_von_mises_log_prob
 
-DESCRIPTION = """
-MODELS:
-    REGRESSION models: Simple regression to learn directly a direction (each
-    output size = 3 = [x,y,z]). This means that it is a deterministic output.
-        - CosineRegressionDirectionGetter:
-                Model: a 2-layer NN
-                Loss: Cosine similarity between the computed direction and the
-                      provided target direction.
-                      = cos(theta) = (y*t)/(||y|| ||t||)
-                      The mean of loss values for each step of the streamline
-                      is computed.
-        - L2RegressionDirectionGetter:
-                Model: 2 Linear layers
-                Loss: Pairwise distance
-                      = sqrt(sum(t_i - y_i)^2)
-                      The mean of loss values for each step of the streamline
-                      is computed.
+"""
+The complete formulas and explanations are available in our doc:
+https://dwi-ml.readthedocs.io/en/latest/model.html
 
-    CLASSIFICATION models: That means that the output is a probability over all
-    classes. We can decide how to sample the final direction. The classes
-    depend on the model.
-        - SphereClassificationDirectionGetter:
-               Model: a 2-layer NN
-               Classes: 724 discrete points on the sphere
-                        (dipy.data.get_sphere('symmetric724'))
-               Loss: Negative log-likelyhood from a softmax (integrated inside
-               torch) = cross-entropy
 
-    GAUSSIAN models: Contrary to regression, which would learn the parameters
-    (hidden through the weights) that would represent a function h such that
-    y ~ h(x)  (we learn the *parameters*), gaussian processes learn directly
-    the *function probability*. See for ex here
-    https://blog.dominodatalab.com/fitting-gaussian-process-models-python/
-    The model learns to represent the mean and variance of all the functions
-    that could represent the data. We can decide how to sample the final
-    direction.
-        - SingleGaussianDirectionGetter:
-                Model: a 2-layer NN for the mean and a 2-layer NN for the
-                       variance.
-                Loss: Negative log-likelihood
-        - GaussianMixtureDirectionGetter:
-                Model: a 2-layer NN for the mean and a 2-layer NN for the
-                       variance, for each of N Gaussians.
-                Loss: Negative log-likelihood
-
-    FISHER VON MISES models: This model provides probabilistic outputs using
-    the Fisher - von Mises distribution, which resembles a gaussian on the
-    sphere. As such, it does not require unit normalization when sampling, and
-    should be more stable while training. We can decide how to sample the final
-    direction.
-                Model:  a 2-layer NN for the mean and a 2-layer NN for the
-                       'kappas'.
-                Loss: Negative log-likelihood
+Expected types and shapes:
 
 INPUTS:  Def: Here, we call 'input' the output of your experiment model.
               (Ex, from a RNN).
@@ -84,7 +39,7 @@ OUTPUTS: Def: The model final outputs, corresponding to directions, i.e.
              - Local models: [batch_size, 3]
 
 TARGETS: Def: The target values (real Y) for the batch
-         Type: Could be `PackedSequence.data`
+         Type: tensor
          Size:
              - Sequence models: [batch_size*seq_len, 3]
              - Local models: [batch_size, 3]
@@ -119,13 +74,12 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     def __init__(self, input_size, dropout: float, key: str,
                  supports_compressed_streamlines: bool,
                  loss_description: str = ''):
-        """ Prepares the dropout and ReLU sub-layers
-
+        """
         Parameters
         ----------
         input_size: Any
             Should be computed directly. Probably the output size of the first
-            layers of your model.
+            layers of your main model.
         dropout: float
             Dropout rate.
         supports_compressed_streamlines: bool
@@ -200,15 +154,31 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         raise NotImplementedError
 
     def sample_tracking_direction_prob(self, outputs: Tensor) -> Tensor:
+        """
+        Params:
+        -------
+        outputs: Any
+            The output of the model after running its forward method.
+
+        Returns a direction, sampled following the model's distribution.
+        """
         # Will be implemented by each class
         raise NotImplementedError
 
     def get_tracking_direction_det(self, outputs: Tensor) -> Tensor:
+        """
+        Params:
+        -------
+        outputs: Any
+            The output of the model after running its forward method.
+
+        Returns a direction, chosen deterministically.
+        """
         # Will be implemented by each class
         raise NotImplementedError
 
 
-class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
+class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
     """
     Regression model.
 
@@ -217,6 +187,38 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
     layers are:
         1. Linear1:  output size = ceil(input_size/2)
         2. Linear2:  output size = 3
+    """
+    def __init__(self, input_size, dropout: float, key: str,
+                 supports_compressed_streamlines: bool,
+                 loss_description: str = ''):
+        super().__init__(input_size, dropout, key,
+                         supports_compressed_streamlines, loss_description)
+
+        # Regression: output is of size 3.
+        self.layers = init_2layer_fully_connected(input_size, 3)
+
+    def forward(self, inputs: Tensor):
+        """
+        Run the inputs through the loop on layers.
+        """
+        output = self.loop_on_layers(inputs, self.layers)
+        return output
+
+    def sample_tracking_direction_prob(self, learned_directions: Tensor):
+        raise ValueError("Regression models do not support probabilistic "
+                         "tractography.")
+
+    def get_tracking_direction_det(self, learned_directions: Tensor):
+        """
+        In this case, the output is directly a 3D direction, so we can use it
+        as is for the tracking.
+        """
+        return learned_directions
+
+
+class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
+    """
+    Regression model.
 
     Loss = negative cosine similarity.
     * If sequence: averaged on time steps and sequences.
@@ -227,18 +229,8 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
                          supports_compressed_streamlines=False,
                          loss_description='negative cosine similarity')
 
-        # Regression: output is of size 3.
-        self.layers = init_2layer_fully_connected(input_size, 3)
-
         # Loss will be applied on the last dimension.
         self.loss = CosineSimilarity(dim=-1)
-
-    def forward(self, inputs: Tensor):
-        """
-        Run the inputs through the loop on layers.
-        """
-        output = self.loop_on_layers(inputs, self.layers)
-        return output
 
     def compute_loss(self, learned_directions: Tensor,
                      target_directions: Tensor):
@@ -258,27 +250,10 @@ class CosineRegressionDirectionGetter(AbstractDirectionGetterModel):
         mean_loss = losses.mean()
         return mean_loss
 
-    def sample_tracking_direction_prob(self, learned_directions: Tensor):
-        raise NotImplementedError("This regression model does not support "
-                                  "probabilistic tractography.")
 
-    def get_tracking_direction_det(self, learned_directions: Tensor):
-        """
-        In this case, the output is directly a 3D direction, so we can use it
-        as is for the tracking.
-        """
-        return learned_directions
-
-
-class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
+class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
     """
     Regression model.
-
-    We use fully-connected (linear) network converting the outputs
-    (at every step) to a 3D vector. Will use super to loop on layers, where
-    layers are:
-        1. Linear1:  output size = ceil(input_size/2)
-        2. Linear2:  output size = 3
 
     Loss = Pairwise distance = p_root(sum(|x_i|^P))
     * If sequence: averaged on time steps and sequences.
@@ -290,41 +265,20 @@ class L2RegressionDirectionGetter(AbstractDirectionGetterModel):
                          supports_compressed_streamlines=True,
                          loss_description="torch's pairwise distance")
 
-        # Regression: output is of size 3.
-        self.layers = init_2layer_fully_connected(input_size, 3)
-
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
         self.loss = PairwiseDistance()
 
-    def forward(self, inputs: Tensor):
-        """
-        Run the inputs through the loop on layers.
-        """
-        output = self.loop_on_layers(inputs, self.layers)
-        return output
-
     def compute_loss(self, learned_directions: Tensor,
                      target_directions: Tensor):
         """
-        Compute the average negative cosine similarity between the computed
-        directions and the target directions.
+        Compute the average pairwise distance between the computed directions
+        and the target directions.
         """
         # If outputs and targets are of shape (N, D), losses is of shape N
         losses = self.loss(learned_directions, target_directions)
         mean_loss = losses.mean()
         return mean_loss
-
-    def sample_tracking_direction_prob(self, learned_directions: Tensor):
-        raise NotImplementedError("This regression model does not support "
-                                  "probabilistic tractography.")
-
-    def get_tracking_direction_det(self, learned_directions: Tensor):
-        """
-        In this case, the output is directly a 3D direction, so we can use it
-        as is for the tracking.
-        """
-        return learned_directions
 
 
 class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
@@ -343,6 +297,10 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
     """
     def __init__(self, input_size: int, dropout: float = None,
                  sphere: str = 'symmetric724'):
+        """
+        sphere: dipy.core.Sphere
+            An instance of dipy's Sphere.
+        """
         super().__init__(input_size, dropout,
                          key='sphere-classification',
                          supports_compressed_streamlines=False,
@@ -351,8 +309,7 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         # Classes
         self.sphere_name = sphere
         self.sphere = dipy.data.get_sphere(sphere)
-        self.vertices = torch.as_tensor(self.sphere.vertices,
-                                        dtype=torch.float32)
+        self.torch_sphere = TorchSphere(self.sphere)
         nb_classes = self.sphere.vertices.shape[0]
 
         self.layers = init_2layer_fully_connected(input_size, nb_classes)
@@ -381,9 +338,8 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         Compute the negative log-likelihood for the targets using the
         model's logits.
         """
-
         # Find the closest class for each target direction
-        target_idx = self._find_closest_vertex(target_directions)
+        target_idx = self.torch_sphere.find_closest(target_directions)
         target_idx_tensor = torch.as_tensor(target_idx, dtype=torch.int16,
                                             device=logits_per_class.device)
 
@@ -419,31 +375,17 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         """
         return self.vertices[logits_per_class.argmax()]
 
-    def _find_closest_vertex(self, directions):
-        """
-        Returns vertices by index of cosine distance to a direction vector
-        """
-        # First send the vertices on the right device, i.e. same as target
-        # directions
-        if self.vertices.device != directions.device:
-            self.vertices = self.vertices.to(device=directions.device)
-
-        # We will use cosine similarity to find nearest vertex
-        cosine_similarity = torch.matmul(directions, self.vertices.t())
-
-        # Ordering by similarity. On the last dimension = per time step per
-        # sequence in the batch.
-        index = torch.argmax(cosine_similarity, dim=-1).type(torch.int16)
-
-        return index
-
 
 class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
     """
     Regression model. The output is not a x,y,z value but the learned
     parameters of the gaussian representing the local direction.
 
-    Model: 2-layer NN for the mean + 2-layer NN for the variance
+    Not to be counfounded with the 3D Gaussian representing a tensor (means
+    would be 0,0,0, the origin). This Gaussian's means represent the most
+    probable direction, and variances represent the incertainty.
+
+    Model: 2-layer NN for the means + 2-layer NN for the variances.
 
     Loss: Negative log-likelihood.
     """
@@ -476,6 +418,9 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
+
+        See the doc for explanation on the formulas:
+        https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
         means, sigmas = learned_gaussian_params
 
@@ -509,30 +454,26 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         """
         Get the predicted class with highest logits (=probabilities).
         """
-        # toDo. principal eigenvector?
-        raise NotImplementedError
+        # Returns the direction of the max of the Gaussian = the mean.
+        means, sigmas = learned_gaussian_params
+
+        return means
 
 
 class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
     """
+    Regression model. The output is not a x,y,z value but the learned
+    parameters of the distribution representing the local direction.
+
     Same as SingleGaussian but with more than one Gaussian. This should account
     for branching bundles, distributing probability across space at branching
     points.
-
-    Regression model. The output is not a x,y,z value but the learned
-    parameters of the gaussian(s) representing the local direction.
 
     Model: (a 2-layer NN for the mean and a 2-layer NN for the sigma.) for
     each of N Gaussians.
     (Parameters:     N Gaussians * (1 mixture param + 3 means + 3 sigmas))
 
-    Loss: Negative log-likelihood. Tyically, in the literature, Gaussian
-    mixtures are used with expectation-maximisation (EM). Here we simply update
-    the mixture parameters and the Gaussian parameters jointly, similar to
-    GMM in [1].
-
-    Refs:
-    [1] https://github.com/jych/cle/blob/master/cle/cost/__init__.py
+    Loss: Negative log-likelihood.
     """
     def __init__(self, input_size: int, dropout: float = None,
                  nb_gaussians: int = 3):
@@ -584,6 +525,9 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
+
+        See the doc for explanation on the formulas:
+        https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
         # Note. Shape of targets: [batch_size*seq_len, 3] or [batch_size, 3]
 
@@ -619,7 +563,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         mixture_distribution = Categorical(logits=mixture_logits)
         mixture_id = mixture_distribution.sample()
 
-        # For each point in the batch (of concatenate sequence) take the mean
+        # For each point in the batch (of concatenated sequences) take the mean
         # and sigma parameters. Note. Means and sigmas are of shape
         # [batch_size*seq_len, n_gaussians, 3] or [batch_size, n_gaussians, 3]
         component_means = means[:, mixture_id, :]
@@ -634,9 +578,16 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         return direction
 
-    def get_tracking_direction_det(self, learned_gaussian_params: Tensor):
-        # toDo. max of the principal eigenvector for each gaussian?
-        raise NotImplementedError
+    def get_tracking_direction_det(
+            self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor]):
+        mixture_logits, means, sigmas = \
+            self._get_gaussian_parameters(learned_gaussian_params)
+
+        # mixture_logits: [batch_size, n_gaussians]
+        best_gaussian = torch.argmax(mixture_logits, dim=1)
+        chosen_means = means[:, best_gaussian, :]
+
+        return chosen_means
 
     def _get_gaussian_parameters(
             self, gaussian_params: Tuple[Tensor, Tensor, Tensor]):
@@ -690,9 +641,9 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         Returns
         -------
         means : torch.Tensor with shape [batch_size x 3]
-            The gaussian components means
+            ?
         kappas : torch.Tensor with shape [batch_size x 1]
-            The gaussian components standard deviations
+            ?
         """
         means = self.loop_on_layers(inputs, self.layers_mean)
         # mean should be a unit vector for Fisher Von-Mises distribution
@@ -711,6 +662,9 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
                      target_directions: Tensor):
         """Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
+
+        See the doc for explanation on the formulas:
+        https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
         # mu.shape : [flattened_sequences, 3]
         mu, kappa = learned_fisher_params
@@ -746,9 +700,9 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
             # compute new point
             result[i, :] = v * np.sqrt(1. - w ** 2) + w * mu
 
-        directions = torch.as_tensor(result, dtype=torch.float32)
+        direction = torch.as_tensor(result, dtype=torch.float32)
 
-        return directions
+        return direction
 
     def get_tracking_direction_det(self, learned_fisher_params: Tensor):
         # toDo. ?
@@ -792,6 +746,7 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
                          loss_description='negative log-likelihood')
 
         self.n_cluster = n_cluster
+        # toDO
         raise NotImplementedError
 
     @property

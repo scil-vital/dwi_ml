@@ -33,25 +33,25 @@ Log-likelihood of a single Gaussian
         .. math::
 
             P(x) =  N(x | \mu, C)
-                 =  \frac{1}{\sqrt{det(2\pi C)}}{e^{-0.5m^2}}
+                 =  \frac{1}{\sqrt{\det(2\pi C)}}{e^{-0.5m^2}}
 
         Kowing that:
 
         .. math::
 
-            det(kX) = k^d \cdot det(X),
+            \det(kX) = k^d \cdot \det(X),
 
         We obtain
 
         .. math::
 
-            P(x) =  \frac{1}{\sqrt{(2\pi)^d \cdot det(C))}} \cdot e^{-0.5m^2}
+            P(x) =  \frac{1}{\sqrt{(2\pi)^d \cdot \det(C))}} \cdot e^{-0.5m^2}
 
         * For independant variables:
 
         .. math::
 
-            det(C) = \sum \sigma_i^2
+            \det(C) = \sum \sigma_i^2
 
         And thus we obtain:
 
@@ -89,29 +89,29 @@ Log-likelihood of a mixture of Gaussians
 
             P(x) = \sum_k (z_k *  N(x | \mu_k, C_k))
 
-            P(x) = \sum_k \frac{z_k}{\sqrt{(2\pi)^d \cdot det(C_k)}} \cdot e^{-0.5m_k^2}
+            P(x) = \sum_k \frac{z_k}{\sqrt{(2\pi)^d \cdot \det(C_k)}} \cdot e^{-0.5m_k^2}
 
     2. Log-likelihood for a mixture of Gaussians:
 
         .. math::
 
-            \log(P(x)) = \log(\sum_k\frac{z_k}{\sqrt{(2\pi)^d \cdot det(C_k)}} \cdot e^{-0.5m_k^2})
+            \log(P(x)) = \log(\sum_k\frac{z_k}{\sqrt{(2\pi)^d \cdot \det(C_k)}} \cdot e^{-0.5m_k^2})
 
         If z_i is already known (mixture coefficient, computed separately), it is easy to separate this variable in the computation by using x = exp(log(x)), giving a shape typically known as logsumexp.
 
         .. math::
 
-           \log(P(x)) = \log(\sum_k(\exp(\log(\frac{z_k}{\sqrt{(2pi)^d \cdot det(C_k)}} \cdot e^{-0.5m_k^2})))
+           \log(P(x)) = \log(\sum_k(\exp(\log(\frac{z_k}{\sqrt{(2pi)^d \cdot \det(C_k)}} \cdot e^{-0.5m_k^2})))
 
-                     = \text{logsumexp}[\log(z_k) - 0.5(d\log(2\pi) + \log(det(C_k)) + m_k^2)]
+                     = \text{logsumexp}[\log(z_k) - 0.5(d\log(2\pi) + \log(\det(C_k)) + m_k^2)]
 
         * For independant variables:
 
         .. math::
 
-                    = \text{logsumexp}[\log(z_k) - 0.5(d\log(2\pi) + m_k^2 ) - 0.5\log(det(C_k)]
+                    = \text{logsumexp}[\log(z_k) - 0.5(d\log(2\pi) + m_k^2 ) - 0.5\log(\det(C_k)]
 
-                    = \text{logsumexp}[\log(z_k) - 0.5( d\log(2\pi) + m_k^2 ) - \sum(\log sigma_i)]
+                    = \text{logsumexp}[\log(z_k) - 0.5( d\log(2\pi) + m_k^2 ) - \sum_i(\log \sigma_i)]
 
         Note that the second half of this is the logpdf of a single Gaussian!
 
@@ -126,3 +126,53 @@ References:
   - https://www.ee.columbia.edu/~stanchen/spring16/e6870/slides/lecture3.pdf
   - https://github.com/jych/cle/blob/master/cle/cost/__init__.py
 
+Log-likelihood of a single Fisher-Von Mises distribution
+--------------------------------------------------------
+
+**Variables:**
+
+    - v = the normalized target
+    - mu = the mean
+    - kappa = the concentration parameter
+    - d = the dimension
+    - C = the distribution normalizing constant
+    - I_n = the modified Bessel function at order n (see `wiki <https://en.wikipedia.org/wiki/Bessel_function#Modified_Bessel_functions:_I%CE%B1,_K%CE%B1>`_ or `Wolfram <https://mathworld.wolfram.com/ModifiedBesselFunctionoftheFirstKind.html>`_).
+
+**Formulas:**
+
+    1. Probability function:
+
+        .. math::
+
+            P(v | \mu, \kappa) = C e^{\kappa \cdot \mu^T \cdot v}
+
+        Where
+
+        .. math::
+
+            C(\kappa) = \frac{\kappa^{\frac{d}{2}-1}}{(2\pi)^\frac{d}{2} \cdot I_{\frac{d}{2}-1}(\kappa)}
+
+        In our case, d=3, the value is reduced to the following expression, as stated `here <https://en.wikipedia.org/wiki/Von_Mises%E2%80%93Fisher_distribution>`_.
+
+        .. math::
+
+            C = \frac{\kappa}{2\pi\cdot (e^\kappa - e^{-\kappa})}
+
+    2. log-likelihood:
+
+        .. math::
+
+            \log(P(v)) = \log(C e^{\kappa \cdot \mu^T \cdot v})
+
+                       = log(C) + \kappa \cdot \mu^T \cdot v
+
+        Where
+
+        .. math::
+
+            \log(C) = \log(\kappa) - \log(2\pi) - \log(e^\kappa - e^{-\kappa})
+
+References:
+
+  - https://en.wikipedia.org/wiki/Von_Mises%E2%80%93Fisher_distribution
+  - http://www.mitsuba-renderer.org/~wenzel/files/vmf.pdf

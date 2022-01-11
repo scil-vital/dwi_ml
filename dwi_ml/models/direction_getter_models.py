@@ -16,6 +16,10 @@ from dwi_ml.models.utils.gaussians import \
 from dwi_ml.models.utils.fisher_von_mises import fisher_von_mises_log_prob
 
 """
+The complete formulas and explanations are available in our doc:
+https://dwi-ml.readthedocs.io/en/latest/model.html
+
+
 Expected types and shapes:
 
 INPUTS:  Def: Here, we call 'input' the output of your experiment model.
@@ -155,12 +159,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         -------
         outputs: Any
             The output of the model after running its forward method.
-        v_in: tensor
-            The incomming direction.
 
         Returns a direction, sampled following the model's distribution.
-        If the model is unclear about symmetry, direction must be aligned with
-        v_in, else -direction is returned.
         """
         # Will be implemented by each class
         raise NotImplementedError
@@ -171,12 +171,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         -------
         outputs: Any
             The output of the model after running its forward method.
-        v_in: tensor
-            The incomming direction.
 
         Returns a direction, chosen deterministically.
-        If the model is unclear about symmetry, direction must be aligned with
-        v_in, else -direction is returned.
         """
         # Will be implemented by each class
         raise NotImplementedError
@@ -217,8 +213,6 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         In this case, the output is directly a 3D direction, so we can use it
         as is for the tracking.
         """
-        # v_in is not used. The model should learn a direct regression,
-        # already aligned in the right direction.
         return learned_directions
 
 
@@ -302,7 +296,7 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
     Loss = negative log-likelihood.
     """
     def __init__(self, input_size: int, dropout: float = None,
-                 sphere: str = 'symmetric724', allow_symmetrical_answer=False):
+                 sphere: str = 'symmetric724'):
         """
         sphere: dipy.core.Sphere
             An instance of dipy's Sphere.
@@ -424,6 +418,9 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
+
+        See the doc for explanation on the formulas:
+        https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
         means, sigmas = learned_gaussian_params
 
@@ -528,6 +525,9 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
+
+        See the doc for explanation on the formulas:
+        https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
         # Note. Shape of targets: [batch_size*seq_len, 3] or [batch_size, 3]
 
@@ -641,9 +641,9 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         Returns
         -------
         means : torch.Tensor with shape [batch_size x 3]
-            The gaussian components means
+            ?
         kappas : torch.Tensor with shape [batch_size x 1]
-            The gaussian components standard deviations
+            ?
         """
         means = self.loop_on_layers(inputs, self.layers_mean)
         # mean should be a unit vector for Fisher Von-Mises distribution
@@ -662,6 +662,9 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
                      target_directions: Tensor):
         """Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
+
+        See the doc for explanation on the formulas:
+        https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
         # mu.shape : [flattened_sequences, 3]
         mu, kappa = learned_fisher_params
@@ -674,7 +677,7 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         return mean_loss
 
     def sample_tracking_direction_prob(
-            self, learned_fisher_params: Tuple[Tensor, Tensor], v_in):
+            self, learned_fisher_params: Tuple[Tensor, Tensor]):
         """Sample directions from a fisher von mises distribution.
         """
         # mu.shape : [flattened_sequences, 3]
@@ -698,8 +701,6 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
             result[i, :] = v * np.sqrt(1. - w ** 2) + w * mu
 
         direction = torch.as_tensor(result, dtype=torch.float32)
-
-        # toDo. Inverse direction based on v_in?
 
         return direction
 
@@ -745,6 +746,7 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
                          loss_description='negative log-likelihood')
 
         self.n_cluster = n_cluster
+        # toDO
         raise NotImplementedError
 
     @property
@@ -762,11 +764,10 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
                      target_directions: Tensor):
         raise NotImplementedError
 
-    def sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor],
-                                       v_in):
+    def sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor]):
         raise NotImplementedError
 
-    def get_tracking_direction_det(self, learned_fisher_params: Tensor, v_in):
+    def get_tracking_direction_det(self, learned_fisher_params: Tensor):
         raise NotImplementedError
 
 

@@ -4,34 +4,8 @@ import numpy as np
 import torch
 
 """
-Variables:
-    v = the normalized target
-    mu = the mean
-    kappa = the concentration parameter
-    d = the dimension
-
-Formulas:
-
-    1. Probability function:
-            P(v | mu, kappa) = C exp(kappa*mu^T*v)
-
-        Where C = the distribution normalizing constant and I_n = the modified
-        Bessel function at order n (see [3]).
-            C(kappa) = (kappa)^(d/2-1) / ((2π)^d/2 * I_(d/2-1)(kappa))
-
-        In our case, d=3:
-            C = kappa / (2*pi*(exp(kappa) - exp(-kappa)))
-
-    2. log-likelihood:
-            log(P(v)) = log(C exp(kappa*mu^T*v))
-                      = log(C) + kappa*mu^T*v
-
-            log(C) = log(kappa) - log(2pi) - log(exp(kappa)-exp(-kappa)
-
-    Refs:
-    [1]: https://en.wikipedia.org/wiki/Von_Mises%E2%80%93Fisher_distribution
-    [2]: http://www.mitsuba-renderer.org/~wenzel/files/vmf.pdf
-    [3]: https://en.wikipedia.org/wiki/Bessel_function#Modified_Bessel_functions:_I%CE%B1,_K%CE%B1
+The complete formulas and explanations are available in our doc:
+https://dwi-ml.readthedocs.io/en/latest/formulas.html
 """
 
 

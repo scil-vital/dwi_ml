@@ -2,10 +2,7 @@
 """
 We expect the classes here to be used in single_subject_containers
 
-These classes will mimic the StatefulTractogram format, but loading data from
-the hdf5 (which contains only lists and numpy arrays) instead of loading data
-from .trk files. They will contain all information necessary to treat with
-streamlines: the data itself and _offset, _lengths, space attributes, etc.
+
 """
 from typing import Tuple, Union, List
 
@@ -42,7 +39,7 @@ def _load_streamlines_from_hdf(hdf_group: h5py.Group):
     return streamlines
 
 
-class LazyStreamlinesGetter(object):
+class _LazyStreamlinesGetter(object):
     def __init__(self, hdf_group):
         self.hdf_group = hdf_group
 
@@ -134,13 +131,20 @@ class LazyStreamlinesGetter(object):
 
 
 class SFTDataAbstract(object):
+    """
+    These classes will mimic the StatefulTractogram format, but with the
+    possibility of not loading the data right away, keeping only in memory the
+    hdf handle to access the data from the hdf5 file. Data in the hdf5 file is
+    not a .trk format as it contains only lists and numpy arrays, but contain
+    all information necessary to treat with streamlines: the data itself and
+    _offset, _lengths, space attributes, etc.
+    """
     def __init__(self,
-                 streamlines: Union[ArraySequence, LazyStreamlinesGetter],
+                 streamlines: Union[ArraySequence, _LazyStreamlinesGetter],
                  space_attributes: Tuple, space: Space):
         """
-        Encapsulating data, space attributes and subject ID.
-
-        Parameters
+        Params
+        ------
         group: str
             The current streamlines group id, as loaded in the hdf5 file (it
             had type "streamlines"). Probabaly 'streamlines'.
@@ -162,35 +166,42 @@ class SFTDataAbstract(object):
         self.is_lazy = None
 
     @property
-    def space_attributes_as_tensor(self):
-        (a, d, vs, vo) = self.space_attributes
-
-        affine = torch.as_tensor(a, dtype=torch.float)
-        dimensions = torch.as_tensor(d, dtype=torch.int)
-        voxel_sizes = torch.as_tensor(vs, dtype=torch.float)
-
-        return affine, dimensions, voxel_sizes, vo
-
-    @property
     def lengths(self):
-        raise NotImplementedError
+        """Mimics the sft.lengths method: Returns the length (i.e. number of
+        timepoints) of the streamlines."""
+        # If streamlines are an ArraySequence: Accessing private info, ok.
+        # If streamlines are the LazyStreamlineGetter: made lengths private to
+        # mimic the ArraySequence.
+        return np.array(self.streamlines._lengths, dtype=np.int16)
 
     @property
     def lengths_mm(self):
+        """New method compared to SFTs: access to the length in mm instead of
+        in terms of number of points, to facilitate work with compressed
+        streamlines."""
         raise NotImplementedError
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
+        """Create an instance of this class by sending directly the hdf5 file.
+        The child class's method will define how to load the data according to
+        the class's data management."""
         raise NotImplementedError
 
     def _subset_streamlines(self, streamline_ids):
+        """Return only a subset of streamlines instead of the whole tractogram.
+        Useful particularly for lazy data, to avoid loading the whole data from
+        the hdf5."""
         raise NotImplementedError
 
     def as_sft(self, streamline_ids=None):
         """
-        streamline_ids: list of chosen ids. If None, take all streamlines.
-
         Returns chosen streamlines in a StatefulTractogram format.
+
+        Params
+        ------
+        streamline_ids: list[int]
+            List of chosen ids. If None, use all streamlines.
         """
         set_sft_logger_level('WARNING')
         streamlines = self._subset_streamlines(streamline_ids)
@@ -206,11 +217,6 @@ class SFTData(SFTDataAbstract):
         super().__init__(streamlines, space_attributes, space)
         self._lengths_mm = lengths_mm
         self.is_lazy = False
-
-    @property
-    def lengths(self):
-        # Accessing private info, ok.
-        return np.array(self.streamlines._lengths, dtype=np.int16)
 
     @property
     def lengths_mm(self):
@@ -241,16 +247,10 @@ class SFTData(SFTDataAbstract):
 
 
 class LazySFTData(SFTDataAbstract):
-    def __init__(self, streamlines: LazyStreamlinesGetter,
+    def __init__(self, streamlines: _LazyStreamlinesGetter,
                  space_attributes: Tuple, space: Space):
         super().__init__(streamlines, space_attributes, space)
         self.is_lazy = True
-
-    @property
-    def lengths(self):
-        # Fetching from the lazy streamline getter
-        # Made it private to copy the non-lazy streamlines (ArraySequence)
-        return np.array(self.streamlines._lengths, dtype=np.int16)
 
     @property
     def lengths_mm(self):
@@ -261,7 +261,7 @@ class LazySFTData(SFTDataAbstract):
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
         space_attributes, space = _load_space_from_hdf(hdf_group)
 
-        streamlines = LazyStreamlinesGetter(hdf_group)
+        streamlines = _LazyStreamlinesGetter(hdf_group)
 
         return cls(streamlines, space_attributes, space)
 

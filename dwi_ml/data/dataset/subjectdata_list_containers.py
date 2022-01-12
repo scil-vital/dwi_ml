@@ -9,10 +9,8 @@ from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
 
 class SubjectsDataListAbstract(object):
     """
-    Remembers the list of subjects and their common properties, such as the
-    size of the features for the dwi volumes.
-    Everything is loaded into memory until it is needed.
-    Will be used by multi_subjects_containers.
+    Mimics a simple list, with added methods to deal with handles in the case
+    of lazy data.
     """
     def __init__(self, hdf5_path: str, log):
         self.hdf5_path = hdf5_path
@@ -25,8 +23,8 @@ class SubjectsDataListAbstract(object):
 
     def add_subject(self, subject_data: SubjectDataAbstract):
         """
-        Adds subject's data to subjects_data_list.
-        Returns idx of where subject is inserted.
+        Adds subject's data to subjects_data_list. Simimlar to append but also
+        returns subject index.
         """
         subject_idx = len(self._subjects_data_list)
         self._subjects_data_list.append(subject_data)
@@ -37,40 +35,53 @@ class SubjectsDataListAbstract(object):
         return len(self._subjects_data_list)
 
     def __getitem__(self, subject_idx):
+        """
+        Get a specific SubjectData. In the lazy case, a handle must be
+        provided, else, use open_handle_and_getitem.
+        """
         raise NotImplementedError
 
     def open_handle_and_getitem(self, subject_idx):
+        """
+        Similar to __getitem__, but first opens a hdf handle with known hdf
+        path.
+        """
         raise NotImplementedError
 
 
 class SubjectsDataList(SubjectsDataListAbstract):
     def __init__(self, hdf5_path: str, log):
         """
-        The subjects_data_list will now be a list of SubjectData
+        The subjects_data_list will now be a list of SubjectData.
         """
         super().__init__(hdf5_path, log)
         self.is_lazy = False
 
     def __getitem__(self, subject_idx) -> SubjectData:
-        """ Necessary for torch"""
+        """
+        Params
+        ------
+        subject_item: int
+            The subject idx to get.
+        """
         return self._subjects_data_list[subject_idx]
 
     def open_handle_and_getitem(self, subject_idx):
-        # Non-lazy. No need to add a handle.
+        # Non-lazy. No need to add a handle. Simply use __getitem__
+        # (indirectly).
         return self[subject_idx]
 
 
 class LazySubjectsDataList(SubjectsDataListAbstract):
     def __init__(self, hdf5_path: str, log):
         """
-        The subjects_data_list will now be a list of LazySubjectData
+        The subjects_data_list will now be a list of LazySubjectData.
         """
         super().__init__(hdf5_path, log)
         self.is_lazy = True
 
     def __getitem__(self, subject_item) -> LazySubjectData:
         """
-        Getting an item (i.e. loading).
         Params
         ------
         subject_item: Tuple(int, hdf_handle)
@@ -95,10 +106,6 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
         return subj_data
 
     def open_handle_and_getitem(self, subject_idx) -> LazySubjectData:
-        """
-        Same as get item, but instead of using provided handle, we open a new
-        one.
-        """
         hdf_handle = h5py.File(self.hdf5_path, 'r')
         logging.debug("Opened a new handle: {}".format(hdf_handle))
 

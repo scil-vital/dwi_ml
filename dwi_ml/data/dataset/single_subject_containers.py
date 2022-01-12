@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-We expect the classes here to be used in data_list.py
-"""
 import logging
 from typing import List, Union
 
@@ -12,8 +9,10 @@ from dwi_ml.data.dataset.checks import prepare_groups_info
 
 class SubjectDataAbstract(object):
     """
-    A "Subject" = MRI data volumes + streamlines, as in the group config used
-    during the hdf5 creation.
+    A "Subject" = MRI data volumes + streamlines groups, as in the group config
+    used during the hdf5 creation. The notion of 'volume' is not necessarily a
+    single MRI acquisition. It could contain data from many "real" MRI volumes
+    concatenated together.
     """
     def __init__(self, volume_groups: List[str], nb_features: List[int],
                  streamline_groups: List[str], subject_id: str):
@@ -38,17 +37,24 @@ class SubjectDataAbstract(object):
 
     @property
     def mri_data_list(self):
+        """Returns a list of MRIData (lazy or not)."""
         raise NotImplementedError
 
     @property
     def sft_data_list(self):
+        """Returns a list of SFTData (lazy or not)."""
         raise NotImplementedError
 
     @classmethod
     def init_from_hdf(cls, subject_id: str, log, hdf_file, group_info=None):
+        """Returns an instance of this class, initiated by sending only the
+        hdf handle. The child class's method will define how to load the
+        data based on the child data management."""
         raise NotImplementedError
 
     def add_handle(self, hdf_handle):
+        """Useful in the lazy case only, but method will exist in non-lazy
+        version and to nothing for facilitated usage."""
         raise NotImplementedError
 
 
@@ -60,6 +66,7 @@ class SubjectData(SubjectDataAbstract):
                  sft_data_list: List[SFTData] = None):
         """
         Additional params compared to super:
+        ----
         sft_data_list: List[SFTData]
             The loaded streamlines in a format copying the SFT. They contain
             ._data, ._offsets, ._lengths, ._lengths_mm.
@@ -101,7 +108,6 @@ class SubjectData(SubjectDataAbstract):
                 hdf_file[subject_id][group])
             subject_mri_data_list.append(subject_mri_group_data)
 
-        # Currently only one streamline group.
         for group in streamline_groups:
             log.debug("        Loading subject's streamlines")
             sft_data = SFTData.init_from_hdf_info(hdf_file[subject_id][group])
@@ -119,15 +125,14 @@ class SubjectData(SubjectDataAbstract):
 
 class LazySubjectData(SubjectDataAbstract):
     """
-    A "Subject" = MRI data volumes from group_config + streamlines
-    See also SubjectData, altough they are not parents because not similar
-    at all in the way they work.
+    Lazy version.
     """
     def __init__(self, volume_groups: List[str], nb_features: List[int],
                  streamline_groups: List[str], subject_id: str,
                  hdf_handle=None):
         """
         Additional params compared to super:
+        ------
         hdf_handle:
             Opened hdf file, if any. If None, data loading is deactivated.
         """
@@ -194,7 +199,7 @@ class LazySubjectData(SubjectDataAbstract):
 
             return sft_data_list
         else:
-            logging.debug("Can't provide sft_data_list: hdf_handle not set.")
+            logging.warning("Can't provide sft_data_list: hdf_handle not set.")
         return None
 
     def add_handle(self, hdf_handle):

@@ -7,6 +7,14 @@ single .hdf5 file.
 You should have a file dwi_ml_ready organized as prescribed (see our doc for
 more information.) A hdf5 folder will be created alongside dwi_ml_ready.
 It will contain the .hdf5 file and possibly intermediate files.
+
+Important notes
+---------------
+
+The memory is a delicate question here, but checks have been made, and it
+appears that the SFT's garbage collector may not be working entirely well.
+
+Keeping as is for now, hoping that next Dipy versions will solve the problem.
 """
 
 import argparse
@@ -23,17 +31,8 @@ import nibabel as nib
 import numpy as np
 from nested_lookup import nested_lookup
 
-from dwi_ml.data.hdf5_creation import (process_volumes, process_streamlines,
-                                       verify_subject_lists)
+from dwi_ml.data.hdf5_creation import HDF5Creator, verify_subject_lists
 
-"""
-Important notes
-
-The memory is a delicate question here, but checks have been made, and it
-appears that the SFT's garbage collector may not be working entirely well.
-
-Keeping as is for now, hoping that next Dipy versions will solve the problem.
-"""
 HDF_DATABASE_VERSION = 2
 
 
@@ -282,6 +281,9 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
     All bundles are merged as a single whole-brain dataset in voxel space.
     If wished, all intermediate steps are saved on disk in the hdf5 folder.
     """
+
+    creator = HDF5Creator()
+
     # Cast space from str to Space
     space = Space(args.space)
     dwi_ml_dir = Path(dwi_ml_dir)
@@ -352,7 +354,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                 standardization = groups_config[group]['standardization']
 
                 (group_data, group_affine,
-                 group_header, group_res) = process_volumes(
+                 group_header, group_res) = creator.process_volumes(
                     group, file_list, subj_id, args.save_intermediate,
                     subj_input_dir, subj_intermediate_path, standardization,
                     subj_std_mask_data)
@@ -381,7 +383,7 @@ def _add_all_subjs_to_database(args, chosen_subjs: List[str],
                                   "all bundles are .trk, we can use ref "
                                   "'same' but if some bundles were .tck, we "
                                   "need a ref!")
-                sft, lengths = process_streamlines(
+                sft, lengths = creator.process_streamlines(
                     subj_input_dir, group, groups_config[group]['files'],
                     subj_id, group_header, args.step_size, args.compress,
                     space, args.save_intermediate, subj_intermediate_path)

@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+Utils not used per say in dwi_ml but that have been verified an could be of
+use to anyone using sequence-based algorithms.
+"""
+
 import torch
 from torch.nn.utils.rnn import PackedSequence
 

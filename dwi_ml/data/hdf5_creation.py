@@ -48,7 +48,7 @@ def verify_subject_lists(dwi_ml_folder: Path, chosen_subjs: List[str]):
     # Note. good_chosen_subjs = [s for s in all_subjs if s in chosen_subjs]
 
 
-def _load_volume_to4d(data_file):
+def _load_file_to4d(data_file):
     """Load nibabel data, and perform some checks:
     - Data must be Nifti
     - Data must be at least 3D
@@ -79,18 +79,36 @@ def _load_volume_to4d(data_file):
 
 
 class HDF5Creator:
-    def __init__(self):
-        pass
+    def __init__(self, save_intermediate: bool, standardization: str,
+                 step_size: float, compress: bool, space: Space):
+        """
+        Params
+        ------
+        save_intermediate: bool
+            If true, intermediate files will be saved.
+        standardization: str
+            One of ['all', 'independent', 'per_file', 'none'].
+        step_size: float
+            Step size to resample streamlines.
+        compress: bool
+            Compress streamlines.
+        space: Space
+            Space to place the tractograms.
+        """
+        self.save_intermediate = save_intermediate
+        self.standardization = standardization
+        self.step_size = step_size
+        self.compress = compress
+        self.space = space
 
-    @staticmethod
-    def process_volumes(group: str, file_list: List[str], subj_id,
-                        save_intermediate: bool, subj_input_path: Path,
-                        subj_output_path: Path, standardization: str,
+    def process_volumes(self, group: str, file_list: List[str], subj_id,
+                        subj_input_path: Path, subj_output_path: Path,
                         subj_std_mask_data: np.ndarray = None):
         """
         Process each group from the json config file:
-        - Load data from each file of the group and combine them. All datasets from
-          a given group must have the same affine, voxel resolution and data shape.
+        - Load data from each file of the group and combine them. All datasets
+          from a given group must have the same affine, voxel resolution and
+          data shape.
         - Standardize data
 
         Parameters
@@ -102,14 +120,10 @@ class HDF5Creator:
             will be replaced by the subject id.
         subj_id: str
             The subject's id.
-        save_intermediate: bool
-            If true, intermediate files will be saved.
         subj_input_path: Path
             Path where the files from file_list should be found.
         subj_output_path: Path
             Path where to save the intermediate files.
-        standardization: str
-            One of ['all', 'independent', 'per_file', 'none'].
         subj_std_mask_data: np.ndarray of bools, optional
             Binary mask that will be used for data standardization.
 
@@ -125,9 +139,9 @@ class HDF5Creator:
         first_file = subj_input_path.joinpath(file_name)
         logging.info("       - Processing file {}".format(file_name))
         group_data, group_affine, group_res, group_header = \
-            _load_volume_to4d(first_file)
+            _load_file_to4d(first_file)
 
-        if standardization == 'per_file':
+        if self.standardization == 'per_file':
             logging.debug('      *Standardizing sub-data')
             group_data = standardize_data(group_data, subj_std_mask_data,
                                           independent=False)
@@ -137,67 +151,37 @@ class HDF5Creator:
         # is a minimal check.
         for file_name in file_list[1:]:
             file_name = file_name.replace('*', subj_id)
-            data_file = subj_input_path.joinpath(file_name)
+            data = self._load_and_verify_file(
+                file_name, subj_input_path, group, group_affine, group_res)
 
-            logging.info("       - Processing file {}".format(file_name))
-
-            if not data_file.is_file():
-                logging.debug("      Skipping volume {} because it was not found "
-                              "in this subject's folder".format(file_name))
-                # Note: if args.enforce_files_presence was set to true, this case
-                # is not possible, already checked in create_hdf5_dataset.py.
-
-            data, affine, res, _ = _load_volume_to4d(data_file)
-
-            if not np.allclose(affine, group_affine, atol=1e-5):
-                # Note. When keeping default options on tolerance, we have ran into
-                # some errors in some cases, depending on how data has been
-                # processed. Now accepting bigger error.
-                raise ValueError('Data file {} does not have the same affine as '
-                                 'other files in group {}. Data from each group '
-                                 'will be concatenated, and should have the same '
-                                 'affine and voxel resolution.\n'
-                                 'Affine: {}\n'
-                                 'Group affine: {}\n'
-                                 'Biggest difference: {}'
-                                 .format(file_name, group, affine, group_affine,
-                                         np.max(affine - group_affine)))
-
-            if not np.allclose(res, group_res):
-                raise ValueError('Data file {} does not have the same resolution '
-                                 'as other files in group {}. Data from each '
-                                 'group will be concatenated, and should have the '
-                                 'same affine and voxel resolution.\n'
-                                 'Resolution: {}\n'
-                                 'Group resolution: {}'
-                                 .format(file_name, group, res, group_res))
-
-            if standardization == 'per_file':
+            if self.standardization == 'per_file':
                 logging.debug('      *Standardizing sub-data')
                 data = standardize_data(data, subj_std_mask_data,
                                         independent=False)
 
+            # Append file data to hdf group.
             try:
                 group_data = np.append(group_data, data, axis=-1)
             except ImportError:
-                raise ImportError('Data file {} could not be added to data group '
-                                  '{}. Wrong dimensions?'.format(file_name, group))
+                raise ImportError(
+                    'Data file {} could not be added to data group {}. '
+                    'Wrong dimensions?'.format(file_name, group))
 
-        # Standardize data (per channel)
-        if standardization == 'independent':
+        # Standardize data (per channel) (if not done 'per_file' yet).
+        if self.standardization == 'independent':
             logging.debug('      *Standardizing data on each feature.')
             group_data = standardize_data(group_data, subj_std_mask_data,
                                           independent=True)
-        elif standardization == 'all':
+        elif self.standardization == 'all':
             logging.debug('      *Standardizing data as a whole.')
             group_data = standardize_data(group_data, subj_std_mask_data,
                                           independent=False)
-        elif standardization not in ['none', 'per_file']:
+        elif self.standardization not in ['none', 'per_file']:
             raise ValueError("standardization must be one of "
                              "['all', 'independent', 'per_file', 'none']")
 
         # Save standardized data
-        if save_intermediate:
+        if self.save_intermediate:
             output_fname = subj_output_path.joinpath(group + ".nii.gz")
             logging.debug('      *Saving intermediate files into {}.'
                           .format(output_fname))
@@ -207,11 +191,56 @@ class HDF5Creator:
         return group_data, group_affine, group_header, group_res
 
     @staticmethod
+    def _load_and_verify_file(file_name, subj_input_path, group,
+                              group_affine, group_res):
+
+        data_file = subj_input_path.joinpath(file_name)
+
+        logging.info("       - Processing file {}".format(file_name))
+
+        if not data_file.is_file():
+            logging.debug("      Skipping file {} because it was not "
+                          "found in this subject's folder"
+                          .format(file_name))
+            # Note: if args.enforce_files_presence was set to true, this
+            # case is not possible, already checked in
+            # create_hdf5_dataset.py.
+            return None
+
+        data, affine, res, _ = _load_file_to4d(data_file)
+
+        if not np.allclose(affine, group_affine, atol=1e-5):
+            # Note. When keeping default options on tolerance, we have ran
+            # into some errors in some cases, depending on how data has
+            # been processed. Now accepting bigger error.
+            raise ValueError(
+                'Data file {} does not have the same affine as other '
+                'files in group {}. Data from each group will be '
+                'concatenated, and should have the same affine and voxel '
+                'resolution.\n'
+                'Affine: {}\n'
+                'Group affine: {}\n'
+                'Biggest difference: {}'
+                .format(file_name, group, affine, group_affine,
+                        np.max(affine - group_affine)))
+
+        if not np.allclose(res, group_res):
+            raise ValueError(
+                'Data file {} does not have the same resolution as other '
+                'files in group {}. Data from each group will be '
+                'concatenated, and should have the same affine and voxel '
+                'resolution.\n'
+                'Resolution: {}\n'
+                'Group resolution: {}'
+                .format(file_name, group, res, group_res))
+
+        return data
+
     def process_streamlines(
-            subj_dir: Path, group: str, bundles: List[str], subj_id: str,
-            header: nib.Nifti1Header, step_size: float, compress: bool,
-            space: Space, save_intermediate: bool, subj_output_path: Path):
-        """Load and process a group of bundles and merge all streamlines
+            self, subj_dir: Path, group: str, bundles: List[str], subj_id: str,
+            header: nib.Nifti1Header, subj_output_path: Path):
+        """
+        Load and process a group of bundles and merge all streamlines
         together.
 
         Parameters
@@ -221,22 +250,15 @@ class HDF5Creator:
         group: str
             group name
         bundles: List[str]
-            List of the bundles filenames to load. Wildcards will be replaced by
-            the subject id. If the list is folderx/ALL, all bundles in the folderx
-            will be used.
+            List of the bundles filenames to load. Wildcards will be replaced
+            by the subject id. If the list is folderx/ALL, all bundles in the
+            folder will be used.
         subj_id: str
             The subject's id.
         header : nib.Nifti1Header
-            Reference used to load and send the streamlines in voxel space and to
-            create final merged SFT. If the file is a .trk, 'same' is used instead.
-        step_size: float
-            Step size to resample streamlines.
-        compress: bool
-            Compress streamlines.
-        space: Space
-            Space to place the tractograms.
-        save_intermediate: bool
-            If true, intermediate files will be saved.
+            Reference used to load and send the streamlines in voxel space and
+            to create final merged SFT. If the file is a .trk, 'same' is used
+            instead.
         subj_output_path: Path
             Path where to save the intermediate files.
 
@@ -247,9 +269,10 @@ class HDF5Creator:
         output_lengths : List[float]
             The euclidean length of each streamline
         """
-        if step_size and compress:
-            raise ValueError("Only one option can be chosen: either resampling "
-                             "to step_size or compressing, not both.")
+        if self.step_size and self.compress:
+            raise ValueError(
+                "Only one option can be chosen: either resampling to "
+                "step_size or compressing, not both.")
 
         # Silencing SFT's logger if our logging is in DEBUG mode, because it
         # typically produces a lot of outputs!
@@ -267,59 +290,30 @@ class HDF5Creator:
             else:
                 bundles2 = [tmp_bundle_name]
 
-            # Either a loop on "ALL" or a loop on only one file, tmp_bundle_name.
+            # Either a loop on "ALL" or a loop on only one file,
+            # tmp_bundle_name.
             for bundle_name in bundles2:
                 bundle_name = bundle_name.replace('*', subj_id)
-
                 bundle_file = subj_dir.joinpath(bundle_name)
-                if not bundle_file.is_file():
-                    logging.debug("      Skipping bundle {} because it was not "
-                                  "found in this subject's folder"
-                                  .format(bundle_name))
-                    # Note: if args.enforce_files_presence was set to true, this
-                    # case is not possible, already checked in create_hdf5_dataset
-                else:
-                    # Check bundle extension
-                    _, file_extension = os.path.splitext(str(bundle_file))
-                    if file_extension not in ['.trk', '.tck']:
-                        raise ValueError("We do not support bundle's type: {}. We "
-                                         "only support .trk and .tck files."
-                                         .format(bundle_file))
-                    if file_extension == '.trk':
-                        header = 'same'
+                sft = self._load_and_process_sft(bundle_file, bundle_name,
+                                                 header)
 
-                    # Loading bundle and sending to wanted space
-                    logging.info("       - Processing bundle {}"
-                                 .format(os.path.basename(bundle_name)))
-                    sft = load_tractogram(str(bundle_file), header)
-                    sft.to_center()
+                # Compute euclidean lengths (rasmm space)
+                sft.to_space(Space.RASMM)
+                output_lengths.extend(length(sft.streamlines))
 
-                    # Resample or compress streamlines
-                    # Note. No matter the chosen space, resampling is done in mm.
-                    if step_size:
-                        logging.info("          - Resampling")
-                        sft = resample_streamlines_step_size(sft, step_size)
-                        logging.debug("      *Resampled streamlines' step size to "
-                                      "{}mm".format(step_size))
-                    elif compress:
-                        logging.info("          - Compressing")
-                        sft = compress_sft(sft)
+                # Sending to wanted space
+                sft.to_space(self.space)
 
-                    # Compute euclidean lengths (rasmm space)
-                    sft.to_space(Space.RASMM)
-                    output_lengths.extend(length(sft.streamlines))
-
-                    # Sending to wanted space
-                    sft.to_space(space)
-
-                    # Add processed bundle to output tractogram
+                # Add processed bundle to output tractogram
+                if sft is not None:
                     if final_sft is None:
                         final_sft = sft
                     else:
                         final_sft = concatenate_sft([final_sft, sft],
                                                     erase_metadata=False)
 
-        if save_intermediate:
+        if self.save_intermediate:
             output_fname = subj_output_path.joinpath(group + '.trk')
             logging.debug('      *Saving intermediate bundle {} into '
                           '{}.'.format(group, output_fname))
@@ -328,10 +322,51 @@ class HDF5Creator:
             save_tractogram(final_sft, str(output_fname))
 
         # Removing invalid streamlines
-        logging.debug('      *Total: {:,.0f} streamlines. Now removing invalid '
-                      'streamlines.'.format(len(final_sft)))
+        logging.debug('      *Total: {:,.0f} streamlines. Now removing '
+                      'invalid streamlines.'.format(len(final_sft)))
         final_sft.remove_invalid_streamlines()
         logging.debug("      *Remaining: {:,.0f} streamlines."
                       "".format(len(final_sft)))
 
         return final_sft, output_lengths
+
+    def _load_and_process_sft(self, bundle_file, bundle_name, header):
+        if not bundle_file.is_file():
+            logging.debug(
+                "      Skipping bundle {} because it was not found in this "
+                "subject's folder".format(bundle_name))
+            # Note: if args.enforce_files_presence was set to true,
+            # this case is not possible, already checked in
+            # create_hdf5_dataset
+            return None
+
+        # Check bundle extension
+        _, file_extension = os.path.splitext(str(bundle_file))
+        if file_extension not in ['.trk', '.tck']:
+            raise ValueError(
+                "We do not support bundle's type: {}. We only support .trk "
+                "and .tck files.".format(bundle_file))
+        if file_extension == '.trk':
+            # overriding given header.
+            header = 'same'
+
+        # Loading bundle and sending to wanted space
+        logging.info("       - Processing bundle {}"
+                     .format(os.path.basename(bundle_name)))
+        sft = load_tractogram(str(bundle_file), header)
+        sft.to_center()
+
+        # Resample or compress streamlines
+        # Note. No matter the chosen space, resampling is done in
+        # mm.
+        if self.step_size:
+            logging.info("          - Resampling")
+            sft = resample_streamlines_step_size(sft,
+                                                 self.step_size)
+            logging.debug("      *Resampled streamlines' step size to {}mm"
+                          .format(self.step_size))
+        elif self.compress:
+            logging.info("          - Compressing")
+            sft = compress_sft(sft)
+
+        return sft

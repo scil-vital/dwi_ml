@@ -186,10 +186,12 @@ def prepare_tracker(parser, args, hdf_handle, device,
 
 def _prepare_seed_generator(parser, args, hdf_handle, device):
     if args.sm_from_hdf5:
-        seed_data = np.array(hdf_handle[args.sm_from_hdf5]['data'],
-                             dtype=np.float32)
-        seed_res = np.array(hdf_handle[args.sm_from_hdf5]['voxres'],
-                            dtype=np.float32)
+        seed_data = np.array(
+            hdf_handle[args.subj_id][args.sm_from_hdf5]['data'],
+            dtype=np.float32)
+        seed_res = np.array(
+            hdf_handle[args.subj_id][args.sm_from_hdf5].attrs['voxres'],
+            dtype=np.float32)
     else:
         seed_img = nib.load(args.sm_from_data)
         seed_data = seed_img.get_fdata(dtype=float)
@@ -214,11 +216,16 @@ def _prepare_seed_generator(parser, args, hdf_handle, device):
 
 def _prepare_tracking_mask(args, hdf_handle):
     if args.tm_from_hdf5:
-        mask_data = np.array(hdf_handle[args.tm_from_hdf5]['data'],
-                             dtype=np.float32)
-        mask_res = np.array(hdf_handle[args.tm_from_hdf5]['voxres'],
-                            dtype=np.float32)
-        ref = None  # ??? #toDo
+        mask_data = np.array(
+            hdf_handle[args.subj_id][args.tm_from_hdf5]['data'],
+            dtype=np.float64)
+        mask_res = np.array(
+            hdf_handle[args.subj_id][args.tm_from_hdf5].attrs['voxres'],
+            dtype=np.float32)
+        affine = np.array(
+            hdf_handle[args.subj_id][args.tm_from_hdf5].attrs['affine'],
+            dtype=np.float32)
+        ref = nib.Nifti1Image(mask_data, affine)
     else:
         mask_img = nib.load(args.tm_from_data)
         mask_data = mask_img.get_fdata(dtype=float)
@@ -242,7 +249,7 @@ def _prepare_data(parser, args, hdf_handle):
         volume_img = nib.load(args.input)
         volume_data = volume_img.get_fdata(dtype=float)
         volume_res = volume_img.header.get_zooms()[:3]
-        mri_data = MRIData(volume_data, volume_img.affine, volume_res,
+        mri_data = MRIData(volume_data, volume_res,
                            interpolation=args.data_interp)
         nb_features = volume_img.shape[-1]
         subj_data = SubjectData(subject_id='subj_for_tracking',

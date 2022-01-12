@@ -8,6 +8,10 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 
 
 def add_args_dataset(p: argparse.ArgumentParser):
+    """
+    Optional arguments that should be added to an argparser in order to use a
+    MultisubjectDataset.
+    """
     dataset_group = p.add_argument_group("Dataset:")
     dataset_group.add_argument(
         '--cache_size', type=int, metavar='s', default=1,
@@ -24,14 +28,18 @@ def add_args_dataset(p: argparse.ArgumentParser):
 
 def prepare_multisubjectdataset(args):
     """
-    Instantiate a MultiSubjectDataset and load data.
+    Instantiates a MultiSubjectDataset AND loads data.
+
+    Params
+    ------
+    args: Namespace
+        Must contain 'hdf5_File, 'taskman_managed', 'lazy' and 'cache_size'
     """
     with Timer("\n\nPreparing testing and validation sets",
                newline=True, color='blue'):
         dataset = MultiSubjectDataset(
-            args.hdf5_file, cache_size=args.cache_size, lazy=args.lazy,
-            # toDo
-            taskman_managed=args.taskman_managed)
+            args.hdf5_file, taskman_managed=args.taskman_managed,
+            lazy=args.lazy, cache_size=args.cache_size)
         dataset.load_data()
 
         logging.info("Dataset attributes: \n" +

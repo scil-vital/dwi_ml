@@ -13,11 +13,11 @@ from os import path
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.training.utils_batch_sampler import (
+from dwi_ml.training.utils.batch_sampler import (
     add_args_batch_sampler, prepare_batchsamplers_oneinput)
 from dwi_ml.data.dataset.utils import (
     add_args_dataset, prepare_multisubjectdataset)
-from dwi_ml.training.utils_trainer import (add_training_args, prepare_trainer,
+from dwi_ml.training.utils.trainer import (add_training_args, prepare_trainer,
                                            run_experiment)
 
 

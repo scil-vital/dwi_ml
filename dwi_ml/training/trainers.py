@@ -228,7 +228,8 @@ class DWIMLAbstractTrainer:
         # ----------------------
 
         # Prepare optimizer
-        # Send model to device
+        # Send model to device. Reminder, contrary to tensors, model.to
+        # overwrites the model.
         # NOTE: This ordering is important! The optimizer needs to use the cuda
         # Tensors if using the GPU...
         self.model.to(device=self.device)

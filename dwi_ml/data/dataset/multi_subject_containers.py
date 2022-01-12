@@ -161,7 +161,8 @@ class MultisubjectSubset(Dataset):
             subj_data = self.subjs_data_list[subj_idx]
 
         mri_data_tensor = subj_data.mri_data_list[group_idx].as_tensor
-        mri_data_tensor.to(device=device, non_blocking=non_blocking)
+        mri_data_tensor = mri_data_tensor.to(device=device,
+                                             non_blocking=non_blocking)
 
         return mri_data_tensor
 

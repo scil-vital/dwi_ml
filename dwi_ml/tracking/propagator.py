@@ -61,6 +61,7 @@ class DWIMLPropagator(AbstractPropagator):
             self.move_to(device)
 
     def move_to(self, device):
+        #  Reminder. Contrary to tensors, model.to overwrites the model.
         self.model.to(device=device)
         self.device = device
 

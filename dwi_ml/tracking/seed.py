@@ -20,7 +20,7 @@ class DWIMLSeedGenerator(SeedGenerator):
             self.move_to(device)
 
     def move_to(self, device):
-        self.data.to(device=device)
+        self.data = self.data.to(device=device)
         self.device = device
 
     def get_next_n_pos(self, random_generator, indices, which_seeds):

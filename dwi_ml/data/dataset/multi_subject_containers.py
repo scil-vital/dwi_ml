@@ -5,7 +5,7 @@ This multisubject dataset:
     - For each subset (training set, validation set):
         - For each subject, keys are either:
             - Groups to load as mri volume, with attrs 'type' = 'volume' and
-              'affine' = the affine.
+              'voxres' = the voxel resolution.
             - Streamlines to load, with attrs 'type' = 'streamlines' and with
               datasets 'streamlines/data', 'streamlines/offsets',
               'streamlines/lengths', 'streamlines/euclidean_lengths'.
@@ -25,7 +25,7 @@ from torch.utils.data import Dataset
 import tqdm
 
 from dwi_ml.cache.cache_manager import SingleThreadCacheManager
-from dwi_ml.data.dataset.checks import find_groups_info
+from dwi_ml.data.dataset.checks import prepare_groups_info
 from dwi_ml.data.dataset.subjects_list_containers import (LazySubjectsDataList,
                                                           SubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,
@@ -268,7 +268,8 @@ class MultiSubjectDataset:
                           "information. Others should fit")
             subject_keys = sorted(hdf_handle.attrs['training_subjs'])
             self.volume_groups, self.nb_features, self.streamline_groups = \
-                find_groups_info(hdf_handle, subject_keys[0], self.log)
+                prepare_groups_info(subject_keys[0], self.log, hdf_handle,
+                                    None)
 
             # Saving the group info in the subsets too
             self.training_set.volume_groups = self.volume_groups

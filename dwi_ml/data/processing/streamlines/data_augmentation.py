@@ -77,7 +77,7 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
     #    = min(2, step_size/(2*gaussian_size)) * gaussian_size
     flattened_coords = np.concatenate(sft.streamlines, axis=0)
     if step_size:
-        max_noise_unscaled = min(2, step_size / (2 * gaussian_size))
+        max_noise_unscaled = min(2., step_size / (2 * gaussian_size))
     else:
         max_noise_unscaled = 2
 

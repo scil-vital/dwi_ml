@@ -83,7 +83,7 @@ def _get_all_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
     # Summary: Builds vertically:
     # first prev dir    |        second prev dir      | ...
 
-    # Unexisting val:
+    # Non-existing val:
     # (0,0,0)           |         (0,0,0)             |   (0,0,0)
     #   -               |         (0,0,0)             |   (0,0,0)
     #   -               |           -                 |   (0,0,0)

@@ -6,7 +6,7 @@ import shutil
 
 import torch
 from dwi_ml.data.processing.space.neighborhood import \
-    prepare_neighborhood_information
+    prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, compute_and_normalize_directions
 
@@ -59,7 +59,7 @@ class MainModelAbstract(torch.nn.Module):
         # Possible neighbors for each input.
         self.neighborhood_radius = neighborhood_radius
         self.neighborhood_type = neighborhood_type
-        self.neighborhood_points = prepare_neighborhood_information(
+        self.neighborhood_points = prepare_neighborhood_vectors(
             neighborhood_type, neighborhood_radius)
 
         self.device = None

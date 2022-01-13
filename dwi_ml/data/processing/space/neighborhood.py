@@ -6,12 +6,15 @@ from typing import Iterable, Union
 import numpy as np
 
 
-def prepare_neighborhood_information(neighborhood_type, neighborhood_radius):
+def prepare_neighborhood_vectors(neighborhood_type, neighborhood_radius):
     """
-    Prepare neighborhood information either with the 'axes' option or the
-    'grid' option.
+    Prepare neighborhood vectors either with the 'axes' option or the
+    'grid' option. See each method for a description.
 
-    Results are in the voxel world.
+    Results are in the voxel world: vectors pointing to a neighborhood point,
+    starting at the origin (i.e. current position).
+
+    The current point (0,0,0) is NOT included.
     """
     if neighborhood_type is not None:
         if neighborhood_radius is None:
@@ -40,21 +43,22 @@ def prepare_neighborhood_information(neighborhood_type, neighborhood_radius):
 
 
 def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
-    """This neighborhood definition lies on a sphere. Returns a list of 6
+    """
+    This neighborhood definition lies on a sphere. Returns a list of 6
     positions (up, down, left, right, behind, in front) at exactly `radius`
-    length. Good for RNN, for example.
-    If radius is an iterable of floats, returns a multi-radius neighborhood.
+    voxel from origin (i.e. current postion). If radius is an iterable of
+    floats, returns a multi-radius neighborhood (lying on concentring spheres).
 
     Hint: If you know your radius in mm only, use
-    dwi_ml.data.processing.space.convert_world_to_vox.convert_world_to_vox
-    Ex: radius_vox = convert_mm2vox(radius_mm, affine_mm_to_vox)
+    dwi_ml.data.processing.space.world_to_vox.convert_world_to_vox
+    Ex: radius_vox = convert_world_to_vox(radius_mm, affine_mm_to_vox)
 
     Note: We only support isometric voxels! Adding isometry would also require
-    remembering where the x,y,z directions are.
+    the voxel resolution.
 
     Parameters
     ----------
-    radius : number (int or float) or list or np.ndarray.
+    radius : number (int or float) or iterable of numbers.
         Distance to each neighbor (in voxel space).
 
     Returns
@@ -63,7 +67,7 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
         A list of vectors with last dimension = 3 (x,y,z coordinate for each
         neighbour per respect to the origin). Hint: You can now interpolate
         your DWI data in each direction around your point of interest to get
-        your neighbourhood.
+        your neighbourhood. The current point (0,0,0) is NOT included.
     """
     tmp_axes = np.identity(3)
     unit_axes = np.concatenate((tmp_axes, -tmp_axes))
@@ -80,12 +84,14 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
 
 
 def get_neighborhood_vectors_grid(radius: int):
-    """Returns a list of points similar to the original voxel grid. Ex: with
-    radius 1, this is 26 points. With radius 2, that's 124 points. Good for
-    CNN, for example.
+    """
+    This neighborhood definition lies on a grid. Returns a list of vectors
+    pointing to points surrounding the origin that mimics the original voxel
+    grid, in voxel space. Ex: with radius 1, this is 26 points. With radius 2,
+    it's 124 points.
 
     Note: We only support isometric voxels! Adding anisometry would also
-    require remembering where the x,y,z directions are.
+    require remembering the voxel resolution.
 
     Parameters
     ----------
@@ -99,7 +105,7 @@ def get_neighborhood_vectors_grid(radius: int):
         A list of vectors with last dimension = 3 (x,y,z coordinate for each
         neighbour per respect to the origin). Hint: You can now interpolate
         your DWI data in each direction around your point of interest to get
-        your neighbourhood.
+        your neighbourhood. The current point (0,0,0) is NOT included.
     """
     assert type(radius) == int
 
@@ -154,6 +160,10 @@ def extend_coordinates_with_neighborhood(
 
 
 def add_args_neighborhood(p):
+    """
+    Optional arguments that should be added to an argparser to use a
+    neighborhood.
+    """
     n = p.add_mutually_exclusive_group()
     n.add_argument(
         '--sphere_radius', type=float,

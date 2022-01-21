@@ -316,7 +316,7 @@ class HDF5Creator:
         subj_hdf_group = hdf_handle.create_group(subj_id)
 
         # Prepare subject folder for intermediate files
-        subj_intermediate_path = self.saving_path.joinpath(
+        subj_intermediate_path = self.saving_path.parent.joinpath(
             subj_id + "_intermediate")
         if self.save_intermediate:
             subj_intermediate_path.mkdir()
@@ -582,15 +582,15 @@ class HDF5Creator:
                 sft = self._load_and_process_sft(bundle_file, bundle_name,
                                                  header)
 
-                # Compute euclidean lengths (rasmm space)
-                sft.to_space(Space.RASMM)
-                output_lengths.extend(length(sft.streamlines))
-
-                # Sending to wanted space
-                sft.to_space(self.space)
-
-                # Add processed bundle to output tractogram
                 if sft is not None:
+                    # Compute euclidean lengths (rasmm space)
+                    sft.to_space(Space.RASMM)
+                    output_lengths.extend(length(sft.streamlines))
+
+                    # Sending to wanted space
+                    sft.to_space(self.space)
+
+                    # Add processed bundle to output tractogram
                     if final_sft is None:
                         final_sft = sft
                     else:

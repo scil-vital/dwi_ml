@@ -570,15 +570,18 @@ class HDF5Creator:
             if tmp_bundle_name.endswith('/ALL'):
                 bundles_dir = tmp_bundle_name.split('/ALL')
                 bundles_dir = ''.join(bundles_dir[:-1])
-                bundles2 = [str(p) for p in subj_dir.glob(bundles_dir + '/*')]
+                bundles_sublist = [
+                    tmp_bundle_name.replace('/ALL', '/' + os.path.basename(p))
+                    for p in subj_dir.glob(bundles_dir + '/*')]
             else:
-                bundles2 = [tmp_bundle_name]
+                bundles_sublist = [tmp_bundle_name]
 
             # Either a loop on "ALL" or a loop on only one file,
             # tmp_bundle_name.
-            for bundle_name in bundles2:
+            for bundle_name in bundles_sublist:
                 bundle_name = bundle_name.replace('*', subj_id)
                 bundle_file = subj_dir.joinpath(bundle_name)
+
                 sft = self._load_and_process_sft(bundle_file, bundle_name,
                                                  header)
 

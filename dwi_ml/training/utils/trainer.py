@@ -46,12 +46,14 @@ def add_training_args(p: argparse.ArgumentParser):
     return training_group
 
 
-def prepare_trainer(training_batch_sampler, validation_batch_sampler, model,
-                    args):
+def prepare_trainer(training_batch_sampler, validation_batch_sampler,
+                    training_batch_loader, validation_batch_loader,
+                    model, args):
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         trainer = DWIMLAbstractTrainer(
-            training_batch_sampler, validation_batch_sampler, model,
+            training_batch_sampler, validation_batch_sampler,
+            training_batch_loader, validation_batch_loader, model,
             args.experiment_path, args.experiment_name,
             # COMET
             comet_project=args.comet_project,
@@ -62,7 +64,7 @@ def prepare_trainer(training_batch_sampler, validation_batch_sampler, model,
             patience=args.patience, from_checkpoint=False,
             weight_decay=args.weight_decay,
             # MEMORY
-            # toDo
+            # toDo check this
             nb_cpu_processes=args.processes,
             taskman_managed=args.taskman_managed, use_gpu=args.use_gpu)
         logging.info("Trainer params : " + format_dict_to_str(trainer.params))

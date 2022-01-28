@@ -14,11 +14,12 @@ from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.training.batch_samplers import AbstractBatchSampler
-from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.experiment_utils.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
 from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
+from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.training.batch_samplers import DWIMLBatchSampler
+from dwi_ml.training.batch_loaders import AbstractBatchLoader
 
 # If the remaining time is less than one epoch + X seconds, we will quit
 # training now, to allow updating taskman_report.
@@ -39,8 +40,10 @@ class DWIMLAbstractTrainer:
     """
 
     def __init__(self,
-                 batch_sampler_training: AbstractBatchSampler,
-                 batch_sampler_validation: AbstractBatchSampler,
+                 batch_sampler_training: DWIMLBatchSampler,
+                 batch_sampler_validation: DWIMLBatchSampler,
+                 batch_loader_training: AbstractBatchLoader,
+                 batch_loader_validation: AbstractBatchLoader,
                  model: MainModelAbstract, experiment_path: str,
                  experiment_name: str, learning_rate: float,
                  weight_decay: float, max_epochs: int,
@@ -51,14 +54,18 @@ class DWIMLAbstractTrainer:
         """
         Parameters
         ----------
-        batch_sampler_training: AbstractBatchSampler
+        batch_sampler_training: DWIMLBatchSampler
             Instantiated class used for sampling batches of training data.
             Data in batch_sampler_training.source_data must be already loaded.
-        batch_sampler_validation: AbstractBatchSampler
+        batch_sampler_validation: DWIMLBatchSampler
             Instantiated class used for sampling batches of validation
             data. Data in batch_sampler_training.source_data must be already
             loaded. Can be set to None if no validation is used. Then, best
             model is based on training loss.
+        batch_loader_training: AbstractBatchLoader
+            Instantiated class with a load_batch method able to load data
+            associated to sampled batch ids.
+        batch_loader_validation: idem
         model: MainModelAbstract
             Instatiated class containing your model.
         experiment_path: str
@@ -128,6 +135,8 @@ class DWIMLAbstractTrainer:
                             "\n    Best practice is to have a validation set.")
         else:
             self.use_validation = True
+        self.train_batch_loader = batch_loader_training
+        self.valid_batch_loader = batch_loader_validation
         self.model = model
 
         self.max_epochs = max_epochs
@@ -389,11 +398,24 @@ class DWIMLAbstractTrainer:
         #     Otherwise, dataloader output is kept on CPU, and the main thread
         #     sends volumes and coords on GPU for interpolation.
         logging.debug("- Instantiating dataloaders...")
+
+        # toDo We wouldn't need training / valid batch samplers and loaders if
+        #  I knew how to add option 'training' and 'validation' to the
+        #  __iter__ method or to the collate_fn (load_batch). But maybe the
+        #  user wants separate options. During validation and training. Ex:
+        #  less on-the-fly noise addition to the streamlines during validation?
+        #  But I don't see why we wouldn't want the same batch sampler. We
+        #  could have only one and use the same.copy() and change the value of
+        #  the subset to training or validation.
+        #  If we also don't think users want different load_batch, solution
+        #  could be (for the dataloader) the collate_fn could be nothing, and
+        #  we call load_data() ourselves after, with options.
+
         train_dataloader = DataLoader(
             self.train_batch_sampler.dataset,
             batch_sampler=self.train_batch_sampler,
             num_workers=self.nb_cpu_processes,
-            collate_fn=self.train_batch_sampler.load_batch,
+            collate_fn=self.train_batch_loader.load_batch,
             pin_memory=self.use_gpu)
 
         valid_dataloader = None
@@ -402,7 +424,7 @@ class DWIMLAbstractTrainer:
                 self.valid_batch_sampler.dataset,
                 batch_sampler=self.valid_batch_sampler,
                 num_workers=self.nb_cpu_processes,
-                collate_fn=self.valid_batch_sampler.load_batch,
+                collate_fn=self.valid_batch_loader.load_batch,
                 pin_memory=self.use_gpu)
 
         # Instantiating our IterTimer.
@@ -815,9 +837,11 @@ class DWIMLAbstractTrainer:
 
     @classmethod
     def init_from_checkpoint(
-            cls, batch_sampler_training: AbstractBatchSampler,
-            batch_sampler_validation: AbstractBatchSampler,
-            model: torch.nn.Module, checkpoint_state: dict, new_patience,
+            cls, train_batch_sampler: DWIMLBatchSampler,
+            valid_batch_sampler: DWIMLBatchSampler,
+            train_batch_loader: AbstractBatchLoader,
+            valid_batch_loader: AbstractBatchLoader,
+            model: MainModelAbstract, checkpoint_state: dict, new_patience,
             new_max_epochs):
         """
         During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
@@ -827,7 +851,8 @@ class DWIMLAbstractTrainer:
         Hint: If you want to use this in your child class, use:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
-        experiment = cls(batch_sampler_training, batch_sampler_validation,
+        experiment = cls(train_batch_sampler, valid_batch_sampler,
+                         train_batch_loader, valid_batch_loader,
                          model, from_checkpoint=True,
                          **checkpoint_state['params_for_init'])
 

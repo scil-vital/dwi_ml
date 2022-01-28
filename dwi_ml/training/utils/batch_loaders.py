@@ -2,44 +2,12 @@
 import argparse
 import logging
 
-from dwi_ml.training.batch_samplers import \
-    BatchStreamlinesSamplerOneInput
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.training.batch_loaders import BatchLoaderOneInput
 
 
-def add_args_batch_sampler(p: argparse.ArgumentParser):
-    # BATCH SIZE
-    g_batch_size = p.add_argument_group("Batch sampler: batch size")
-    g_batch_size.add_argument(
-        '--chunk_size', type=int, default=256, metavar='s',
-        help="Number of streamlines to sample together while creating the "
-             "batches. \nIf the size of the streamlines is known in terms of "
-             "number of points \n(resampling has been done, and no "
-             "compressing is done in the batch \nsampler), we iteratively add "
-             "chunk_size streamlines to the batch until \nthe total number of "
-             "sampled timepoint reaches the max_batch_size. \nElse, the total "
-             "number of streamlines in the batch will be 1*chunk_size.\n"
-             "Default: 256, for no good reason.")
-    g_batch_size.add_argument(
-        '--max_batch_size', type=int, default=20000, metavar='s',
-        help="Number of streamline points per batch. The total number your \n"
-             "computer will accept depends on the type of input data. \nYou "
-             "will need to test this value. Default: 20000.")
-    g_batch_size.add_argument(
-        '--nb_subjects_per_batch', type=int, metavar='n',
-        help="Maximum number of different subjects from which to load data in "
-             "each batch. \nThis should help avoid loading too many inputs in "
-             "memory, particularly for \nlazy data. If not set, we will use "
-             "true random sampling. \nSuggestion, 5. Hint: Will influence the "
-             "cache size if the cache_manager is used.")
-    g_batch_size.add_argument(
-        '--cycles', type=int, metavar='c',
-        help="Relevant only if training:batch:nb_subject_per_batch is set.\n"
-             "Number of cycles before changing to new subjects (and thus new "
-             "volumes)."
-    )
-
+def add_args_batch_loader(p: argparse.ArgumentParser):
     # STREAMLINES PREPROCESSING
     g_streamlines_preprocessing = p.add_argument_group(
         "Batch sampler: streamlines preprocessing")
@@ -88,25 +56,24 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
         help="Percentage of streamlines to randomly reverse in each batch.")
 
 
-def prepare_batchsamplers_oneinput(dataset, args_training, args_validation,
-                                   neighborhood_points):
-    with Timer("\nPreparing batch samplers...", newline=True, color='green'):
-        logging.info("Training batch sampler...")
-        training_batch_sampler = _prepare_batchsampler_oneinput(
-            dataset.training_set, args_training, neighborhood_points)
+def prepare_batchloadersoneinput_train_valid(dataset, args_t, args_v):
+    with Timer("\nPreparing batch loaders...", newline=True, color='pink'):
+        logging.info("Training batch loader...")
+        training_batch_loader = _prepare_batchloader(
+            dataset.training_set, args_t)
 
         if dataset.validation_set.nb_subjects > 0:
-            logging.info("Validation batch sampler...")
-            validation_batch_sampler = _prepare_batchsampler_oneinput(
-                dataset.training_set, args_validation, neighborhood_points)
+            logging.info("Validation batch loader...")
+            validation_batch_loader = _prepare_batchloader(
+                dataset.validation_set, args_v)
 
         else:
-            validation_batch_sampler = None
+            validation_batch_loader = None
 
-    return training_batch_sampler, validation_batch_sampler
+    return training_batch_loader, validation_batch_loader
 
 
-def _prepare_batchsampler_oneinput(subset, args, neighborhood_points):
+def _prepare_batchloader(subset, args):
     if args.step_size and args.step_size <= 0:
         raise ValueError("Step size can't be 0 or less!")
         # Note. When using
@@ -124,12 +91,9 @@ def _prepare_batchsampler_oneinput(subset, args, neighborhood_points):
         raise ValueError("reverse_ratio must be a ratio (i.e. between 0 "
                          "and 1).")
 
-    batch_sampler = BatchStreamlinesSamplerOneInput(
+    batch_loader = BatchLoaderOneInput(
         subset, input_group_name=args.input_group_name,
         streamline_group_name=args.streamline_group_name,
-        # BATCH SIZE
-        chunk_size=args.chunk_size, max_batch_size=args.max_batch_size,
-        nb_subjects_per_batch=args.nb_subjects_per_batch, cycles=args.cycles,
         # STREAMLINES PREPROCESSING
         step_size=args.step_size, compress=args.compress,
         # STREAMLINES AUGMENTATION
@@ -137,11 +101,10 @@ def _prepare_batchsampler_oneinput(subset, args, neighborhood_points):
         noise_gaussian_variability=args.noise_gaussian_variability,
         reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
         # NEIGHBORHOOD
-        neighborhood_points=neighborhood_points,
-        rng=args.rng, wait_for_gpu=args.wait_for_gpu
-    )
+        neighborhood_points=args.neighborhood_points,
+        rng=args.rng, wait_for_gpu=args.wait_for_gpu)
 
     logging.info(
-        "\nSampler user-defined parameters: \n" +
-        format_dict_to_str(batch_sampler.params))
-    return batch_sampler
+        "\nLoader user-defined parameters: \n" +
+        format_dict_to_str(batch_loader.params))
+    return batch_loader

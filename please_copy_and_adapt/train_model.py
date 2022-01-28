@@ -13,10 +13,12 @@ from os import path
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.training.utils.batch_sampler import (
-    add_args_batch_sampler, prepare_batchsamplers_oneinput)
 from dwi_ml.data.dataset.utils import (
     add_args_dataset, prepare_multisubjectdataset)
+from dwi_ml.training.utils.batch_samplers import (
+    add_args_batch_sampler, prepare_batchsamplers_train_valid)
+from dwi_ml.training.utils.batch_loaders import (
+    add_args_batch_loader, prepare_batchloadersoneinput_train_valid)
 from dwi_ml.training.utils.trainer import (add_training_args, prepare_trainer,
                                            run_experiment)
 
@@ -74,8 +76,8 @@ def prepare_arg_parser():
 
     add_args_dataset(p)
     add_model_args(p)
-    # For the abstract batch sampler class:
     add_args_batch_sampler(p)
+    add_args_batch_loader(p)
     add_training_args(p)
 
     return p
@@ -102,11 +104,16 @@ def init_from_args(p, args):
     # Preparing the batch samplers
     args.wait_for_gpu = args.use_gpu
     training_batch_sampler, validation_batch_sampler = \
-        prepare_batchsamplers_oneinput(dataset, args, args,
-                                       model.neighborhood_points)
+        prepare_batchsamplers_train_valid(dataset, args, args)
+
+    # Preparing the batch loaders
+    args.neighborhood_points = model.neighborhood_points
+    training_batch_loader, validation_batch_loader = \
+        prepare_batchloadersoneinput_train_valid(dataset, args, args)
 
     # Preparing the trainer
     trainer = prepare_trainer(training_batch_sampler, validation_batch_sampler,
+                              training_batch_loader, validation_batch_loader,
                               model, args)
 
     return trainer

@@ -39,10 +39,9 @@ from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 
 class DWIMLBatchSampler(Sampler):
     def __init__(self, dataset: MultisubjectSubset,
-                 streamline_group_name: str, max_batch_size: int,
-                 batch_size_unit: str, max_chunk_size: int, rng: int,
-                 nb_subjects_per_batch: int, cycles: int,
-                 step_size: float, compress: bool):
+                 streamline_group_name: str, batch_size: int,
+                 batch_size_units: str, nb_streamlines_per_chunk: int, rng: int,
+                 nb_subjects_per_batch: int, cycles: int):
         """
         Parameters
         ----------
@@ -51,24 +50,17 @@ class DWIMLBatchSampler(Sampler):
         streamline_group_name: str
             The name of the group to use to load the sequences among all
             streamline_groups in the data_source.
-        max_chunk_size: int
-            Number of streamlines to sample together while creating the
-            batches. If the size of the streamlines is known in terms of
-            number of points (resampling has been done, and no compressing is
-            done in the batch sampler), we iteratively add chunk_size
-            streamlines to the batch until the total number of sampled
-            timepoint reaches the max_batch_size. Else, the total number of
-            streamlines in the batch will be 1*chunk_size.
-        max_batch_size : int
+        batch_size : int
             Batch size. Can be defined in number of streamlines or in total
-            number of points (specified through max_batch_size_units). In the
-            case of number of points, the number of streamlines to use for each
-            batch will be approximated from a sample batch. Final batch size in
-            number of points will vary as it depends on data augmentation
-            (streamline cutting or resampling). Note that with compressed
-            streamline, this approximation is less precise.
-        batch_size_unit: str
-            'nb_streamlines' or 'nb_points'
+            length_mm (specified through batch_size_units).
+        batch_size_units: str
+            'nb_streamlines' or 'length_mm' (which should hopefully be
+            correlated to the number of input data points).
+        nb_streamlines_per_chunk: int
+            In the case of a batch size in terms of 'length_mm', chunks of n
+            streamlines are sampled at once, and then their size is checked,
+            either removing streamlines if exceeded, or else sampling a new
+            chunk of ids.
         rng : int
             Seed for the random number generator.
         nb_subjects_per_batch : int
@@ -79,28 +71,23 @@ class DWIMLBatchSampler(Sampler):
             Used if `nb_subjects_per_batch` is given. Number of batches
             re-using the same subjects (and thus the same volumes) before
             sampling new ones.
-        step_size : float
-            Constant step size that every streamline should have between points
-            (in mm). If None, train on streamlines as they are.
-            Note that you probably already fixed a step size when
-            creating your dataset, but you could use a different one here if
-            you wish. [None]
-        compress: bool
-            If true, compress streamlines. Cannot be used together with
-            step_size. Once again, the choice can be different in the batch
-            sampler than chosen when creating the hdf5.
         """
         super().__init__(dataset)  # This does nothing but python likes it.
 
         # Checking that batch_size is correct
-        if not isinstance(max_batch_size, int) or max_batch_size <= 0:
+        if not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError("batch_size (i.e. number of total timesteps in "
                              "the batch) should be a positive integeral "
                              "value, but got batch_size={}"
-                             .format(max_batch_size))
-        if batch_size_unit not in ['nb_streamlines', 'nb_points']:
+                             .format(batch_size))
+        if batch_size_units not in ['nb_streamlines', 'length_mm']:
             raise ValueError("batch_size_unit should either be "
-                             "'nb_streamlines' or 'nb_points'")
+                             "'nb_streamlines' or 'length_mm'")
+        if (batch_size_units == 'nb_streamlines' and
+                nb_streamlines_per_chunk != batch_size):
+            logging.warning("With a max_batch_size computed in terms of "
+                            "number of streamlines, the chunk size is not "
+                            "used. Ignored")
 
         # Checking that n_volumes was given if cycles was given
         if cycles and not nb_subjects_per_batch:
@@ -114,14 +101,12 @@ class DWIMLBatchSampler(Sampler):
         self.streamline_group_name = streamline_group_name
         self.nb_subjects_per_batch = nb_subjects_per_batch
         self.cycles = cycles
-        if step_size and compress:
-            raise ValueError("You may choose either resampling or compressing,"
-                             "but not both.")
-        self.step_size = step_size
-        self.compress = compress
-        self.chunk_size = max_chunk_size
-        self.max_batch_size = max_batch_size
-        self.batch_size_unit = batch_size_unit
+        if batch_size_units == 'nb_streamlines':
+            self.nb_streamlines_per_chunk = batch_size
+        else:
+            self.nb_streamlines_per_chunk = nb_streamlines_per_chunk
+        self.batch_size = batch_size
+        self.batch_size_units = batch_size_units
 
         # Find idx of streamline group
         self.streamline_group_idx = self.dataset.streamline_groups.index(
@@ -151,15 +136,13 @@ class DWIMLBatchSampler(Sampler):
         """
         params = {
             'streamline_group_name': self.streamline_group_name,
-            'max_batch_size': self.max_batch_size,
-            'batch_size_unit': self.batch_size_unit,
-            'chunk_size': self.chunk_size,
+            'batch_size': self.batch_size,
+            'batch_size_units': self.batch_size_units,
+            'nb_streamlines_per_chunk': self.nb_streamlines_per_chunk,
             'rng': self.rng,
             'nb_subjects_per_batch': self.nb_subjects_per_batch,
             'cycles': self.cycles,
             'type': type(self),
-            'step_size': self.step_size,
-            'compress': self.compress,
         }
         return params
 
@@ -248,7 +231,9 @@ class DWIMLBatchSampler(Sampler):
             self.logger.debug('    Sampled subjects for the next few cycles: '
                               '{}'.format(sampled_subjs))
 
-            max_batch_size_per_subj = self.max_batch_size / nb_subjects
+            # Final subject's batch size could be smaller if no streamlines are
+            # left for this subject.
+            max_batch_size_per_subj = self.batch_size / nb_subjects
 
             # Preparing to iterate on these chosen subjects for a predefined
             # number of cycles
@@ -404,46 +389,36 @@ class DWIMLBatchSampler(Sampler):
 
         # Sample a chunk of streamlines
         chosen_global_ids = self.np_rng.choice(subj_unused_ids_in_global,
-                                               self.chunk_size)
+                                               self.nb_streamlines_per_chunk)
 
-        if (self.step_size or self.dataset.step_size) and not self.compress:
-            # Compute chunk size and remove streamlines from it if necessary
+        # Compute chunk size and remove streamlines from it if necessary
+        size_per_streamline = self._compute_and_adjust_batch_size(
+            chosen_global_ids)
 
-            size_per_streamline = self._compute_and_adjust_batch_size(
-                chosen_global_ids)
-
-            # If batch_size has been passed, taking a little less streamlines
-            # for this chunk.
-            chunk_size = np.sum(size_per_streamline)
-            if current_subbatch_size + chunk_size >= max_subbatch_size:
-                cumulative_sum = np.cumsum(size_per_streamline)
-                selected = cumulative_sum < \
-                    (max_subbatch_size - current_subbatch_size)
-                chosen_global_ids = chosen_global_ids[selected]
-                size_per_streamline = size_per_streamline[selected]
-                reached_max_heaviness = True
-
-            chunk_size = np.sum(size_per_streamline)
-            self.logger.debug(
-                "    Chunk_size was {} streamlines, but after verifying data "
-                "heaviness in number of points (max batch size for this "
-                "subj is {}), keeping only {} streamlines for a total of {}"
-                "points.".format(self.chunk_size, max_subbatch_size,
-                                 len(chosen_global_ids), chunk_size))
-
-        else:
-            # Either we will compress data or we are taking the data as is
-            # with no resampling: we have no way of knowing the final size of
-            # data. We will simply take the given chunk of streamlines. Thus
-            # stopping now. Setting sample_heaviness to max heaviness to stop
-            # loop.
-            chunk_size = None  # i.e. unknown
+        # If batch_size has been exceeded, taking a little less streamlines
+        # for this chunk.
+        computed_chunk_size = np.sum(size_per_streamline)
+        if current_subbatch_size + computed_chunk_size >= max_subbatch_size:
+            cumulative_sum = np.cumsum(size_per_streamline)
+            selected = cumulative_sum < (max_subbatch_size -
+                                         current_subbatch_size)
+            chosen_global_ids = chosen_global_ids[selected]
+            size_per_streamline = size_per_streamline[selected]
             reached_max_heaviness = True
+
+        computed_chunk_size = np.sum(size_per_streamline)
+        self.logger.debug(
+            "    Chunk_size was {} streamlines, but after verifying data "
+            "(max batch size for this subj is {}), keeping only {} "
+            "streamlines for a total of {} (units = {})."
+            .format(self.nb_streamlines_per_chunk, max_subbatch_size,
+                    len(chosen_global_ids), computed_chunk_size,
+                    self.batch_size_units))
 
         # Fetch subject-relative ids
         chosen_relative_ids = list(chosen_global_ids - subj_slice.start)
 
-        return (chosen_global_ids, chosen_relative_ids, chunk_size,
+        return (chosen_global_ids, chosen_relative_ids, computed_chunk_size,
                 no_streamlines_remaining, reached_max_heaviness)
 
     def _compute_and_adjust_batch_size(self, chosen_global_ids):
@@ -452,14 +427,11 @@ class DWIMLBatchSampler(Sampler):
         able to know the (eventual, if self.step_size) number of time steps
         without loading the streamlines, particularly with the lazy data.
         """
-        if self.step_size:
+        if self.batch_size_units == 'length_mm':
             l_mm = self.dataset.streamline_lengths_mm
             l_mm = l_mm[self.streamline_group_idx][chosen_global_ids]
-            nb_points = l_mm / self.step_size
-        else:
-            l_points = self.dataset.streamline_lengths
-            nb_points = l_points[self.streamline_group_idx][
-                chosen_global_ids]
-            # Should be equal to
-            # nb_points = lengths_mm / self.dataset.step_size
-        return nb_points
+            size_per_streamline = l_mm
+        else:  # units = nb_streamlines
+            size_per_streamline = np.ones(len(chosen_global_ids))
+
+        return size_per_streamline

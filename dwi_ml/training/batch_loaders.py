@@ -121,8 +121,6 @@ class AbstractBatchLoader:
             unreversed flag. But that adds a bool for each streamline in your
             dataset and probably not so useful.
         """
-        super().__init__(dataset)  # This does nothing but python likes it.
-
         # Batch sampler variables
         self.dataset = dataset
         self.streamline_group_name = streamline_group_name
@@ -389,8 +387,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         }
         return states
 
-    def load_batch(self, subset: str,
-                   streamline_ids_per_subj: List[Tuple[int, list]],
+    def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
                    save_batch_input_mask: bool = False) \
             -> Union[Tuple[List, Dict],
                      Tuple[List, List, List]]:

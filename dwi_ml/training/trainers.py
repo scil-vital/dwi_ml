@@ -19,7 +19,8 @@ from dwi_ml.experiment_utils.monitoring import (
 from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_samplers import DWIMLBatchSampler
-from dwi_ml.training.batch_loaders import AbstractBatchLoader
+from dwi_ml.training.batch_loaders import (AbstractBatchLoader,
+                                           BatchLoaderOneInput)
 
 # If the remaining time is less than one epoch + X seconds, we will quit
 # training now, to allow updating taskman_report.
@@ -573,7 +574,7 @@ class DWIMLAbstractTrainer:
 
                     mean_loss, grad_norm = self.run_one_batch(
                         data, is_training=True,
-                        batch_sampler=self.train_batch_sampler, *args)
+                        batch_loader=self.train_batch_loader, *args)
 
                     self.logger.debug("Updated loss: {}".format(mean_loss))
                     self.train_loss_monitor.update(mean_loss)
@@ -642,7 +643,7 @@ class DWIMLAbstractTrainer:
                 # Validate this batch: forward propagation + loss
                 mean_loss, _ = self.run_one_batch(
                     data, is_training=False,
-                    batch_sampler=self.valid_batch_sampler, *args)
+                    batch_loader=self.valid_batch_sampler, *args)
                 self.valid_loss_monitor.update(mean_loss)
 
                 # Update information every 10 updates
@@ -689,7 +690,7 @@ class DWIMLAbstractTrainer:
                 self.grad_norm_monitor.current_epoch_history[-1],
                 step=batch_id)
 
-    def run_one_batch(self, data, is_training: bool, batch_sampler, *args):
+    def run_one_batch(self, data, is_training: bool, batch_loader, *args):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -700,11 +701,11 @@ class DWIMLAbstractTrainer:
         Parameters
         ----------
         data : tuple of (List, dict)
-            This is the output of the BatchSequencesSampleOneInputVolume's
-            load_batch() function. If wait_for_gpu, data is
+            This is the output of the AbstractBatchLoader's load_batch()
+            method. If wait_for_gpu, data is
             (batch_streamlines, final_streamline_ids_per_subj). Else, data is
             (batch_streamlines, final_streamline_ids_per_subj, inputs)
-        batch_sampler: BatchSequencesSamplerOneInputVolume
+        batch_loader: BatchLoaderOneInput
             Either self.train_batch_sampler or valid_batch_sampler, depending
             on the case.
         is_training : bool
@@ -730,7 +731,7 @@ class DWIMLAbstractTrainer:
             grad_context = torch.no_grad
 
         with grad_context():
-            if batch_sampler.wait_for_gpu:
+            if batch_loader.wait_for_gpu:
                 if not self.use_gpu:
                     logging.warning(
                         "Batch sampler has been created with use_gpu=True, so "
@@ -747,7 +748,7 @@ class DWIMLAbstractTrainer:
                 # Getting the inputs points from the volumes. Usually done in
                 # load_batch but we preferred to wait here to have a chance to
                 # run things on GPU.
-                batch_inputs = batch_sampler.compute_inputs(
+                batch_inputs = batch_loader.compute_inputs(
                     batch_streamlines, final_s_ids_per_subj)
 
             else:

@@ -58,7 +58,7 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
 
 def prepare_batchloadersoneinput_train_valid(dataset, args,
                                              neighborhood_points):
-    with Timer("\nPreparing batch loaders...", newline=True, color='green'):
+    with Timer("\nPreparing batch loaders...", newline=True, color='pink'):
         logging.info("Training batch loader...")
         training_batch_loader = _prepare_batchloader(
             dataset.training_set, args, neighborhood_points)

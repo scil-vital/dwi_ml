@@ -33,7 +33,7 @@ def test_sampler(fake_dataset, input_group_name, chunk_size, batch_size,
     training_set = fake_dataset.training_set
 
     batch_sampler = BatchStreamlinesSamplerOneInput(
-        training_set, 'streamlines', chunk_size=chunk_size,
+        training_set, 'streamlines', max_chunk_size=chunk_size,
         max_batch_size=batch_size, rng=1234,
         step_size=step_size, compress=compress, nb_subjects_per_batch=1,
         cycles=1, split_ratio=0, noise_gaussian_size=0,

@@ -48,7 +48,7 @@ def test_batch_loading_no_computations(
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
     batch_sampler = BatchStreamlinesSamplerOneInput(
-        training_set, 'streamlines', chunk_size=256,
+        training_set, 'streamlines', max_chunk_size=256,
         max_batch_size=10000, rng=rng_seed,
         nb_subjects_per_batch=1, cycles=1, step_size=0.75,
         compress=False, split_ratio=split_ratio,
@@ -99,7 +99,7 @@ def test_batch_loading_computations(
     print('Initializing sampler...')
     rng_seed = now.minute * 100 + now.second
     batch_sampler = BatchStreamlinesSamplerOneInput(
-        training_set, 'streamlines', chunk_size=256,
+        training_set, 'streamlines', max_chunk_size=256,
         max_batch_size=10000, rng=rng_seed,
         nb_subjects_per_batch=1, cycles=1, step_size=0.5, compress=False,
         noise_gaussian_size=0,

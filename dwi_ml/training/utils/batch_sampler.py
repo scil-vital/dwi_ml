@@ -11,6 +11,19 @@ from dwi_ml.experiment_utils.timer import Timer
 def add_args_batch_sampler(p: argparse.ArgumentParser):
     # BATCH SIZE
     g_batch_size = p.add_argument_group("Batch sampler: batch size")
+
+    gg_batch_size = g_batch_size.add_mutually_exclusive_group()
+    gg_batch_size.add_argument(
+        '--max_batch_size_in_nb_streamlines', type=int, default=100,
+        metavar='s',
+        help="Number of streamlines per batch. The total number your \n"
+             "computer will accept depends on the type of input data. \nYou "
+             "will need to test this value. Default: 100.")
+    gg_batch_size.add_argument(
+        '--max_batch_size_in_nb_points', type=int, metavar='s',
+        help="Alternative choice: You can define the batch size in terms of "
+             "number of points per batch.")
+
     g_batch_size.add_argument(
         '--chunk_size', type=int, default=256, metavar='s',
         help="Number of streamlines to sample together while creating the "
@@ -21,11 +34,6 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
              "sampled timepoint reaches the max_batch_size. \nElse, the total "
              "number of streamlines in the batch will be 1*chunk_size.\n"
              "Default: 256, for no good reason.")
-    g_batch_size.add_argument(
-        '--max_batch_size', type=int, default=20000, metavar='s',
-        help="Number of streamline points per batch. The total number your \n"
-             "computer will accept depends on the type of input data. \nYou "
-             "will need to test this value. Default: 20000.")
     g_batch_size.add_argument(
         '--nb_subjects_per_batch', type=int, metavar='n',
         help="Maximum number of different subjects from which to load data in "
@@ -128,7 +136,7 @@ def _prepare_batchsampler_oneinput(subset, args, neighborhood_points):
         subset, input_group_name=args.input_group_name,
         streamline_group_name=args.streamline_group_name,
         # BATCH SIZE
-        chunk_size=args.chunk_size, max_batch_size=args.max_batch_size,
+        max_chunk_size=args.chunk_size, max_batch_size=args.max_batch_size,
         nb_subjects_per_batch=args.nb_subjects_per_batch, cycles=args.cycles,
         # STREAMLINES PREPROCESSING
         step_size=args.step_size, compress=args.compress,

@@ -19,8 +19,8 @@ from dwi_ml.experiment_utils.monitoring import (
 from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_samplers import DWIMLBatchSampler
-from dwi_ml.training.batch_loaders import (AbstractBatchLoader,
-                                           BatchLoaderOneInput)
+from dwi_ml.training.batch_loaders import (
+    AbstractBatchLoader, BatchLoaderOneInput)
 
 # If the remaining time is less than one epoch + X seconds, we will quit
 # training now, to allow updating taskman_report.
@@ -39,7 +39,6 @@ class DWIMLAbstractTrainer:
     Comet is used to save training information, but some logs will also be
     saved locally in the experiment_path.
     """
-
     def __init__(self,
                  batch_sampler_training: DWIMLBatchSampler,
                  batch_sampler_validation: DWIMLBatchSampler,
@@ -452,8 +451,7 @@ class DWIMLAbstractTrainer:
             # Training
             logging.info("**********TRAINING: Epoch #{}*************"
                          .format(epoch))
-            self.train_one_epoch(train_dataloader, train_context, epoch,
-                                 *args)
+            self.train_one_epoch(train_dataloader, train_context, epoch)
 
             # Validation
             if self.use_validation:
@@ -541,7 +539,7 @@ class DWIMLAbstractTrainer:
     def save_model(self):
         self.model.save(self.experiment_path)
 
-    def train_one_epoch(self, train_dataloader, train_context, epoch, *args):
+    def train_one_epoch(self, train_dataloader, train_context, epoch):
         """
         Train one epoch of the model: loop on all batches.
 
@@ -574,7 +572,7 @@ class DWIMLAbstractTrainer:
 
                     mean_loss, grad_norm = self.run_one_batch(
                         data, is_training=True,
-                        batch_loader=self.train_batch_loader, *args)
+                        batch_loader=self.train_batch_loader)
 
                     self.logger.debug("Updated loss: {}".format(mean_loss))
                     self.train_loss_monitor.update(mean_loss)
@@ -643,7 +641,7 @@ class DWIMLAbstractTrainer:
                 # Validate this batch: forward propagation + loss
                 mean_loss, _ = self.run_one_batch(
                     data, is_training=False,
-                    batch_loader=self.valid_batch_sampler, *args)
+                    batch_loader=self.valid_batch_loader)
                 self.valid_loss_monitor.update(mean_loss)
 
                 # Update information every 10 updates
@@ -690,7 +688,7 @@ class DWIMLAbstractTrainer:
                 self.grad_norm_monitor.current_epoch_history[-1],
                 step=batch_id)
 
-    def run_one_batch(self, data, is_training: bool, batch_loader, *args):
+    def run_one_batch(self, data, is_training: bool, batch_loader):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -705,8 +703,8 @@ class DWIMLAbstractTrainer:
             method. If wait_for_gpu, data is
             (batch_streamlines, final_streamline_ids_per_subj). Else, data is
             (batch_streamlines, final_streamline_ids_per_subj, inputs)
-        batch_loader: BatchLoaderOneInput
-            Either self.train_batch_sampler or valid_batch_sampler, depending
+        batch_loader: AbstractBatchLoader
+            Either self.train_batch_loader or valid_batch_loader, depending
             on the case.
         is_training : bool
             If True, record the computation graph and backprop through the
@@ -715,96 +713,11 @@ class DWIMLAbstractTrainer:
         -------
         mean_loss : float
             The mean loss of the provided batch
-        total_norm: float
+        grad_norm: float
             The total norm (sqrt(sum(params**2))) of parameters before gradient
             clipping, if any.
         """
-        if is_training:
-            # If training, enable gradients for backpropagation.
-            # Uses torch's module train(), which "turns on" the training mode.
-            self.model.train()
-            grad_context = torch.enable_grad
-        else:
-            # If evaluating, turn gradients off for back-propagation
-            # Uses torch's module eval(), which "turns off" the training mode.
-            self.model.eval()
-            grad_context = torch.no_grad
-
-        with grad_context():
-            if batch_loader.wait_for_gpu:
-                if not self.use_gpu:
-                    logging.warning(
-                        "Batch sampler has been created with use_gpu=True, so "
-                        "some computations have been skipped to allow user to "
-                        "compute them later on GPU. Now in training, however, "
-                        "you are using CPU, so this was not really useful.\n"
-                        "Maybe this is an error in the code?")
-                # Data interpolation has not been done yet. GPU computations
-                # need to be done here in the main thread. Running final steps
-                # of data preparation.
-                self.logger.debug('Finalizing input data preparation on GPU.')
-                batch_streamlines, final_s_ids_per_subj = data
-
-                # Getting the inputs points from the volumes. Usually done in
-                # load_batch but we preferred to wait here to have a chance to
-                # run things on GPU.
-                batch_inputs = batch_loader.compute_inputs(
-                    batch_streamlines, final_s_ids_per_subj)
-
-            else:
-                # Data is already ready
-                batch_streamlines, _, batch_inputs = data
-
-            if is_training:
-                # Reset parameter gradients
-                # See here for some explanation
-                # https://stackoverflow.com/questions/48001598/why-do-we-need-
-                # to-call-zero-grad-in-pytorch
-                self.optimizer.zero_grad()
-
-            self.logger.debug('\n=== Computing forward propagation ===')
-            model_outputs = self.run_model(batch_inputs, batch_streamlines)
-
-            # Compute loss
-            self.logger.debug('\n=== Computing loss ===')
-            mean_loss = self.compute_loss(model_outputs, batch_streamlines)
-            self.logger.info("Loss is : {}".format(mean_loss))
-
-            if is_training:
-                self.logger.debug('\n=== Computing back propagation ===')
-
-                # Explanation on the backward here:
-                # - Each parameter in the model have been created with the flag
-                #   requires_grad=True by torch.
-                #   ==> gradients = [i.grad for i in self.model.parameters()]
-                # - When using parameters to compute something (ex, outputs)
-                #   torch.autograd creates a computational graph, remembering
-                #   all the functions that were used from parameters that
-                #   contain the requires_grad.
-                # - When calling backward, the backward of each sub-function is
-                #   called iteratively, each time computing the partial
-                #   derivative dloss/dw and modifying the parameters' .grad
-                #   ==> model_outputs.grad_fn shows the last used function,
-                #       and thus the first backward to be used, here:
-                #       MeanBackward0  (last function was a mean)
-                #   ==> model_outputs.grad_fn shows the last used fct.
-                #       Ex, AddmmBackward  (addmm = matrix multiplication)
-                mean_loss.backward()
-
-                self.fix_parameters()
-
-                grad_norm = compute_gradient_norm(self.model.parameters())
-                self.logger.debug("Gradient norm: {}".format(grad_norm))
-
-                # Update parameters
-                self.optimizer.step()
-            else:
-                grad_norm = None
-
-            if self.use_gpu:
-                log_gpu_memory_usage(self.logger)
-
-        return mean_loss.cpu().item(), grad_norm
+        raise NotImplementedError
 
     def run_model(self, batch_inputs, batch_streamlines):
         """
@@ -964,8 +877,9 @@ class DWIMLAbstractTrainer:
         }
 
         # Additional params are the parameters necessary to load data, batch
-        # samplers and model (see train_model.py). Note that the training set
-        # and validation set attributes should be the same.
+        # samplers/loaders and model (see the example script train_model.py).
+        # Note that the training set and validation set attributes should be
+        # the same in theory. #toDo to be checked?
         checkpoint_state = {
             'train_sampler_params': self.train_batch_sampler.params,
             'valid_sampler_params': self.valid_batch_sampler.params if
@@ -973,6 +887,8 @@ class DWIMLAbstractTrainer:
             'train_data_params': self.train_batch_sampler.dataset.params,
             'valid_data_params': self.valid_batch_sampler.dataset.params if
             self.use_validation else None,
+            'train_loader_params': self.train_batch_loader.params,
+            'valid_liader_params': self.valid_batch_loader.params,
             'model_params': self.model.params,
             'params_for_init': params_for_init,
             'current_states': current_states
@@ -1053,3 +969,115 @@ class DWIMLAbstractTrainer:
                     "enough. Please increase that value in order to resume "
                     "training."
                     .format(current_epoch, new_max_epochs))
+
+
+class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
+    def __init__(self,
+                 batch_sampler_training: DWIMLBatchSampler,
+                 batch_sampler_validation: DWIMLBatchSampler,
+                 batch_loader_training: BatchLoaderOneInput,
+                 batch_loader_validation: BatchLoaderOneInput,
+                 model: MainModelAbstract, experiment_path: str,
+                 experiment_name: str, learning_rate: float,
+                 weight_decay: float, max_epochs: int,
+                 max_batches_per_epoch: int, patience: int,
+                 nb_cpu_processes: int, taskman_managed: bool, use_gpu: bool,
+                 comet_workspace: str, comet_project: str,
+                 from_checkpoint: bool):
+        super().__init__(batch_sampler_training, batch_sampler_validation,
+                         batch_loader_training, batch_loader_validation,
+                         model, experiment_path, experiment_name,
+                         learning_rate, weight_decay, max_epochs,
+                         max_batches_per_epoch, patience,
+                         nb_cpu_processes, taskman_managed, use_gpu,
+                         comet_workspace, comet_project,
+                         from_checkpoint)
+
+    def run_one_batch(self, data, is_training: bool,
+                      batch_loader: BatchLoaderOneInput):
+        if is_training:
+            # If training, enable gradients for backpropagation.
+            # Uses torch's module train(), which "turns on" the training mode.
+            self.model.train()
+            grad_context = torch.enable_grad
+        else:
+            # If evaluating, turn gradients off for back-propagation
+            # Uses torch's module eval(), which "turns off" the training mode.
+            self.model.eval()
+            grad_context = torch.no_grad
+
+        with grad_context():
+            if batch_loader.wait_for_gpu:
+                if not self.use_gpu:
+                    logging.warning(
+                        "Batch sampler has been created with use_gpu=True, so "
+                        "some computations have been skipped to allow user to "
+                        "compute them later on GPU. Now in training, however, "
+                        "you are using CPU, so this was not really useful.\n"
+                        "Maybe this is an error in the code?")
+                # Data interpolation has not been done yet. GPU computations
+                # need to be done here in the main thread. Running final steps
+                # of data preparation.
+                self.logger.debug('Finalizing input data preparation on GPU.')
+                batch_streamlines, final_s_ids_per_subj = data
+
+                # Getting the inputs points from the volumes. Usually done in
+                # load_batch but we preferred to wait here to have a chance to
+                # run things on GPU.
+                batch_inputs = batch_loader.compute_inputs(
+                    batch_streamlines, final_s_ids_per_subj)
+
+            else:
+                # Data is already ready
+                batch_streamlines, _, batch_inputs = data
+
+            if is_training:
+                # Reset parameter gradients
+                # See here for some explanation
+                # https://stackoverflow.com/questions/48001598/why-do-we-need-
+                # to-call-zero-grad-in-pytorch
+                self.optimizer.zero_grad()
+
+            self.logger.debug('\n=== Computing forward propagation ===')
+            model_outputs = self.run_model(batch_inputs, batch_streamlines)
+
+            # Compute loss
+            self.logger.debug('\n=== Computing loss ===')
+            mean_loss = self.compute_loss(model_outputs, batch_streamlines)
+            self.logger.info("Loss is : {}".format(mean_loss))
+
+            if is_training:
+                self.logger.debug('\n=== Computing back propagation ===')
+
+                # Explanation on the backward here:
+                # - Each parameter in the model have been created with the flag
+                #   requires_grad=True by torch.
+                #   ==> gradients = [i.grad for i in self.model.parameters()]
+                # - When using parameters to compute something (ex, outputs)
+                #   torch.autograd creates a computational graph, remembering
+                #   all the functions that were used from parameters that
+                #   contain the requires_grad.
+                # - When calling backward, the backward of each sub-function is
+                #   called iteratively, each time computing the partial
+                #   derivative dloss/dw and modifying the parameters' .grad
+                #   ==> model_outputs.grad_fn shows the last used function,
+                #       and thus the first backward to be used, here:
+                #       MeanBackward0  (last function was a mean)
+                #   ==> model_outputs.grad_fn shows the last used fct.
+                #       Ex, AddmmBackward  (addmm = matrix multiplication)
+                mean_loss.backward()
+
+                self.fix_parameters()
+
+                grad_norm = compute_gradient_norm(self.model.parameters())
+                self.logger.debug("Gradient norm: {}".format(grad_norm))
+
+                # Update parameters
+                self.optimizer.step()
+            else:
+                grad_norm = None
+
+            if self.use_gpu:
+                log_gpu_memory_usage(self.logger)
+
+        return mean_loss.cpu().item(), grad_norm

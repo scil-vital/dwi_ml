@@ -203,7 +203,8 @@ def _prepare_seed_generator(parser, args, hdf_handle, device):
                      .format(args.in_seed))
 
     if args.npv:
-        # toDo. Not really nb seed per voxel, just in average.
+        # toDo. Not really nb seed per voxel, just in average. Waiting for this
+        #  to be modified in scilpy, and we will adapt here.
         nbr_seeds = len(seed_generator.seeds) * args.npv
     elif args.nt:
         nbr_seeds = args.nt

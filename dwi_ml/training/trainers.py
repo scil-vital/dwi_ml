@@ -9,12 +9,12 @@ from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import contextlib2
 import numpy as np
 import torch
-from dwi_ml.experiment_utils.learning_utils import compute_gradient_norm
+from dwi_ml.training.gradient_norm import compute_gradient_norm
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.experiment_utils.monitoring import (
+from dwi_ml.training.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
 from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 from dwi_ml.models.main_models import MainModelAbstract
@@ -159,14 +159,6 @@ class DWIMLAbstractTrainer:
         # Current level is set at root's level, but this can be changed at
         # training time.
         self.set_log_level()
-
-        # Time limited run
-        # toDo. Change this for a parameter???
-        self.hangup_time = None
-        htime = os.environ.get('HANGUP_TIME', None)
-        if htime is not None:
-            self.hangup_time = int(htime)
-            logging.info('Will hang up at ' + htime)
 
         # Device and rng value. Note that if loading from a checkpoint, the
         # complete state should be updated.
@@ -524,14 +516,6 @@ class DWIMLAbstractTrainer:
                     'best_loss': self.best_epoch_monitoring.best_value
                 }
                 self._update_taskman_report(updates)
-
-            # (For taskman) Check if time is running out
-            if self._should_quit(iter_timer):
-                logging.info('Seems like I should quit, so I quit.')
-                logging.info('Remaining: {:.0f} s'.format(
-                    self.hangup_time - time.time()))
-                self._update_taskman_report({'resubmit': True})
-                exit(2)
 
         # Reset logger level
         logging.root.setLevel(previous_level)
@@ -900,14 +884,6 @@ class DWIMLAbstractTrainer:
             })
 
         return checkpoint_state
-
-    def _should_quit(self, iter_timer):
-        # If:
-        #   - hang up signal received
-        #   - time remaining is less than one epoch + 30 seconds
-        # exit training.
-        return (self.hangup_time is not None and
-                time.time() + iter_timer.mean * 2.0 + 30 > self.hangup_time)
 
     def _update_taskman_report(self, updates):
         self.taskman_report.update(updates)

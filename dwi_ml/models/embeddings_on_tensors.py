@@ -74,8 +74,8 @@ class NoEmbedding(EmbeddingAbstract):
         self.identity = torch.nn.Identity()
 
     def forward(self, inputs: Tensor = None):
-        # toDo. Should check that input size = self.input_size but we don't
-        #  know how the data is organized. Probably inputs.shape[0]?
+        #  Should check that input size = self.input_size but we don't
+        #  know how the data is organized. Letting user be responsible.
         result = self.identity(inputs)
         return result
 

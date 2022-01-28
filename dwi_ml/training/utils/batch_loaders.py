@@ -56,17 +56,16 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
         help="Percentage of streamlines to randomly reverse in each batch.")
 
 
-def prepare_batchloadersoneinput_train_valid(dataset, args,
-                                             neighborhood_points):
+def prepare_batchloadersoneinput_train_valid(dataset, args_t, args_v):
     with Timer("\nPreparing batch loaders...", newline=True, color='pink'):
         logging.info("Training batch loader...")
         training_batch_loader = _prepare_batchloader(
-            dataset.training_set, args, neighborhood_points)
+            dataset.training_set, args_t)
 
         if dataset.validation_set.nb_subjects > 0:
             logging.info("Validation batch loader...")
             validation_batch_loader = _prepare_batchloader(
-                dataset.training_set, args, neighborhood_points)
+                dataset.validation_set, args_v)
 
         else:
             validation_batch_loader = None
@@ -74,7 +73,7 @@ def prepare_batchloadersoneinput_train_valid(dataset, args,
     return training_batch_loader, validation_batch_loader
 
 
-def _prepare_batchloader(subset, args, neighborhood_points):
+def _prepare_batchloader(subset, args):
     if args.step_size and args.step_size <= 0:
         raise ValueError("Step size can't be 0 or less!")
         # Note. When using
@@ -102,7 +101,7 @@ def _prepare_batchloader(subset, args, neighborhood_points):
         noise_gaussian_variability=args.noise_gaussian_variability,
         reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
         # NEIGHBORHOOD
-        neighborhood_points=neighborhood_points,
+        neighborhood_points=args.neighborhood_points,
         rng=args.rng, wait_for_gpu=args.wait_for_gpu)
 
     logging.info(

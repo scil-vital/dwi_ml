@@ -882,17 +882,23 @@ class DWIMLAbstractTrainer:
         # the same in theory. #toDo to be checked?
         checkpoint_state = {
             'train_sampler_params': self.train_batch_sampler.params,
-            'valid_sampler_params': self.valid_batch_sampler.params if
-            self.use_validation else None,
+            'valid_sampler_params': None,
             'train_data_params': self.train_batch_sampler.dataset.params,
-            'valid_data_params': self.valid_batch_sampler.dataset.params if
-            self.use_validation else None,
+            'valid_data_params': None,
             'train_loader_params': self.train_batch_loader.params,
-            'valid_liader_params': self.valid_batch_loader.params,
+            'valid_loader_params': None,
             'model_params': self.model.params,
             'params_for_init': params_for_init,
             'current_states': current_states
         }
+
+        if self.use_validation:
+            checkpoint_state.update({
+                'valid_sampler_params': self.valid_batch_sampler.params,
+                'valid_data_params': self.valid_batch_sampler.dataset.params,
+                'valid_loader_params': self.valid_batch_loader.params
+            })
+
         return checkpoint_state
 
     def _should_quit(self, iter_timer):

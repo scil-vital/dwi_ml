@@ -107,9 +107,9 @@ def init_from_args(p, args):
         prepare_batchsamplers_train_valid(dataset, args, args)
 
     # Preparing the batch loaders
+    args.neighborhood_points = model.neighborhood_points
     training_batch_loader, validation_batch_loader = \
-        prepare_batchloadersoneinput_train_valid(dataset, args,
-                                                 model.neighborhood_points)
+        prepare_batchloadersoneinput_train_valid(dataset, args, args)
 
     # Preparing the trainer
     trainer = prepare_trainer(training_batch_sampler, validation_batch_sampler,

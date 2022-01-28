@@ -53,7 +53,7 @@ def prepare_batchsamplers_train_valid(dataset, args_training, args_validation):
         if dataset.validation_set.nb_subjects > 0:
             logging.info("Validation batch sampler...")
             validation_batch_sampler = _prepare_batchsampler(
-                dataset.training_set, args_validation)
+                dataset.validation_set, args_validation)
 
         else:
             validation_batch_sampler = None

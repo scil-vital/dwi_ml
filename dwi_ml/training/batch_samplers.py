@@ -40,8 +40,8 @@ from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 class DWIMLBatchSampler(Sampler):
     def __init__(self, dataset: MultisubjectSubset,
                  streamline_group_name: str, batch_size: int,
-                 batch_size_units: str, nb_streamlines_per_chunk: int, rng: int,
-                 nb_subjects_per_batch: int, cycles: int):
+                 batch_size_units: str, nb_streamlines_per_chunk: int,
+                 rng: int, nb_subjects_per_batch: int, cycles: int):
         """
         Parameters
         ----------

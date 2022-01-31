@@ -19,15 +19,33 @@ from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data
 
 
-def _load_and_verify_file(file_name, subj_input_path, group, group_affine,
-                          group_res):
-    data_file = subj_input_path.joinpath(file_name)
+def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
+                          group_affine, group_res):
+    """
+    Loads a 3D or 4D nifti file. If it is a 3D dataset, adds a dimension to
+    make it 4D. Then checks that it is compatible with a given group based on
+    its affine and resolution.
 
-    logging.info("       - Processing file {}".format(file_name))
+    Params
+    ------
+    filename: str
+        File's name. Must be .nii or .nii.gz.
+    subj_input_path: Path
+        Path where to load the nifti file from.
+    group_name: str
+        Name of the group with which 'filename' file must be compatible.
+    group_affine: np.array
+        The loaded file's affine must be equal (or very close) to this affine.
+    group_res: np.array
+        The loaded file's resolution must be equal (or very close) to this res.
+    """
+    data_file = subj_input_path.joinpath(filename)
+
+    logging.info("       - Processing file {}".format(filename))
 
     if not data_file.is_file():
         logging.debug("      Skipping file {} because it was not "
-                      "found in this subject's folder".format(file_name))
+                      "found in this subject's folder".format(filename))
         # Note: if args.enforce_files_presence was set to true, this
         # case is not possible, already checked in
         # create_hdf5_dataset.py.
@@ -47,7 +65,7 @@ def _load_and_verify_file(file_name, subj_input_path, group, group_affine,
             'Affine: {}\n'
             'Group affine: {}\n'
             'Biggest difference: {}'
-            .format(file_name, group, affine, group_affine,
+            .format(filename, group_name, affine, group_affine,
                     np.max(affine - group_affine)))
 
     if not np.allclose(res, group_res):
@@ -58,7 +76,7 @@ def _load_and_verify_file(file_name, subj_input_path, group, group_affine,
             'resolution.\n'
             'Resolution: {}\n'
             'Group resolution: {}'
-            .format(file_name, group, res, group_res))
+            .format(filename, group_name, res, group_res))
 
     return data
 
@@ -66,20 +84,24 @@ def _load_and_verify_file(file_name, subj_input_path, group, group_affine,
 class HDF5Creator:
     """
     Creates a hdf5 file with:
-    - One group per subject
+    - One group per subject:
             - One group per 'volume' group in the config file, where 4D-data is
             the concatenation of every MRI volume listed for this group.
-                    - Volumes are standardized as set in the config file.
+                    -> Volumes will be standardized as defined in the config
+                    file (options could be different for each group).
             - One group per 'streamlines' group where data is the decomposed
             SFT containing concatenation of all tractograms listed for this
             group.
-                    - SFT was resampled / compressed as stated in argument.
+                    -> SFTs will be resampled / compressed as defined in the
+                    class's arguments (options are the same for all
+                    tractograms).
 
     See the doc for an example of config file.
+    https://dwi-ml.readthedocs.io/en/latest/config_file.html
     """
     HDF_DATABASE_VERSION = 2
 
-    def __init__(self, root_folder: Path, out_hdf_filename,
+    def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
                  std_mask: str, step_size: float, compress: bool,
@@ -102,15 +124,13 @@ class HDF5Creator:
             Information from json file loaded as a dict.
         std_mask: str
             Name of the standardization mask inside each subject's folder.
-        standardization: str
-            One of ['all', 'independent', 'per_file', 'none'].
         step_size: float
             Step size to resample streamlines.
         compress: bool
             Compress streamlines.
         space: Space
             Space to place the tractograms.
-        enforce_file_presence: bool
+        enforce_files_presence: bool
             If true, will stop if some files are not available for a subject.
             Default: True.
         save_intermediate: bool
@@ -119,7 +139,6 @@ class HDF5Creator:
         intermediate_folder: Path
             Path where to save the intermediate files.
         """
-
         # Mandatory
         self.root_folder = root_folder
         self.out_hdf_filename = out_hdf_filename
@@ -154,7 +173,7 @@ class HDF5Creator:
 
     def _analyse_config_file(self):
         """
-        Reads the groups config json file and find:
+        Reads the groups config json file and finds:
         - List of groups. Their type should be one of 'volume' or 'streamlines'
         - For volume groups: 'standardization' value should be provided and one
           of 'all', 'independent', 'per_file' or 'none'.
@@ -279,11 +298,10 @@ class HDF5Creator:
 
     def create_database(self):
         """
-        Generate a dataset from a group of dMRI subjects with possibly multiple
-        tractograms.
-        All data from each group are concatenated.
-        All tractograms from a same streamline group are merged as a single
-        dataset in voxel space.
+        Generates a hdf5 dataset from a group of subjects. Hdf5 dataset will
+        contain one group per subject, and for each, groups as defined in the
+        config file.
+
         If wished, all intermediate steps are saved on disk in the hdf5 folder.
         """
         with h5py.File(self.out_hdf_filename, 'w') as hdf_handle:
@@ -315,7 +333,8 @@ class HDF5Creator:
 
     def _create_one_subj(self, subj_id, hdf_handle):
         """
-        Creating one subject's data as a hdf5 group.
+        Creating one subject's data as a hdf5 group: main attributes +
+        volume group(s) + streamline group(s).
         """
         subj_input_dir = self.root_folder.joinpath(subj_id)
 
@@ -346,8 +365,12 @@ class HDF5Creator:
     def _create_volume_groups(self, subj_id, subj_input_dir,
                               subj_std_mask_data, subj_hdf_group):
         """
-        Loop on all volume groups for a given subject and create the hdf5
-        group.
+        Create the hdf5 groups for all volume groups in the config_file for a
+        given subject.
+
+        Saves the attrs 'data', 'affine', 'voxres' (voxel resolution) and
+        'nb_feature' (the size of last dimension) for each.
+        (+ 'type' = 'volume')
         """
         group_header = None
         for group in self.volume_groups:
@@ -376,12 +399,13 @@ class HDF5Creator:
                                   subj_input_path: Path,
                                   subj_std_mask_data: np.ndarray = None):
         """
-        Process each group from the json config file:
-        - Load data from each file of the group and combine them. All datasets
+        Processes each volume group from the json config file for a given
+        subject:
+        - Loads data from each file of the group and combine them. All datasets
           from a given group must have the same affine, voxel resolution and
           data shape.
           Note. Wildcards will be replaced by the subject id.
-        - Standardize data
+        - Standardizes data.
 
         Parameters
         ----------
@@ -464,8 +488,16 @@ class HDF5Creator:
     def _create_streamline_groups(self, ref, subj_input_dir, subj_id,
                                   subj_hdf_group):
         """
-        Loop on all streamline groups for a given subject and create the hdf5
-        group.
+        Creates one hdf5 group per streamline group in the config file for a
+        given subject.
+
+        Saves the attrs 'space', 'affine', 'dimensions', 'voxel_sizes',
+        'voxel_order' (i.e. all the SFT's space attributes), 'data', 'offsets',
+        'lengths' and 'euclidean_lengths'.
+        (+ 'type' = 'streamlines')
+
+        In short, all the nibabel's ArraySequence attributes are saved to
+        eventually recreate a SFT from the hdf5 data.
         """
         for group in self.streamline_groups:
 

@@ -8,12 +8,12 @@ The possibility of laziness
 
 We chose to base our code on the hdf5 data. One reason is that it allows to regroup your data in an organized way to ensure that all you data is present. But the main reason for using hdf5 is that it is then possible to load only some chosen streamlines for each batch in the training set instead of having to keep all the streamlines in memory, which can be very heavy. This way of handling the data is called "lazy" in our project.
 
-You will use the **create_hdf5_dataset.py** script to create a hdf5 file. You need to prepare config files to use this script (see :ref:`ref_config_file`).
-
 Creating the hdf5
 *****************
 
-Exemple of use: (See please_copy_and_adapt/ALL_STEPS.sh) for a more thorough example).
+You will use the **create_hdf5_dataset.py** script to create a hdf5 file. You need to prepare config files to use this script (see :ref:`ref_config_file`).
+
+Exemple of use: (See also please_copy_and_adapt/ALL_STEPS.sh)
 
 .. code-block:: bash
 
@@ -44,6 +44,18 @@ Here is the output format created by create_hdf5_dataset.py and recognized by th
     hdf5['subj1']['group1']['data'] is the data.
 
     For streamlines, other available data:
+    (from the data:)
     hdf5['subj1']['group1']['offsets']
     hdf5['subj1']['group1']['lengths']
     hdf5['subj1']['group1']['euclidean_lengths']
+    (from the space attributes:)
+    hdf5['subj1']['group1']['space']
+    hdf5['subj1']['group1']['affine']
+    hdf5['subj1']['group1']['dimensions']
+    hdf5['subj1']['group1']['voxel_sizes']
+    hdf5['subj1']['group1']['voxel_order']
+
+    For volumes, other available data:
+    hdf5['sub1']['group1']['affine']
+    hdf5['sub1']['group1']['voxres']
+    hdf5['sub1']['group1']['nb_features']

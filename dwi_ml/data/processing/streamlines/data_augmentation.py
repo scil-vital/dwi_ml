@@ -59,8 +59,6 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
         (i.e. out of the box in voxel space). If you want to save noisy_sft,
         please perform noisy_sft.remove_invalid_streamlines() first.
     """
-    logging.info("Please note your sft space is in {}. We suppose that the "
-                 "noise, {}, fits.".format(sft.space, gaussian_size))
 
     # Modify gaussian_size based on gaussian_variability
     # adding a random number between

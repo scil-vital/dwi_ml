@@ -486,7 +486,7 @@ class HDF5Creator:
                 logging.warning('Careful! Total tractogram for subject {} '
                                 'contained no streamlines!'.format(subj_id))
             else:
-                streamlines_group = subj_hdf_group.create_group('streamlines')
+                streamlines_group = subj_hdf_group.create_group(group)
                 streamlines_group.attrs['type'] = 'streamlines'
 
                 # The hdf5 can only store numpy arrays (it is actually the

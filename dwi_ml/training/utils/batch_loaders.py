@@ -30,30 +30,32 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
         "Batch sampler: streamlines data augmentation")
     g_data_augmentation.add_argument(
         '--noise_size', type=float, metavar='v', dest='noise_gaussian_size',
+        default=0.,
         help="If set, add random Gaussian noise to streamline coordinates "
              "with given variance. \nThis corresponds to the std of the "
              "Gaussian. If step_size is not given, make sure \nit is smaller "
              "than your step size to avoid flipping direction. \nEx, you "
              "could choose 0.1 * step-size. \nNoise is truncated to "
-             "+/-(2*noise_sigma) and to +/-(0.5 * step-size).")
+             "+/-(2*noise_sigma) and to +/-(0.5 * step-size). Default: 0.")
     g_data_augmentation.add_argument(
         '--noise_variability', type=float, metavar='v',
-        dest='noise_gaussian_variability',
+        dest='noise_gaussian_variability', default=0.,
         help="If set, a variation is applied to the noise_size to have very "
              "noisy streamlines and \nless noisy streamlines. This means that "
              "the real gaussian_size will be a random \nnumber between "
-             "[size - variability, size + variability].")
+             "[size - variability, size + variability]. Default: 0.")
     g_data_augmentation.add_argument(
-        '--split_ratio', type=float, metavar='r',
+        '--split_ratio', type=float, metavar='r', default=0.,
         help="Percentage of streamlines to randomly split into 2, in each "
              "batch (keeping both \nsegments as two independent streamlines). "
              "The reason for cutting is to help the \nML algorithm to track "
              "from the middle of WM by having already seen \nhalf-"
              "streamlines. If you are using interface seeding, this is not "
-             "necessary.")
+             "necessary. Default: 0.")
     g_data_augmentation.add_argument(
-        '--reverse_ratio', type=float, metavar='r',
-        help="Percentage of streamlines to randomly reverse in each batch.")
+        '--reverse_ratio', type=float, metavar='r', default=0.,
+        help="Percentage of streamlines to randomly reverse in each batch."
+             "Default: 0.")
 
 
 def prepare_batchloadersoneinput_train_valid(dataset, args_t, args_v):

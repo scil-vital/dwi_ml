@@ -29,8 +29,7 @@ def add_training_args(p: argparse.ArgumentParser):
         '--max_batches_per_epoch', type=int, default=1000, metavar='n',
         help="Maximum number of batches per epoch. This will help avoid "
              "long epochs, \nto ensure that we save checkpoints regularly.\n"
-             "Default: 1000."
-    )
+             "Default: 1000.")
 
     comet_g = p.add_argument_group("Comet")
     comet_g.add_argument(

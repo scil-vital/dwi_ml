@@ -316,7 +316,7 @@ class HDF5Creator:
         subj_hdf_group = hdf_handle.create_group(subj_id)
 
         # Prepare subject folder for intermediate files
-        subj_intermediate_path = self.saving_path.joinpath(
+        subj_intermediate_path = self.saving_path.parent.joinpath(
             subj_id + "_intermediate")
         if self.save_intermediate:
             subj_intermediate_path.mkdir()
@@ -486,7 +486,7 @@ class HDF5Creator:
                 logging.warning('Careful! Total tractogram for subject {} '
                                 'contained no streamlines!'.format(subj_id))
             else:
-                streamlines_group = subj_hdf_group.create_group('streamlines')
+                streamlines_group = subj_hdf_group.create_group(group)
                 streamlines_group.attrs['type'] = 'streamlines'
 
                 # The hdf5 can only store numpy arrays (it is actually the
@@ -570,27 +570,30 @@ class HDF5Creator:
             if tmp_bundle_name.endswith('/ALL'):
                 bundles_dir = tmp_bundle_name.split('/ALL')
                 bundles_dir = ''.join(bundles_dir[:-1])
-                bundles2 = [str(p) for p in subj_dir.glob(bundles_dir + '/*')]
+                bundles_sublist = [
+                    tmp_bundle_name.replace('/ALL', '/' + os.path.basename(p))
+                    for p in subj_dir.glob(bundles_dir + '/*')]
             else:
-                bundles2 = [tmp_bundle_name]
+                bundles_sublist = [tmp_bundle_name]
 
             # Either a loop on "ALL" or a loop on only one file,
             # tmp_bundle_name.
-            for bundle_name in bundles2:
+            for bundle_name in bundles_sublist:
                 bundle_name = bundle_name.replace('*', subj_id)
                 bundle_file = subj_dir.joinpath(bundle_name)
+
                 sft = self._load_and_process_sft(bundle_file, bundle_name,
                                                  header)
 
-                # Compute euclidean lengths (rasmm space)
-                sft.to_space(Space.RASMM)
-                output_lengths.extend(length(sft.streamlines))
-
-                # Sending to wanted space
-                sft.to_space(self.space)
-
-                # Add processed bundle to output tractogram
                 if sft is not None:
+                    # Compute euclidean lengths (rasmm space)
+                    sft.to_space(Space.RASMM)
+                    output_lengths.extend(length(sft.streamlines))
+
+                    # Sending to wanted space
+                    sft.to_space(self.space)
+
+                    # Add processed bundle to output tractogram
                     if final_sft is None:
                         final_sft = sft
                     else:

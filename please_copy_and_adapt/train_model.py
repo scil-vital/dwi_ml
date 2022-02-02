@@ -19,6 +19,7 @@ from dwi_ml.training.utils.batch_samplers import (
     add_args_batch_sampler, prepare_batchsamplers_train_valid)
 from dwi_ml.training.utils.batch_loaders import (
     add_args_batch_loader, prepare_batchloadersoneinput_train_valid)
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_training_experiment,
     add_memory_args_training_experiment,
@@ -38,7 +39,10 @@ def prepare_arg_parser():
     add_args_batch_loader(p)
     add_training_args(p)
 
-    add_model_args(p)
+    # To be defined: add_model_args(p)
+    # Possibly:
+    # models.utils.direction_getters.add_direction_getter_args(p)
+    # data.processing.space.neighborhood.add_args_neighborhood(p)
 
     return p
 
@@ -59,7 +63,9 @@ def init_from_args(p, args):
         args.neighborhood_type = None
     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     args.nb_features = dataset.nb_features[input_group_idx]
-    model = prepare_model(args)
+
+    # Possibly: dg_args = check_args_direction_getter(args)
+    model = MainModelAbstract()  # To be instantiated correctly.
 
     # Preparing the batch samplers
     args.wait_for_gpu = args.use_gpu

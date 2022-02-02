@@ -26,7 +26,8 @@ def add_args_dataset(p: argparse.ArgumentParser):
              "only what \nis needed for a batch.")
 
 
-def prepare_multisubjectdataset(args):
+def prepare_multisubjectdataset(args, load_training=True, load_validation=True,
+                                load_testing=True):
     """
     Instantiates a MultiSubjectDataset AND loads data.
 
@@ -40,9 +41,14 @@ def prepare_multisubjectdataset(args):
         dataset = MultiSubjectDataset(
             args.hdf5_file, taskman_managed=args.taskman_managed,
             lazy=args.lazy, cache_size=args.cache_size)
-        dataset.load_data()
+        dataset.load_data(load_training, load_validation, load_testing)
 
-        logging.info("Dataset attributes: \n" +
-                     format_dict_to_str(dataset.params))
+        logging.info("Number of subjects loaded: \n"
+                     "      Training: {}\n"
+                     "      Validation: {}\n"
+                     "      Testing: {}"
+                     .format(dataset.training_set.nb_subjects,
+                             dataset.validation_set.nb_subjects,
+                             dataset.testing_set.nb_subjects))
 
     return dataset

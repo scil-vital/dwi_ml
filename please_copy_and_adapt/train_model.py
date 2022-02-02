@@ -49,7 +49,7 @@ def prepare_arg_parser():
 
 def init_from_args(p, args):
     # Prepare the dataset
-    dataset = prepare_multisubjectdataset(args)
+    dataset = prepare_multisubjectdataset(args, load_testing=False)
 
     # Preparing the model
     if args.grid_radius:

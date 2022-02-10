@@ -1,19 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Script to combine multiple diffusion MRI volumes and their streamlines into a
-single .hdf5 file.
+This script combines multiple diffusion MRI volumes and their streamlines into
+a single .hdf5 file. A hdf5 folder will be created alongside dwi_ml_ready. It
+will contain the .hdf5 file and possibly intermediate files.
 
-You should have a file dwi_ml_ready organized as prescribed (see our doc for
-more information.) A hdf5 folder will be created alongside dwi_ml_ready.
-It will contain the .hdf5 file and possibly intermediate files.
+** You should have a file dwi_ml_ready organized as described in our doc:
+https://dwi-ml.readthedocs.io/en/latest/data_organization.html
 
-Important notes
----------------
+** You should have a config file as described in our doc:
+https://dwi-ml.readthedocs.io/en/latest/config_file.html
 
-The memory is a delicate question here, but checks have been made, and it
-appears that the SFT's garbage collector may not be working entirely well.
 
+
+** Note: The memory is a delicate question here, but checks have been made, and
+it appears that the SFT's garbage collector may not be working entirely well.
 Keeping as is for now, hoping that next Dipy versions will solve the problem.
 """
 

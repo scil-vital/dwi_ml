@@ -137,6 +137,7 @@ def compute_and_normalize_directions(streamlines, device=torch.device('cpu'),
     normalize_directions: bool
     """
     # Getting directions
+    # todo Would it be better to cast s as a tensor and use torch.diff?
     batch_directions = [torch.as_tensor(s[1:] - s[:-1],
                                         dtype=torch.float32,
                                         device=device)

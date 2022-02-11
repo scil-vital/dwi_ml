@@ -363,7 +363,8 @@ class MultiSubjectDataset:
         })
         return all_params
 
-    def load_data(self):
+    def load_data(self, load_training=True, load_validation=True,
+                  load_testing=True):
         """
         Load raw dataset into memory.
         """
@@ -393,9 +394,12 @@ class MultiSubjectDataset:
             self.testing_set.set_subset_info(*group_info, step_size)
 
             # LOADING
-            logging.info("---> LOADING TRAINING SET")
-            self.training_set.load(hdf_handle)
-            logging.info("---> LOADING VALIDATION SET")
-            self.validation_set.load(hdf_handle)
-            logging.info("---> LOADING TESTING SET")
-            self.testing_set.load(hdf_handle)
+            if load_training:
+                logging.info("---> LOADING TRAINING SET")
+                self.training_set.load(hdf_handle)
+            if load_validation:
+                logging.info("---> LOADING VALIDATION SET")
+                self.validation_set.load(hdf_handle)
+            if load_testing:
+                logging.info("---> LOADING TESTING SET")
+                self.testing_set.load(hdf_handle)

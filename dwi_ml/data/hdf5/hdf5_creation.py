@@ -275,9 +275,11 @@ class HDF5Creator:
 
     def create_database(self):
         """
-        Generate a dataset from a group of dMRI subjects with multiple bundles.
+        Generate a dataset from a group of dMRI subjects with possibly multiple
+        tractograms.
         All data from each group are concatenated.
-        All bundles are merged as a single whole-brain dataset in voxel space.
+        All tractograms from a same streamline group are merged as a single
+        dataset in voxel space.
         If wished, all intermediate steps are saved on disk in the hdf5 folder.
         """
         with h5py.File(self.saving_path, 'w') as hdf_handle:
@@ -471,13 +473,13 @@ class HDF5Creator:
         for group in self.streamline_groups:
 
             # Add the streamlines data
-            logging.info('    - Processing bundles...')
+            logging.info('    - Processing tractograms...')
 
             if ref is None:
                 logging.debug(
                     "No group_header! This means no 'volume' group was added "
-                    "in the config_file. If all bundles are .trk, we can use "
-                    "ref 'same' but if some bundles were .tck, we need a ref!")
+                    "in the config_file. If all files are .trk, we can use "
+                    "ref 'same' but if some files were .tck, we need a ref!")
             sft, lengths = self._process_one_streamline_group(
                 subj_input_dir, group, subj_id, ref, subj_intermediate_path)
             streamlines = sft.streamlines
@@ -523,16 +525,16 @@ class HDF5Creator:
             self, subj_dir: Path, group: str, subj_id: str,
             header: nib.Nifti1Header, subj_output_path: Path):
         """
-        Load and process a group of bundles and merge all streamlines
+        Load and process a group of tractograms and merge all streamlines
         together.
 
         Note. Wildcards will be replaced by the subject id. If the list is
-        folder/ALL, all bundles in the folder will be used.
+        folder/ALL, all tractograms in the folder will be used.
 
         Parameters
         ----------
         subj_dir : Path
-            Path to bundles folder.
+            Path to tractograms folder.
         group: str
             group name
         subj_id: str
@@ -551,7 +553,7 @@ class HDF5Creator:
         output_lengths : List[float]
             The euclidean length of each streamline
         """
-        bundles = self.groups_config[group]['files']
+        tractograms = self.groups_config[group]['files']
 
         if self.step_size and self.compress:
             raise ValueError(
@@ -566,24 +568,25 @@ class HDF5Creator:
         final_sft = None
         output_lengths = []
 
-        for tmp_bundle_name in bundles:
-            if tmp_bundle_name.endswith('/ALL'):
-                bundles_dir = tmp_bundle_name.split('/ALL')
-                bundles_dir = ''.join(bundles_dir[:-1])
-                bundles_sublist = [
-                    tmp_bundle_name.replace('/ALL', '/' + os.path.basename(p))
-                    for p in subj_dir.glob(bundles_dir + '/*')]
+        for instructions in tractograms:
+            if instructions.endswith('/ALL'):
+                # instructions is to get all tractograms in given folder.
+                tractograms_dir = instructions.split('/ALL')
+                tractograms_dir = ''.join(tractograms_dir[:-1])
+                tractograms_sublist = [
+                    instructions.replace('/ALL', '/' + os.path.basename(p))
+                    for p in subj_dir.glob(tractograms_dir + '/*')]
             else:
-                bundles_sublist = [tmp_bundle_name]
+                # instruction is to get one specific tractogram
+                tractograms_sublist = [instructions]
 
-            # Either a loop on "ALL" or a loop on only one file,
-            # tmp_bundle_name.
-            for bundle_name in bundles_sublist:
-                bundle_name = bundle_name.replace('*', subj_id)
-                bundle_file = subj_dir.joinpath(bundle_name)
+            # Either a loop on "ALL" or a loop on only one file.
+            for tractogram_name in tractograms_sublist:
+                tractogram_name = tractogram_name.replace('*', subj_id)
+                tractogarm_file = subj_dir.joinpath(tractogram_name)
 
-                sft = self._load_and_process_sft(bundle_file, bundle_name,
-                                                 header)
+                sft = self._load_and_process_sft(
+                    tractogarm_file, tractogram_name, header)
 
                 if sft is not None:
                     # Compute euclidean lengths (rasmm space)
@@ -593,7 +596,7 @@ class HDF5Creator:
                     # Sending to wanted space
                     sft.to_space(self.space)
 
-                    # Add processed bundle to output tractogram
+                    # Add processed tractogram to final big tractogram
                     if final_sft is None:
                         final_sft = sft
                     else:
@@ -602,8 +605,8 @@ class HDF5Creator:
 
         if self.save_intermediate:
             output_fname = subj_output_path.joinpath(group + '.trk')
-            logging.debug('      *Saving intermediate bundle {} into '
-                          '{}.'.format(group, output_fname))
+            logging.debug('      *Saving intermediate streamline group {} '
+                          'into {}.'.format(group, output_fname))
             # Note. Do not remove the str below. Does not work well
             # with Path.
             save_tractogram(final_sft, str(output_fname))
@@ -617,30 +620,30 @@ class HDF5Creator:
 
         return final_sft, output_lengths
 
-    def _load_and_process_sft(self, bundle_file, bundle_name, header):
-        if not bundle_file.is_file():
+    def _load_and_process_sft(self, tractogram_file, tractogram_name, header):
+        if not tractogram_file.is_file():
             logging.debug(
-                "      Skipping bundle {} because it was not found in this "
-                "subject's folder".format(bundle_name))
+                "      Skipping file {} because it was not found in this "
+                "subject's folder".format(tractogram_name))
             # Note: if args.enforce_files_presence was set to true,
             # this case is not possible, already checked in
             # create_hdf5_dataset
             return None
 
-        # Check bundle extension
-        _, file_extension = os.path.splitext(str(bundle_file))
+        # Check file extension
+        _, file_extension = os.path.splitext(str(tractogram_file))
         if file_extension not in ['.trk', '.tck']:
             raise ValueError(
-                "We do not support bundle's type: {}. We only support .trk "
-                "and .tck files.".format(bundle_file))
+                "We do not support file's type: {}. We only support .trk "
+                "and .tck files.".format(tractogram_file))
         if file_extension == '.trk':
             # overriding given header.
             header = 'same'
 
-        # Loading bundle and sending to wanted space
-        logging.info("       - Processing bundle {}"
-                     .format(os.path.basename(bundle_name)))
-        sft = load_tractogram(str(bundle_file), header)
+        # Loading tractogram and sending to wanted space
+        logging.info("       - Processing tractogram {}"
+                     .format(os.path.basename(tractogram_name)))
+        sft = load_tractogram(str(tractogram_file), header)
         sft.to_center()
 
         # Resample or compress streamlines

@@ -8,14 +8,18 @@ To create the hdf5 file, you will need a config file such as below.
 .. code-block:: bash
 
     {
-        "group1": {
+        "input_group": {
             "type": "volume",
             "files": ["dwi/dwi_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz"]
             "standardization": "all"
              },
-        "group2": {
+        "good_streamlines": {
             "type": "streamlines",
-            "files": ["bundles/bundle1.trk", "bundles/bundle2.trk"]
+            "files": ["tractograms/bundle1.trk", "tractograms/wholebrain.trk"]
+             }
+        "bad_streamlines": {
+            "type": "streamlines",
+            "files": ["bad_tractograms/ALL"]
              }
     }
 
@@ -24,7 +28,7 @@ To create the hdf5 file, you will need a config file such as below.
 - The groups **"files"** must exist in every subject folder inside dwi_ml_ready.
 
     - There is the possibility to add a wildcard (*) that will be replaced by the subject's id while loading. Ex: anat/\*__t1.nii.gz would become anat/subjX__t1.nii.gz.
-    - For streamlines, there is the possibility to use 'ALL' to load all bundles present. Ex: "files": ["good_bundles/ALL", "bad_bundles/ALL"]
+    - For streamlines, there is the possibility to use 'ALL' to load all tractograms present in a folder. Ex: "files": ["good_bundles/ALL", "bad_bundles/ALL"]
     - The files from each group will be concatenated in the hdf5 (either as a final volume or as a final tractogram).
 
 - The groups **"type"** must be recognized in dwi_ml. Currently, accepted datatype are:

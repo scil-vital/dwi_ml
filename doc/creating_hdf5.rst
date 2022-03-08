@@ -17,10 +17,17 @@ Exemple of use: (See please_copy_and_adapt/ALL_STEPS.sh) for a more thorough exa
 
 .. code-block:: bash
 
-    create_hdf5_dataset.py --force --name $name --std_mask $mask --space $space \
-            --enforce_bundles_presence True \
-            $database_folder/dwi_ml_ready $database_folder/hdf5 $config_file \
-            $training_subjs $validation_subjs
+    dwi_ml_folder=YOUR_PATH
+    hdf5_folder=YOUR_PATH
+    config_file=YOUR_FILE.json
+    training_subjs=YOUR_FILE.txt
+    validation_subjs=YOUR_FILE.txt
+    testing_subjs=YOUR_FILE.txt
+
+    dwiml_create_hdf5_dataset.py --name $name --std_mask $mask --space $space \
+            --enforce_files_presence True \
+            $dwi_ml_folder $hdf5_folder $config_file \
+            $training_subjs $validation_subjs $testing_subjs
 
 Here is the output format created by create_hdf5_dataset.py and recognized by the multi_subject_containers:
 

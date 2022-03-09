@@ -327,7 +327,7 @@ class MultiSubjectDataset:
 
         self.is_lazy = lazy
         self.subset_cache_size = subset_cache_size
-        if self.is_lazy and self.subset_cache_size is None:
+        if self.is_lazy and self.subset_cache_size == 0:
             raise ValueError("For lazy data, the cache size cannot be None. "
                              "Maybe you meant 0?")
 
@@ -350,7 +350,7 @@ class MultiSubjectDataset:
             'hdf5_file': self.hdf5_file,
             'taskman_managed': self.taskman_managed,
             'is_lazy': self.is_lazy,
-            'cache_size': self.subset_cache_size,
+            'subset_cache_size': self.subset_cache_size,
         }
 
         # Subsets:

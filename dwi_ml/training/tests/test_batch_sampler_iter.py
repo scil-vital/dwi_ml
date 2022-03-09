@@ -74,7 +74,7 @@ def t_non_lazy(args):
     print('Initializing dataset...')
     dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
                                   experiment_name='test',
-                                  taskman_managed=True, cache_size=None)
+                                  taskman_managed=True, subset_cache_size=None)
     dataset.load_data()
 
     print('\n=============================Test with batch size 1000')
@@ -100,7 +100,7 @@ def t_lazy(args):
     print('Initializing dataset...')
     dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
                                   experiment_name='test',
-                                  taskman_managed=True, cache_size=1)
+                                  taskman_managed=True, subset_cache_size=1)
     dataset.load_data()
 
     print('\n=============================Test with batch size 1000')

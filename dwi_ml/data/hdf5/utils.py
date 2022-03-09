@@ -74,12 +74,12 @@ def add_streamline_processing_args(p: ArgumentParser):
     g = p.add_argument_group('Streamlines processing options:')
     sg = g.add_mutually_exclusive_group()
     sg.add_argument('--step_size', type=float, metavar='s',
-                   help="Common step size to resample the data. \n"
-                        "-> Must be in the same space as the streamlines.")
+                    help="Common step size to resample the data. \n"
+                         "-> Must be in the same space as the streamlines.")
     sg.add_argument('--compress', action="store_true",
-                   help="If set, streamlines will be compressed.\n"
-                        "-> If neither step_size nor compress are chosen, "
-                        "streamlines will be kept \nas they are.")
+                    help="If set, streamlines will be compressed.\n"
+                         "-> If neither step_size nor compress are chosen, "
+                         "streamlines will be kept \nas they are.")
     g.add_argument('--space', type=str, default='vox',
                    choices=['rasmm', 'vox', 'voxmm'],
                    help="Default space to bring all the stateful tractograms.")
@@ -121,7 +121,7 @@ def prepare_hdf5_creator(args):
     groups_config = json.load(json_file)
 
     # Delete existing hdf5, if -f
-    if args.force and os.path.exists(args.out_hdf5_file):
+    if args.overwrite and os.path.exists(args.out_hdf5_file):
         os.remove(args.out_hdf5_file)
 
     # Initialize intermediate subdir

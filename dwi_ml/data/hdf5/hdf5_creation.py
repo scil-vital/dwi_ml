@@ -273,13 +273,14 @@ class HDF5Creator:
             subj_input_dir = Path(self.root_folder).joinpath(subj_id)
 
             # Find subject's standardization mask
-            for sub_mask in self.std_mask:
-                sub_std_mask_file = subj_input_dir.joinpath(
-                    sub_mask.replace('*', subj_id))
-                if not sub_std_mask_file.is_file():
-                    raise FileNotFoundError(
-                        "Standardization mask {} not found for subject {}!"
-                        .format(sub_std_mask_file, subj_id))
+            if self.std_mask is not None:
+                for sub_mask in self.std_mask:
+                    sub_std_mask_file = subj_input_dir.joinpath(
+                        sub_mask.replace('*', subj_id))
+                    if not sub_std_mask_file.is_file():
+                        raise FileNotFoundError(
+                            "Standardization mask {} not found for subject {}!"
+                            .format(sub_std_mask_file, subj_id))
 
             # Find subject's files from group_config
             for this_file in config_file_list:
@@ -342,18 +343,19 @@ class HDF5Creator:
 
         # Find subject's standardization mask
         subj_std_mask_data = None
-        for sub_mask in self.std_mask:
-            sub_mask = sub_mask.replace('*', subj_id)
-            logging.info("    - Loading standardization mask {}"
-                         .format(sub_mask))
-            sub_mask_file = subj_input_dir.joinpath(sub_mask)
-            sub_mask_img = nib.load(sub_mask_file)
-            sub_mask_data = np.asanyarray(sub_mask_img.dataobj) > 0
-            if subj_std_mask_data is None:
-                subj_std_mask_data = sub_mask_data
-            else:
-                subj_std_mask_data = np.logical_or(sub_mask_data,
-                                                   subj_std_mask_data)
+        if self.std_mask is not None:
+            for sub_mask in self.std_mask:
+                sub_mask = sub_mask.replace('*', subj_id)
+                logging.info("    - Loading standardization mask {}"
+                             .format(sub_mask))
+                sub_mask_file = subj_input_dir.joinpath(sub_mask)
+                sub_mask_img = nib.load(sub_mask_file)
+                sub_mask_data = np.asanyarray(sub_mask_img.dataobj) > 0
+                if subj_std_mask_data is None:
+                    subj_std_mask_data = sub_mask_data
+                else:
+                    subj_std_mask_data = np.logical_or(sub_mask_data,
+                                                       subj_std_mask_data)
 
         # Add the subj data based on groups in the json config file
         ref = self._create_volume_groups(
@@ -477,7 +479,7 @@ class HDF5Creator:
         # Save standardized data
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
-                subj_id + group + ".nii.gz")
+                subj_id + '_' + group + ".nii.gz")
             logging.debug('      *Saving intermediate files into {}.'
                           .format(output_fname))
             standardized_img = nib.Nifti1Image(group_data, group_affine)
@@ -633,7 +635,7 @@ class HDF5Creator:
 
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
-                subj_id + group + '.trk')
+                subj_id + '_' + group + '.trk')
             logging.debug('      *Saving intermediate streamline group {} '
                           'into {}.'.format(group, output_fname))
             # Note. Do not remove the str below. Does not work well

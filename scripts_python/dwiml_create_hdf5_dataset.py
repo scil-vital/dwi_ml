@@ -66,13 +66,13 @@ def main():
                         [args.training_subjs, args.validation_subjs,
                          args.testing_subjs])
     # check hdf extension
-    _, ext = os.path.splitext(args.out_hdf_file)
+    _, ext = os.path.splitext(args.out_hdf5_file)
     if ext == '':
-        args.out_hdf_file += '.hdf5'
+        args.out_hdf5_file += '.hdf5'
     elif ext != '.hdf5':
         raise p.error("The hdf5 file's extension should be .hdf5, but "
                       "received {}".format(ext))
-    assert_outputs_exist(p, args, args.out_hdf_file)
+    assert_outputs_exist(p, args, args.out_hdf5_file)
 
     # Prepare creator and load config file.
     creator = prepare_hdf5_creator(args)

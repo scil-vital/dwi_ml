@@ -19,7 +19,11 @@ Keeping as is for now, hoping that next Dipy versions will solve the problem.
 
 import argparse
 import logging
+import os
 from pathlib import Path
+
+from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
+                             assert_outputs_exist)
 
 from dipy.io.stateful_tractogram import set_sft_logger_level
 
@@ -36,15 +40,15 @@ def _parse_args():
     add_basic_args(p)
     add_mri_processing_args(p)
     add_streamline_processing_args(p)
+    add_overwrite_arg(p)
 
-    arguments = p.parse_args()
-
-    return arguments
+    return p
 
 
 def main():
     """Parse arguments, generate hdf5 dataset and save it on disk."""
-    args = _parse_args()
+    p = _parse_args()
+    args = p.parse_args()
 
     # Initialize logger
     logging.basicConfig(level=str(args.logging).upper())
@@ -57,11 +61,19 @@ def main():
     if not Path(args.dwi_ml_ready_folder).is_dir():
         raise ValueError('The dwi_ml_ready folder was not found: {}'
                          .format(args.dwi_ml_ready_folder))
-    else:
-        logging.info('***Creating hdf5 dataset')
-        logging.debug('   Creating hdf5 data from data in the following foler:'
-                      ' {}'.format(args.dwi_ml_ready_folder))
+    assert_inputs_exist(p, [args.config_file],
+                        [args.training_subjs, args.validation_subjs,
+                         args.testing_subjs])
+    # check hdf extension
+    _, ext = os.path.splitext(args.out_hdf_file)
+    if ext == '':
+        args.out_hdf_file += '.hdf5'
+    elif ext != '.hdf5':
+        raise p.error("The hdf5 file's extension should be .hdf5, but "
+                      "received {}".format(ext))
+    assert_outputs_exist(p, args, args.out_hdf_file)
 
+    # Prepare creator and load config file.
     creator = prepare_hdf5_creator(args)
 
     # Create dataset from config and save

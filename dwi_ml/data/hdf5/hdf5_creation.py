@@ -79,19 +79,20 @@ class HDF5Creator:
     """
     HDF_DATABASE_VERSION = 2
 
-    def __init__(self, root_folder: Path, saving_name,
+    def __init__(self, root_folder: Path, out_hdf_filename,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
                  std_mask: str, step_size: float, compress: bool,
                  space: Space, enforce_files_presence: bool = True,
-                 save_intermediate: bool = False):
+                 save_intermediate: bool = False,
+                 intermediate_folder: Path = None):
         """
         Params
         ------
         root_folder: Path
             Path to the dwi_ml_ready folder containing all data. See the doc
             for the suggested data organization.
-        saving_path: Path
+        out_hdf_filename: Path
             Path + filename where to save the final hdf5 file.
         training_subjs: List[str],
         validation_subjs: List[str]
@@ -115,11 +116,13 @@ class HDF5Creator:
         save_intermediate: bool
             If true, intermediate files will be saved for debugging purposes.
             Default: False.
+        intermediate_folder: Path
+            Path where to save the intermediate files.
         """
 
         # Mandatory
         self.root_folder = root_folder
-        self.saving_path = saving_name
+        self.out_hdf_filename = out_hdf_filename
         self.training_subjs = training_subjs
         self.validation_subjs = validation_subjs
         self.testing_subjs = testing_subjs
@@ -132,6 +135,7 @@ class HDF5Creator:
         self.std_mask = std_mask  # (could be None)
         self.save_intermediate = save_intermediate
         self.enforce_files_presence = enforce_files_presence
+        self.intermediate_folder = intermediate_folder
 
         # ------- Reading groups config
 
@@ -282,7 +286,7 @@ class HDF5Creator:
         dataset in voxel space.
         If wished, all intermediate steps are saved on disk in the hdf5 folder.
         """
-        with h5py.File(self.saving_path, 'w') as hdf_handle:
+        with h5py.File(self.out_hdf_filename, 'w') as hdf_handle:
             # Save version and configuration
             hdf_handle.attrs['version'] = self.HDF_DATABASE_VERSION
             now = datetime.datetime.now()
@@ -307,7 +311,7 @@ class HDF5Creator:
                              .format(nb_processed, nb_subjs, subj_id))
                 self._create_one_subj(subj_id, hdf_handle)
 
-        logging.info("Saved dataset : {}".format(self.saving_path))
+        logging.info("Saved dataset : {}".format(self.out_hdf_filename))
 
     def _create_one_subj(self, subj_id, hdf_handle):
         """
@@ -316,12 +320,6 @@ class HDF5Creator:
         subj_input_dir = self.root_folder.joinpath(subj_id)
 
         subj_hdf_group = hdf_handle.create_group(subj_id)
-
-        # Prepare subject folder for intermediate files
-        subj_intermediate_path = self.saving_path.parent.joinpath(
-            subj_id + "_intermediate")
-        if self.save_intermediate:
-            subj_intermediate_path.mkdir()
 
         # Find subject's standardization mask
         subj_std_mask_data = None
@@ -340,15 +338,13 @@ class HDF5Creator:
 
         # Add the subj data based on groups in the json config file
         ref = self._create_volume_groups(
-            subj_id, subj_input_dir, subj_intermediate_path,
-            subj_std_mask_data, subj_hdf_group)
+            subj_id, subj_input_dir, subj_std_mask_data, subj_hdf_group)
 
         self._create_streamline_groups(ref, subj_input_dir, subj_id,
-                                       subj_intermediate_path, subj_hdf_group)
+                                       subj_hdf_group)
 
     def _create_volume_groups(self, subj_id, subj_input_dir,
-                              subj_intermediate_path, subj_std_mask_data,
-                              subj_hdf_group):
+                              subj_std_mask_data, subj_hdf_group):
         """
         Loop on all volume groups for a given subject and create the hdf5
         group.
@@ -359,8 +355,7 @@ class HDF5Creator:
 
             (group_data, group_affine,
              group_header, group_res) = self._process_one_volume_group(
-                group, subj_id, subj_input_dir, subj_intermediate_path,
-                subj_std_mask_data)
+                group, subj_id, subj_input_dir, subj_std_mask_data)
             logging.debug('      *Done. Now creating dataset from group.')
             hdf_group = subj_hdf_group.create_group(group)
             hdf_group.create_dataset('data', data=group_data)
@@ -379,7 +374,6 @@ class HDF5Creator:
 
     def _process_one_volume_group(self, group: str, subj_id: str,
                                   subj_input_path: Path,
-                                  subj_output_path: Path,
                                   subj_std_mask_data: np.ndarray = None):
         """
         Process each group from the json config file:
@@ -397,8 +391,6 @@ class HDF5Creator:
             The subject's id.
         subj_input_path: Path
             Path where the files from file_list should be found.
-        subj_output_path: Path
-            Path where to save the intermediate files.
         subj_std_mask_data: np.ndarray of bools, optional
             Binary mask that will be used for data standardization.
 
@@ -460,7 +452,8 @@ class HDF5Creator:
 
         # Save standardized data
         if self.save_intermediate:
-            output_fname = subj_output_path.joinpath(group + ".nii.gz")
+            output_fname = self.intermediate_folder.joinpath(
+                subj_id + group + ".nii.gz")
             logging.debug('      *Saving intermediate files into {}.'
                           .format(output_fname))
             standardized_img = nib.Nifti1Image(group_data, group_affine)
@@ -469,7 +462,11 @@ class HDF5Creator:
         return group_data, group_affine, group_header, group_res
 
     def _create_streamline_groups(self, ref, subj_input_dir, subj_id,
-                                  subj_intermediate_path, subj_hdf_group):
+                                  subj_hdf_group):
+        """
+        Loop on all streamline groups for a given subject and create the hdf5
+        group.
+        """
         for group in self.streamline_groups:
 
             # Add the streamlines data
@@ -479,9 +476,10 @@ class HDF5Creator:
                 logging.debug(
                     "No group_header! This means no 'volume' group was added "
                     "in the config_file. If all files are .trk, we can use "
-                    "ref 'same' but if some files were .tck, we need a ref!")
+                    "ref 'same' but if some files were .tck, we need a ref!"
+                    "Hint: Create a volume group 'ref' in the config file.")
             sft, lengths = self._process_one_streamline_group(
-                subj_input_dir, group, subj_id, ref, subj_intermediate_path)
+                subj_input_dir, group, subj_id, ref)
             streamlines = sft.streamlines
 
             if streamlines is None:
@@ -523,9 +521,9 @@ class HDF5Creator:
 
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,
-            header: nib.Nifti1Header, subj_output_path: Path):
+            header: nib.Nifti1Header):
         """
-        Load and process a group of tractograms and merge all streamlines
+        Loads and processes a group of tractograms and merges all streamlines
         together.
 
         Note. Wildcards will be replaced by the subject id. If the list is
@@ -543,8 +541,6 @@ class HDF5Creator:
             Reference used to load and send the streamlines in voxel space and
             to create final merged SFT. If the file is a .trk, 'same' is used
             instead.
-        subj_output_path: Path
-            Path where to save the intermediate files.
 
         Returns
         -------
@@ -583,10 +579,10 @@ class HDF5Creator:
             # Either a loop on "ALL" or a loop on only one file.
             for tractogram_name in tractograms_sublist:
                 tractogram_name = tractogram_name.replace('*', subj_id)
-                tractogarm_file = subj_dir.joinpath(tractogram_name)
+                tractogram_file = subj_dir.joinpath(tractogram_name)
 
                 sft = self._load_and_process_sft(
-                    tractogarm_file, tractogram_name, header)
+                    tractogram_file, tractogram_name, header)
 
                 if sft is not None:
                     # Compute euclidean lengths (rasmm space)
@@ -604,7 +600,8 @@ class HDF5Creator:
                                                     erase_metadata=False)
 
         if self.save_intermediate:
-            output_fname = subj_output_path.joinpath(group + '.trk')
+            output_fname = self.intermediate_folder.joinpath(
+                subj_id + group + '.trk')
             logging.debug('      *Saving intermediate streamline group {} '
                           'into {}.'.format(group, output_fname))
             # Note. Do not remove the str below. Does not work well

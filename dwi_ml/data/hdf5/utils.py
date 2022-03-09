@@ -2,6 +2,7 @@
 import datetime
 import json
 import logging
+import os.path
 import shutil
 from pathlib import Path
 
@@ -17,11 +18,12 @@ def add_basic_args(p):
                         "-> Should follow description in our doc, here: \n"
                         "-> https://dwi-ml.readthedocs.io/en/latest/"
                         "creating_hdf5.html")
-    p.add_argument('hdf5_folder',
-                   help="Path where to save the hdf5 database and possibly "
-                        "the intermediate files. \nWe will create a sub-"
-                        "folder /hdf5 inside. \nIf it already exists, use -f "
-                        "to allow deleting and creating a new one.")
+    p.add_argument('out_hdf5_file',
+                   help="Path and name of the output hdf5 file.\n If "
+                        "--save_intermediate is set, the intermediate files "
+                        "will be saved in \nthe same location, in a folder "
+                        "name based on date and hour of creation.\n"
+                        "If it already exists, use -f to allow overwriting.")
     p.add_argument('config_file',
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. \n"
@@ -37,9 +39,6 @@ def add_basic_args(p):
     p.add_argument('testing_subjs',
                    help="txt file containing the list of subjects ids to use "
                         "for testing.")
-    p.add_argument('--name',
-                   help="Dataset name [Default uses date and time of "
-                        "processing].")
     p.add_argument('--enforce_files_presence', type=bool, default=True,
                    metavar="True/False",
                    help='If True, the process will stop if one file is '
@@ -52,8 +51,6 @@ def add_basic_args(p):
                    help="If set, save intermediate processing files for "
                         "each subject inside the \nhdf5 folder, in sub-"
                         "folders named subjid_intermediate.")
-    p.add_argument('-f', '--force', action='store_true',
-                   help="If set, overwrite existing hdf5 folder.")
 
 
 def add_mri_processing_args(p):
@@ -81,29 +78,19 @@ def add_streamline_processing_args(p):
                    help="Default space to bring all the stateful tractograms.")
 
 
-def _initialize_hdf5_database(hdf5_folder, force, name):
+def _initialize_intermediate_subdir(hdf5_file, save_intermediate):
     # Create hdf5 dir or clean existing one
-    hdf5_subdir = Path(hdf5_folder, "hdf5")
-    if hdf5_subdir.is_dir():
-        if force:
-            logging.info("    Careful! Deleting existing hdf5 data folder: "
-                         "{}".format(hdf5_subdir))
-            shutil.rmtree(str(hdf5_subdir))
-        else:
-            raise FileExistsError("hdf5 data folder already exists: {}. Use "
-                                  "force to allow overwrite."
-                                  .format(hdf5_subdir))
-    logging.debug("   Creating hdf5 directory")
-    hdf5_subdir.mkdir()
+    hdf5_folder = os.path.dirname(hdf5_file)
 
-    # Define database name
-    if name:
-        hdf5_filename = name
-    else:
-        hdf5_filename = "{}".format(
-            datetime.datetime.now().strftime("%Y_%m_%d_%H%M%S"))
+    # Preparing intermediate folder.
+    if save_intermediate:
+        now = datetime.datetime.now().strftime("%Y_%m_%d_%H%M%S")
+        intermediate_subdir = Path(hdf5_folder, "intermediate_" + now)
+        logging.debug("   Creating intermediate files directory")
+        intermediate_subdir.mkdir()
 
-    return hdf5_subdir, hdf5_filename
+        return intermediate_subdir
+    return None
 
 
 def prepare_hdf5_creator(args):
@@ -122,18 +109,20 @@ def prepare_hdf5_creator(args):
     json_file = open(args.config_file, 'r')
     groups_config = json.load(json_file)
 
-    # Check if hdf5 already exists and initialize database
-    hdf5_subdir, hdf5_filename = _initialize_hdf5_database(
-        args.hdf5_folder, args.force, args.name)
+    # Delete existing hdf5, if -f
+    if args.force and os.path.exists(args.out_hdf5_file):
+        os.remove(args.out_hdf5_file)
 
-    hdf5_file_path = hdf5_subdir.joinpath("{}.hdf5".format(hdf5_filename))
+    # Initialize intermediate subdir
+    intermediate_subdir = _initialize_intermediate_subdir(
+        args.out_hdf5_file, args.save_intermediate)
 
     # Instantiate a creator and perform checks
-    creator = HDF5Creator(Path(args.dwi_ml_ready_folder), hdf5_file_path,
+    creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
                           training_subjs, validation_subjs, testing_subjs,
                           groups_config, args.std_mask, args.step_size,
                           args.compress, Space(args.space),
                           args.enforce_files_presence,
-                          args.save_intermediate)
+                          args.save_intermediate, intermediate_subdir)
 
     return creator

@@ -10,7 +10,7 @@ To create the hdf5 file, you will need a config file such as below.
     {
         "input_group": {
             "type": "volume",
-            "files": ["dwi/dwi_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz"]
+            "files": ["dwi/dwi.nii.gz", "anat/t1.nii.gz", "dwi/*__dwi.nii.gz], --> Will get, for instance, subX__dwi.nii.gz
             "standardization": "all"
              },
         "good_streamlines": {

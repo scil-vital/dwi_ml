@@ -1,5 +1,6 @@
 matplotlib
-scilpy
+# scilpy: Most recent commit as of March 9, 2022.
+-e git://github.com/scilus/scilpy.git@master#egg=scilpy
 torch
 tqdm==4.34.0
 nibabel>=3.0.0

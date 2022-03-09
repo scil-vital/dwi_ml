@@ -11,6 +11,13 @@ def load_file_to4d(data_file):
 
     Final data should be 4D (3D + features). Sending loaded data to 4D if it is
     3D, with last dimension 1.
+
+    Returns:
+    --------
+    data: np.array,
+    affine: np.array,
+    voxel_size: np.array with size 3,
+    header: nibabel header.
     """
     ext = data_file.suffix
 
@@ -22,7 +29,7 @@ def load_file_to4d(data_file):
     img = nib.load(data_file)
     data = img.get_fdata(dtype=np.float32)
     affine = img.affine
-    header = img.header  # Note. affine is header.get_sform()
+    header = img.header
     img.uncache()
     voxel_size = header.get_zooms()[:3]
 

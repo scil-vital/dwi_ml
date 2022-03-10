@@ -36,7 +36,7 @@ def parse_args():
     return p.parse_args()
 
 
-def test_batch_loading_no_computations(
+def t_batch_loading_no_computations(
         fake_dataset, ref, saving_path, input_group_name,
         noise_size: float = 0, noise_variability: float = 0,
         reverse_ratio: float = 0, split_ratio: float = 0):
@@ -87,7 +87,7 @@ def test_batch_loading_no_computations(
     return batch_streamlines
 
 
-def test_batch_loading_computations(
+def t_batch_loading_computations(
         fake_dataset, ref, affine, header, saving_path, input_group_name,
         neighb_type, neighb_radius):
     set_sft_logger_level('WARNING')
@@ -152,7 +152,7 @@ def test_batch_loading_computations(
     logging.root.setLevel('INFO')
 
 
-def test_non_lazy(args, affine, header):
+def t_non_lazy(args, affine, header):
     print("\n\n========= NON-LAZY =========\n\n")
 
     # Initialize dataset
@@ -164,24 +164,24 @@ def test_non_lazy(args, affine, header):
     dataset.load_data()
 
     print('\n\n===================== A. Test with reverse + split')
-    test_batch_loading_no_computations(
+    t_batch_loading_no_computations(
         dataset, args.ref, args.saving_path, args.input_group_name,
         reverse_ratio=0.5, split_ratio=0.5)
 
     print('\n\n==================== B. Test with batch size 10000 + resample '
           '+ do cpu computations + axis neighborhood')
-    test_batch_loading_computations(
+    t_batch_loading_computations(
         dataset, args.ref, affine, header, args.saving_path,
         args.input_group_name, 'axes', [2, 4])
 
     print('\n\n\n=================== C. Test with batch size 10000 + resample '
           '+ do cpu computations + grid neighborhood')
-    test_batch_loading_computations(
+    t_batch_loading_computations(
         dataset, args.ref, affine, header, args.saving_path,
         args.input_group_name, 'grid', 2)
 
 
-def test_lazy(args, affine, header):
+def t_lazy(args, affine, header):
     print("\n\n========= LAZY =========\n\n")
 
     # Initialize dataset
@@ -193,11 +193,11 @@ def test_lazy(args, affine, header):
     dataset.load_data()
 
     print('\n\n\n=================== A. Test with basic args')
-    test_batch_loading_no_computations(
+    t_batch_loading_no_computations(
         dataset, args.ref, args.saving_path, args.input_group_name)
 
     print('\n\n\n==================== B. Test with wait_for_gpu = false')
-    test_batch_loading_computations(
+    t_batch_loading_computations(
         dataset, args.ref, affine, header, args.saving_path,
         args.input_group_name, None, None)
 
@@ -216,9 +216,9 @@ def main():
 
     set_sft_logger_level('WARNING')
 
-    test_non_lazy(args, affine, header)
+    t_non_lazy(args, affine, header)
     print('\n\n')
-    test_lazy(args, affine, header)
+    t_lazy(args, affine, header)
 
 
 if __name__ == '__main__':

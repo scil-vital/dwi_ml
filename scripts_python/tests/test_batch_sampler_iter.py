@@ -26,8 +26,8 @@ def parse_args():
     return p.parse_args()
 
 
-def test_sampler(fake_dataset, input_group_name, chunk_size, batch_size,
-                 step_size, compress=False):
+def t_sampler(fake_dataset, input_group_name, chunk_size, batch_size,
+              step_size, compress=False):
     # Initialize batch sampler
     print('\nInitializing sampler...')
     training_set = fake_dataset.training_set
@@ -67,7 +67,7 @@ def test_sampler(fake_dataset, input_group_name, chunk_size, batch_size,
             break
 
 
-def test_non_lazy(args):
+def t_non_lazy(args):
     print("\n\n========= NON-LAZY =========\n\n")
 
     # Initialize dataset
@@ -78,22 +78,22 @@ def test_non_lazy(args):
     dataset.load_data()
 
     print('\n=============================Test with batch size 1000')
-    test_sampler(dataset, args.input_group_name, 256, 1000, None)
+    t_sampler(dataset, args.input_group_name, 256, 1000, None)
 
     logging.getLogger().setLevel('INFO')
 
     print('\n=============================Test with batch size 1000000')
-    test_sampler(dataset, args.input_group_name, 256, 100000, None)
+    t_sampler(dataset, args.input_group_name, 256, 100000, None)
 
     print('\n===========================Test with batch size 10000 + resample')
-    test_sampler(dataset, args.input_group_name, 256, 10000, 0.5)
+    t_sampler(dataset, args.input_group_name, 256, 10000, 0.5)
 
     print('\n===========================Test with batch size 10000 + compress'
           '(Batch size should be equal to chunk size: 256)')
-    test_sampler(dataset, args.input_group_name, 256, 10000, None, True)
+    t_sampler(dataset, args.input_group_name, 256, 10000, None, True)
 
 
-def test_lazy(args):
+def t_lazy(args):
     print("\n\n========= LAZY =========\n\n")
 
     # Initialize dataset
@@ -104,16 +104,16 @@ def test_lazy(args):
     dataset.load_data()
 
     print('\n=============================Test with batch size 1000')
-    test_sampler(dataset, args.input_group_name, 256, 1000, None)
+    t_sampler(dataset, args.input_group_name, 256, 1000, None)
 
     logging.getLogger().setLevel('INFO')
 
     print('\n===========================Test with batch size 10000 + resample')
-    test_sampler(dataset, args.input_group_name, 256, 10000, 0.5)
+    t_sampler(dataset, args.input_group_name, 256, 10000, 0.5)
 
     print('\n===========================Test with batch size 10000 + compress'
           '(Batch size should be equal to chunk size: 256)')
-    test_sampler(dataset, args.input_group_name, 256, 10000, None, True)
+    t_sampler(dataset, args.input_group_name, 256, 10000, None, True)
 
 
 def main():
@@ -124,11 +124,11 @@ def main():
                          .format(args.hdf5_filename))
 
     logging.basicConfig(level='DEBUG')
-    test_non_lazy(args)
+    t_non_lazy(args)
     print('\n\n')
 
     logging.getLogger().setLevel('DEBUG')
-    test_lazy(args)
+    t_lazy(args)
 
 
 if __name__ == '__main__':

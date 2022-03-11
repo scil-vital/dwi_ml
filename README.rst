@@ -2,7 +2,7 @@
 DWI_ML
 ======
 
-.. image:: https://github.com/scil-vital/dwi_ml/workflows/test,%20package/badge.svg
+.. image:: https://github.com/scil-vital/dwi_ml/workflows/test/badge.svg
   :alt:    Build Status
 
 .. image:: https://readthedocs.org/projects/dwi-ml/badge/?version=latest

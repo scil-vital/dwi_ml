@@ -21,7 +21,7 @@ def parse_args():
     return p.parse_args()
 
 
-def test_non_lazy(args):
+def t_non_lazy(args):
     print("\n\n**========= NON-LAZY =========\n\n")
     fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
                                        experiment_name='test',
@@ -84,7 +84,7 @@ def test_non_lazy(args):
                   sft_data.as_sft()))
 
 
-def test_lazy(args):
+def t_lazy(args):
     print("\n\n**========= LAZY =========\n\n")
     fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
                                        experiment_name='test',
@@ -138,9 +138,9 @@ def main():
 
     logging.basicConfig(level='DEBUG')
 
-    test_non_lazy(args)
+    t_non_lazy(args)
     print('\n\n')
-    test_lazy(args)
+    t_lazy(args)
 
 
 if __name__ == '__main__':

@@ -148,11 +148,11 @@ def test_cosine_regression_loss():
 
         value = compute_loss_tensor(a, c, model)
         assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+            "Failed; got: {}; expected: {}".format(value, expected)
 
         value = compute_loss_tensor(b, c, model)
         assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+            "Failed; got: {}; expected: {}".format(value, expected)
 
     print("  - Vectors with at 180 degrees random: expecting 1")
     for _ in range(20):
@@ -163,7 +163,7 @@ def test_cosine_regression_loss():
 
         value = compute_loss_tensor(a, b, model)
         assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+            "Failed; got: {}; expected: {}".format(value, expected)
 
     print("  - Random vectors: comparing with cosine.")
     for _ in range(200):
@@ -174,7 +174,7 @@ def test_cosine_regression_loss():
 
         value = compute_loss_tensor(a, b, model)
         assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+            "Failed; got: {}; expected: {}".format(value, expected)
 
 
 def test_l2regression_loss():
@@ -187,7 +187,7 @@ def test_l2regression_loss():
     expected = np.array(0)
     value = compute_loss_tensor(a, b, model)
     assert np.allclose(value, expected, atol=tol),\
-        "Failed; got: {}; expected: {}".format(value, expected)
+        "Failed; got: {}; expected: {}".format(value, expected)
 
     # Test for random vector, compared to scipy's euclidean
     for _ in range(200):
@@ -196,7 +196,7 @@ def test_l2regression_loss():
         expected = euclidean(a, b)
         value = compute_loss_tensor(a, b, model)
         assert np.allclose(value, expected, atol=tol),\
-            "Failed; got: {}; expected: {}".format(value, expected)
+            "Failed; got: {}; expected: {}".format(value, expected)
 
 
 def test_sphere_classification_loss():
@@ -217,7 +217,7 @@ def test_sphere_classification_loss():
     expected = -np.log(softmax(logit))[0, 1]
     value = compute_loss_tensor(logit, b, model)
     assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+        "Failed; got: {}; expected: {}".format(value, expected)
 
     print("      - With eps difference in the target: Should get the same "
           "class.")
@@ -228,7 +228,7 @@ def test_sphere_classification_loss():
     expected = -np.log(softmax(logit))[0, 1]
     value = compute_loss_tensor(logit, b, model)
     assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+        "Failed; got: {}; expected: {}".format(value, expected)
 
     print("      - Exactly the right class test 2.")
     logit = np.random.rand(1, 724).astype('float32')
@@ -237,7 +237,7 @@ def test_sphere_classification_loss():
     expected = -np.log(softmax(logit))[0, 1]
     value = compute_loss_tensor(logit, b, model)
     assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+        "Failed; got: {}; expected: {}".format(value, expected)
 
     print("      - Random")
     logit = np.random.rand(1, 724).astype('float32')
@@ -245,7 +245,7 @@ def test_sphere_classification_loss():
     expected = -np.log(softmax(logit))[0, 1]
     value = compute_loss_tensor(logit, b, model)
     assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+        "Failed; got: {}; expected: {}".format(value, expected)
 
 
 def test_gaussian_loss():
@@ -265,7 +265,7 @@ def test_gaussian_loss():
 
         value = compute_loss_tensor((a_means, a_sigmas), b, model)
         assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+            "Failed; got: {}; expected: {}".format(value, expected)
 
     print("      - random")
     for _ in range(200):
@@ -279,7 +279,7 @@ def test_gaussian_loss():
 
         value = compute_loss_tensor((a_means, a_sigmas), b, model)
         assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+            "Failed; got: {}; expected: {}".format(value, expected)
 
 
 def test_mixture_loss():
@@ -307,7 +307,7 @@ def test_mixture_loss():
         value = compute_loss_tensor(
             (a_mixture_logits, a_means, a_sigmas), b, model)
         assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+            "Failed; got: {}; expected: {}".format(value, expected)
 
 
 def test_fisher_von_mises():
@@ -323,7 +323,7 @@ def test_fisher_von_mises():
     expected = -fisher_von_mises_log_prob_vector(a_means, a_kappa, b)
     value = compute_loss_tensor((a_means, a_kappa), b, model)
     assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+        "Failed; got: {}; expected: {}".format(value, expected)
 
     print("      - Random")
     a_means = get_random_vector(3)
@@ -333,7 +333,7 @@ def test_fisher_von_mises():
     expected = -fisher_von_mises_log_prob_vector(a_means, a_kappa, b)
     value = compute_loss_tensor((a_means, a_kappa), b, model)
     assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+        "Failed; got: {}; expected: {}".format(value, expected)
 
 
 def main():

@@ -1,4 +1,4 @@
--e git://github.com/scilus/scilpy.git@master#egg=scilpy
+git+https://github.com/scilus/scilpy.git@master#egg=scilpy
 torch
 tqdm==4.34.0
 contextlib2

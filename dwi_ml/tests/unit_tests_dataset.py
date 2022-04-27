@@ -18,7 +18,11 @@ from dwi_ml.data.dataset.subjectdata_list_containers import \
     SubjectsDataList, LazySubjectsDataList
 from dwi_ml.data.dataset.streamline_containers import \
     SFTData, LazySFTData, _LazyStreamlinesGetter
-from dwi_ml.tests.expected_values import *
+from dwi_ml.tests.expected_values import (
+    TEST_EXPECTED_SUBJ_NAMES, TEST_EXPECTED_STREAMLINE_GROUPS,
+    TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_NB_STREAMLINES,
+    TEST_EXPECTED_MRI_SHAPE, TEST_EXPECTED_NB_SUBJECTS,
+    TEST_EXPECTED_NB_FEATURES)
 
 
 # fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
@@ -33,7 +37,6 @@ def test_multisubjectdataset():
                   "Unit test: previous dirs\n"
                   "------------------------")
 
-    # os.chdir(os.path.expanduser(tmp_dir.name))
     # hdf5_filename = os.path.join(get_home(), 'dwiml', 'hdf5_file.hdf5')
     home = os.path.expanduser("~")
     hdf5_filename = os.path.join(

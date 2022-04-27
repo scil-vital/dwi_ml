@@ -14,7 +14,9 @@ from torch.utils.data.dataloader import DataLoader
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.training.batch_samplers import DWIMLBatchSampler
 from dwi_ml.training.batch_loaders import BatchLoaderOneInput
-from dwi_ml.tests.expected_values import *
+from dwi_ml.tests.expected_values import (
+    TEST_EXPECTED_SUBJ_NAMES, TEST_EXPECTED_STREAMLINE_GROUPS,
+    TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_NB_STREAMLINES)
 
 # fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
 tmp_dir = tempfile.TemporaryDirectory()

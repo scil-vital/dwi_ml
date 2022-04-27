@@ -349,3 +349,12 @@ def test_fisher_von_mises():
     value = _compute_loss_tensor((a_means, a_kappa), b, model)
     assert np.allclose(value, expected, atol=tol), \
         "Failed; got: {}; expected: {}".format(value, expected)
+
+
+if __name__ == '__main__':
+    test_cosine_regression_loss()
+    test_fisher_von_mises()
+    test_gaussian_loss()
+    test_l2regression_loss()
+    test_mixture_loss()
+    test_sphere_classification_loss()

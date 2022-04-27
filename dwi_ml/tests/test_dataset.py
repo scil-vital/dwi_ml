@@ -185,3 +185,8 @@ def _lazy_version(hdf5_filename):
     assert isinstance(sft_data, LazySFTData)
     assert isinstance(sft_data.streamlines, _LazyStreamlinesGetter)
     _verify_sft_data(sft_data, group_number=0)
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level='DEBUG')
+    test_multisubjectdataset()

@@ -27,7 +27,7 @@ SAVE_RESULT_SFT_NII = False
 ref = None
 
 
-def test_multisubjectdataset():
+def test_batch_sampler_and_loader():
     logging.debug("\n"
                   "Unit test: batch sampler iteration\n"
                   "------------------------")
@@ -94,7 +94,6 @@ def _create_sampler_and_iterate(
         nb_streamlines_per_chunk=chunk_size, rng=1234,
         nb_subjects_per_batch=1, cycles=1)
 
-    # toDo. Test neighborhood.
     batch_loader = BatchLoaderOneInput(
         training_set, TEST_EXPECTED_STREAMLINE_GROUPS[0], rng=1234,
         compress=compress, step_size=step_size, split_ratio=split_ratio,
@@ -192,4 +191,4 @@ def _create_sampler_and_iterate(
 
 if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
-    test_multisubjectdataset()
+    test_batch_sampler_and_loader()

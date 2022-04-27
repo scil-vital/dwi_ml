@@ -11,7 +11,7 @@ tmp_dir = tempfile.TemporaryDirectory()
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run('scil_apply_transform_to_tractogram.py', '--help')
+    ret = script_runner.run('dwiml_create_hdf5_dataset.py', '--help')
     assert ret.success
 
 

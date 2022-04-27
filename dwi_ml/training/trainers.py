@@ -32,7 +32,7 @@ class DWIMLAbstractTrainer:
     """
     This Trainer class's train_and_validate() method:
         - Creates DataLoaders from the data_loaders. Collate_fn will be the
-        sampler.load_batch() method, and the dataset will be
+        loader.load_batch() method, and the dataset will be
         sampler.source_data.
         - Trains each epoch by using compute_batch_loss, which should be
         implemented in each project's child class.

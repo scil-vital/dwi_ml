@@ -18,18 +18,11 @@ from dwi_ml.data.dataset.subjectdata_list_containers import \
     SubjectsDataList, LazySubjectsDataList
 from dwi_ml.data.dataset.streamline_containers import \
     SFTData, LazySFTData, _LazyStreamlinesGetter
+from dwi_ml.tests.expected_values import *
 
 
-#fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
-#tmp_dir = tempfile.TemporaryDirectory()
-
-expected_volume_groups = ['input', 'wm_mask']
-expected_streamline_groups = ['streamlines']
-expected_nb_features = [2, 1]  # input = t1 + fa. wm_mask = wm.
-expected_nb_streamlines = [3827]  # from the fornix file
-expected_nb_subjects = 1
-expected_first_subj_name = 'subjX'
-expected_mri_shape = [138, 168, 134]
+# fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
+# tmp_dir = tempfile.TemporaryDirectory()
 
 
 def test_multisubjectdataset():
@@ -40,8 +33,8 @@ def test_multisubjectdataset():
                   "Unit test: previous dirs\n"
                   "------------------------")
 
-    #os.chdir(os.path.expanduser(tmp_dir.name))
-    #hdf5_filename = os.path.join(get_home(), 'dwiml', 'hdf5_file.hdf5')
+    # os.chdir(os.path.expanduser(tmp_dir.name))
+    # hdf5_filename = os.path.join(get_home(), 'dwiml', 'hdf5_file.hdf5')
     home = os.path.expanduser("~")
     hdf5_filename = os.path.join(
         home, 'Bureau/data_for_tests_dwi_ml/hdf5_file.hdf5')
@@ -55,20 +48,20 @@ def _verify_multisubject_dataset(dataset):
     logging.debug("\n====== Testing properties of the main "
                   "MultiSubjectDataset")
     assert isinstance(dataset, MultiSubjectDataset)
-    assert dataset.volume_groups == expected_volume_groups
-    assert dataset.streamline_groups == expected_streamline_groups
-    assert dataset.nb_features == expected_nb_features
+    assert dataset.volume_groups == TEST_EXPECTED_VOLUME_GROUPS
+    assert dataset.streamline_groups == TEST_EXPECTED_STREAMLINE_GROUPS
+    assert dataset.nb_features == TEST_EXPECTED_NB_FEATURES
 
 
 def _verify_training_set(training_set):
     logging.debug("\n====== Testing properties of the training set:\n")
 
     assert isinstance(training_set, MultisubjectSubset)
-    assert training_set.nb_subjects == expected_nb_subjects
-    assert training_set.volume_groups == expected_volume_groups
-    assert training_set.streamline_groups == expected_streamline_groups
-    assert training_set.nb_features == expected_nb_features
-    assert training_set.total_nb_streamlines == expected_nb_streamlines
+    assert training_set.nb_subjects == TEST_EXPECTED_NB_SUBJECTS
+    assert training_set.volume_groups == TEST_EXPECTED_VOLUME_GROUPS
+    assert training_set.streamline_groups == TEST_EXPECTED_STREAMLINE_GROUPS
+    assert training_set.nb_features == TEST_EXPECTED_NB_FEATURES
+    assert training_set.total_nb_streamlines == TEST_EXPECTED_NB_STREAMLINES
     # logging.debug("  - Lengths: {}".format(training_set.streamline_lengths))
     # logging.debug("  - Lengths_mm: {}"
     #               .format(training_set.streamline_lengths_mm))
@@ -77,31 +70,38 @@ def _verify_training_set(training_set):
 
 
 def _verify_data_list(subj_data_list):
-    assert len(subj_data_list) == expected_nb_subjects
+    assert len(subj_data_list) == TEST_EXPECTED_NB_SUBJECTS
 
 
 def _verify_subj_data(subj):
-    assert subj.subject_id == expected_first_subj_name
-    assert subj.volume_groups == expected_volume_groups
-    assert subj.streamline_groups == expected_streamline_groups
-    assert subj.nb_features == expected_nb_features
+    assert subj.subject_id == TEST_EXPECTED_SUBJ_NAMES
+    assert subj.volume_groups == TEST_EXPECTED_VOLUME_GROUPS
+    assert subj.streamline_groups == TEST_EXPECTED_STREAMLINE_GROUPS
+    assert subj.nb_features == TEST_EXPECTED_NB_FEATURES
 
 
-def _verify_mri(mri_data, training_set):
+def _verify_mri(mri_data, training_set, group_number):
+    expected_shape = TEST_EXPECTED_MRI_SHAPE[group_number]
+
     # Non-lazy: getting data as tensor directly.
     # Lazy: it should load it.
     assert isinstance(mri_data.as_tensor, torch.Tensor)
-    assert list(mri_data.as_tensor.shape[0:3]) == expected_mri_shape
+    assert list(mri_data.as_tensor.shape) == expected_shape
 
     # This should also get it.
     volume0 = training_set.get_volume_verify_cache(0, 0)
     assert isinstance(volume0, torch.Tensor)
 
 
-def _verify_sft_data(sft_data):
-    assert len(sft_data.streamlines) == expected_nb_streamlines[0]
+def _verify_sft_data(sft_data, group_number):
+    expected_nb = TEST_EXPECTED_NB_STREAMLINES[group_number]
+    assert len(sft_data.streamlines) == expected_nb
+
+    # First streamlines's first coordinate:
     assert len(sft_data.streamlines[0][0]) == 3  # a x, y, z coordinate
-    assert len(sft_data.as_sft().streamlines) == expected_nb_streamlines[0]
+
+    # As sft:
+    assert len(sft_data.as_sft().streamlines) == expected_nb
 
 
 def _non_lazy_version(hdf5_filename):
@@ -130,12 +130,12 @@ def _non_lazy_version(hdf5_filename):
     assert isinstance(mri_data, MRIData)
     # Non-lazy: the _data should already be loaded.
     assert isinstance(mri_data._data, np.ndarray)
-    _verify_mri(mri_data, training_set)
+    _verify_mri(mri_data, training_set, group_number=0)
 
     logging.debug("\n====== Testing properties of his first SFTData:\n")
     sft_data = subj0.sft_data_list[0]
     assert isinstance(sft_data, SFTData)
-    _verify_sft_data(sft_data)
+    _verify_sft_data(sft_data, group_number=0)
 
 
 def _lazy_version(hdf5_filename):
@@ -175,10 +175,10 @@ def _lazy_version(hdf5_filename):
     assert isinstance(mri_data, LazyMRIData)
     # Lazy: data should be a hdf5 group)
     assert isinstance(mri_data._data, h5py.Dataset)
-    _verify_mri(mri_data, training_set)
+    _verify_mri(mri_data, training_set, group_number=0)
 
     logging.debug("\n====== Testing properties of his first Lazy SFTData:\n")
     sft_data = subj0.sft_data_list[0]
     assert isinstance(sft_data, LazySFTData)
     assert isinstance(sft_data.streamlines, _LazyStreamlinesGetter)
-    _verify_sft_data(sft_data)
+    _verify_sft_data(sft_data, group_number=0)

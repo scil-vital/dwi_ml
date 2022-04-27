@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-from dipy.data import get_sphere
 import logging
+
+from dipy.data import get_sphere
 from nose.tools import assert_equal
 import numpy as np
 from scipy.spatial.distance import (cosine, euclidean, mahalanobis)

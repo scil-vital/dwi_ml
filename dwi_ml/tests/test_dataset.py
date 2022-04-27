@@ -76,8 +76,8 @@ def _verify_data_list(subj_data_list):
     assert len(subj_data_list) == TEST_EXPECTED_NB_SUBJECTS
 
 
-def _verify_subj_data(subj):
-    assert subj.subject_id == TEST_EXPECTED_SUBJ_NAMES
+def _verify_subj_data(subj, subj_number):
+    assert subj.subject_id == TEST_EXPECTED_SUBJ_NAMES[subj_number]
     assert subj.volume_groups == TEST_EXPECTED_VOLUME_GROUPS
     assert subj.streamline_groups == TEST_EXPECTED_STREAMLINE_GROUPS
     assert subj.nb_features == TEST_EXPECTED_NB_FEATURES
@@ -126,7 +126,7 @@ def _non_lazy_version(hdf5_filename):
     logging.debug("\n====== Testing properties of a SingleSubjectDataset:\n")
     subj0 = training_set.subjs_data_list[0]
     assert isinstance(subj0, SubjectData)
-    _verify_subj_data(subj0)
+    _verify_subj_data(subj0, subj_number=0)
 
     logging.debug("\n====== Testing properties of his first MRIData:\n")
     mri_data = subj0.mri_data_list[0]
@@ -171,7 +171,7 @@ def _lazy_version(hdf5_filename):
     # Accessing through open_handle_and_getitem
     subj0 = training_set.subjs_data_list.open_handle_and_getitem(0)
     assert isinstance(subj0, LazySubjectData)
-    _verify_subj_data(subj0)
+    _verify_subj_data(subj0, subj_number=0)
 
     logging.debug("\n====== Testing properties of his first LAZY MRIData:\n")
     mri_data = subj0.mri_data_list[0]

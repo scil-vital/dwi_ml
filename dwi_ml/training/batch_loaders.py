@@ -65,10 +65,10 @@ from dwi_ml.data.processing.volume.interpolation import \
 class AbstractBatchLoader:
     def __init__(self, dataset: MultisubjectSubset,
                  streamline_group_name: str, rng: int,
-                 step_size: float, compress: bool,
-                 split_ratio: float, noise_gaussian_size: float,
-                 noise_gaussian_variability: float,
-                 reverse_ratio: float):
+                 step_size: float = None, compress: bool = False,
+                 split_ratio: float = 0., noise_gaussian_size: float = 0.,
+                 noise_gaussian_variability: float = 0.,
+                 reverse_ratio: float = 0.):
         """
         Parameters
         ----------
@@ -81,18 +81,18 @@ class AbstractBatchLoader:
             Seed for the random number generator.
         step_size : float
             Constant step size that every streamline should have between points
-            (in mm). If None, train on streamlines as they are.
+            (in mm). Default: None (train on streamlines as they are).
             Note that you probably already fixed a step size when
             creating your dataset, but you could use a different one here if
-            you wish. [None]
+            you wish.
         compress: bool
             If true, compress streamlines. Cannot be used together with
             step_size. Once again, the choice can be different in the batch
-            sampler than chosen when creating the hdf5.
+            sampler than chosen when creating the hdf5. Default: False.
         split_ratio : float
             DATA AUGMENTATION: Percentage of streamlines to randomly split
             into 2, in each batch (keeping both segments as two independent
-            streamlines).
+            streamlines). Default = 0.
             The reason for cutting is to help the ML algorithm to track from
             the middle of WM by having already seen half-streamlines. If you
             are using interface seeding, this is not necessary.
@@ -102,12 +102,13 @@ class AbstractBatchLoader:
             Gaussian. If step_size is not given, make sure it is smaller than
             your step size to avoid flipping direction. Ex, you could choose
             0.1 * step-size. Noise is truncated to +/- 2*noise_sigma and to
-            +/- 0.5 * step-size (if given).
+            +/- 0.5 * step-size (if given). Default = 0.
         noise_gaussian_variability: float
             DATA AUGMENTATION: If this is given, a variation is applied to the
             streamline_noise_gaussian_size to have more noisy streamlines and
             less noisy streamlines. This means that the real gaussian_size will
             be a random number between [size - variability, size + variability]
+            Default = 0.
         reverse_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
             the batch. You could want to reverse ALL your data and then use
@@ -115,7 +116,7 @@ class AbstractBatchLoader:
             the memory. If your ratio is, say, 0.5, streamlines have a 50%
             chance to be reversed. If you train for enough epochs, high chance
             that you will have used both directions of your streamline at least
-            once. Default: 0.5.
+            once. Default: 0.
             A way to absolutely ensure using both directions the same number of
             time, we could use a flag and at each epoch, reverse those with
             unreversed flag. But that adds a bool for each streamline in your
@@ -335,13 +336,13 @@ class BatchLoaderOneInput(AbstractBatchLoader):
                 (possibly with its neighborhood)
         target = the whole streamlines as sequences.
     """
-    def __init__(self, dataset: MultisubjectSubset,
+    def __init__(self, dataset: MultisubjectSubset, input_group_name,
                  streamline_group_name: str, rng: int, compress: bool,
-                 step_size: float, split_ratio: float,
-                 noise_gaussian_size: float,
-                 noise_gaussian_variability: float,
-                 reverse_ratio: float, input_group_name, wait_for_gpu: bool,
-                 neighborhood_points: np.ndarray):
+                 step_size: float = None, split_ratio: float = 0.,
+                 noise_gaussian_size: float = 0.,
+                 noise_gaussian_variability: float = 0.,
+                 reverse_ratio: float = 0., wait_for_gpu: bool = False,
+                 neighborhood_points: np.ndarray = None):
         """
         Additional parameters compared to super:
         --------
@@ -351,8 +352,10 @@ class BatchLoaderOneInput(AbstractBatchLoader):
             If true, will not compute the inputs directly when using
             load_batch. User can call the compute_inputs method himself later
             on. Typically, Dataloader (who call load_batch) uses CPU.
+            Default: False
         neighborhood_points: np.ndarray
-            The list of neighborhood points (does not contain 0,0,0 point)
+            The list of neighborhood points (does not contain 0,0,0 point).
+            None or [] mean that no neighborhood is added. Default: None.
         """
         super().__init__(dataset, streamline_group_name, rng, step_size,
                          compress, split_ratio, noise_gaussian_size,

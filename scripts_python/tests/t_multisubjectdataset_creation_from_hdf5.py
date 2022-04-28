@@ -25,7 +25,7 @@ def t_non_lazy(args):
     print("\n\n**========= NON-LAZY =========\n\n")
     fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
                                        experiment_name='test',
-                                       taskman_managed=True, cache_size=None)
+                                       taskman_managed=True, subset_cache_size=None)
     fake_dataset.load_data()
 
     print("\n====== Testing properties of the main MultiSubjectDataset: \n")
@@ -43,7 +43,7 @@ def t_non_lazy(args):
     print("  - Volume group, features, streamlines: {}, {}, {}"
           .format(training_set.volume_groups, training_set.nb_features,
                   training_set.streamline_groups))
-    print("  - Cache size: {}".format(training_set.cache_size))
+    print("  - Cache size: {}".format(training_set.subset_cache_size))
     print("  - Total nb streamlines: {}"
           .format(training_set.total_nb_streamlines))
     print("  - Lengths: {}".format(training_set.streamline_lengths))
@@ -88,7 +88,7 @@ def t_lazy(args):
     print("\n\n**========= LAZY =========\n\n")
     fake_dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
                                        experiment_name='test',
-                                       taskman_managed=True, cache_size=1)
+                                       taskman_managed=True, subset_cache_size=1)
     fake_dataset.load_data()
     training_set = fake_dataset.training_set
 

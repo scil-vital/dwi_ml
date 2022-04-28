@@ -160,7 +160,7 @@ def t_non_lazy(args, affine, header):
     logging.root.setLevel('INFO')
     dataset = MultiSubjectDataset(args.hdf5_filename, lazy=False,
                                   experiment_name='test',
-                                  taskman_managed=True, cache_size=None)
+                                  taskman_managed=True, subset_cache_size=None)
     dataset.load_data()
 
     print('\n\n===================== A. Test with reverse + split')
@@ -188,8 +188,8 @@ def t_lazy(args, affine, header):
     print('Initializing dataset...')
     logging.root.setLevel('INFO')
     dataset = MultiSubjectDataset(args.hdf5_filename, lazy=True,
-                                       experiment_name='test',
-                                       taskman_managed=True, cache_size=1)
+                                  experiment_name='test',
+                                  taskman_managed=True, subset_cache_size=1)
     dataset.load_data()
 
     print('\n\n\n=================== A. Test with basic args')

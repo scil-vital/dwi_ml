@@ -141,7 +141,7 @@ def interpolate_volume_in_neighborhood(
         are interpolated (i.e. neighborhood = (0,0,0) ).
     device: torch device.
     """
-    if neighborhood_points is not None:
+    if neighborhood_points is not None and len(neighborhood_points) > 0:
         n_input_points = coords.shape[0]
 
         # Extend the coords array with the neighborhood coordinates

@@ -2,7 +2,7 @@
 from collections import defaultdict
 from datetime import datetime
 import logging
-from typing import List, Tuple, Union, Dict, Any
+from typing import List, Tuple, Dict, Any
 
 import h5py
 import numpy as np
@@ -290,7 +290,7 @@ class MultiSubjectDataset:
               'streamlines/lengths', 'streamlines/euclidean_lengths'.
     """
     def __init__(self, hdf5_file: str, taskman_managed: bool, lazy: bool,
-                 cache_size: Union[int, None]):
+                 subset_cache_size: int = 0):
         """
         Params
         ------
@@ -302,11 +302,9 @@ class MultiSubjectDataset:
             Use lazy or non-lazy data. Lazy data only loads data from the hdf5
             when asked explicitely. Non-lazy loads everything at once in the
             load_data method.
-        cache_size: int
-            Only useful with lazy data (else, you can set it to None.
-            Non-optional to ensure arg is there with lazy data). Size of the
-            cache in terms of number of length of the queue (i.e. number of
-            volumes).
+        subset_cache_size: int
+            Only useful with lazy data. Size of the cache in terms of length of
+            the queue (i.e. number of volumes). Default = 0.
             NOTE: Real cache size will actually be twice or trice this value as
             the training, validation and testing sets each have their cache.
         """
@@ -328,8 +326,8 @@ class MultiSubjectDataset:
         self.streamline_groups = []  # type: List[str]
 
         self.is_lazy = lazy
-        self.cache_size = cache_size
-        if self.is_lazy and self.cache_size is None:
+        self.subset_cache_size = subset_cache_size
+        if self.is_lazy and self.subset_cache_size is None:
             raise ValueError("For lazy data, the cache size cannot be None. "
                              "Maybe you meant 0?")
 
@@ -337,13 +335,13 @@ class MultiSubjectDataset:
         # In non-lazy data, the cache_size is not used.
         self.training_set = MultisubjectSubset(
             'training', hdf5_file, taskman_managed, self.is_lazy, self._log,
-            cache_size)
+            subset_cache_size)
         self.validation_set = MultisubjectSubset(
             'validation', hdf5_file, taskman_managed, self.is_lazy, self._log,
-            cache_size)
+            subset_cache_size)
         self.testing_set = MultisubjectSubset(
             'testing', hdf5_file, taskman_managed, self.is_lazy, self._log,
-            cache_size)
+            subset_cache_size)
 
     @property
     def params(self) -> Dict[str, Any]:
@@ -352,7 +350,7 @@ class MultiSubjectDataset:
             'hdf5_file': self.hdf5_file,
             'taskman_managed': self.taskman_managed,
             'is_lazy': self.is_lazy,
-            'cache_size': self.cache_size,
+            'cache_size': self.subset_cache_size,
         }
 
         # Subsets:

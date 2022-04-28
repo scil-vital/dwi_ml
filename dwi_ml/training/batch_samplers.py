@@ -40,8 +40,9 @@ from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 class DWIMLBatchSampler(Sampler):
     def __init__(self, dataset: MultisubjectSubset,
                  streamline_group_name: str, batch_size: int,
-                 batch_size_units: str, nb_streamlines_per_chunk: int,
-                 rng: int, nb_subjects_per_batch: int, cycles: int):
+                 batch_size_units: str, nb_streamlines_per_chunk: int = 256,
+                 rng: int = None, nb_subjects_per_batch: int = None,
+                 cycles: int = None):
         """
         Parameters
         ----------
@@ -60,17 +61,18 @@ class DWIMLBatchSampler(Sampler):
             In the case of a batch size in terms of 'length_mm', chunks of n
             streamlines are sampled at once, and then their size is checked,
             either removing streamlines if exceeded, or else sampling a new
-            chunk of ids.
+            chunk of ids. Default = 256, for no good reason.
         rng : int
-            Seed for the random number generator.
+            Seed for the random number generator. Default = None.
         nb_subjects_per_batch : int
             Maximum number of subjects to be used in a single batch. Depending
             on the model, this can avoid loading too many input volumes at the
-            same time, for example. If None, always sample from all subjects.
+            same time, for example. Default: None (always sample from all
+            subjects).
         cycles : int
             Used if `nb_subjects_per_batch` is given. Number of batches
             re-using the same subjects (and thus the same volumes) before
-            sampling new ones.
+            sampling new ones. Default: None.
         """
         super().__init__(dataset)  # This does nothing but python likes it.
 

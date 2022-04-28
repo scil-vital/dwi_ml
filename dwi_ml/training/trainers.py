@@ -40,32 +40,21 @@ class DWIMLAbstractTrainer:
     saved locally in the experiment_path.
     """
     def __init__(self,
-                 batch_sampler_training: DWIMLBatchSampler,
-                 batch_sampler_validation: DWIMLBatchSampler,
-                 batch_loader_training: AbstractBatchLoader,
-                 batch_loader_validation: AbstractBatchLoader,
                  model: MainModelAbstract, experiment_path: str,
-                 experiment_name: str, learning_rate: float,
-                 weight_decay: float, max_epochs: int,
-                 max_batches_per_epoch: int, patience: int,
-                 nb_cpu_processes: int, taskman_managed: bool, use_gpu: bool,
-                 comet_workspace: str, comet_project: str,
-                 from_checkpoint: bool):
+                 experiment_name: str,
+                 batch_sampler_training: DWIMLBatchSampler,
+                 batch_loader_training: AbstractBatchLoader,
+                 batch_sampler_validation: DWIMLBatchSampler = None,
+                 batch_loader_validation: AbstractBatchLoader = None,
+                 learning_rate: float = 0.001,
+                 weight_decay: float = 0.01, max_epochs: int = 10,
+                 max_batches_per_epoch: int = 1000, patience: int = None,
+                 nb_cpu_processes: int = 0, taskman_managed: bool = False,
+                 use_gpu: bool = False, comet_workspace: str = None,
+                 comet_project: str = None, from_checkpoint: bool = False):
         """
         Parameters
         ----------
-        batch_sampler_training: DWIMLBatchSampler
-            Instantiated class used for sampling batches of training data.
-            Data in batch_sampler_training.source_data must be already loaded.
-        batch_sampler_validation: DWIMLBatchSampler
-            Instantiated class used for sampling batches of validation
-            data. Data in batch_sampler_training.source_data must be already
-            loaded. Can be set to None if no validation is used. Then, best
-            model is based on training loss.
-        batch_loader_training: AbstractBatchLoader
-            Instantiated class with a load_batch method able to load data
-            associated to sampled batch ids.
-        batch_loader_validation: idem
         model: MainModelAbstract
             Instatiated class containing your model.
         experiment_path: str
@@ -74,33 +63,51 @@ class DWIMLAbstractTrainer:
         experiment_name: str
             Name of this experiment. This will also be the name that will
             appear online for comet.ml experiment.
+        batch_sampler_training: DWIMLBatchSampler
+            Instantiated class used for sampling batches of training data.
+            Data in batch_sampler_training.source_data must be already loaded.
+        batch_loader_training: AbstractBatchLoader
+            Instantiated class with a load_batch method able to load data
+            associated to sampled batch ids.
+        batch_sampler_validation: DWIMLBatchSampler
+            Similar as before, for the validation set. Can be set to None if no
+            validation is used. Then, best model is based on training loss.
+        batch_loader_validation: AbstractBatchLoader
+            Again, similar as before but can be set to None.
         learning_rate: float
-            Learning rate. Suggestion: 0.001 (torch's default)
+            Learning rate. Default: 0.001 (torch's default)
         weight_decay: float
-            Add a weight decay penalty on the parameters. Suggestion: 0.01.
+            Add a weight decay penalty on the parameters. Default: 0.01.
             (torch's default).
         max_epochs: int
-            Maximum number of epochs. Note that we supervise this maximum to
-            make sure it is not too big for general usage. Epochs lengths will
-            be capped at max_batches_per_epoch.
+            Maximum number of epochs. Default = 10, for no good reason.
         max_batches_per_epoch: int
-            Maximum number of batches per epoch. Exemple: 10000.
+            Maximum number of batches per epoch. Default = 10000, for no good
+            reason.
         patience: int
-            If not None, use early stopping. Defines the number of epochs after
-            which the model should stop if the loss hasn't improved.
+            Use early stopping. Defines the number of epochs after which the
+            model should stop if the loss hasn't improved. Default: None (i.e.
+            no early stopping).
         nb_cpu_processes: int
             Number of parallel CPU workers. Use 0 to avoid parallel threads.
+            Default : 0.
         taskman_managed: bool
             If True, taskman manages the experiment. Do not output progress
             bars and instead output special messages for taskman.
+            Default: False (i.e. use tqdm).
         use_gpu: bool
             If true, use GPU device when possible instead of CPU.
+            Default = False
         comet_workspace: str
-            Your comet workspace. If None, comet.ml will not be used. See our
-            docs/Getting Started for more information on comet and its API key.
+            Your comet workspace. See our docs/Getting Started for more
+            information on comet and its API key. Default= None (comet.ml will
+            not be used).
         comet_project: str
-             Send your experiment to a specific comet.ml project. If None, it
-             will be sent to Uncategorized Experiments.
+             Send your experiment to a specific comet.ml project. Default: None
+             (it will be sent to Uncategorized Experiments).
+        from_checkpoint: bool
+             If true, we do not create the output dir, as it should already
+             exist. Default: False.
         """
         # To developers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
@@ -955,20 +962,21 @@ class DWIMLAbstractTrainer:
 
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     def __init__(self,
-                 batch_sampler_training: DWIMLBatchSampler,
-                 batch_sampler_validation: DWIMLBatchSampler,
-                 batch_loader_training: BatchLoaderOneInput,
-                 batch_loader_validation: BatchLoaderOneInput,
                  model: MainModelAbstract, experiment_path: str,
-                 experiment_name: str, learning_rate: float,
-                 weight_decay: float, max_epochs: int,
-                 max_batches_per_epoch: int, patience: int,
-                 nb_cpu_processes: int, taskman_managed: bool, use_gpu: bool,
-                 comet_workspace: str, comet_project: str,
-                 from_checkpoint: bool):
-        super().__init__(batch_sampler_training, batch_sampler_validation,
-                         batch_loader_training, batch_loader_validation,
-                         model, experiment_path, experiment_name,
+                 experiment_name: str,
+                 batch_sampler_training: DWIMLBatchSampler,
+                 batch_loader_training: AbstractBatchLoader,
+                 batch_sampler_validation: DWIMLBatchSampler = None,
+                 batch_loader_validation: AbstractBatchLoader = None,
+                 learning_rate: float = 0.001,
+                 weight_decay: float = 0.01, max_epochs: int = 10,
+                 max_batches_per_epoch: int = 1000, patience: int = None,
+                 nb_cpu_processes: int = 0, taskman_managed: bool = False,
+                 use_gpu: bool = False, comet_workspace: str = None,
+                 comet_project: str = None, from_checkpoint: bool = False):
+        super().__init__(model, experiment_path, experiment_name,
+                         batch_sampler_training, batch_loader_training,
+                         batch_sampler_validation, batch_loader_validation,
                          learning_rate, weight_decay, max_epochs,
                          max_batches_per_epoch, patience,
                          nb_cpu_processes, taskman_managed, use_gpu,

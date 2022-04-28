@@ -4,7 +4,6 @@ import logging
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.experiment_utils.prints import format_dict_to_str
 
 
 def add_args_dataset(p: argparse.ArgumentParser):
@@ -40,7 +39,7 @@ def prepare_multisubjectdataset(args, load_training=True, load_validation=True,
                newline=True, color='blue'):
         dataset = MultiSubjectDataset(
             args.hdf5_file, taskman_managed=args.taskman_managed,
-            lazy=args.lazy, cache_size=args.cache_size)
+            lazy=args.lazy, subset_cache_size=args.cache_size)
         dataset.load_data(load_training, load_validation, load_testing)
 
         logging.info("Number of subjects loaded: \n"

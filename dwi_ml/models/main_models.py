@@ -21,8 +21,8 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name, normalize_directions=True,
-                 neighborhood_type=None, neighborhood_radius=None):
+    def __init__(self, experiment_name: str, normalize_directions: bool = True,
+                 neighborhood_type: str = None, neighborhood_radius=None):
         """
         Params
         ------
@@ -33,11 +33,13 @@ class MainModelAbstract(torch.nn.Module):
             size is fixed, it shouldn't make any difference. If streamlines are
             compressed, in theory you should normalize, but you could hope that
             not normalizing could give back to the algorithm a sense of
-            distance between points.
-        neighborhood_type: Union[str, None]
+            distance between points. Default: True.
+        neighborhood_type: str
             For usage explanation, see prepare_neighborhood_information.
-        neighborhood_radius: Union[int, float, Iterable[float], None]
+            Default: None.
+        neighborhood_radius: Union[int, float, Iterable[float]]
             For usage explanation, see prepare_neighborhood_information.
+            Default: None.
         """
         super().__init__()
 
@@ -183,13 +185,13 @@ class MainModelAbstract(torch.nn.Module):
 
 
 class MainModelWithPD(MainModelAbstract):
-    def __init__(self, experiment_name, nb_previous_dirs,
-                 normalize_directions=False,
-                 neighborhood_type=None, neighborhood_radius=None):
+    def __init__(self, experiment_name: str, nb_previous_dirs: int = 0,
+                 normalize_directions: bool = True,
+                 neighborhood_type: str = None, neighborhood_radius=None):
         """
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
-            received.
+            received. Default: 0.
         """
         super().__init__(experiment_name, normalize_directions,
                          neighborhood_type, neighborhood_radius)

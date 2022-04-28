@@ -10,18 +10,18 @@ from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import contextlib2
 import numpy as np
 import torch
-from dwi_ml.training.gradient_norm import compute_gradient_norm
-from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.training.monitoring import (
-    BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
+from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.training.batch_samplers import DWIMLBatchSampler
 from dwi_ml.training.batch_loaders import (
     AbstractBatchLoader, BatchLoaderOneInput)
+from dwi_ml.training.batch_samplers import DWIMLBatchSampler
+from dwi_ml.training.gradient_norm import compute_gradient_norm
+from dwi_ml.training.monitoring import (
+    BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
 
 # If the remaining time is less than one epoch + X seconds, we will quit
 # training now, to allow updating taskman_report.
@@ -757,8 +757,10 @@ class DWIMLAbstractTrainer:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
         trainer = cls(model, experiments_path, experiment_name,
-                      train_batch_sampler, train_batch_loader,
-                      valid_batch_sampler, valid_batch_loader,
+                      batch_sampler_training=train_batch_sampler,
+                      batch_loader_training=train_batch_loader,
+                      batch_sampler_validation=valid_batch_sampler,
+                      batch_loader_validation=valid_batch_loader,
                       from_checkpoint=True,
                       **checkpoint_state['params_for_init'])
 
@@ -964,9 +966,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
                  batch_sampler_training: DWIMLBatchSampler,
-                 batch_loader_training: AbstractBatchLoader,
+                 batch_loader_training: BatchLoaderOneInput,
                  batch_sampler_validation: DWIMLBatchSampler = None,
-                 batch_loader_validation: AbstractBatchLoader = None,
+                 batch_loader_validation: BatchLoaderOneInput = None,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
                  max_batches_per_epoch: int = 1000, patience: int = None,

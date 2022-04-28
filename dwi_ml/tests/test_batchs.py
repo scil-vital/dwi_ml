@@ -12,19 +12,24 @@ from scilpy.io.fetcher import fetch_data, get_home, get_testing_files_dict
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.training.batch_samplers import DWIMLBatchSampler
-from dwi_ml.training.batch_loaders import BatchLoaderOneInput
 from dwi_ml.tests.expected_values import (
-    TEST_EXPECTED_SUBJ_NAMES, TEST_EXPECTED_STREAMLINE_GROUPS,
-    TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_NB_STREAMLINES)
+    TEST_EXPECTED_SUBJ_NAMES, TEST_EXPECTED_NB_STREAMLINES)
+from dwi_ml.tests.utils import create_batch_sampler_loader, \
+    create_test_batch_sampler, create_batch_loader
 
 # fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
 tmp_dir = tempfile.TemporaryDirectory()
 
 
 logging.basicConfig(level=logging.DEBUG)
+now = datetime.now().time()
+millisecond = round(now.microsecond / 10000)
+now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
+
+# Change to true to allow debug mode: saves the mask for visual assessment.
+# Requires a reference.
 SAVE_RESULT_SFT_NII = False
-ref = None
+ref = None  # Todo. Load from data fetcher
 
 
 def test_batch_sampler_and_loader():
@@ -50,90 +55,111 @@ def test_batch_sampler_and_loader():
         dataset.load_data()
 
         # A) Varying parameters for the batch sampler
+        # A.1) Batch size in terms of length in mm
+        logging.debug('\n *** Test with batch size 1000 in terms of length_mm')
+        batch_sampler = create_test_batch_sampler(
+            dataset.training_set,
+            batch_size=1000, chunk_size=100,
+            batch_size_units='length_mm')
+        _iterate_on_sampler_and_verify(
+            batch_sampler, batch_size=1000, batch_size_units='length_mm')
+
+        # A.2) Batch size in terms of number of streamlines
         total_nb_streamlines = TEST_EXPECTED_NB_STREAMLINES[0]
         for batch_size in [100, 25, total_nb_streamlines]:
-            logging.debug('\n================= Test with batch size {} '
-                          'streamlines'.format(batch_size))
-            _create_sampler_and_iterate(dataset, batch_size=batch_size,
-                                        batch_size_units='nb_streamlines')
+            logging.debug('\n *** Test with batch size {} streamlines'
+                          .format(batch_size))
+            batch_sampler = create_test_batch_sampler(
+                dataset.training_set,
+                batch_size=batch_size,
+                batch_size_units='nb_streamlines')
+            batch_idx = _iterate_on_sampler_and_verify(
+                batch_sampler, batch_size=batch_size,
+                batch_size_units='nb_streamlines')
 
-        logging.debug('\n=================== Test with batch size 1000 in '
-                      'terms of length_mm')
-        _create_sampler_and_iterate(dataset, batch_size=1000, chunk_size=100,
-                                    batch_size_units='length_mm')
+        # Using this last batch sampler:
 
         # B) Varying parameters for the batch loader.
+        # B.1) With resampling
         for wait_for_gpu in [True, False]:
-            logging.debug('\n=================== Test with batch size 1000 + '
-                          'loading with resample, noise, split, reverse, '
-                          'with wait_for_gpu = {}'.format(wait_for_gpu))
-            _create_sampler_and_iterate(dataset, batch_size=1000,
-                                        batch_size_units='nb_streamlines',
-                                        step_size=0.5, noise_size=0.2,
-                                        noise_variability=0.1, split_ratio=0.5,
-                                        reverse_ratio=0.5)
+            logging.debug('\n *** Test with batch size 1000 + loading with '
+                          'resample, noise, split, reverse, with '
+                          'wait_for_gpu = {}'.format(wait_for_gpu))
+            batch_loader = create_batch_loader(
+                dataset.training_set, step_size=0.5, noise_size=0.2,
+                noise_variability=0.1, split_ratio=0.5, reverse_ratio=0.5,
+                wait_for_gpu=True)
 
-        logging.debug('\n=================== Test with batch size 1000 + '
-                      'loading with compress')
-        _create_sampler_and_iterate(dataset, batch_size=1000,
-                                    batch_size_units='nb_streamlines',
-                                    compress=True)
+            # Using last batch from batch sampler
+            _load_directly_and_verify(
+                batch_loader, batch_idx,
+                expected_nb_streamlines=total_nb_streamlines, split_ratio=0.5)
+
+            # Using torch's dataloader
+            _load_from_torch_and_verify(
+                dataset, batch_sampler, batch_loader,
+                expected_nb_streamlines=total_nb_streamlines, split_ratio=0.5)
+
+        # B.2) With compressing
+        logging.debug('\n *** Test with batch size 1000 + loading with '
+                      'compress')
+        batch_loader = create_batch_loader(dataset.training_set, compress=True)
+        _load_directly_and_verify(
+            batch_loader, batch_idx,
+            expected_nb_streamlines=total_nb_streamlines, split_ratio=0)
 
 
-def _create_sampler_and_iterate(
-        dataset, batch_size, batch_size_units, chunk_size=None,
-        step_size=None, compress=False, noise_size=0., noise_variability=0.,
-        split_ratio= 0., reverse_ratio=0., wait_for_gpu=True):
-    # Initialize batch sampler
-    logging.debug('\nInitializing sampler...')
-    training_set = dataset.training_set
+def _iterate_on_sampler_and_verify(
+        batch_sampler, batch_size, batch_size_units):
 
-    batch_sampler = DWIMLBatchSampler(
-        training_set, TEST_EXPECTED_STREAMLINE_GROUPS[0],
-        batch_size=batch_size, batch_size_units=batch_size_units,
-        nb_streamlines_per_chunk=chunk_size, rng=1234,
-        nb_subjects_per_batch=1, cycles=1)
+    # Default variables
+    nb_subjs = len(TEST_EXPECTED_SUBJ_NAMES)
 
-    batch_loader = BatchLoaderOneInput(
-        training_set, TEST_EXPECTED_STREAMLINE_GROUPS[0], rng=1234,
-        compress=compress, step_size=step_size, split_ratio=split_ratio,
-        noise_gaussian_size=noise_size,
-        noise_gaussian_variability=noise_variability,
-        reverse_ratio=reverse_ratio,
-        input_group_name=TEST_EXPECTED_VOLUME_GROUPS[0],
-        neighborhood_points=None, wait_for_gpu=wait_for_gpu)
-
-    now = datetime.now().time()
-    millisecond = round(now.microsecond / 10000)
-    now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
-
-    # -------------
-    # Test 1 : Batch sampler
-    # -------------
     logging.debug('TESTING THE BATCH SAMPLER: \n'
                   'Iterating on the batch sampler directly, without actually '
                   'loading the batch.')
     batch_generator = batch_sampler.__iter__()
 
+    # Init to avoid "batch referenced before assignment" in case generator
+    # fails
+    batch_idx = []
+
     # Loop on batches
-    nb_subjs = len(TEST_EXPECTED_SUBJ_NAMES)
-    for batch in batch_generator:
-        subj0 = batch[0]
+    for batch_idx in batch_generator:
+        subj0 = batch_idx[0]
         (subj0_id, subj0_streamlines) = subj0
 
+        nb_streamlines_sampled = len(subj0_streamlines)
         if batch_size_units == 'nb_streamlines':
             logging.debug('Based on first subject, nb sampled streamlines per '
-                          'subj was {} (Should be {} / {} = {})'
-                          .format(len(subj0_streamlines), batch_size, nb_subjs,
+                          'subj was {} \n'
+                          '(Batch size = {} streamlines)\n'
+                          '(Result should be batch_size / nb_subjs ({}) = {})'
+                          .format(nb_streamlines_sampled, batch_size, nb_subjs,
                                   batch_size / nb_subjs))
 
-            assert len(subj0_streamlines) == batch_size / nb_subjs
-        break
+            assert nb_streamlines_sampled == batch_size / nb_subjs
+        else:
+            logging.debug('Based on first subject, nb sampled streamlines per '
+                          'subj was {} \n'
+                          '(Total length in mm unkown here. #todo)'
+                          '(Batch size = {} in terms of length in mm)\n'
+                          '(Result should be batch_size / nb_subjs ({}) = {})'
+                          .format(nb_streamlines_sampled, batch_size, nb_subjs,
+                                  batch_size / nb_subjs))
+            break
 
+    return batch_idx
+
+
+def _load_directly_and_verify(batch_loader, batch_idx,
+                              expected_nb_streamlines, split_ratio):
+    # Debug mode for visual assessment :
     if SAVE_RESULT_SFT_NII:
-        logging.debug("Debug mode. Saving input coordinates as mask.")
+        logging.debug("Debug mode. Saving input coordinates as mask. You can"
+                      "open the mask and verify that they fit the streamlines")
         batch_streamlines, ids, inputs_tuple = batch_loader.load_batch(
-            batch, save_batch_input_mask=True)
+            batch_idx, save_batch_input_mask=True)
         batch_input_masks, batch_inputs = inputs_tuple
         filename = os.path.join(str(tmp_dir), 'test_batch1_underlying_mask_' +
                                 now_s + '.nii.gz')
@@ -143,26 +169,25 @@ def _create_sampler_and_iterate(
         ref_img = nib.load(ref)
         data_nii = nib.Nifti1Image(np.asarray(mask, dtype=bool), ref_img)
         nib.save(data_nii, filename)
+    else:
+        logging.debug("Loading batch from our data loader")
+        batch = batch_loader.load_batch(batch_idx)
+        _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio)
 
-    # -------------
-    # Test 2: Batch loader
-    # -------------
+
+def _load_from_torch_and_verify(
+        dataset, batch_sampler, batch_loader, expected_nb_streamlines,
+        split_ratio=0.):
     logging.debug('TESTING THE DATA LOADER: Using the batch sampler + loader '
                   'in a dataLoader')
-    dataloader = DataLoader(training_set, batch_sampler=batch_sampler,
+    dataloader = DataLoader(dataset.training_set, batch_sampler=batch_sampler,
                             collate_fn=batch_loader.load_batch)
 
     # Iterating
     batch_sizes = []
+    i = 0
     for i, batch in enumerate(dataloader):
-        if split_ratio == 0:
-            assert len(batch[0]) <= batch_size, \
-                "Error, the batch size should be maximum {} but we got {}" \
-                .format(batch_size, len(batch[0]))
-        else:
-            assert len(batch[0]) <= batch_size * 2, \
-                "Error, the batch size should be maximum {} (*2, split) but " \
-                "we got {}".format(batch_size, len(batch[0]))
+        _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio)
         batch_sizes.append(len(batch[0]))
 
     # Total of batch (i.e. one epoch) should be all of the streamlines.
@@ -172,10 +197,7 @@ def _create_sampler_and_iterate(
                       "total size {}"
                       .format(i + 1, np.mean(batch_sizes), sum(batch_sizes)))
 
-        if batch_size_units == 'nb_streamlines':
-            assert sum(batch_sizes) == TEST_EXPECTED_NB_STREAMLINES[0]
-        else:
-            assert sum(batch_sizes) <= TEST_EXPECTED_NB_STREAMLINES[0]
+        assert sum(batch_sizes) == TEST_EXPECTED_NB_STREAMLINES[0]
 
     # For debugging purposes: possibility to save the last batch's SFT.
     if SAVE_RESULT_SFT_NII :
@@ -187,6 +209,17 @@ def _create_sampler_and_iterate(
         filename = os.path.join(str(tmp_dir), 'test_batch_reverse_split_' +
                                 now_s + '.trk')
         save_tractogram(sft, filename)
+
+
+def _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio):
+    if split_ratio == 0:
+        assert len(batch[0]) == expected_nb_streamlines, \
+            "Error, the batch size should be maximum {} but we got {}" \
+            .format(expected_nb_streamlines, len(batch[0]))
+    else:
+        assert len(batch[0]) == expected_nb_streamlines * 2, \
+            "Error, the batch size should be maximum {} (*2, split) but " \
+            "we got {}".format(expected_nb_streamlines, len(batch[0]))
 
 
 if __name__ == '__main__':

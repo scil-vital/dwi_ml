@@ -134,13 +134,13 @@ class DWIMLBatchSampler(Sampler):
         # scripts.
         self.logger = logger
         self.logger.setLevel(log_level)
-        self.logger.debug('test')
 
     def make_logger_tqdm_fitted(self):
         """Possibility to use a tqdm-compatible logger in case the model
         is used through a tqdm progress bar."""
-        self.logger.addHandler(TqdmLoggingHandler())
-        self.logger.propagate = False
+        if len(self.logger.handlers) == 0:
+            self.logger.addHandler(TqdmLoggingHandler())
+            self.logger.propagate = False
 
     @property
     def params(self):

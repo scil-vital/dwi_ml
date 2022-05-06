@@ -162,8 +162,9 @@ class AbstractBatchLoader:
         Possibility to use a tqdm-compatible logger in case the model is used
         through a tqdm progress bar (in trainers).
         """
-        self.logger.addHandler(TqdmLoggingHandler())
-        self.logger.propagate = False
+        if len(self.logger.handlers) == 0:
+            self.logger.addHandler(TqdmLoggingHandler())
+            self.logger.propagate = False
 
     @property
     def params(self):

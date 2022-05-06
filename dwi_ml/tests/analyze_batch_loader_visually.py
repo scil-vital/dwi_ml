@@ -30,7 +30,7 @@ batch_size = 500  # Testing only one value here.
 wait_for_gpu = False  # Testing both True and False is heavier...
 
 
-def test_batch_loader():
+def save_loaded_batch_for_visual_assessment():
     logging.info("Unit test: batch sampler iteration")
 
     # os.chdir(os.path.expanduser(tmp_dir.name))
@@ -78,19 +78,15 @@ def test_batch_loader():
             wait_for_gpu=True)
 
         # Using last batch from batch sampler
-        _load_directly_and_verify(batch_loader, batch_idx_tuples,
-                                  split_ratio=0.5)
-
-        # Using torch's dataloader
-        _load_from_torch_and_verify(dataset, batch_sampler, batch_loader,
-                                    split_ratio=0.5)
+        _load_directly_and_verify(
+            batch_loader, batch_idx_tuples, split_ratio=0.5)
 
         # 2) With compressing
         logging.info('*** Test with batch size {} + loading with compress'
                      .format(batch_size))
         batch_loader = create_batch_loader(dataset.training_set, compress=True)
-        _load_directly_and_verify(batch_loader, batch_idx_tuples,
-                                  split_ratio=0)
+        _load_directly_and_verify(
+            batch_loader, batch_idx_tuples, split_ratio=0)
 
 
 def _load_directly_and_verify(batch_loader, batch_idx_tuples, split_ratio):
@@ -98,56 +94,31 @@ def _load_directly_and_verify(batch_loader, batch_idx_tuples, split_ratio):
     for s, idx in batch_idx_tuples:
         expected_nb_streamlines += len(idx)
 
-    logging.info("    Loading batch directly from our load_batch method.")
-    batch_idx_tuples = batch_loader.load_batch(batch_idx_tuples)
-    _verify_loaded_batch(batch_idx_tuples, expected_nb_streamlines,
-                         split_ratio)
+    # Saving input coordinates as mask. You can "open the mask and verify that
+    # they fit the streamlines.
+    batch_streamlines, ids, inputs_tuple = batch_loader.load_batch(
+        batch_idx_tuples, save_batch_input_mask=True)
+    batch_input_masks, batch_inputs = inputs_tuple
+    filename = os.path.join(str(tmp_dir), 'test_batch1_underlying_mask_' +
+                            now_s + '.nii.gz')
+    logging.info("Saving subj 0's underlying coords mask to {}"
+                 .format(filename))
+    mask = batch_input_masks[0]
+    ref_img = nib.load(ref)
+    data_nii = nib.Nifti1Image(np.asarray(mask, dtype=bool), ref_img)
+    nib.save(data_nii, filename)
 
+    # Save the last batch's SFT.
+    logging.info("Saving subj 0's tractogram {}"
+                 .format('test_batch1_' + now_s))
 
-def _load_from_torch_and_verify(
-        dataset, batch_sampler, batch_loader, split_ratio=0.):
-    logging.info('TESTING THE DATA LOADER: Using the batch sampler + loader '
-                 'in a dataLoader')
-
-    dataloader = DataLoader(dataset.training_set, batch_sampler=batch_sampler,
-                            collate_fn=batch_loader.load_batch)
-
-    # Iterating
-    batch_sizes = []
-    for i, batch in enumerate(dataloader):
-        # expected_nb_streamlines = batch_sampler.batch_size
-        # _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio)
-        batch_sizes.append(len(batch[0]))
-
-    # Total of batch (i.e. one epoch) should be all of the streamlines.
-    # (if streamlines splitting not activated)
-    if split_ratio == 0:
-        logging.info("Finished after i={} batches of average size {} with "
-                     "total size {}"
-                     .format(i + 1, np.mean(batch_sizes), sum(batch_sizes)))
-
-        assert sum(batch_sizes) == TEST_EXPECTED_NB_STREAMLINES[0]
-
-
-def _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio):
-    if split_ratio == 0:
-        logging.info("   After loading the data, batch size should be {} "
-                     "(batch size in nb_streamlines): {}"
-                     .format(expected_nb_streamlines, len(batch[0])))
-        assert len(batch[0]) == expected_nb_streamlines
-    else:
-        nb_streamlines_not_split = expected_nb_streamlines * (1 - split_ratio)
-        nb_streamlines_split = expected_nb_streamlines * split_ratio
-        real_expected_nb = nb_streamlines_not_split * 1 + \
-            nb_streamlines_split * 2
-        logging.info("   After loading the data, batch size should be {} "
-                     "(batch size in nb_streamlines; {} + accounting for "
-                     "split ratio): {}"
-                     .format(real_expected_nb, expected_nb_streamlines,
-                             len(batch[0])))
-        assert len(batch[0]) == real_expected_nb
+    sft = StatefulTractogram(batch_streamlines, reference=ref, space=Space.VOX,
+                             origin=Origin.TRACKVIS)
+    filename = os.path.join(str(tmp_dir), 'test_batch_reverse_split_' +
+                            now_s + '.trk')
+    save_tractogram(sft, filename)
 
 
 if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
-    test_batch_loader()
+    save_loaded_batch_for_visual_assessment()

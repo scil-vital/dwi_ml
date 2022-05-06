@@ -33,9 +33,7 @@ def test_multisubjectdataset():
 
     logging.basicConfig(level='DEBUG')
 
-    logging.debug("\n"
-                  "Unit test: previous dirs\n"
-                  "------------------------")
+    logging.debug("Unit test: previous dirs")
 
     # hdf5_filename = os.path.join(get_home(), 'dwiml', 'hdf5_file.hdf5')
     home = os.path.expanduser("~")
@@ -48,8 +46,7 @@ def test_multisubjectdataset():
 
 
 def _verify_multisubject_dataset(dataset):
-    logging.debug("\n====== Testing properties of the main "
-                  "MultiSubjectDataset")
+    logging.debug("    Testing properties of the main MultiSubjectDataset.")
     assert isinstance(dataset, MultiSubjectDataset)
     assert dataset.volume_groups == TEST_EXPECTED_VOLUME_GROUPS
     assert dataset.streamline_groups == TEST_EXPECTED_STREAMLINE_GROUPS
@@ -57,7 +54,7 @@ def _verify_multisubject_dataset(dataset):
 
 
 def _verify_training_set(training_set):
-    logging.debug("\n====== Testing properties of the training set:\n")
+    logging.debug("    Testing properties of the training set.")
 
     assert isinstance(training_set, MultisubjectSubset)
     assert training_set.nb_subjects == TEST_EXPECTED_NB_SUBJECTS
@@ -108,9 +105,10 @@ def _verify_sft_data(sft_data, group_number):
 
 
 def _non_lazy_version(hdf5_filename):
-    logging.debug("\n\n**========= NON-LAZY =========\n\n")
+    logging.debug("*** NON-LAZY version")
+    logging.debug("   Initializing dataset")
     dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=False,
-                                  lazy=False)
+                                  lazy=False, log_level=logging.DEBUG)
     dataset.load_data()
     _verify_multisubject_dataset(dataset)
 
@@ -118,33 +116,34 @@ def _non_lazy_version(hdf5_filename):
     assert training_set.cache_size == 0
     _verify_training_set(training_set)
 
-    logging.debug("\n====== Testing properties of the SubjectDataList:\n")
+    logging.debug("    Testing properties of the SubjectDataList.")
     subj_data_list = training_set.subjs_data_list
     assert isinstance(subj_data_list, SubjectsDataList)
     _verify_data_list(subj_data_list)
 
-    logging.debug("\n====== Testing properties of a SingleSubjectDataset:\n")
+    logging.debug("    Testing properties of a SingleSubjectDataset.")
     subj0 = training_set.subjs_data_list[0]
     assert isinstance(subj0, SubjectData)
     _verify_subj_data(subj0, subj_number=0)
 
-    logging.debug("\n====== Testing properties of his first MRIData:\n")
+    logging.debug("    Testing properties of his first MRIData.")
     mri_data = subj0.mri_data_list[0]
     assert isinstance(mri_data, MRIData)
     # Non-lazy: the _data should already be loaded.
     assert isinstance(mri_data._data, np.ndarray)
     _verify_mri(mri_data, training_set, group_number=0)
 
-    logging.debug("\n====== Testing properties of his first SFTData:\n")
+    logging.debug("    Testing properties of his first SFTData.")
     sft_data = subj0.sft_data_list[0]
     assert isinstance(sft_data, SFTData)
     _verify_sft_data(sft_data, group_number=0)
 
 
 def _lazy_version(hdf5_filename):
-    logging.debug("\n\n**========= LAZY =========\n\n")
+    logging.debug("*** LAZY version")
     dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=True,
-                                  lazy=True, subset_cache_size=1)
+                                  lazy=True, subset_cache_size=1,
+                                  log_level=logging.DEBUG)
     dataset.load_data()
     _verify_multisubject_dataset(dataset)
 
@@ -152,13 +151,12 @@ def _lazy_version(hdf5_filename):
     assert training_set.cache_size == 1
     _verify_training_set(training_set)
 
-    print("\n====== Testing properties of the LAZY SubjectDataList:\n")
+    print("    Testing properties of the LAZY SubjectDataList.")
     subj_data_list = training_set.subjs_data_list
     assert isinstance(subj_data_list, LazySubjectsDataList)
     _verify_data_list(subj_data_list)
 
-    logging.debug("\n====== Testing properties of a LAZY "
-                  "SingleSubjectDataset:\n")
+    logging.debug("    Testing properties of a LAZY SingleSubjectDataset.")
 
     # Directly accessing (_getitem_) should bug: need to send a hdf_handle.
     failed = False
@@ -173,14 +171,14 @@ def _lazy_version(hdf5_filename):
     assert isinstance(subj0, LazySubjectData)
     _verify_subj_data(subj0, subj_number=0)
 
-    logging.debug("\n====== Testing properties of his first LAZY MRIData:\n")
+    logging.debug("    Testing properties of his first LAZY MRIData.")
     mri_data = subj0.mri_data_list[0]
     assert isinstance(mri_data, LazyMRIData)
     # Lazy: data should be a hdf5 group)
     assert isinstance(mri_data._data, h5py.Dataset)
     _verify_mri(mri_data, training_set, group_number=0)
 
-    logging.debug("\n====== Testing properties of his first Lazy SFTData:\n")
+    logging.debug("    Testing properties of his first Lazy SFTData.")
     sft_data = subj0.sft_data_list[0]
     assert isinstance(sft_data, LazySFTData)
     assert isinstance(sft_data.streamlines, _LazyStreamlinesGetter)

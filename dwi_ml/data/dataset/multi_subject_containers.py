@@ -290,7 +290,7 @@ class MultiSubjectDataset:
               'streamlines/lengths', 'streamlines/euclidean_lengths'.
     """
     def __init__(self, hdf5_file: str, taskman_managed: bool, lazy: bool,
-                 subset_cache_size: int = 0):
+                 subset_cache_size: int = 0, log_level=logging.root.level):
         """
         Params
         ------
@@ -317,7 +317,7 @@ class MultiSubjectDataset:
         # Prepare log to work with tqdm. Use self._log instead of logging
         # inside any tqdm loop
         self._log = logging.getLogger('for_tqdm' + str(datetime.now()))
-        self._log.setLevel(logging.root.level)
+        self._log.setLevel(log_level)
         self._log.addHandler(TqdmLoggingHandler())
         self._log.propagate = False
 

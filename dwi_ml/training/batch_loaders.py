@@ -61,6 +61,8 @@ from dwi_ml.data.processing.streamlines.data_augmentation import (
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 
+logger = logging.getLogger('batch_loader_logger')
+
 
 class AbstractBatchLoader:
     def __init__(self, dataset: MultisubjectSubset,
@@ -68,7 +70,7 @@ class AbstractBatchLoader:
                  step_size: float = None, compress: bool = False,
                  split_ratio: float = 0., noise_gaussian_size: float = 0.,
                  noise_gaussian_variability: float = 0.,
-                 reverse_ratio: float = 0.):
+                 reverse_ratio: float = 0., log_level=logging.root.level):
         """
         Parameters
         ----------
@@ -152,14 +154,16 @@ class AbstractBatchLoader:
 
         # Batch sampler's logging level can be changed separately from main
         # scripts.
-        self.logger = logging.getLogger('batch_sampler_logger')
-        self.logger.propagate = False
-        self.logger.setLevel(logging.root.level)
+        self.logger = logger
+        self.logger.setLevel(log_level)
 
     def make_logger_tqdm_fitted(self):
-        """Possibility to use a tqdm-compatible logger in case the model
-        is used through a tqdm progress bar."""
+        """
+        Possibility to use a tqdm-compatible logger in case the model is used
+        through a tqdm progress bar (in trainers).
+        """
         self.logger.addHandler(TqdmLoggingHandler())
+        self.logger.propagate = False
 
     @property
     def params(self):
@@ -204,7 +208,7 @@ class AbstractBatchLoader:
             - final_s_ids_per_subj: Dict[int, slice]
                 The new streamline ids per subj in this augmented batch.
         """
-        self.logger.debug("        Loading a batch of streamlines!")
+        self.logger.info("        Loading a batch of streamlines!")
 
         (batch_streamlines, final_s_ids_per_subj) = \
             self.streamlines_data_preparation(streamline_ids_per_subj)
@@ -248,9 +252,9 @@ class AbstractBatchLoader:
             sft = subj_sft_data.as_sft(s_ids)
 
             # Resampling streamlines to a fixed step size, if any
-            self.logger.debug("            Resampling: {}"
-                              .format(self.step_size))
             if self.step_size:
+                self.logger.debug("            Resampling: {}"
+                                  .format(self.step_size))
                 if self.dataset.step_size == self.step_size:
                     self.logger.debug("Step size is the same as when creating "
                                       "the hdf5 dataset. Not resampling "
@@ -260,9 +264,9 @@ class AbstractBatchLoader:
                         sft, step_size=self.step_size)
 
             # Compressing, if wanted.
-            self.logger.debug(
-                "            Compressing: {}".format(self.compress))
             if self.compress:
+                self.logger.debug("            Compressing: {}"
+                                  .format(self.compress))
                 sft = compress_sft(sft)
 
             # Adding noise to coordinates
@@ -342,7 +346,8 @@ class BatchLoaderOneInput(AbstractBatchLoader):
                  noise_gaussian_size: float = 0.,
                  noise_gaussian_variability: float = 0.,
                  reverse_ratio: float = 0., wait_for_gpu: bool = False,
-                 neighborhood_points: np.ndarray = None):
+                 neighborhood_points: np.ndarray = None,
+                 log_level=logging.root.level):
         """
         Additional parameters compared to super:
         --------
@@ -359,7 +364,8 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         """
         super().__init__(dataset, streamline_group_name, rng, step_size,
                          compress, split_ratio, noise_gaussian_size,
-                         noise_gaussian_variability, reverse_ratio)
+                         noise_gaussian_variability, reverse_ratio,
+                         log_level)
 
         # toDo. Would be more logical to send this as params when using
         #  load_batch as collate_fn in the Dataloader during training.

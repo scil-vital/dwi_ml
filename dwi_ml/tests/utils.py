@@ -23,7 +23,8 @@ class ModelForTest(MainModelAbstract):
 
 
 def create_test_batch_sampler(
-        subset, batch_size, batch_size_units, chunk_size=None):
+        subset, batch_size, batch_size_units, chunk_size=None,
+        log_level=logging.DEBUG):
     """
     Create a batch sampler and a batch loader for testing.
     """
@@ -31,14 +32,14 @@ def create_test_batch_sampler(
     test_default_cycles = 1
     test_default_rng = 1234
 
-    logging.debug('\nInitializing batch sampler...')
+    logging.debug('    Initializing batch sampler...')
     batch_sampler = DWIMLBatchSampler(
         subset, TEST_EXPECTED_STREAMLINE_GROUPS[0],
         batch_size=batch_size, batch_size_units=batch_size_units,
         nb_streamlines_per_chunk=chunk_size,
         rng=test_default_rng,
         nb_subjects_per_batch=test_default_nb_subjects_per_batch,
-        cycles=test_default_cycles)
+        cycles=test_default_cycles, log_level=log_level)
 
     return batch_sampler
 
@@ -48,7 +49,7 @@ def create_batch_loader(
             noise_variability=0.,
             split_ratio=0., reverse_ratio=0., wait_for_gpu=True):
 
-    logging.debug('\nInitializing batch loader...')
+    logging.debug('    Initializing batch loader...')
     batch_loader = BatchLoaderOneInput(
         subset, TEST_EXPECTED_VOLUME_GROUPS[0],
         TEST_EXPECTED_STREAMLINE_GROUPS[0], rng=1234,
@@ -56,6 +57,7 @@ def create_batch_loader(
         noise_gaussian_size=noise_size,
         noise_gaussian_variability=noise_variability,
         reverse_ratio=reverse_ratio,
-        neighborhood_points=None, wait_for_gpu=wait_for_gpu)
+        neighborhood_points=None, wait_for_gpu=wait_for_gpu,
+        log_level=logging.INFO)
 
     return batch_loader

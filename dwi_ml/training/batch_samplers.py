@@ -37,6 +37,7 @@ from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 
 DEFAULT_CHUNK_SIZE = 256
+logger = logging.getLogger('batch_sampler_logger')
 
 
 class DWIMLBatchSampler(Sampler):
@@ -44,7 +45,7 @@ class DWIMLBatchSampler(Sampler):
                  streamline_group_name: str, batch_size: int,
                  batch_size_units: str, nb_streamlines_per_chunk: int = None,
                  rng: int = None, nb_subjects_per_batch: int = None,
-                 cycles: int = None):
+                 cycles: int = None, log_level=logging.root.level):
         """
         Parameters
         ----------
@@ -131,14 +132,15 @@ class DWIMLBatchSampler(Sampler):
 
         # Batch sampler's logging level can be changed separately from main
         # scripts.
-        self.logger = logging.getLogger('batch_sampler_logger')
-        self.logger.propagate = False
-        self.logger.setLevel(logging.root.level)
+        self.logger = logger
+        self.logger.setLevel(log_level)
+        self.logger.debug('test')
 
     def make_logger_tqdm_fitted(self):
         """Possibility to use a tqdm-compatible logger in case the model
         is used through a tqdm progress bar."""
         self.logger.addHandler(TqdmLoggingHandler())
+        self.logger.propagate = False
 
     @property
     def params(self):
@@ -200,8 +202,8 @@ class DWIMLBatchSampler(Sampler):
         #   1 = this streamline has not been used yet.
         #   0 = this streamline has been used.
         global_unused_streamlines = np.ones_like(global_streamlines_ids)
-        self.logger.debug("********* Entering batch sampler iteration!\n"
-                          "          Choosing out of {} possible streamlines"
+        self.logger.debug("**** Entering batch sampler iteration! "
+                          "Choosing out of {} possible streamlines"
                           .format(sum(global_unused_streamlines)))
 
         # This will continue "yielding" batches until it encounters a break.
@@ -265,6 +267,7 @@ class DWIMLBatchSampler(Sampler):
 
                 batch_ids_per_subj = []
                 for subj in sampled_subjs:
+                    self.logger.debug("    Subj {}".format(subj))
                     sampled_ids = self._sample_streamlines_for_subj(
                         subj, ids_per_subjs, global_unused_streamlines,
                         max_batch_size_per_subj)
@@ -272,19 +275,19 @@ class DWIMLBatchSampler(Sampler):
                     # Append tuple (subj, list_sampled_ids) to the batch
                     batch_ids_per_subj.append((subj, sampled_ids))
 
-                self.logger.debug(
-                    "    Finished loop on subjects. Now yielding.\n"
-                    "    (If this was called through a dataloader, it should "
-                    "start using load_batch and even training \n"
-                    "     on this batch while we prepare a batch for the next "
-                    "cycle, if any).")
-
                 if len(batch_ids_per_subj) == 0:
                     self.logger.debug(
                         "No more streamlines remain in any of the selected "
                         "volumes! Breaking now. You may call the next "
                         "iteration of this batch sampler!")
                     break
+
+                self.logger.debug(
+                    "    Finished loop on subjects. Now yielding.")
+
+                # If this was called through a dataloader, it should start
+                # using load_batch and even training on this batch while we
+                # prepare a batch for the next cycle, if any.
 
                 yield batch_ids_per_subj
 
@@ -403,8 +406,8 @@ class DWIMLBatchSampler(Sampler):
                                                nb_streamlines_to_sample,
                                                replace=False)
 
-        self.logger.debug("This chunk: sampling {} streamlines out of the "
-                          "remaining {} streamlines for this subject."
+        self.logger.debug("        New chunk: sampling {} streamlines out of "
+                          "the remaining {} streamlines for this subject."
                           .format(nb_streamlines_to_sample,
                                   nb_streamlines_left))
 
@@ -416,22 +419,27 @@ class DWIMLBatchSampler(Sampler):
         # If batch_size has been exceeded, taking a little less streamlines
         # for this chunk.
         if subj_batch_size + tmp_computed_chunk_size >= max_subj_batch_size:
-            cumulative_sum = np.cumsum(size_per_streamline)
-            selected = cumulative_sum <= (max_subj_batch_size -
-                                          subj_batch_size)
-            chosen_global_ids = chosen_global_ids[selected]
-            size_per_streamline = size_per_streamline[selected]
             reached_max_heaviness = True
 
+            if subj_batch_size + tmp_computed_chunk_size > max_subj_batch_size:
+                self.logger.debug(
+                    "        Chunk_size was {}, but max batch size for this "
+                    "subj is {} (we already had acculumated {})."
+                    .format(tmp_computed_chunk_size, max_subj_batch_size,
+                            subj_batch_size))
+
+                cumulative_sum = np.cumsum(size_per_streamline)
+                selected = cumulative_sum <= (max_subj_batch_size -
+                                              subj_batch_size)
+                chosen_global_ids = chosen_global_ids[selected]
+                size_per_streamline = size_per_streamline[selected]
+
         computed_chunk_size = np.sum(size_per_streamline)
-        if computed_chunk_size != tmp_computed_chunk_size:
-            self.logger.debug(
-                "    Chunk_size was {} streamlines, but we already had {} and "
-                "max batch size for this subj is {}.\n Keeping only {} "
-                "streamlines for a total of {} (units = {})."
-                .format(tmp_computed_chunk_size, subj_batch_size,
-                        max_subj_batch_size, len(chosen_global_ids),
-                        computed_chunk_size, self.batch_size_units))
+        self.logger.debug(
+            "        Total: {} streamlines for a total size of {} "
+            "(units = {})."
+            .format(len(chosen_global_ids), computed_chunk_size,
+                    self.batch_size_units))
 
         # Fetch subject-relative ids
         chosen_relative_ids = list(chosen_global_ids - subj_slice.start)

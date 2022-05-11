@@ -14,7 +14,8 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
-from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
+from dwi_ml.experiment_utils.prints import (
+    make_logger_tqdm_fitted, make_logger_normal)
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_loaders import (
     AbstractBatchLoader, BatchLoaderOneInput)
@@ -26,6 +27,7 @@ from dwi_ml.training.monitoring import (
 # If the remaining time is less than one epoch + X seconds, we will quit
 # training now, to allow updating taskman_report.
 QUIT_TIME_DELAY_SECONDS = 30
+logger = logging.getLogger('train_logger')
 
 
 class DWIMLAbstractTrainer:
@@ -52,7 +54,8 @@ class DWIMLAbstractTrainer:
                  max_batches_per_epoch: int = 1000, patience: int = None,
                  nb_cpu_processes: int = 0, taskman_managed: bool = False,
                  use_gpu: bool = False, comet_workspace: str = None,
-                 comet_project: str = None, from_checkpoint: bool = False):
+                 comet_project: str = None, from_checkpoint: bool = False,
+                 log_level=logging.root.level):
         """
         Parameters
         ----------
@@ -117,6 +120,11 @@ class DWIMLAbstractTrainer:
         # Values given by the user
         # ----------------------
 
+        # Trainer's logging level can be changed separately from main
+        # scripts.
+        self.logger = logger
+        self.logger.setLevel(log_level)
+
         # Experiment
         if not os.path.isdir(experiments_path):
             raise NotADirectoryError("The experiments path does not exist! "
@@ -128,7 +136,13 @@ class DWIMLAbstractTrainer:
         if not from_checkpoint and not os.path.isdir(self.saving_path):
             logging.info('Creating directory {}'.format(self.saving_path))
             os.mkdir(self.saving_path)
+
         self.experiment_name = experiment_name
+        self.saving_path = os.path.join(self.experiment_path,
+                                        self.experiment_name)
+        if not from_checkpoint and not os.path.isdir(self.saving_path):
+            logger.info('Creating directory {}'.format(self.saving_path))
+            os.mkdir(self.saving_path)
 
         # Note that the training/validation sets are contained in the
         # data_loaders.data_source
@@ -136,9 +150,10 @@ class DWIMLAbstractTrainer:
         self.valid_batch_sampler = batch_sampler_validation
         if self.valid_batch_sampler is None:
             self.use_validation = False
-            logging.warning("WARNING! There is not validation set. Loss for "
-                            "best epoch monitoring will be the training loss. "
-                            "\n    Best practice is to have a validation set.")
+            self.logger.warning(
+                "WARNING! There is not validation set. Loss for best epoch "
+                "monitoring will be the training loss. \n"
+                "Best practice is to have a validation set.")
         else:
             self.use_validation = True
         self.train_batch_loader = batch_loader_training
@@ -160,11 +175,6 @@ class DWIMLAbstractTrainer:
         # ----------------------
         # Values fixed by us
         # ----------------------
-        self.logger = logging.getLogger('training')
-        self.logger.propagate = False
-        # Current level is set at root's level, but this can be changed at
-        # training time.
-        self.set_log_level()
 
         # Device and rng value. Note that if loading from a checkpoint, the
         # complete state should be updated.
@@ -244,46 +254,13 @@ class DWIMLAbstractTrainer:
         # Build optimizer (Optimizer is built here since it needs the model
         # parameters)
         list_params = [n for n, _ in self.model.named_parameters()]
-        logging.debug("Initiating trainer: {}".format(type(self)))
-        logging.debug("This trainer will use Adam optimization on the "
-                      "following model.parameters: \n" +
-                      "\n".join(list_params) + "\n")
+        self.logger.debug("Initiating trainer: {}".format(type(self)))
+        self.logger.debug("This trainer will use Adam optimization on the "
+                          "following model.parameters: \n\n"
+                          .join(list_params) + "\n")
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=learning_rate,
                                           weight_decay=weight_decay)
-
-    def set_log_level(self, logger_level=None):
-        """
-        Prepare log to work with tqdm. Use self.log instead of logging
-        inside any tqdm loop. Batch samplers will be used inside loops so
-        we are also setting their logs.
-        """
-        previous_level = logging.root.level
-
-        if logger_level is None:
-            logger_level = logging.root.level
-        else:
-            logger_level = logger_level.upper()
-
-        if logger_level == 'as_much_as_possible'.upper():
-            # Setting the batch sampler's and root's logging levels.
-            # We can go up to INFO, but at DEBUG level, very ugly.
-            self.train_batch_sampler.logger.setLevel('INFO')
-            if self.valid_batch_sampler:
-                self.valid_batch_sampler.logger.setLevel('INFO')
-            logging.root.setLevel('INFO')
-            self.model.logger.setLevel('INFO')
-
-            # Trainer's and model's loggers can be set to debug, it's still ok
-            self.logger.setLevel('DEBUG')
-        else:
-            self.logger.setLevel(logger_level)
-            self.model.logger.setLevel(logger_level)
-            self.train_batch_sampler.logger.setLevel(logger_level)
-            if self.valid_batch_sampler:
-                self.valid_batch_sampler.logger.setLevel(logger_level)
-
-        return previous_level
 
     @property
     def params(self) -> dict:
@@ -329,8 +306,9 @@ class DWIMLAbstractTrainer:
                 self.comet_exp.log_parameters(self.params)
                 self.comet_key = self.comet_exp.get_key()
         except ConnectionError:
-            logging.warning("Could not connect to Comet.ml, metrics will not "
-                            "be logged online...")
+            self.logger.warning(
+                "Could not connect to Comet.ml, metrics will not be logged "
+                "online...")
             self.comet_exp = None
             self.comet_key = None
 
@@ -344,15 +322,9 @@ class DWIMLAbstractTrainer:
         """
         return self.max_batches_per_epochs, self.max_batches_per_epochs
 
-    def train_and_validate(self, tqdm_logger_level=None, *args):
+    def train_and_validate(self, *args):
         """
         Train + validates the model (+ computes loss)
-
-        Params
-        ------
-        tqdm_logger_level: str
-            Logging level for the tqdm-adapted logger. If None, will use the
-            root's level.
 
         - Starts comet,
         - Creates DataLoaders from the BatchSamplers,
@@ -367,13 +339,13 @@ class DWIMLAbstractTrainer:
         All *args will be passed all the way to _train_one_epoch and
         _train_one_batch, in case you want to override them.
         """
-        logging.debug("Trainer {}: \n"
-                      "Running the model {}.\n\n"
-                      .format(type(self), type(self.model)))
+        self.logger.debug("Trainer {}: \n"
+                          "Running the model {}.\n\n"
+                          .format(type(self), type(self.model)))
 
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:
-            logging.info("Estimating batch sizes.")
+            self.logger.info("Estimating batch sizes.")
             (self.nb_train_batches_per_epoch,
              self.nb_valid_batches_per_epoch) = \
                 self.estimate_nb_batches_per_epoch()
@@ -395,7 +367,7 @@ class DWIMLAbstractTrainer:
         #     dataloader output is on GPU, ready to be fed to the model.
         #     Otherwise, dataloader output is kept on CPU, and the main thread
         #     sends volumes and coords on GPU for interpolation.
-        logging.debug("- Instantiating dataloaders...")
+        self.logger.debug("- Instantiating dataloaders...")
 
         # toDo We wouldn't need training / valid batch samplers and loaders if
         #  I knew how to add option 'training' and 'validation' to the
@@ -430,16 +402,6 @@ class DWIMLAbstractTrainer:
         # been reached.
         iter_timer = IterTimer(history_len=20)
 
-        # Improving loggers for tqdm
-        self.logger.addHandler(TqdmLoggingHandler())
-        self.model.make_logger_tqdm_fitted()
-        self.train_batch_sampler.make_logger_tqdm_fitted()
-        if self.valid_batch_sampler:
-            self.valid_batch_sampler.make_logger_tqdm_fitted()
-
-        # Modifying log level before starting parallel and tdqm work
-        previous_level = self.set_log_level(tqdm_logger_level)
-
         # Start from current_epoch in case the experiment is resuming
         # Train each epoch
         for epoch in iter_timer(range(self.current_epoch, self.max_epochs)):
@@ -447,14 +409,14 @@ class DWIMLAbstractTrainer:
             self.current_epoch = epoch
 
             # Training
-            logging.info("**********TRAINING: Epoch #{}*************"
-                         .format(epoch))
+            self.logger.info("**********TRAINING: Epoch #{}*************"
+                             .format(epoch))
             self.train_one_epoch(train_dataloader, train_context, epoch)
 
             # Validation
             if self.use_validation:
-                logging.info("**********VALIDATION: Epoch #{}*************"
-                             .format(epoch))
+                self.logger.info("**********VALIDATION: Epoch #{}*************"
+                                 .format(epoch))
                 self.validate_one_epoch(valid_dataloader, valid_context, epoch,
                                         *args)
 
@@ -479,7 +441,8 @@ class DWIMLAbstractTrainer:
             # If that is the case, the monitor has just reset its n_bad_epochs
             # to 0
             if self.best_epoch_monitoring.n_bad_epochs == 0:
-                logging.info("Best epoch yet! Saving model and loss history.")
+                self.logger.info("Best epoch yet! Saving model and loss "
+                                 "history.")
 
                 # Save model
                 self.model.update_best_model()
@@ -523,9 +486,6 @@ class DWIMLAbstractTrainer:
                 }
                 self._update_taskman_report(updates)
 
-        # Reset logger level
-        logging.root.setLevel(previous_level)
-
     def save_model(self):
         self.model.save(self.saving_path)
 
@@ -545,9 +505,16 @@ class DWIMLAbstractTrainer:
         if self.comet_exp:
             self.comet_exp.log_metric("current_epoch", self.current_epoch)
 
+        # Improving loggers for tqdm
+        make_logger_tqdm_fitted(self.logger)
+        make_logger_tqdm_fitted(self.model.logger)
+        make_logger_tqdm_fitted(self.train_batch_sampler.logger)
+        if self.valid_batch_sampler:
+            make_logger_tqdm_fitted(self.valid_batch_sampler.logger)
+
         # Training all batches
-        logging.debug("Training one epoch: iterating on batches using "
-                      "tqdm on the dataloader...")
+        self.logger.debug("Training one epoch: iterating on batches using "
+                          "tqdm on the dataloader...")
         with tqdm(train_dataloader, ncols=100, disable=self.taskman_managed,
                   total=self.nb_train_batches_per_epoch) as pbar:
             train_iterator = enumerate(pbar)
@@ -576,6 +543,13 @@ class DWIMLAbstractTrainer:
             # running validation
             del train_iterator
 
+        # Making loggers normal
+        make_logger_normal(self.logger)
+        make_logger_normal(self.model.logger)
+        make_logger_normal(self.train_batch_sampler.logger)
+        if self.valid_batch_sampler:
+            make_logger_normal(self.valid_batch_sampler.logger)
+
         # Saving epoch's information
         self.logger.info("Finishing epoch...")
         self.train_loss_monitor.end_epoch()
@@ -595,10 +569,12 @@ class DWIMLAbstractTrainer:
                     self.train_loss_monitor.epochs_means_history[-1],
                     step=epoch)
 
-        logging.info("Mean gradient norm : {}"
-                     .format(self.grad_norm_monitor.epochs_means_history[-1]))
-        logging.info("Mean training loss : {}"
-                     .format(self.train_loss_monitor.epochs_means_history[-1]))
+        self.logger.info(
+            "Mean gradient norm : {}"
+            .format(self.grad_norm_monitor.epochs_means_history[-1]))
+        self.logger.info(
+            "Mean training loss : {}"
+            .format(self.train_loss_monitor.epochs_means_history[-1]))
 
     def validate_one_epoch(self, valid_dataloader, valid_context, epoch,
                            *args):
@@ -608,7 +584,7 @@ class DWIMLAbstractTrainer:
         All *args will be passed all to run_one_batch, which you should
         implement, in case you need some variables.
         """
-        logging.debug('Unused args in validate: {}'.format(args))
+        self.logger.debug('Unused args in validate: {}'.format(args))
 
         # Make sure there are no existing HDF handles if using parallel workers
         if (self.nb_cpu_processes > 0 and
@@ -652,8 +628,9 @@ class DWIMLAbstractTrainer:
                     "loss_epoch",
                     self.valid_loss_monitor.epochs_means_history[-1],
                     step=epoch)
-        logging.info("Validation loss : {}"
-                     .format(self.valid_loss_monitor.epochs_means_history[-1]))
+        self.logger.info(
+            "Validation loss : {}"
+            .format(self.valid_loss_monitor.epochs_means_history[-1]))
 
     def _update_logs(self, batch_id, mean_loss):
         if self.taskman_managed:
@@ -713,10 +690,10 @@ class DWIMLAbstractTrainer:
         """
         Calls the forward method of the model. Reimplement in a child class if
         inputs needs to be formatted in any way before the call. Batch
-        streamlines included in case user need it for their model (ex, to
+        streamlines included in case users need it for their model (ex, to
         compute previous directions).
         """
-        model_outputs, _ = self.model(batch_inputs)
+        model_outputs = self.model(batch_inputs)
         return model_outputs
 
     def compute_loss(self, model_outputs, targets):
@@ -799,7 +776,7 @@ class DWIMLAbstractTrainer:
             current_states['grad_norm_monitor_state'])
         trainer.optimizer.load_state_dict(current_states['optimizer_state'])
 
-        logging.info("Resuming from checkpoint! Next epoch will be epoch #{}"
+        logger.info("Resuming from checkpoint! Next epoch will be epoch #{}"
                      .format(trainer.current_epoch))
 
         return trainer
@@ -808,7 +785,7 @@ class DWIMLAbstractTrainer:
         """
         Save an experiment checkpoint that can be resumed from.
         """
-        logging.info("Saving checkpoint...")
+        self.logger.info("Saving checkpoint...")
 
         # Make checkpoint directory
         checkpoint_dir = os.path.join(self.saving_path, "checkpoint")
@@ -896,7 +873,8 @@ class DWIMLAbstractTrainer:
     def _update_taskman_report(self, updates):
         self.taskman_report.update(updates)
         self.taskman_report['time'] = time.time()
-        logging.info('!taskman' + json.dumps(self.taskman_report), flush=True)
+        self.logger.info('!taskman' + json.dumps(self.taskman_report),
+                         flush=True)
 
     def _save_log_from_array(self, array: np.ndarray, fname: str):
         log_dir = os.path.join(self.saving_path, "logs")
@@ -1000,7 +978,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         with grad_context():
             if batch_loader.wait_for_gpu:
                 if not self.use_gpu:
-                    logging.warning(
+                    self.logger.warning(
                         "Batch sampler has been created with use_gpu=True, so "
                         "some computations have been skipped to allow user to "
                         "compute them later on GPU. Now in training, however, "

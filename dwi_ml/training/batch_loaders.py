@@ -52,7 +52,6 @@ from scilpy.utils.streamlines import compress_sft
 import torch
 import torch.multiprocessing
 
-from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
@@ -156,15 +155,6 @@ class AbstractBatchLoader:
         # scripts.
         self.logger = logger
         self.logger.setLevel(log_level)
-
-    def make_logger_tqdm_fitted(self):
-        """
-        Possibility to use a tqdm-compatible logger in case the model is used
-        through a tqdm progress bar (in trainers).
-        """
-        if len(self.logger.handlers) == 0:
-            self.logger.addHandler(TqdmLoggingHandler())
-            self.logger.propagate = False
 
     @property
     def params(self):

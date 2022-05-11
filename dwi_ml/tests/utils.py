@@ -1,5 +1,6 @@
 import logging
 
+import torch
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
@@ -11,15 +12,19 @@ class ModelForTest(MainModelAbstract):
     def __init__(self):
         super().__init__('test', normalize_directions=True,
                          neighborhood_type=None, neighborhood_radius=None)
+        self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, streamlines, device):
-        return 0.3
+        return self.fake_parameter
 
     def get_tracking_direction_det(self, model_outputs):
         return [[1., 1., 1.]]
 
     def sample_tracking_direction_prob(self, model_outputs):
         return [[1., 1., 1.]]
+
+    def forward(self, x):
+        pass
 
 
 def create_test_batch_sampler(
@@ -47,7 +52,8 @@ def create_test_batch_sampler(
 def create_batch_loader(
             subset, step_size=None, compress=False, noise_size=0.,
             noise_variability=0.,
-            split_ratio=0., reverse_ratio=0., wait_for_gpu=True):
+            split_ratio=0., reverse_ratio=0., wait_for_gpu=True,
+            log_level=logging.DEBUG):
 
     logging.debug('    Initializing batch loader...')
     batch_loader = BatchLoaderOneInput(
@@ -58,6 +64,6 @@ def create_batch_loader(
         noise_gaussian_variability=noise_variability,
         reverse_ratio=reverse_ratio,
         neighborhood_points=None, wait_for_gpu=wait_for_gpu,
-        log_level=logging.INFO)
+        log_level=log_level)
 
     return batch_loader

@@ -35,3 +35,18 @@ def _format_val_to_str(v, indent):
         return format_dict_to_str(v, indent)
     else:
         return v
+
+
+def make_logger_tqdm_fitted(logger):
+    """Possibility to use a tqdm-compatible logger in case the model
+    is used through a tqdm progress bar."""
+    if len(logger.handlers) == 0:
+        logger.addHandler(TqdmLoggingHandler())
+        logger.propagate = False
+
+
+def make_logger_normal(logger):
+    # toDo
+    #  I've tried a lot of things. self.logger.remove_handlers,
+    #  self.logger.handlers = [] and more. Not working.
+    pass

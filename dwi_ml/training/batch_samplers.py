@@ -33,7 +33,6 @@ import torch
 import torch.multiprocessing
 from torch.utils.data import Sampler
 
-from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 
 DEFAULT_CHUNK_SIZE = 256
@@ -134,13 +133,6 @@ class DWIMLBatchSampler(Sampler):
         # scripts.
         self.logger = logger
         self.logger.setLevel(log_level)
-
-    def make_logger_tqdm_fitted(self):
-        """Possibility to use a tqdm-compatible logger in case the model
-        is used through a tqdm progress bar."""
-        if len(self.logger.handlers) == 0:
-            self.logger.addHandler(TqdmLoggingHandler())
-            self.logger.propagate = False
 
     @property
     def params(self):

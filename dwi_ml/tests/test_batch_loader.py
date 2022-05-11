@@ -4,10 +4,7 @@ import logging
 import os
 import tempfile
 
-import nibabel as nib
 import numpy as np
-from dipy.io.stateful_tractogram import StatefulTractogram, Space, Origin
-from dipy.io.streamline import save_tractogram
 from scilpy.io.fetcher import fetch_data, get_home, get_testing_files_dict
 from torch.utils.data.dataloader import DataLoader
 

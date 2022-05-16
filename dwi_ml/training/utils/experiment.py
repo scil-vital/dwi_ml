@@ -24,10 +24,10 @@ def add_mandatory_args_training_experiment(p):
 
 def add_printing_args_training_experiment(p):
     p.add_argument(
-        '--logging', dest='logging_choice', default='warning',
-        choices=['error', 'warning', 'info', 'debug'],
+        '--logging', dest='logging_choice', default='WARNING',
+        choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
         help="Logging level. Note that, for readability, not all debug logs "
-             "are printed.")
+             "are printed in DEBUG mode.")
     p.add_argument(
         '--taskman_managed', action='store_true',
         help="If set, instead of printing progression, print taskman-relevant "

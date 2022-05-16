@@ -65,7 +65,7 @@ def init_from_args(args):
     model = ModelForTest()  # To be instantiated correctly.
 
     # Setting log level to INFO maximum for sub-loggers, else it become ugly
-    sub_loggers_level = 'DEBUG' #args.logging_choice
+    sub_loggers_level = args.logging_choice
     if args.logging_choice == 'DEBUG':
         sub_loggers_level = 'INFO'
 
@@ -84,7 +84,7 @@ def init_from_args(args):
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         trainer = DWIMLTrainerOneInput(
-            model, args.experiment_path, args.experiment_name,
+            model, args.experiments_path, args.experiment_name,
             training_batch_sampler, training_batch_loader,
             validation_batch_sampler, validation_batch_loader,
             # COMET
@@ -109,7 +109,6 @@ def main():
     args = p.parse_args()
 
     # Initialize logger
-    args.logging_choice = args.logging_choice.upper()
     logging.basicConfig(level=args.logging_choice)
 
     # Check that all files exist
@@ -119,8 +118,9 @@ def main():
     # Verify if a checkpoint has been saved. Else create an experiment.
     if path.exists(os.path.join(args.experiments_path, args.experiment_name,
                                 "checkpoint")):
-        raise FileExistsError("This experiment already exists. Delete or use "
-                              "script resume_training_from_checkpoint.py.")
+        raise FileExistsError(
+            "This experiment already exists. Delete or use script "
+            "dwiml_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args)
 

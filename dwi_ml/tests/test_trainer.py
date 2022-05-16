@@ -66,7 +66,7 @@ def _create_trainer(batch_sampler, batch_loader, model):
         batch_sampler_validation=None,
         batch_loader_training=batch_loader,
         batch_loader_validation=None,
-        model=model, experiment_path=tmp_dir.name, experiment_name='test',
+        model=model, experiments_path=tmp_dir.name, experiment_name='test',
         max_batches_per_epoch=4, max_epochs=2, patience=None,
         taskman_managed=False, use_gpu=False)
 

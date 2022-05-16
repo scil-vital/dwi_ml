@@ -265,22 +265,20 @@ class DWIMLBatchSampler(Sampler):
                         max_batch_size_per_subj)
 
                     # Append tuple (subj, list_sampled_ids) to the batch
-                    batch_ids_per_subj.append((subj, sampled_ids))
+                    if len(sampled_ids) > 0:
+                        batch_ids_per_subj.append((subj, sampled_ids))
 
                 if len(batch_ids_per_subj) == 0:
                     self.logger.debug(
                         "No more streamlines remain in any of the selected "
-                        "volumes! Breaking now. You may call the next "
+                        "subjects! Breaking now. You may call the next "
                         "iteration of this batch sampler!")
                     break
 
-                self.logger.debug(
-                    "    Finished loop on subjects. Now yielding.")
-
+                # Finished loop on subjects. Now yielding sampled ids.
                 # If this was called through a dataloader, it should start
                 # using load_batch and even training on this batch while we
                 # prepare a batch for the next cycle, if any.
-
                 yield batch_ids_per_subj
 
             # Finished cycle. Will choose new subjs if the number of iterations

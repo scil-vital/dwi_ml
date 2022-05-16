@@ -38,8 +38,7 @@ def prepare_arg_parser():
                         'number of epochs has been previously reached.')
 
     p.add_argument('--logging', dest='logging_choice',
-                   choices=['error', 'warning', 'info', 'as_much_as_possible',
-                            'debug'],
+                   choices=['error', 'warning', 'info', 'debug'],
                    help="Logging level. Error, warning, info are as usual.\n"
                         "The other options are two equivalents of 'debug' "
                         "level. \nWith 'as_much_as_possible', we print the "

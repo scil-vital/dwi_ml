@@ -199,7 +199,7 @@ class AbstractBatchLoader:
             - final_s_ids_per_subj: Dict[int, slice]
                 The new streamline ids per subj in this augmented batch.
         """
-        self.logger.info("        Loading a batch of streamlines!")
+        self.logger.debug("        Loading a batch of streamlines!")
 
         (batch_streamlines, final_s_ids_per_subj) = \
             self.streamlines_data_preparation(streamline_ids_per_subj)

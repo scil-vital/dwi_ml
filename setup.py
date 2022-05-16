@@ -10,10 +10,8 @@ import glob
 
 from setup_helpers import read_vars_from
 
-
 # Read package information
 info = read_vars_from(pjoin('dwi_ml', 'info.py'))
-
 
 this_directory = path.abspath(path.dirname(__file__))
 
@@ -44,5 +42,5 @@ setup(
     package_data={},
     data_files=[],
     entry_points={},
-    scripts=glob.glob("scripts_python/*.py")
+    scripts=glob.glob("scripts_python/*.py") + glob.glob("please_copy_and_adapt/*.py")
 )

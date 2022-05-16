@@ -138,7 +138,7 @@ class DWIMLAbstractTrainer:
             os.mkdir(self.saving_path)
 
         self.experiment_name = experiment_name
-        self.saving_path = os.path.join(self.experiment_path,
+        self.saving_path = os.path.join(self.experiments_path,
                                         self.experiment_name)
         if not from_checkpoint and not os.path.isdir(self.saving_path):
             logger.info('Creating directory {}'.format(self.saving_path))
@@ -509,8 +509,10 @@ class DWIMLAbstractTrainer:
         make_logger_tqdm_fitted(self.logger)
         make_logger_tqdm_fitted(self.model.logger)
         make_logger_tqdm_fitted(self.train_batch_sampler.logger)
+        make_logger_tqdm_fitted(self.train_batch_loader.logger)
         if self.valid_batch_sampler:
             make_logger_tqdm_fitted(self.valid_batch_sampler.logger)
+            make_logger_tqdm_fitted(self.valid_batch_loader.logger)
 
         # Training all batches
         self.logger.debug("Training one epoch: iterating on batches using "
@@ -547,8 +549,10 @@ class DWIMLAbstractTrainer:
         make_logger_normal(self.logger)
         make_logger_normal(self.model.logger)
         make_logger_normal(self.train_batch_sampler.logger)
+        make_logger_normal(self.train_batch_loader.logger)
         if self.valid_batch_sampler:
             make_logger_normal(self.valid_batch_sampler.logger)
+            make_logger_normal(self.valid_batch_loader.logger)
 
         # Saving epoch's information
         self.logger.info("Finishing epoch...")
@@ -952,7 +956,8 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  max_batches_per_epoch: int = 1000, patience: int = None,
                  nb_cpu_processes: int = 0, taskman_managed: bool = False,
                  use_gpu: bool = False, comet_workspace: str = None,
-                 comet_project: str = None, from_checkpoint: bool = False):
+                 comet_project: str = None, from_checkpoint: bool = False,
+                 log_level=logging.root.level):
         super().__init__(model, experiments_path, experiment_name,
                          batch_sampler_training, batch_loader_training,
                          batch_sampler_validation, batch_loader_validation,
@@ -960,7 +965,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                          max_batches_per_epoch, patience,
                          nb_cpu_processes, taskman_managed, use_gpu,
                          comet_workspace, comet_project,
-                         from_checkpoint)
+                         from_checkpoint, log_level)
 
     def run_one_batch(self, data, is_training: bool,
                       batch_loader: BatchLoaderOneInput):
@@ -1007,16 +1012,16 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 # to-call-zero-grad-in-pytorch
                 self.optimizer.zero_grad()
 
-            self.logger.debug('\n=== Computing forward propagation ===')
+            self.logger.debug('\n*** Computing forward propagation')
             model_outputs = self.run_model(batch_inputs, batch_streamlines)
 
             # Compute loss
-            self.logger.debug('\n=== Computing loss ===')
+            self.logger.debug('\n*** Computing loss')
             mean_loss = self.compute_loss(model_outputs, batch_streamlines)
             self.logger.info("Loss is : {}".format(mean_loss))
 
             if is_training:
-                self.logger.debug('\n=== Computing back propagation ===')
+                self.logger.debug('\n*** Computing back propagation')
 
                 # Explanation on the backward here:
                 # - Each parameter in the model have been created with the flag

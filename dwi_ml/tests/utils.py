@@ -9,9 +9,12 @@ from dwi_ml.training.batch_loaders import BatchLoaderOneInput
 
 
 class ModelForTest(MainModelAbstract):
-    def __init__(self):
-        super().__init__('test', normalize_directions=True,
-                         neighborhood_type=None, neighborhood_radius=None)
+    def __init__(self, experiment_name: str = 'test',
+                 normalize_directions: bool = True,
+                 neighborhood_type: str = None, neighborhood_radius=None,
+                 log_level=logging.root.level):
+        super().__init__(experiment_name, normalize_directions,
+                         neighborhood_type, neighborhood_radius, log_level)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, streamlines, device):

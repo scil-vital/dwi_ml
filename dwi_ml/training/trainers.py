@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from dwi_ml.training.gradient_norm import compute_gradient_norm
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
+from dwi_ml.training.utils import trainer
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
@@ -795,7 +796,6 @@ class DWIMLAbstractTrainer:
         experiment.grad_norm_monitor.set_state(
             current_states['grad_norm_monitor_state'])
         experiment.optimizer.load_state_dict(current_states['optimizer_state'])
-        experiment.model.load_state_dict(current_states['model_state'])
 
         logging.info("Resuming from checkpoint! Next epoch will be epoch #{}"
                      .format(experiment.current_epoch))
@@ -808,7 +808,7 @@ class DWIMLAbstractTrainer:
         """
         logging.info("Saving checkpoint...")
 
-        # Make model directory
+        # Make checkpoint directory
         checkpoint_dir = os.path.join(self.experiment_path, "checkpoint")
 
         # Backup old checkpoint before saving, and erase it afterwards
@@ -825,6 +825,9 @@ class DWIMLAbstractTrainer:
         checkpoint_state = self._prepare_checkpoint_state()
         torch.save(checkpoint_state,
                    os.path.join(checkpoint_dir, "checkpoint_state.pkl"))
+
+        # Save model inside the checkpoint dir
+        self.model.save(checkpoint_dir)
 
         if to_remove:
             shutil.rmtree(to_remove)
@@ -864,11 +867,10 @@ class DWIMLAbstractTrainer:
             'valid_loss_monitor_state': self.valid_loss_monitor.get_state(),
             'grad_norm_monitor_state': self.grad_norm_monitor.get_state(),
             'optimizer_state': self.optimizer.state_dict(),
-            'model_state': self.model.state_dict(),
         }
 
         # Additional params are the parameters necessary to load data, batch
-        # samplers/loaders and model (see the example script train_model.py).
+        # samplers/loaders (see the example script dwiml_train_model.py).
         # Note that the training set and validation set attributes should be
         # the same in theory. #toDo to be checked?
         checkpoint_state = {
@@ -878,7 +880,6 @@ class DWIMLAbstractTrainer:
             'valid_data_params': None,
             'train_loader_params': self.train_batch_loader.params,
             'valid_loader_params': None,
-            'model_params': self.model.params,
             'params_for_init': params_for_init,
             'current_states': current_states
         }

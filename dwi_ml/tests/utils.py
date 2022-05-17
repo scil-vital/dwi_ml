@@ -21,10 +21,10 @@ class ModelForTest(MainModelAbstract):
         return self.fake_parameter
 
     def get_tracking_direction_det(self, model_outputs):
-        return [[1., 1., 1.]]
+        return [1., 1., 1.]
 
     def sample_tracking_direction_prob(self, model_outputs):
-        return [[1., 1., 1.]]
+        return [1., 1., 1.]
 
     def forward(self, x):
         pass

@@ -130,8 +130,8 @@ def perform_checks(parser, args):
         assert_inputs_exist(parser, args.input_from_data)
 
     assert_outputs_exist(parser, args, [args.out_tractogram,
-                                        args.experiment_path,
-                                        args.experiment_path + '/model'])
+                                        args.saving_path,
+                                        args.saving_path + '/model'])
 
     verify_streamline_length_options(parser, args)
     verify_compression_th(args.compress)
@@ -156,7 +156,7 @@ def prepare_tracker(parser, args, hdf_handle, device,
         subj_data, volume_group = _prepare_data(parser, args, hdf_handle)
 
         logging.info("Loading model.")
-        model = MainModelWithPD.load(args.experiment_path + '/model')
+        model = MainModelWithPD.load(args.saving_path + '/model')
         logging.info("* Loaded params: " + format_dict_to_str(model.params) +
                      "\n")
         logging.info("* Formatted model: " +

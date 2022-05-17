@@ -38,10 +38,10 @@ class DWIMLAbstractTrainer:
         implemented in each project's child class.
 
     Comet is used to save training information, but some logs will also be
-    saved locally in the experiment_path.
+    saved locally in the saving_path.
     """
     def __init__(self,
-                 model: MainModelAbstract, experiment_path: str,
+                 model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
                  batch_sampler_training: DWIMLBatchSampler,
                  batch_loader_training: AbstractBatchLoader,
@@ -58,9 +58,9 @@ class DWIMLAbstractTrainer:
         ----------
         model: MainModelAbstract
             Instatiated class containing your model.
-        experiment_path: str
+        experiments_path: str
             Path where to save this experiment's results and checkpoints.
-            Will be saved in experiment_path/experiment_name.
+            Will be saved in experiments_path/experiment_name.
         experiment_name: str
             Name of this experiment. This will also be the name that will
             appear online for comet.ml experiment.
@@ -118,15 +118,16 @@ class DWIMLAbstractTrainer:
         # ----------------------
 
         # Experiment
-        if not os.path.isdir(experiment_path):
-            raise NotADirectoryError("The experiment path does not exist! "
-                                     "({})".format(experiment_path))
+        if not os.path.isdir(experiments_path):
+            raise NotADirectoryError("The experiments path does not exist! "
+                                     "({})".format(experiments_path))
 
-        self.experiment_path = os.path.join(experiment_path,
-                                            experiment_name)
-        if not from_checkpoint and not os.path.isdir(self.experiment_path):
-            logging.info('Creating directory {}'.format(self.experiment_path))
-            os.mkdir(self.experiment_path)
+        self.experiments_path = experiments_path
+        self.saving_path = os.path.join(experiments_path,
+                                        experiment_name)
+        if not from_checkpoint and not os.path.isdir(self.saving_path):
+            logging.info('Creating directory {}'.format(self.saving_path))
+            os.mkdir(self.saving_path)
         self.experiment_name = experiment_name
 
         # Note that the training/validation sets are contained in the
@@ -287,7 +288,7 @@ class DWIMLAbstractTrainer:
     @property
     def params(self) -> dict:
         params = {
-            'experiment_dir': self.experiment_path,
+            'experiments_path': self.experiments_path,
             'experiment_name': self.experiment_name,
             'comet_key': self.comet_key,
             'learning_rate': self.learning_rate,
@@ -482,7 +483,7 @@ class DWIMLAbstractTrainer:
 
                 # Save model
                 self.model.update_best_model()
-                self.model.save(self.experiment_path)
+                self.model.save(self.saving_path)
 
                 # Save losses (i.e. mean over all batches)
                 losses = {
@@ -492,7 +493,7 @@ class DWIMLAbstractTrainer:
                     'valid_loss':
                         self.best_epoch_monitoring.best_value if
                         self.use_validation else None}
-                with open(os.path.join(self.experiment_path, "losses.json"),
+                with open(os.path.join(self.saving_path, "losses.json"),
                           'w') as json_file:
                     json_file.write(json.dumps(losses, indent=4,
                                                separators=(',', ': ')))
@@ -526,7 +527,7 @@ class DWIMLAbstractTrainer:
         logging.root.setLevel(previous_level)
 
     def save_model(self):
-        self.model.save(self.experiment_path)
+        self.model.save(self.saving_path)
 
     def train_one_epoch(self, train_dataloader, train_context, epoch):
         """
@@ -740,7 +741,7 @@ class DWIMLAbstractTrainer:
 
     @classmethod
     def init_from_checkpoint(
-            cls, model: MainModelAbstract, experiment_path, experiment_name,
+            cls, model: MainModelAbstract, experiments_path, experiment_name,
             train_batch_sampler: DWIMLBatchSampler,
             train_batch_loader: AbstractBatchLoader,
             valid_batch_sampler: Union[DWIMLBatchSampler, None],
@@ -755,7 +756,7 @@ class DWIMLAbstractTrainer:
         Hint: If you want to use this in your child class, use:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
-        trainer = cls(model, experiment_path, experiment_name,
+        trainer = cls(model, experiments_path, experiment_name,
                       train_batch_sampler, train_batch_loader,
                       valid_batch_sampler, valid_batch_loader,
                       from_checkpoint=True,
@@ -808,12 +809,12 @@ class DWIMLAbstractTrainer:
         logging.info("Saving checkpoint...")
 
         # Make checkpoint directory
-        checkpoint_dir = os.path.join(self.experiment_path, "checkpoint")
+        checkpoint_dir = os.path.join(self.saving_path, "checkpoint")
 
         # Backup old checkpoint before saving, and erase it afterwards
         to_remove = None
         if os.path.exists(checkpoint_dir):
-            to_remove = os.path.join(self.experiment_path, "checkpoint_old")
+            to_remove = os.path.join(self.saving_path, "checkpoint_old")
             shutil.move(checkpoint_dir, to_remove)
 
         os.mkdir(checkpoint_dir)
@@ -835,8 +836,6 @@ class DWIMLAbstractTrainer:
 
         # These are the parameters necessary to use _init_
         params_for_init = {
-            'experiment_path': self.experiment_path,
-            'experiment_name': self.experiment_name,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
@@ -898,17 +897,17 @@ class DWIMLAbstractTrainer:
         logging.info('!taskman' + json.dumps(self.taskman_report), flush=True)
 
     def _save_log_from_array(self, array: np.ndarray, fname: str):
-        log_dir = os.path.join(self.experiment_path, "logs")
+        log_dir = os.path.join(self.saving_path, "logs")
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         fpath = os.path.join(log_dir, fname)
         np.save(fpath, array)
 
     @staticmethod
-    def load_params_from_checkpoint(experiment_path: str,
+    def load_params_from_checkpoint(experiments_path: str,
                                     experiment_name: str):
         total_path = os.path.join(
-            experiment_path, experiment_name, "checkpoint",
+            experiments_path, experiment_name, "checkpoint",
             "checkpoint_state.pkl")
         if not os.path.isfile(total_path):
             raise FileNotFoundError('Checkpoint was not found! ({})'
@@ -962,7 +961,7 @@ class DWIMLAbstractTrainer:
 
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     def __init__(self,
-                 model: MainModelAbstract, experiment_path: str,
+                 model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
                  batch_sampler_training: DWIMLBatchSampler,
                  batch_loader_training: AbstractBatchLoader,
@@ -974,7 +973,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  nb_cpu_processes: int = 0, taskman_managed: bool = False,
                  use_gpu: bool = False, comet_workspace: str = None,
                  comet_project: str = None, from_checkpoint: bool = False):
-        super().__init__(model, experiment_path, experiment_name,
+        super().__init__(model, experiments_path, experiment_name,
                          batch_sampler_training, batch_loader_training,
                          batch_sampler_validation, batch_loader_validation,
                          learning_rate, weight_decay, max_epochs,

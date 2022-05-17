@@ -25,7 +25,7 @@ def test_help_option(script_runner):
     assert ret.success
 
 
-def test_execution_bst(script_runner):
+def test_execution_training_tracking(script_runner):
     os.chdir(os.path.expanduser(tmp_dir.name))
 
     home = os.path.expanduser("~")
@@ -62,6 +62,8 @@ def test_execution_bst(script_runner):
         '--sm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
         '--tm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
         '--input_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[0],
-        '--hdf5_file', hdf5_file, '--subj_id', TEST_EXPECTED_SUBJ_NAMES[0])
-    # NOT READY YET. FAILS:
+        '--hdf5_file', hdf5_file, '--subj_id', TEST_EXPECTED_SUBJ_NAMES[0],
+        '--logging', 'debug')
+
+    # Not Working yet!
     # assert ret.success

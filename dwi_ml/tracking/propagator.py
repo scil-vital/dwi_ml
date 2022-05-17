@@ -250,6 +250,8 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
         self.volume_group_str = input_volume_group
 
     def _prepare_inputs_at_pos(self, pos):
+        import logging
+        logging.warning("POS: {}".format(pos))
         inputs = self.dataset.mri_data_list[self.volume_group]
 
         # torch trilinear interpolation uses origin='corner', space=vox.

@@ -2,8 +2,10 @@
 import logging
 from typing import Tuple
 
+logger = logging.getLogger('dataset_logger')
 
-def _find_groups_info_for_subj(hdf_file, subj_id: str, log):
+
+def _find_groups_info_for_subj(hdf_file, subj_id: str):
     """
     Separate subject's hdf5 groups intro volume groups or streamline groups
     based on their 'type' attrs. For volume groups, verify the nb_features
@@ -49,10 +51,10 @@ def _find_groups_info_for_subj(hdf_file, subj_id: str, log):
                 "example. Your hdf5 contained group of type {} for subj {}"
                 .format(group_type, subj_id))
 
-    log.debug("        Volume groups are: {}".format(volume_groups))
-    log.debug("        Number of features in each of these groups: {}"
-              .format(nb_features))
-    log.debug("        Streamline groups are: {}".format(streamline_groups))
+    logger.debug("        Volume groups are: {}".format(volume_groups))
+    logger.debug("        Number of features in each of these groups: {}"
+                 .format(nb_features))
+    logger.debug("        Streamline groups are: {}".format(streamline_groups))
 
     return volume_groups, nb_features, streamline_groups
 
@@ -81,7 +83,7 @@ def _compare_groups_info(volume_groups, nb_features, streamline_groups,
                         .format(s, streamline_groups))
 
 
-def prepare_groups_info(subject_id: str, log, hdf_file, group_info=None):
+def prepare_groups_info(subject_id: str, hdf_file, group_info=None):
     """
     Read the hdf5 file for this subject and get the groups information
     (volume and streamlines groups names, number of features for volumes).
@@ -90,7 +92,7 @@ def prepare_groups_info(subject_id: str, log, hdf_file, group_info=None):
     expected information.
     """
     volume_groups, nb_features, streamline_groups = \
-        _find_groups_info_for_subj(hdf_file, subject_id, log)
+        _find_groups_info_for_subj(hdf_file, subject_id)
 
     if group_info is not None:
         _compare_groups_info(volume_groups, nb_features, streamline_groups,

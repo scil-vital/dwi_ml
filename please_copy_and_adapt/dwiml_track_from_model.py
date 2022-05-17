@@ -141,8 +141,8 @@ def perform_checks(parser, args):
 def prepare_tracker(parser, args, hdf_handle, device,
                     min_nbr_pts, max_nbr_pts, max_invalid_dirs,
                     mmap_mode):
-    with Timer("\n\nPreparing everything...",
-               newline=True, color='cyan'):
+    with Timer("\n\nLoading data and preparing tracker...",
+               newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
         seed_generator, nbr_seeds = _prepare_seed_generator(parser, args,
                                                             hdf_handle, device)
@@ -239,8 +239,7 @@ def _prepare_data(parser, args, hdf_handle):
             parser.error("Subject id must be given to retrieve data from "
                          "hdf5.")
         subj_data = SubjectData.init_from_hdf(
-            args.subj_id, logging.getLogger(), hdf_handle,
-            group_info=None)
+            args.subj_id, hdf_handle, group_info=None)
         volume_group = args.input_from_hdf5
     else:
         volume_img = nib.load(args.input)

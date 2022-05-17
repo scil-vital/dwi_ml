@@ -44,6 +44,7 @@ def test_execution_training_tracking(script_runner):
                             input_group_name, streamline_group_name,
                             '--max_epochs', '1', '--batch_size', '5',
                             '--batch_size_units', 'nb_streamlines',
+                            '--max_batches_per_epoch', '5',
                             '--logging', 'INFO')
     assert ret.success
 

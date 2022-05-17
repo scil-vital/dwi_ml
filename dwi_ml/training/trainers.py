@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import time
+from typing import Union
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import contextlib2
@@ -11,7 +12,6 @@ import numpy as np
 import torch
 from dwi_ml.training.gradient_norm import compute_gradient_norm
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
-from dwi_ml.training.utils import trainer
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
@@ -121,15 +121,12 @@ class DWIMLAbstractTrainer:
         if not os.path.isdir(experiment_path):
             raise NotADirectoryError("The experiment path does not exist! "
                                      "({})".format(experiment_path))
-        if from_checkpoint:
-            self.experiment_path = experiment_path
-        else:
-            self.experiment_path = os.path.join(experiment_path,
-                                                experiment_name)
-            if not os.path.isdir(self.experiment_path):
-                logging.info('Creating directory {}'
-                             .format(self.experiment_path))
-                os.mkdir(self.experiment_path)
+
+        self.experiment_path = os.path.join(experiment_path,
+                                            experiment_name)
+        if not from_checkpoint and not os.path.isdir(self.experiment_path):
+            logging.info('Creating directory {}'.format(self.experiment_path))
+            os.mkdir(self.experiment_path)
         self.experiment_name = experiment_name
 
         # Note that the training/validation sets are contained in the
@@ -743,11 +740,12 @@ class DWIMLAbstractTrainer:
 
     @classmethod
     def init_from_checkpoint(
-            cls, train_batch_sampler: DWIMLBatchSampler,
-            valid_batch_sampler: DWIMLBatchSampler,
+            cls, model: MainModelAbstract, experiment_path, experiment_name,
+            train_batch_sampler: DWIMLBatchSampler,
             train_batch_loader: AbstractBatchLoader,
-            valid_batch_loader: AbstractBatchLoader,
-            model: MainModelAbstract, checkpoint_state: dict, new_patience,
+            valid_batch_sampler: Union[DWIMLBatchSampler, None],
+            valid_batch_loader: Union[AbstractBatchLoader, None],
+            checkpoint_state: dict, new_patience,
             new_max_epochs):
         """
         During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
@@ -757,50 +755,51 @@ class DWIMLAbstractTrainer:
         Hint: If you want to use this in your child class, use:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
-        experiment = cls(train_batch_sampler, valid_batch_sampler,
-                         train_batch_loader, valid_batch_loader,
-                         model, from_checkpoint=True,
-                         **checkpoint_state['params_for_init'])
+        trainer = cls(model, experiment_path, experiment_name,
+                      train_batch_sampler, train_batch_loader,
+                      valid_batch_sampler, valid_batch_loader,
+                      from_checkpoint=True,
+                      **checkpoint_state['params_for_init'])
 
         current_states = checkpoint_state['current_states']
 
         # Overriding values
         if new_patience:
-            experiment.patience = new_patience
+            trainer.patience = new_patience
         if new_max_epochs:
-            experiment.max_epochs = new_max_epochs
+            trainer.max_epochs = new_max_epochs
 
         # Set RNG states
         torch.set_rng_state(current_states['torch_rng_state'])
-        experiment.train_batch_sampler.np_rng.set_state(
+        trainer.train_batch_sampler.np_rng.set_state(
             current_states['numpy_rng_state'])
-        if experiment.use_validation:
-            experiment.valid_batch_sampler.np_rng.set_state(
+        if trainer.use_validation:
+            trainer.valid_batch_sampler.np_rng.set_state(
                 current_states['numpy_rng_state'])
-        if experiment.use_gpu:
+        if trainer.use_gpu:
             torch.cuda.set_rng_state(current_states['torch_cuda_state'])
 
         # Set other objects
-        experiment.comet_key = current_states['comet_key']
-        experiment.current_epoch = current_states['current_epoch'] + 1
-        experiment.nb_train_batches_per_epoch = \
+        trainer.comet_key = current_states['comet_key']
+        trainer.current_epoch = current_states['current_epoch'] + 1
+        trainer.nb_train_batches_per_epoch = \
             current_states['nb_train_batches_per_epoch']
-        experiment.nb_valid_batches_per_epoch = \
+        trainer.nb_valid_batches_per_epoch = \
             current_states['nb_valid_batches_per_epoch']
-        experiment.best_epoch_monitoring.set_state(
+        trainer.best_epoch_monitoring.set_state(
             current_states['best_epoch_monitoring_state'])
-        experiment.train_loss_monitor.set_state(
+        trainer.train_loss_monitor.set_state(
             current_states['train_loss_monitor_state'])
-        experiment.valid_loss_monitor.set_state(
+        trainer.valid_loss_monitor.set_state(
             current_states['valid_loss_monitor_state'])
-        experiment.grad_norm_monitor.set_state(
+        trainer.grad_norm_monitor.set_state(
             current_states['grad_norm_monitor_state'])
-        experiment.optimizer.load_state_dict(current_states['optimizer_state'])
+        trainer.optimizer.load_state_dict(current_states['optimizer_state'])
 
         logging.info("Resuming from checkpoint! Next epoch will be epoch #{}"
-                     .format(experiment.current_epoch))
+                     .format(trainer.current_epoch))
 
-        return experiment
+        return trainer
 
     def save_checkpoint(self):
         """

@@ -7,6 +7,7 @@ from os import path
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.trainers import DWIMLAbstractTrainer
 from dwi_ml.training.utils.batch_loaders import \
     prepare_batchloadersoneinput_train_valid
@@ -65,9 +66,10 @@ def init_from_checkpoint(args):
     # toDo Verify that valid dataset is the same.
     #  checkpoint_state['valid_data_params']
 
-    # Prepare model
-    args_model = argparse.Namespace(**checkpoint_state['model_params'])
-    model = prepare_model(args_model)
+    # Load model from checkpoint directory
+    model = MainModelAbstract.load(os.path.join(args.experiment_path,
+                                                args.experiment_name,
+                                                'checkpoint/model'))
 
     # Prepare batch samplers
     args_ts = argparse.Namespace(**checkpoint_state['train_sampler_params'])
@@ -86,9 +88,10 @@ def init_from_checkpoint(args):
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         trainer = DWIMLAbstractTrainer.init_from_checkpoint(
-            training_batch_sampler, validation_batch_sampler,
-            training_batch_loader, validation_batch_loader,
-            model, checkpoint_state, args.new_patience, args.new_max_epochs)
+            model, args.experiment_path, args.experiment_name,
+            training_batch_sampler, training_batch_loader,
+            validation_batch_sampler, validation_batch_loader,
+            checkpoint_state, args.new_patience, args.new_max_epochs)
     return trainer
 
 

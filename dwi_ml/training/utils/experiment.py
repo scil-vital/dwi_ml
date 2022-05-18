@@ -3,9 +3,9 @@
 
 def add_mandatory_args_training_experiment(p):
     p.add_argument(
-        'experiment_path',
+        'experiments_path',
         help='Path where to save your experiment. \nComplete path will be '
-             'experiment_path/experiment_name.')
+             'experiments_path/experiment_name.')
     p.add_argument(
         'experiment_name',
         help='If given, name for the experiment. Else, model will decide the '

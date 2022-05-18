@@ -140,6 +140,7 @@ class MainModelAbstract(torch.nn.Module):
 
         model = cls(**params)
         model.load_state_dict(best_model_state)  # using torch's method
+        model.update_best_model()
         model.eval()
 
         return model

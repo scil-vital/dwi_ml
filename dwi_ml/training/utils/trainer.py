@@ -51,7 +51,7 @@ def prepare_trainer(training_batch_sampler, validation_batch_sampler,
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         trainer = DWIMLAbstractTrainer(
-            model, args.experiment_path, args.experiment_name,
+            model, args.saving_path, args.experiment_name,
             training_batch_sampler, training_batch_loader,
             validation_batch_sampler, validation_batch_loader,
             # COMET
@@ -82,7 +82,7 @@ def run_experiment(trainer, logging_choice):
 
     logging.info("Script terminated successfully. \n"
                  "Saved experiment in folder : {}"
-                 .format(trainer.experiment_path))
+                 .format(trainer.saving_path))
     print("Summary: ran {} epochs. Best loss was {} at epoch #{}"
           .format(trainer.current_epoch + 1,
                   trainer.best_epoch_monitoring.best_value,

@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import time
+from typing import Union
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import contextlib2
@@ -37,10 +38,10 @@ class DWIMLAbstractTrainer:
         implemented in each project's child class.
 
     Comet is used to save training information, but some logs will also be
-    saved locally in the experiment_path.
+    saved locally in the saving_path.
     """
     def __init__(self,
-                 model: MainModelAbstract, experiment_path: str,
+                 model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
                  batch_sampler_training: DWIMLBatchSampler,
                  batch_loader_training: AbstractBatchLoader,
@@ -57,9 +58,9 @@ class DWIMLAbstractTrainer:
         ----------
         model: MainModelAbstract
             Instatiated class containing your model.
-        experiment_path: str
+        experiments_path: str
             Path where to save this experiment's results and checkpoints.
-            Will be saved in experiment_path/experiment_name.
+            Will be saved in experiments_path/experiment_name.
         experiment_name: str
             Name of this experiment. This will also be the name that will
             appear online for comet.ml experiment.
@@ -117,18 +118,16 @@ class DWIMLAbstractTrainer:
         # ----------------------
 
         # Experiment
-        if not os.path.isdir(experiment_path):
-            raise NotADirectoryError("The experiment path does not exist! "
-                                     "({})".format(experiment_path))
-        if from_checkpoint:
-            self.experiment_path = experiment_path
-        else:
-            self.experiment_path = os.path.join(experiment_path,
-                                                experiment_name)
-            if not os.path.isdir(self.experiment_path):
-                logging.info('Creating directory {}'
-                             .format(self.experiment_path))
-                os.mkdir(self.experiment_path)
+        if not os.path.isdir(experiments_path):
+            raise NotADirectoryError("The experiments path does not exist! "
+                                     "({})".format(experiments_path))
+
+        self.experiments_path = experiments_path
+        self.saving_path = os.path.join(experiments_path,
+                                        experiment_name)
+        if not from_checkpoint and not os.path.isdir(self.saving_path):
+            logging.info('Creating directory {}'.format(self.saving_path))
+            os.mkdir(self.saving_path)
         self.experiment_name = experiment_name
 
         # Note that the training/validation sets are contained in the
@@ -289,7 +288,7 @@ class DWIMLAbstractTrainer:
     @property
     def params(self) -> dict:
         params = {
-            'experiment_dir': self.experiment_path,
+            'experiments_path': self.experiments_path,
             'experiment_name': self.experiment_name,
             'comet_key': self.comet_key,
             'learning_rate': self.learning_rate,
@@ -484,7 +483,7 @@ class DWIMLAbstractTrainer:
 
                 # Save model
                 self.model.update_best_model()
-                self.model.save(self.experiment_path)
+                self.model.save(self.saving_path)
 
                 # Save losses (i.e. mean over all batches)
                 losses = {
@@ -494,7 +493,7 @@ class DWIMLAbstractTrainer:
                     'valid_loss':
                         self.best_epoch_monitoring.best_value if
                         self.use_validation else None}
-                with open(os.path.join(self.experiment_path, "losses.json"),
+                with open(os.path.join(self.saving_path, "losses.json"),
                           'w') as json_file:
                     json_file.write(json.dumps(losses, indent=4,
                                                separators=(',', ': ')))
@@ -528,7 +527,7 @@ class DWIMLAbstractTrainer:
         logging.root.setLevel(previous_level)
 
     def save_model(self):
-        self.model.save(self.experiment_path)
+        self.model.save(self.saving_path)
 
     def train_one_epoch(self, train_dataloader, train_context, epoch):
         """
@@ -742,11 +741,12 @@ class DWIMLAbstractTrainer:
 
     @classmethod
     def init_from_checkpoint(
-            cls, train_batch_sampler: DWIMLBatchSampler,
-            valid_batch_sampler: DWIMLBatchSampler,
+            cls, model: MainModelAbstract, experiments_path, experiment_name,
+            train_batch_sampler: DWIMLBatchSampler,
             train_batch_loader: AbstractBatchLoader,
-            valid_batch_loader: AbstractBatchLoader,
-            model: MainModelAbstract, checkpoint_state: dict, new_patience,
+            valid_batch_sampler: Union[DWIMLBatchSampler, None],
+            valid_batch_loader: Union[AbstractBatchLoader, None],
+            checkpoint_state: dict, new_patience,
             new_max_epochs):
         """
         During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
@@ -756,51 +756,51 @@ class DWIMLAbstractTrainer:
         Hint: If you want to use this in your child class, use:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
-        experiment = cls(train_batch_sampler, valid_batch_sampler,
-                         train_batch_loader, valid_batch_loader,
-                         model, from_checkpoint=True,
-                         **checkpoint_state['params_for_init'])
+        trainer = cls(model, experiments_path, experiment_name,
+                      train_batch_sampler, train_batch_loader,
+                      valid_batch_sampler, valid_batch_loader,
+                      from_checkpoint=True,
+                      **checkpoint_state['params_for_init'])
 
         current_states = checkpoint_state['current_states']
 
         # Overriding values
         if new_patience:
-            experiment.patience = new_patience
+            trainer.patience = new_patience
         if new_max_epochs:
-            experiment.max_epochs = new_max_epochs
+            trainer.max_epochs = new_max_epochs
 
         # Set RNG states
         torch.set_rng_state(current_states['torch_rng_state'])
-        experiment.train_batch_sampler.np_rng.set_state(
+        trainer.train_batch_sampler.np_rng.set_state(
             current_states['numpy_rng_state'])
-        if experiment.use_validation:
-            experiment.valid_batch_sampler.np_rng.set_state(
+        if trainer.use_validation:
+            trainer.valid_batch_sampler.np_rng.set_state(
                 current_states['numpy_rng_state'])
-        if experiment.use_gpu:
+        if trainer.use_gpu:
             torch.cuda.set_rng_state(current_states['torch_cuda_state'])
 
         # Set other objects
-        experiment.comet_key = current_states['comet_key']
-        experiment.current_epoch = current_states['current_epoch'] + 1
-        experiment.nb_train_batches_per_epoch = \
+        trainer.comet_key = current_states['comet_key']
+        trainer.current_epoch = current_states['current_epoch'] + 1
+        trainer.nb_train_batches_per_epoch = \
             current_states['nb_train_batches_per_epoch']
-        experiment.nb_valid_batches_per_epoch = \
+        trainer.nb_valid_batches_per_epoch = \
             current_states['nb_valid_batches_per_epoch']
-        experiment.best_epoch_monitoring.set_state(
+        trainer.best_epoch_monitoring.set_state(
             current_states['best_epoch_monitoring_state'])
-        experiment.train_loss_monitor.set_state(
+        trainer.train_loss_monitor.set_state(
             current_states['train_loss_monitor_state'])
-        experiment.valid_loss_monitor.set_state(
+        trainer.valid_loss_monitor.set_state(
             current_states['valid_loss_monitor_state'])
-        experiment.grad_norm_monitor.set_state(
+        trainer.grad_norm_monitor.set_state(
             current_states['grad_norm_monitor_state'])
-        experiment.optimizer.load_state_dict(current_states['optimizer_state'])
-        experiment.model.load_state_dict(current_states['model_state'])
+        trainer.optimizer.load_state_dict(current_states['optimizer_state'])
 
         logging.info("Resuming from checkpoint! Next epoch will be epoch #{}"
-                     .format(experiment.current_epoch))
+                     .format(trainer.current_epoch))
 
-        return experiment
+        return trainer
 
     def save_checkpoint(self):
         """
@@ -808,13 +808,13 @@ class DWIMLAbstractTrainer:
         """
         logging.info("Saving checkpoint...")
 
-        # Make model directory
-        checkpoint_dir = os.path.join(self.experiment_path, "checkpoint")
+        # Make checkpoint directory
+        checkpoint_dir = os.path.join(self.saving_path, "checkpoint")
 
         # Backup old checkpoint before saving, and erase it afterwards
         to_remove = None
         if os.path.exists(checkpoint_dir):
-            to_remove = os.path.join(self.experiment_path, "checkpoint_old")
+            to_remove = os.path.join(self.saving_path, "checkpoint_old")
             shutil.move(checkpoint_dir, to_remove)
 
         os.mkdir(checkpoint_dir)
@@ -826,6 +826,9 @@ class DWIMLAbstractTrainer:
         torch.save(checkpoint_state,
                    os.path.join(checkpoint_dir, "checkpoint_state.pkl"))
 
+        # Save model inside the checkpoint dir
+        self.model.save(checkpoint_dir)
+
         if to_remove:
             shutil.rmtree(to_remove)
 
@@ -833,8 +836,6 @@ class DWIMLAbstractTrainer:
 
         # These are the parameters necessary to use _init_
         params_for_init = {
-            'experiment_path': self.experiment_path,
-            'experiment_name': self.experiment_name,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
@@ -864,11 +865,10 @@ class DWIMLAbstractTrainer:
             'valid_loss_monitor_state': self.valid_loss_monitor.get_state(),
             'grad_norm_monitor_state': self.grad_norm_monitor.get_state(),
             'optimizer_state': self.optimizer.state_dict(),
-            'model_state': self.model.state_dict(),
         }
 
         # Additional params are the parameters necessary to load data, batch
-        # samplers/loaders and model (see the example script train_model.py).
+        # samplers/loaders (see the example script dwiml_train_model.py).
         # Note that the training set and validation set attributes should be
         # the same in theory. #toDo to be checked?
         checkpoint_state = {
@@ -878,7 +878,6 @@ class DWIMLAbstractTrainer:
             'valid_data_params': None,
             'train_loader_params': self.train_batch_loader.params,
             'valid_loader_params': None,
-            'model_params': self.model.params,
             'params_for_init': params_for_init,
             'current_states': current_states
         }
@@ -898,17 +897,17 @@ class DWIMLAbstractTrainer:
         logging.info('!taskman' + json.dumps(self.taskman_report), flush=True)
 
     def _save_log_from_array(self, array: np.ndarray, fname: str):
-        log_dir = os.path.join(self.experiment_path, "logs")
+        log_dir = os.path.join(self.saving_path, "logs")
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         fpath = os.path.join(log_dir, fname)
         np.save(fpath, array)
 
     @staticmethod
-    def load_params_from_checkpoint(experiment_path: str,
+    def load_params_from_checkpoint(experiments_path: str,
                                     experiment_name: str):
         total_path = os.path.join(
-            experiment_path, experiment_name, "checkpoint",
+            experiments_path, experiment_name, "checkpoint",
             "checkpoint_state.pkl")
         if not os.path.isfile(total_path):
             raise FileNotFoundError('Checkpoint was not found! ({})'
@@ -962,7 +961,7 @@ class DWIMLAbstractTrainer:
 
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     def __init__(self,
-                 model: MainModelAbstract, experiment_path: str,
+                 model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
                  batch_sampler_training: DWIMLBatchSampler,
                  batch_loader_training: AbstractBatchLoader,
@@ -974,7 +973,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  nb_cpu_processes: int = 0, taskman_managed: bool = False,
                  use_gpu: bool = False, comet_workspace: str = None,
                  comet_project: str = None, from_checkpoint: bool = False):
-        super().__init__(model, experiment_path, experiment_name,
+        super().__init__(model, experiments_path, experiment_name,
                          batch_sampler_training, batch_loader_training,
                          batch_sampler_validation, batch_loader_validation,
                          learning_rate, weight_decay, max_epochs,

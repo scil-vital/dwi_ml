@@ -7,6 +7,7 @@ from os import path
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.trainers import DWIMLAbstractTrainer
 from dwi_ml.training.utils.batch_loaders import \
     prepare_batchloadersoneinput_train_valid
@@ -18,9 +19,10 @@ from dwi_ml.training.utils.trainer import run_experiment
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument('experiment_path', default='./', metavar='p',
-                   help='Path where to save your experiment. \nComplete path '
-                        'will be experiment_path/experiment_name. Default: ./')
+    p.add_argument('experiments_path', metavar='p',
+                   help='Path from where to load your experiment, and where to'
+                        'save new results.\nComplete path will be '
+                        'experiments_path/experiment_name.')
     p.add_argument('experiment_name', metavar='n',
                    help='If given, name for the experiment. Else, model will '
                         'decide the name to \ngive based on time of day.')
@@ -53,7 +55,7 @@ def init_from_checkpoint(args):
 
     # Loading checkpoint
     checkpoint_state = DWIMLAbstractTrainer.load_params_from_checkpoint(
-        args.experiment_path, args.experiment_name)
+        args.saving_path, args.experiment_name)
 
     # Stop now if early stopping was triggered.
     DWIMLAbstractTrainer.check_stopping_cause(
@@ -65,9 +67,10 @@ def init_from_checkpoint(args):
     # toDo Verify that valid dataset is the same.
     #  checkpoint_state['valid_data_params']
 
-    # Prepare model
-    args_model = argparse.Namespace(**checkpoint_state['model_params'])
-    model = prepare_model(args_model)
+    # Load model from checkpoint directory
+    model = MainModelAbstract.load(os.path.join(args.saving_path,
+                                                args.experiment_name,
+                                                'checkpoint/model'))
 
     # Prepare batch samplers
     args_ts = argparse.Namespace(**checkpoint_state['train_sampler_params'])
@@ -86,9 +89,10 @@ def init_from_checkpoint(args):
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         trainer = DWIMLAbstractTrainer.init_from_checkpoint(
-            training_batch_sampler, validation_batch_sampler,
-            training_batch_loader, validation_batch_loader,
-            model, checkpoint_state, args.new_patience, args.new_max_epochs)
+            model, args.saving_path, args.experiment_name,
+            training_batch_sampler, training_batch_loader,
+            validation_batch_sampler, validation_batch_loader,
+            checkpoint_state, args.new_patience, args.new_max_epochs)
     return trainer
 
 
@@ -105,8 +109,8 @@ def main():
     logging.basicConfig(level=logging_level)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
-    if not path.exists(os.path.join(args.experiment_path, args.experiment_name,
-                                    "checkpoint")):
+    if not path.exists(os.path.join(args.experiments_path,
+                                    args.experiment_name, "checkpoint")):
         raise FileNotFoundError("Experiment not found.")
 
     trainer = init_from_checkpoint(args)

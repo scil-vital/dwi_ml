@@ -154,7 +154,7 @@ def prepare_tracker(parser, args, hdf_handle, device,
         subj_data, volume_group = _prepare_data(parser, args, hdf_handle)
 
         logging.info("Loading model.")
-        model =  ModelForTest.load(args.experiment_path + '/model')
+        model = ModelForTest.load(args.experiment_path + '/model')
         logging.info("* Loaded params: " + format_dict_to_str(model.params) +
                      "\n")
 

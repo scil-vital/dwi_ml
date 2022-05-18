@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 import logging
 import os
-import tempfile
 
 import h5py
 import numpy as np
@@ -24,9 +23,7 @@ from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_MRI_SHAPE, TEST_EXPECTED_NB_SUBJECTS,
     TEST_EXPECTED_NB_FEATURES)
 
-
 # fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
-# tmp_dir = tempfile.TemporaryDirectory()
 
 
 def test_multisubjectdataset():

@@ -6,7 +6,7 @@ import tempfile
 
 from scilpy.io.fetcher import fetch_data, get_home, get_testing_files_dict
 
-#fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
+# fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
 from dwi_ml.tests.expected_values import TEST_EXPECTED_VOLUME_GROUPS, \
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_SUBJ_NAMES
 

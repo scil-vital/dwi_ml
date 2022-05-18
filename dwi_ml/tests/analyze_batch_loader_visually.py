@@ -9,10 +9,8 @@ import numpy as np
 from dipy.io.stateful_tractogram import StatefulTractogram, Space, Origin
 from dipy.io.streamline import save_tractogram
 from scilpy.io.fetcher import fetch_data, get_home, get_testing_files_dict
-from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.tests.expected_values import TEST_EXPECTED_NB_STREAMLINES
 from dwi_ml.tests.utils import create_test_batch_sampler, create_batch_loader
 
 # fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])

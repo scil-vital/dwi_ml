@@ -53,10 +53,9 @@ def create_test_batch_sampler(
 
 
 def create_batch_loader(
-            subset, step_size=None, compress=False, noise_size=0.,
-            noise_variability=0.,
-            split_ratio=0., reverse_ratio=0., wait_for_gpu=True,
-            log_level=logging.DEBUG):
+        subset, step_size=None, compress=False, noise_size=0.,
+        noise_variability=0., split_ratio=0., reverse_ratio=0.,
+        wait_for_gpu=True, log_level=logging.DEBUG):
 
     logging.debug('    Initializing batch loader...')
     batch_loader = BatchLoaderOneInput(

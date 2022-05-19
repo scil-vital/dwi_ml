@@ -1,11 +1,26 @@
 import logging
+import os
 
 import torch
+from scilpy.io.fetcher import fetch_data, get_home
+
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchSampler
 from dwi_ml.training.batch_loaders import BatchLoaderOneInput
+
+
+def fetch_testing_data():
+    name_as_dict = {
+        'data_for_tests_dwi_ml.zip':
+            ['1beRWAorhaINCncttgwqVAP2rNOfx842Q',
+             '593f0a7dd5bc0007360eb971e456ccbc']}
+    fetch_data(name_as_dict)
+    home = get_home()
+    testing_data_dir = os.path.join(home, 'data_for_tests_dwi_ml')
+
+    return testing_data_dir
 
 
 class ModelForTest(MainModelAbstract):

@@ -6,7 +6,6 @@ import os
 import h5py
 import numpy as np
 import torch
-from scilpy.io.fetcher import fetch_data, get_home, get_testing_files_dict
 
 from dwi_ml.data.dataset.multi_subject_containers import \
     MultiSubjectDataset, MultisubjectSubset
@@ -22,8 +21,9 @@ from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_NB_STREAMLINES,
     TEST_EXPECTED_MRI_SHAPE, TEST_EXPECTED_NB_SUBJECTS,
     TEST_EXPECTED_NB_FEATURES)
+from dwi_ml.tests.utils import fetch_testing_data
 
-# fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
+data_dir = fetch_testing_data()
 
 
 def test_multisubjectdataset():
@@ -32,10 +32,7 @@ def test_multisubjectdataset():
 
     logging.debug("Unit test: previous dirs")
 
-    # hdf5_filename = os.path.join(get_home(), 'dwiml', 'hdf5_file.hdf5')
-    home = os.path.expanduser("~")
-    hdf5_filename = os.path.join(
-        home, 'Bureau/data_for_tests_dwi_ml/hdf5_file.hdf5')
+    hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
     _non_lazy_version(hdf5_filename)
     logging.debug('\n\n')

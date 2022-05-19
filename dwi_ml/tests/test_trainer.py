@@ -5,10 +5,10 @@ import tempfile
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
-from dwi_ml.tests.utils import ModelForTest, create_test_batch_sampler, \
-    create_batch_loader
+from dwi_ml.tests.utils import (ModelForTest, create_test_batch_sampler,
+                                create_batch_loader, fetch_testing_data)
 
-# fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
+data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
 
 logging.basicConfig(level=logging.DEBUG)
@@ -23,11 +23,7 @@ def test_trainer():
                   "Unit test: Trainer\n"
                   "------------------------")
 
-    # os.chdir(os.path.expanduser(tmp_dir.name))
-    # hdf5_filename = os.path.join(get_home(), 'dwiml', 'hdf5_file.hdf5')
-    home = os.path.expanduser("~")
-    hdf5_filename = os.path.join(
-        home, 'Bureau/data_for_tests_dwi_ml/hdf5_file.hdf5')
+    hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
     # Initializing dataset
     dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=False,

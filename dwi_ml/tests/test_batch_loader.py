@@ -5,14 +5,14 @@ import os
 import tempfile
 
 import numpy as np
-from scilpy.io.fetcher import fetch_data, get_home, get_testing_files_dict
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.tests.expected_values import TEST_EXPECTED_NB_STREAMLINES
-from dwi_ml.tests.utils import create_test_batch_sampler, create_batch_loader
+from dwi_ml.tests.utils import (
+    create_test_batch_sampler, create_batch_loader, fetch_testing_data)
 
-# fetch_data(get_testing_files_dict(), keys=['dwiml.zip'])
+data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
 
 logging.basicConfig(level=logging.INFO)
@@ -29,12 +29,7 @@ wait_for_gpu = False  # Testing both True and False is heavier...
 
 def test_batch_loader():
     logging.info("Unit test: batch sampler iteration")
-
-    # os.chdir(os.path.expanduser(tmp_dir.name))
-    # hdf5_filename = os.path.join(get_home(), 'dwiml', 'hdf5_file.hdf5')
-    home = os.path.expanduser("~")
-    hdf5_filename = os.path.join(
-        home, 'Bureau/data_for_tests_dwi_ml/hdf5_file.hdf5')
+    hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
     for lazy in [False, True]:
         # Initialize dataset

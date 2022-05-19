@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import logging
+
 import numpy as np
 import torch
 
@@ -121,8 +123,11 @@ class DWIMLPropagator(AbstractPropagator):
         pass
 
     def propagate(self, pos, v_in):
+        logging.debug("  Propagation step at pos {}".format(pos))
         new_pos, new_dir, is_direction_valid = super().propagate(pos, v_in)
+        logging.debug("  Coordinates are now {}".format(new_pos))
 
+        logging.debug("  Updating model's internal state")
         self._update_state_after_propagation_step(new_pos, new_dir)
 
         return new_pos, new_dir, is_direction_valid
@@ -158,6 +163,7 @@ class DWIMLPropagator(AbstractPropagator):
         """
 
         # Tracking field returns the model_outputs
+        logging.debug("    Running model at pos {}".format(pos))
         model_outputs = self._get_model_outputs_at_pos(pos)
 
         # Sampling a direction from this information.
@@ -168,6 +174,8 @@ class DWIMLPropagator(AbstractPropagator):
 
         # Normalizing
         next_dir /= np.linalg.norm(next_dir)
+        logging.debug("    Next direction will be {}, if angle is within "
+                      "accepted range.".format(next_dir))
 
         # Verify curvature, else return None.
         # toDo could we find a better solution for proba tracking? Resampling

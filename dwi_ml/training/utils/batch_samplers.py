@@ -24,12 +24,11 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
         help="'nb_streamlines' or 'length_mm' (which should hopefully be "
              "correlated to the number of input data points).")
     g_batch_size.add_argument(
-        '--nb_streamlines_per_chunk', type=int, default=256, metavar='s',
+        '--nb_streamlines_per_chunk', type=int, default=None, metavar='s',
         help="In the case of a batch size in terms of 'length_mm', chunks of "
              "n streamlines are sampled at once,\n and then their size is "
              "checked, either removing streamlines if exceeded, or else "
-             "sampling a new chunk of ids.\n Default: 256, for no good "
-             "reason.")
+             "sampling a new chunk of ids.\n Default: None")
     g_batch_size.add_argument(
         '--nb_subjects_per_batch', type=int, metavar='n',
         help="Maximum number of different subjects from which to load data in "
@@ -44,16 +43,17 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
              "volumes).")
 
 
-def prepare_batchsamplers_train_valid(dataset, args_training, args_validation):
+def prepare_batchsamplers_train_valid(dataset, args_training, args_validation,
+                                      log_level):
     with Timer("\nPreparing batch samplers...", newline=True, color='green'):
         logging.info("Training batch sampler...")
         training_batch_sampler = _prepare_batchsampler(
-            dataset.training_set, args_training)
+            dataset.training_set, args_training, log_level)
 
         if dataset.validation_set.nb_subjects > 0:
             logging.info("Validation batch sampler...")
             validation_batch_sampler = _prepare_batchsampler(
-                dataset.validation_set, args_validation)
+                dataset.validation_set, args_validation, log_level)
 
         else:
             validation_batch_sampler = None
@@ -61,7 +61,7 @@ def prepare_batchsamplers_train_valid(dataset, args_training, args_validation):
     return training_batch_sampler, validation_batch_sampler
 
 
-def _prepare_batchsampler(subset, args):
+def _prepare_batchsampler(subset, args, log_level):
     batch_sampler = DWIMLBatchSampler(
         subset, streamline_group_name=args.streamline_group_name,
         # BATCH SIZE
@@ -69,7 +69,7 @@ def _prepare_batchsampler(subset, args):
         nb_streamlines_per_chunk=args.nb_streamlines_per_chunk,
         nb_subjects_per_batch=args.nb_subjects_per_batch, cycles=args.cycles,
         # other
-        rng=args.rng)
+        rng=args.rng, log_level=log_level)
 
     logging.info("\nSampler user-defined parameters: \n" +
                  format_dict_to_str(batch_sampler.params))

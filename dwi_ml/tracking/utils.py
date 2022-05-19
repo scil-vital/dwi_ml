@@ -17,19 +17,7 @@ def add_mandatory_options_tracking(p):
                    help="Tracking algorithm (det or prob). Must be "
                         "implemented in the chosen model.")
 
-    l_g = p.add_argument_group('Loading params')
-    l_g.add_argument('--subj_id', metavar='ID',
-                     help="Prefix to add to the out_tractogram name.\n"
-                          " + \n"
-                          "For data loaded through hdf5, the subject id "
-                          "to use for \ntractography.")
-    l_g.add_argument('--hdf5_file', metavar='f',
-                     help="hdf5 file path."
-                          "- Necessary for any file loaded through the hdf5.\n"
-                          "- Not used for volume loaded directly from data.")
-
-    sm_g = p.add_argument_group('Loading params: seeding mask: '
-                                'One value must be chosen.')
+    sm_g = p.add_argument_group('Loading params: seeding mask: CHOOSE ONE')
     seeding_mask = sm_g.add_mutually_exclusive_group()
     seeding_mask.add_argument('--sm_from_hdf5', metavar='group',
                               help="Seeding mask's volume group in the hdf5.\n"
@@ -38,8 +26,7 @@ def add_mandatory_options_tracking(p):
     seeding_mask.add_argument('--sm_from_data', metavar='file',
                               help="Seeding mask's volume.")
 
-    tm_g = p.add_argument_group('Loading params: tracking mask: '
-                                'One value must be chosen.')
+    tm_g = p.add_argument_group('Loading params: tracking mask: CHOOSE ONE')
     tracking_mask = tm_g.add_mutually_exclusive_group()
     tracking_mask.add_argument('--tm_from_hdf5', metavar='group',
                                help="Tracking mask's volume group in the hdf5."
@@ -48,8 +35,7 @@ def add_mandatory_options_tracking(p):
     tracking_mask.add_argument('--tm_from_data', metavar='file',
                                help="Tracking mask's volume.")
 
-    i_g = p.add_argument_group('Loading params: input:'
-                               'One value must be chosen.')
+    i_g = p.add_argument_group('Loading params: input: CHOOSE ONE')
     inputs = i_g.add_mutually_exclusive_group()
     inputs.add_argument('--input_from_hdf5', metavar='group',
                         help="Model's input's volume group in the hdf5.\n"
@@ -57,6 +43,16 @@ def add_mandatory_options_tracking(p):
                              "when creating the hdf5.")
     inputs.add_argument('--input_from_data', metavar='file',
                         help="Model's input's volume name.")
+
+    l_g = p.add_argument_group('Loading params')
+    l_g.add_argument('--subj_id', metavar='ID',
+                     help="For data loaded through hdf5, the subject id "
+                          "to use for tractography.\n"
+                          "For data loaded directly, prefix to add to the "
+                          "out_tractogram name.")
+    l_g.add_argument('--hdf5_file', metavar='f',
+                     help="hdf5 file path, in case any option above uses data "
+                          "loaded from a hdf5 file.")
 
 
 def add_tracking_options(p):

@@ -7,8 +7,9 @@ from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 def add_direction_getter_args(p):
     # For the direction getters
     dg_g = p.add_argument_group("Direction getter:")
-    dg_g.add_argument(
+    p.add_argument(
         '--dg_key', choices=keys_to_direction_getters.keys(),
+        default='cosine-regression',
         help="Model for the direction getter layer.")
     dg_g.add_argument(
         '--dg_dropout', type=float,

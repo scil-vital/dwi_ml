@@ -5,9 +5,7 @@
 This script allows tracking from a trained Learn2track model.
 
 See scilpy's scil_compute_local_tracking and scil_compute_local_tracking_2
-for references. However, this version does not use deterministic nor
-probabilistic tracking per say. Propagation (choosing the next direction)
-depends on the output of the model.
+for references.
 """
 import argparse
 import logging
@@ -42,12 +40,12 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
 # PLEASE COPY AND ADAPT:
 ##################
 # Use your own model.
-from dwi_ml.models.main_models import MainModelWithPD
+from dwi_ml.tests.utils import ModelForTest
 
 # Choose appropriate classes or implement your own child classes.
 # Example:
 from dwi_ml.tracking.tracker import DWIMLTracker
-from dwi_ml.tracking.propagator import DWIMLPropagatorOneInputAndPD
+from dwi_ml.tracking.propagator import DWIMLPropagatorOneInput
 
 
 def build_argparser():
@@ -143,8 +141,8 @@ def perform_checks(parser, args):
 def prepare_tracker(parser, args, hdf_handle, device,
                     min_nbr_pts, max_nbr_pts, max_invalid_dirs,
                     mmap_mode):
-    with Timer("\n\nPreparing everything...",
-               newline=True, color='cyan'):
+    with Timer("\n\nLoading data and preparing tracker...",
+               newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
         seed_generator, nbr_seeds = _prepare_seed_generator(parser, args,
                                                             hdf_handle, device)
@@ -156,15 +154,13 @@ def prepare_tracker(parser, args, hdf_handle, device,
         subj_data, volume_group = _prepare_data(parser, args, hdf_handle)
 
         logging.info("Loading model.")
-        model = MainModelWithPD.load(args.saving_path + '/model')
+        model = ModelForTest.load(args.experiment_path + '/model')
         logging.info("* Loaded params: " + format_dict_to_str(model.params) +
                      "\n")
-        logging.info("* Formatted model: " +
-                     format_dict_to_str(model.params_per_layer))
 
         logging.debug("Instantiating propagator.")
         theta = gm.math.radians(args.theta)
-        propagator = DWIMLPropagatorOneInputAndPD(
+        propagator = DWIMLPropagatorOneInput(
             subj_data, model, volume_group, model.neighborhood_points,
             args.step_size, args.rk_order, args.algo, theta, device)
 
@@ -243,8 +239,7 @@ def _prepare_data(parser, args, hdf_handle):
             parser.error("Subject id must be given to retrieve data from "
                          "hdf5.")
         subj_data = SubjectData.init_from_hdf(
-            args.subj_id, logging.getLogger(), hdf_handle,
-            group_info=None)
+            args.subj_id, hdf_handle, group_info=None)
         volume_group = args.input_from_hdf5
     else:
         volume_img = nib.load(args.input)

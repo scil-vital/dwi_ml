@@ -9,9 +9,9 @@ from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, compute_and_normalize_directions
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 
-from dwi_ml.experiment_utils.prints import TqdmLoggingHandler, \
-    format_dict_to_str
+logger = logging.getLogger('model_logger')
 
 
 class MainModelAbstract(torch.nn.Module):
@@ -22,7 +22,8 @@ class MainModelAbstract(torch.nn.Module):
     It should also define a forward() method.
     """
     def __init__(self, experiment_name: str, normalize_directions: bool = True,
-                 neighborhood_type: str = None, neighborhood_radius=None):
+                 neighborhood_type: str = None, neighborhood_radius=None,
+                 log_level=logging.root.level):
         """
         Params
         ------
@@ -46,10 +47,10 @@ class MainModelAbstract(torch.nn.Module):
         self.experiment_name = experiment_name
         self.best_model_state = None
 
-        # Model's logging level can be changed separately from main scripts.
-        self.logger = logging.getLogger('model_logger')
-        self.logger.propagate = False
-        self.logger.setLevel(logging.root.level)
+        # Trainer's logging level can be changed separately from main
+        # scripts.
+        self.logger = logger
+        self.logger.setLevel(log_level)
 
         # Following information is actually dealt with by the data_loaders
         # (batch sampler during training and tracking_field during tracking)
@@ -65,14 +66,6 @@ class MainModelAbstract(torch.nn.Module):
             neighborhood_type, neighborhood_radius)
 
         self.device = None
-
-    def set_logger_level(self, level):
-        self.logger.setLevel(level)
-
-    def make_logger_tqdm_fitted(self):
-        """Possibility to use a tqdm-compatible logger in case the model
-        is used through a tqdm progress bar."""
-        self.logger.addHandler(TqdmLoggingHandler())
 
     @property
     def params(self):

@@ -4,7 +4,9 @@ from typing import List, Union
 
 from dwi_ml.data.dataset.mri_data_containers import LazyMRIData, MRIData
 from dwi_ml.data.dataset.streamline_containers import LazySFTData, SFTData
-from dwi_ml.data.dataset.checks import prepare_groups_info
+from dwi_ml.data.dataset.checks_for_groups import prepare_groups_info
+
+logger = logging.getLogger('dataset_logger')
 
 
 class SubjectDataAbstract(object):
@@ -46,7 +48,7 @@ class SubjectDataAbstract(object):
         raise NotImplementedError
 
     @classmethod
-    def init_from_hdf(cls, subject_id: str, log, hdf_file, group_info=None):
+    def init_from_hdf(cls, subject_id: str, hdf_file, group_info=None):
         """Returns an instance of this class, initiated by sending only the
         hdf handle. The child class's method will define how to load the
         data based on the child data management."""
@@ -86,22 +88,18 @@ class SubjectData(SubjectDataAbstract):
         return self._sft_data_list
 
     @classmethod
-    def init_from_hdf(cls, subject_id: str, log, hdf_file, group_info=None):
+    def init_from_hdf(cls, subject_id: str, hdf_file, group_info=None):
         """
         Instantiating a single subject data: load info and use __init__
-
-        When looping on all subjects in the multi_subject_container, we use
-        tqdm progress bar, which does not work well with basic logger. Using
-        compatible logger "log".
         """
         volume_groups, nb_features, streamline_groups = prepare_groups_info(
-            subject_id, log, hdf_file, group_info)
+            subject_id, hdf_file, group_info)
 
         subject_mri_data_list = []
         subject_sft_data_list = []
 
         for group in volume_groups:
-            log.debug('        Loading volume group "{}": '.format(group))
+            logger.debug('        Loading volume group "{}": '.format(group))
             # Creating a SubjectMRIData or a LazySubjectMRIData based on
             # lazy or non-lazy version.
             subject_mri_group_data = MRIData.init_from_hdf_info(
@@ -109,7 +107,7 @@ class SubjectData(SubjectDataAbstract):
             subject_mri_data_list.append(subject_mri_group_data)
 
         for group in streamline_groups:
-            log.debug("        Loading subject's streamlines")
+            logger.debug("        Loading subject's streamlines")
             sft_data = SFTData.init_from_hdf_info(hdf_file[subject_id][group])
             subject_sft_data_list.append(sft_data)
 
@@ -141,7 +139,7 @@ class LazySubjectData(SubjectDataAbstract):
         self.hdf_handle = hdf_handle
 
     @classmethod
-    def init_from_hdf(cls, subject_id: str, log, hdf_file, group_info=None):
+    def init_from_hdf(cls, subject_id: str, hdf_file, group_info=None):
         """
         Instantiating a single subject data: NOT LOADING info and use __init__
         (so in short: this does basically nothing, the lazy data is kept
@@ -151,9 +149,6 @@ class LazySubjectData(SubjectDataAbstract):
         ----------
         subject_id: str
             Name of the subject
-        log: logging.Logger
-            Logger. Useful to use tqdm-compatible logger if instantiating
-            subjects in a tqdm loop.
         hdf_file: h5py.File
             hdf handle.
         group_info: Tuple(str, int, str)
@@ -161,9 +156,9 @@ class LazySubjectData(SubjectDataAbstract):
             for this subject.
         """
         volume_groups, nb_features, streamline_groups = prepare_groups_info(
-            subject_id, log, hdf_file, group_info)
+            subject_id, hdf_file, group_info)
 
-        log.debug('     Lazy: not loading data.')
+        logger.debug('     Lazy: not loading data.')
 
         return cls(volume_groups, nb_features, streamline_groups, subject_id,
                    hdf_handle=None)

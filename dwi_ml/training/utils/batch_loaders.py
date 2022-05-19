@@ -58,16 +58,17 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
              "Default: 0.")
 
 
-def prepare_batchloadersoneinput_train_valid(dataset, args_t, args_v):
+def prepare_batchloadersoneinput_train_valid(dataset, args_t, args_v,
+                                             log_level):
     with Timer("\nPreparing batch loaders...", newline=True, color='pink'):
         logging.info("Training batch loader...")
         training_batch_loader = _prepare_batchloader(
-            dataset.training_set, args_t)
+            dataset.training_set, args_t, log_level)
 
         if dataset.validation_set.nb_subjects > 0:
             logging.info("Validation batch loader...")
             validation_batch_loader = _prepare_batchloader(
-                dataset.validation_set, args_v)
+                dataset.validation_set, args_v, log_level)
 
         else:
             validation_batch_loader = None
@@ -75,7 +76,7 @@ def prepare_batchloadersoneinput_train_valid(dataset, args_t, args_v):
     return training_batch_loader, validation_batch_loader
 
 
-def _prepare_batchloader(subset, args):
+def _prepare_batchloader(subset, args, log_level):
     if args.step_size and args.step_size <= 0:
         raise ValueError("Step size can't be 0 or less!")
         # Note. When using
@@ -104,7 +105,8 @@ def _prepare_batchloader(subset, args):
         reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
         # NEIGHBORHOOD
         neighborhood_points=args.neighborhood_points,
-        rng=args.rng, wait_for_gpu=args.wait_for_gpu)
+        # OTHER
+        rng=args.rng, wait_for_gpu=args.wait_for_gpu, log_level=log_level)
 
     logging.info(
         "\nLoader user-defined parameters: \n" +

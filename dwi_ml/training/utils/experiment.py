@@ -24,14 +24,10 @@ def add_mandatory_args_training_experiment(p):
 
 def add_printing_args_training_experiment(p):
     p.add_argument(
-        '--logging', dest='logging_choice',
-        choices=['error', 'warning', 'info', 'as_much_as_possible', 'debug'],
-        help="Logging level. Error, warning, info are as usual.\n The other "
-             "options are two equivalents of 'debug' level. \nWith "
-             "'as_much_as_possible', we print the debug level only when the "
-             "final \nresult is still readable (even during parallel training "
-             "and during tqdm \nloop). 'debug' prints everything always, even "
-             "if ugly.")
+        '--logging', dest='logging_choice', default='WARNING',
+        choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
+        help="Logging level. Note that, for readability, not all debug logs "
+             "are printed in DEBUG mode.")
     p.add_argument(
         '--taskman_managed', action='store_true',
         help="If set, instead of printing progression, print taskman-relevant "

@@ -49,6 +49,7 @@ class DWIMLAbstractTrainer:
                  batch_loader_training: AbstractBatchLoader,
                  batch_sampler_validation: DWIMLBatchSampler = None,
                  batch_loader_validation: AbstractBatchLoader = None,
+                 model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
                  max_batches_per_epoch: int = 1000, patience: int = None,
@@ -78,6 +79,9 @@ class DWIMLAbstractTrainer:
             validation is used. Then, best model is based on training loss.
         batch_loader_validation: AbstractBatchLoader
             Again, similar as before but can be set to None.
+        model_uses_streamlines: bool
+            If true, the batch streamlines will be sent to the model when
+            calling the forward method. Else, only the inputs. Default: False.
         learning_rate: float
             Learning rate. Default: 0.001 (torch's default)
         weight_decay: float
@@ -159,6 +163,7 @@ class DWIMLAbstractTrainer:
         self.train_batch_loader = batch_loader_training
         self.valid_batch_loader = batch_loader_validation
         self.model = model
+        self.model_uses_streamlines = model_uses_streamlines
 
         self.max_epochs = max_epochs
         self.max_batches_per_epochs = max_batches_per_epoch
@@ -268,6 +273,7 @@ class DWIMLAbstractTrainer:
             'experiments_path': self.experiments_path,
             'experiment_name': self.experiment_name,
             'comet_key': self.comet_key,
+            'model_uses_streamlines': self.model_uses_streamlines,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
             'nb_cpu_processes': self.nb_cpu_processes,
@@ -690,16 +696,6 @@ class DWIMLAbstractTrainer:
         """
         raise NotImplementedError
 
-    def run_model(self, batch_inputs, batch_streamlines):
-        """
-        Calls the forward method of the model. Reimplement in a child class if
-        inputs needs to be formatted in any way before the call. Batch
-        streamlines included in case users need it for their model (ex, to
-        compute previous directions).
-        """
-        model_outputs = self.model(batch_inputs)
-        return model_outputs
-
     def compute_loss(self, model_outputs, targets):
         """
         Calls the compute_loss method of the model. Reimplement in a child
@@ -781,7 +777,7 @@ class DWIMLAbstractTrainer:
         trainer.optimizer.load_state_dict(current_states['optimizer_state'])
 
         logger.info("Resuming from checkpoint! Next epoch will be epoch #{}"
-                     .format(trainer.current_epoch))
+                    .format(trainer.current_epoch))
 
         return trainer
 
@@ -951,6 +947,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  batch_loader_training: BatchLoaderOneInput,
                  batch_sampler_validation: DWIMLBatchSampler = None,
                  batch_loader_validation: BatchLoaderOneInput = None,
+                 model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
                  max_batches_per_epoch: int = 1000, patience: int = None,
@@ -961,6 +958,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         super().__init__(model, experiments_path, experiment_name,
                          batch_sampler_training, batch_loader_training,
                          batch_sampler_validation, batch_loader_validation,
+                         model_uses_streamlines,
                          learning_rate, weight_decay, max_epochs,
                          max_batches_per_epoch, patience,
                          nb_cpu_processes, taskman_managed, use_gpu,
@@ -1013,7 +1011,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 self.optimizer.zero_grad()
 
             self.logger.debug('\n*** Computing forward propagation')
-            model_outputs = self.run_model(batch_inputs, batch_streamlines)
+            if self.model_uses_streamlines:
+                model_outputs = self.model(batch_inputs, batch_streamlines)
+            else:
+                model_outputs = self.model(batch_inputs)
 
             # Compute loss
             self.logger.debug('\n*** Computing loss')

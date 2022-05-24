@@ -31,7 +31,7 @@ class DWIMLPropagator(AbstractPropagator):
     """
     def __init__(self, dataset: SubjectDataAbstract, model: MainModelAbstract,
                  step_size: float, rk_order: int, algo: str, theta: float,
-                 device=None):
+                 model_uses_streamlines: bool = False, device=None):
         """
         Parameters
         ----------
@@ -47,6 +47,9 @@ class DWIMLPropagator(AbstractPropagator):
         theta: float
             Maximum angle (radians) allowed between two steps during sampling
             of the next direction.
+        model_uses_streamlines: bool
+            If true, the current line in kept in memory to be added as
+            additional input.
         """
         super().__init__(dataset, step_size, rk_order)
 
@@ -61,6 +64,12 @@ class DWIMLPropagator(AbstractPropagator):
         self.device = device
         if device is not None:
             self.move_to(device)
+
+        self.model_uses_streamlines = model_uses_streamlines
+        if self.model_uses_streamlines:
+            # Add a line parameter. The model uses the streamline, so we need
+            # to keep track of it as additional input.
+            self.line = []
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -101,10 +110,29 @@ class DWIMLPropagator(AbstractPropagator):
         to deal with in memory during streamline generation (ex, memory of the
         previous directions).
         """
-        pass
+        if self.model_uses_streamlines:
+            # Reset line before starting a new streamline.
+            self.line = []
 
     def prepare_backward(self, line, forward_dir):
-        # Prepare last dir.
+        """
+        Before running the backward tracking, we may need to reset the
+        internal state of the model.
+
+        Parameters
+        ----------
+        line: List
+            Result from the forward tracking, reversed.
+        forward_dir: ndarray (3,)
+            v_in chosen at the forward step.
+
+        Returns
+        -------
+        v_in: ndarray (3,)
+            Last direction of the streamline. If the streamline contains
+            only the seeding point (forward tracking failed), simply inverse
+            the forward direction.
+        """
         self._reverse_memory_state(line)
 
         # Note. In our case, compared to scilpy, forward dir is None. So if the
@@ -112,15 +140,25 @@ class DWIMLPropagator(AbstractPropagator):
         # backward again with v_in=None. So basically, we will recompute
         # exactly the same model outputs as for the forward. But maybe the
         # sampling will create a new direction.
-        return super().prepare_backward(line, forward_dir)
+        v_in = super().prepare_backward(line, forward_dir)
+
+        # v_in is in double format (np.float64) but it looks like we need
+        # float32.
+        # toDo From testing with Learn2track. Always true?
+        if v_in is not None:
+            return v_in.astype(np.float32)
+        return v_in
 
     def _reverse_memory_state(self, line):
         """
         Prepare memory state for the backward pass. Anything your model needs
         to deal with in memory during streamline generation (ex, memory of the
         previous directions).
+
+        Line: Already reversed line (streamline from the forward tracking).
         """
-        pass
+        if self.model_uses_streamlines:
+            self.line = line
 
     def propagate(self, pos, v_in):
         logging.debug("  Propagation step at pos {}".format(pos))
@@ -138,7 +176,8 @@ class DWIMLPropagator(AbstractPropagator):
         needs to deal with in memory during streamline generation (ex, memory
         of the previous directions).
         """
-        pass
+        if self.model_uses_streamlines:
+            self.line.append(list(new_dir))
 
     def _sample_next_direction(self, pos, v_in):
         """
@@ -196,7 +235,11 @@ class DWIMLPropagator(AbstractPropagator):
             Current position coordinates.
         """
         inputs = self._prepare_inputs_at_pos(pos)
-        model_outputs = self.model.forward(*inputs)
+        if self.model_uses_streamlines:
+            # Sending line's last 2 points, to compute one direction.
+            model_outputs = self.model.forward(inputs, self.line[-2:-1])
+        else:
+            model_outputs = self.model.forward(inputs)
 
         return model_outputs
 
@@ -238,7 +281,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     def __init__(self, dataset: SubjectDataAbstract, model: MainModelAbstract,
                  input_volume_group: str, neighborhood_points: np.ndarray,
                  step_size: float, rk_order: int, algo: str, theta: float,
-                 device=None):
+                 model_uses_streamlines: bool, device=None):
         """
         Additional params compared to super:
         ------------------------------------
@@ -248,7 +291,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             The list of neighborhood points (does not contain 0,0,0 point)
         """
         super().__init__(dataset, model, step_size, rk_order, algo, theta,
-                         device)
+                         model_uses_streamlines, device)
 
         # Find group index in the data
         self.volume_group = dataset.volume_groups.index(input_volume_group)
@@ -275,66 +318,8 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
 
         # Return inputs as a tuple containing all inputs. The comma is
         # important.
-        return subj_x_data,
+        return subj_x_data
 
     def is_voxmm_in_bound(self, pos, origin):
         mri_data = self.dataset.mri_data_list[self.volume_group]
         return mri_data.as_data_volume.is_voxmm_in_bound(*pos, origin)
-
-
-class DWIMLPropagatorOneInputAndPD(DWIMLPropagatorOneInput):
-    def __init__(self, dataset: SubjectDataAbstract, model: MainModelAbstract,
-                 input_volume_group: str, neighborhood_points: np.ndarray,
-                 step_size: float, rk_order: int, algo: str, theta: float,
-                 device=None):
-        super().__init__(dataset, model, input_volume_group,
-                         neighborhood_points, step_size, rk_order, algo, theta,
-                         device)
-
-        # Will contain the list of all previous dirs. The model should know how
-        # many previous dirs to use. A bit heavier in memory, but necessary
-        # for when starting the backward tracking.
-        # Else, we could keep only n previous dirs, and in start_backward,
-        # recompute them from the first_half_of_streamline, and in
-        # add_timepoint_to_memory,
-        self.all_previous_dirs = []
-
-    def _reset_memory_state(self):
-        # Reset state before starting a new streamline.
-        self.all_previous_dirs = []
-
-    def prepare_backward(self, line, forward_dir):
-        v_in = super().prepare_backward(line, forward_dir)
-
-        # v_in is in double format (np.float64) but it looks like we need
-        # float32. From testing with Learn2track. Always true?
-        if v_in is not None:
-            return v_in.astype(np.float32)
-        return v_in
-
-    def _reverse_memory_state(self, line):
-        # Inverting streamline in memory
-        tmp_dirs = self.all_previous_dirs.copy()
-        tmp_dirs.reverse()
-
-        # Inverting directions
-        self.all_previous_dirs = [[-d[0], -d[1], -d[2]] for d in tmp_dirs]
-
-    def _update_state_after_propagation_step(self, new_pos, new_dir):
-        """
-        Update memory state between propagation steps. Anything your model
-        needs to deal with in memory during streamline generation (ex, memory
-        of the previous directions).
-        """
-        self.all_previous_dirs.append(list(new_dir))
-
-    def _prepare_inputs_at_pos(self, pos):
-        main_inputs, = super()._prepare_inputs_at_pos(pos)
-
-        # Getting the previous dirs for the last point only (current tracking
-        # point) = -1
-        previous_dirs = self.model.format_previous_dirs(
-            [torch.tensor(self.all_previous_dirs).to(self.device)],
-            self.device, point_idx=-1)
-
-        return main_inputs, previous_dirs

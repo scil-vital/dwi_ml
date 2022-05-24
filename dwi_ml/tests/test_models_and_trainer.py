@@ -6,7 +6,8 @@ import tempfile
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.tests.utils import (ModelForTest, create_test_batch_sampler,
-                                create_batch_loader, fetch_testing_data)
+                                create_batch_loader, fetch_testing_data,
+                                ModelForTestWithPD)
 
 data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
@@ -18,7 +19,7 @@ batch_size = 500
 batch_size_units = 'nb_streamlines'
 
 
-def test_trainer():
+def test_trainer_and_models():
     logging.debug("\n"
                   "Unit test: Trainer\n"
                   "------------------------")
@@ -33,12 +34,21 @@ def test_trainer():
     # Initializing batch sampler
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset)
 
-    # Initializing model
+    # Initializing model 1
     model = ModelForTest()
 
     # Start tests
-    trainer = _create_trainer(batch_sampler, batch_loader, model)
+    trainer = _create_trainer(batch_sampler, batch_loader, model,
+                              model_uses_streamlines=False)
     trainer.train_and_validate()
+
+    # Initializing model 2
+    model2 = ModelForTestWithPD()
+
+    # Start tests
+    trainer2 = _create_trainer(batch_sampler, batch_loader, model2,
+                               model_uses_streamlines=True)
+    trainer2.train_and_validate()
 
 
 def _create_sampler_and_loader(dataset):
@@ -56,13 +66,15 @@ def _create_sampler_and_loader(dataset):
     return batch_sampler, batch_loader
 
 
-def _create_trainer(batch_sampler, batch_loader, model):
+def _create_trainer(batch_sampler, batch_loader, model,
+                    model_uses_streamlines):
     trainer = DWIMLTrainerOneInput(
         batch_sampler_training=batch_sampler,
         batch_sampler_validation=None,
         batch_loader_training=batch_loader,
         batch_loader_validation=None,
         model=model, experiments_path=tmp_dir.name, experiment_name='test',
+        model_uses_streamlines=model_uses_streamlines,
         max_batches_per_epoch=4, max_epochs=2, patience=None,
         taskman_managed=False, use_gpu=False)
 

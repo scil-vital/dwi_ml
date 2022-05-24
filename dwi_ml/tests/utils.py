@@ -4,7 +4,7 @@ import os
 import torch
 from scilpy.io.fetcher import fetch_data, get_home
 
-from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.models.main_models import MainModelAbstract, MainModelWithPD
 from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchSampler
@@ -43,6 +43,34 @@ class ModelForTest(MainModelAbstract):
 
     def forward(self, x):
         pass
+
+
+class ModelForTestWithPD(MainModelWithPD):
+    def __init__(self, experiment_name: str = 'test',
+                 nb_previous_dirs: int = 0,
+                 prev_dirs_embedding_size: int = 7,
+                 prev_dirs_embedding_key: str = 'no_embedding',
+                 normalize_directions: bool = True,
+                 neighborhood_type: str = None, neighborhood_radius=None,
+                 log_level=logging.root.level):
+        super().__init__(experiment_name, nb_previous_dirs,
+                         prev_dirs_embedding_size,
+                         prev_dirs_embedding_key,
+                         normalize_directions,
+                         neighborhood_type, neighborhood_radius, log_level)
+        self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
+
+    def compute_loss(self, model_outputs, streamlines, device):
+        return self.fake_parameter
+
+    def get_tracking_direction_det(self, model_outputs):
+        return [1., 1., 1.]
+
+    def sample_tracking_direction_prob(self, model_outputs):
+        return [1., 1., 1.]
+
+    def forward(self, x, streamlines):
+        self.run_prev_dirs_embedding_layer(streamlines)
 
 
 def create_test_batch_sampler(

@@ -196,7 +196,8 @@ class MainModelWithPD(MainModelAbstract):
                  prev_dirs_embedding_size: int = None,
                  prev_dirs_embedding_key: str = None,
                  normalize_directions: bool = True,
-                 neighborhood_type: str = None, neighborhood_radius=None):
+                 neighborhood_type: str = None, neighborhood_radius=None,
+                 log_level=logging.root.level):
         """
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
@@ -211,7 +212,8 @@ class MainModelWithPD(MainModelAbstract):
             Default: None (no previous directions added).
         """
         super().__init__(experiment_name, normalize_directions,
-                         neighborhood_type, neighborhood_radius)
+                         neighborhood_type, neighborhood_radius,
+                         log_level)
 
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
@@ -252,7 +254,7 @@ class MainModelWithPD(MainModelAbstract):
         # Then compute loss based on model.
         raise NotImplementedError
 
-    def run_prev_dirs_embedding_layer(self, n_prev_dirs, device=None,
+    def run_prev_dirs_embedding_layer(self, streamlines, device=None,
                                       unpack_results: bool = True):
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
@@ -273,33 +275,45 @@ class MainModelWithPD(MainModelAbstract):
             to concatenate this embedding to your input's packed sequence's
             embedding.
         """
-        if self.prev_dirs_embedding is not None:
-            is_list = isinstance(n_prev_dirs, list)
-            if is_list:
-                n_prev_dirs_packed = pack_sequence(n_prev_dirs,
-                                                   enforce_sorted=False)
-
-                # Using Packed_sequence's tensor.
-                n_prev_dirs = n_prev_dirs_packed.data
-                n_prev_dirs.to(device)
-
-            n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
-
-            if is_list and unpack_results:
-                # Packing back to unpack correctly
-                batch_sizes = n_prev_dirs_packed.batch_sizes
-                sorted_indices = n_prev_dirs_packed.sorted_indices
-                unsorted_indices = n_prev_dirs_packed.unsorted_indices
-                n_prev_dirs_embedded_packed = \
-                    PackedSequence(n_prev_dirs_embedded, batch_sizes,
-                                   sorted_indices, unsorted_indices)
-
-                n_prev_dirs_embedded, _ = pad_packed_sequence(
-                    n_prev_dirs_embedded_packed, batch_first=True)
-
-            return n_prev_dirs_embedded
+        if self.nb_previous_dirs == 0:
+            return None
         else:
-            return n_prev_dirs
+            dirs = self.format_directions(streamlines, device)
+
+            # Formatting the n previous dirs for all points.
+            n_prev_dirs = self.format_previous_dirs(dirs, self.device)
+
+            # Not keeping the last point: only useful to get the last direction
+            # (ex, last target), but won't be used as an input.
+            n_prev_dirs = [s[:-1] for s in n_prev_dirs]
+
+            if self.prev_dirs_embedding is None:
+                return n_prev_dirs
+            else:
+                is_list = isinstance(n_prev_dirs, list)
+                if is_list:
+                    # Using Packed_sequence's tensor.
+                    n_prev_dirs_packed = pack_sequence(n_prev_dirs,
+                                                       enforce_sorted=False)
+
+                    n_prev_dirs = n_prev_dirs_packed.data
+                    n_prev_dirs.to(device)
+
+                n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
+
+                if is_list and unpack_results:
+                    # Packing back to unpack correctly
+                    batch_sizes = n_prev_dirs_packed.batch_sizes
+                    sorted_indices = n_prev_dirs_packed.sorted_indices
+                    unsorted_indices = n_prev_dirs_packed.unsorted_indices
+                    n_prev_dirs_embedded_packed = \
+                        PackedSequence(n_prev_dirs_embedded, batch_sizes,
+                                       sorted_indices, unsorted_indices)
+
+                    n_prev_dirs_embedded, _ = pad_packed_sequence(
+                        n_prev_dirs_embedded_packed, batch_first=True)
+
+                return n_prev_dirs_embedded
 
     def get_tracking_direction_det(self, model_outputs):
         raise NotImplementedError

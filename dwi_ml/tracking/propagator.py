@@ -281,7 +281,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     def __init__(self, dataset: SubjectDataAbstract, model: MainModelAbstract,
                  input_volume_group: str, neighborhood_points: np.ndarray,
                  step_size: float, rk_order: int, algo: str, theta: float,
-                 model_uses_streamlines : bool, device=None):
+                 model_uses_streamlines: bool, device=None):
         """
         Additional params compared to super:
         ------------------------------------

@@ -5,11 +5,15 @@ import os
 import shutil
 
 import torch
+from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
+    pad_packed_sequence
+
 from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, compute_and_normalize_directions
 from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 
 logger = logging.getLogger('model_logger')
 
@@ -64,6 +68,8 @@ class MainModelAbstract(torch.nn.Module):
         self.neighborhood_type = neighborhood_type
         self.neighborhood_points = prepare_neighborhood_vectors(
             neighborhood_type, neighborhood_radius)
+        self.nb_neighbors = len(self.neighborhood_points) if \
+            self.neighborhood_points else 0
 
         self.device = None
 
@@ -179,23 +185,64 @@ class MainModelAbstract(torch.nn.Module):
 
 
 class MainModelWithPD(MainModelAbstract):
+    """
+    Adds tools to work with previous directions. Prepares a layer for previous
+    directions embedding, and a tool method for direction formatting.
+
+    Hint: In your forward method, first concantenate your input with the result
+    of the previous directions embedding layer!
+    """
     def __init__(self, experiment_name: str, nb_previous_dirs: int = 0,
+                 prev_dirs_embedding_size: int = None,
+                 prev_dirs_embedding_key: str = None,
                  normalize_directions: bool = True,
                  neighborhood_type: str = None, neighborhood_radius=None):
         """
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received. Default: 0.
+        prev_dirs_embedding_size: int
+            Dimension of the final vector representing the previous directions
+            (no matter the number of previous directions used).
+            Default: nb_previous_dirs * 3.
+        prev_dirs_embedding_key: str,
+            Key to an embedding class (one of
+            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
+            Default: None (no previous directions added).
         """
         super().__init__(experiment_name, normalize_directions,
                          neighborhood_type, neighborhood_radius)
+
         self.nb_previous_dirs = nb_previous_dirs
+        self.prev_dirs_embedding_key = prev_dirs_embedding_key
+
+        if self.nb_previous_dirs > 0:
+            if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
+                raise ValueError("Embedding choice for previous dirs not "
+                                 "understood: {}"
+                                 .format(self.prev_dirs_embedding_key))
+
+            self.prev_dirs_embedding_size = \
+                prev_dirs_embedding_size if not None else nb_previous_dirs * 3
+            prev_dirs_emb_cls = keys_to_embeddings[prev_dirs_embedding_key]
+            # Preparing layer!
+            self.prev_dirs_embedding = prev_dirs_emb_cls(
+                input_size=nb_previous_dirs * 3,
+                output_size=self.prev_dirs_embedding_size)
+        else:
+            self.prev_dirs_embedding_size = None
+            if prev_dirs_embedding_size:
+                logging.warning("Previous dirs embedding size was defined but "
+                                "no previous directions are used!")
+            self.prev_dirs_embedding = None
 
     @property
     def params(self):
         p = super().params
         p.update({
             'nb_previous_dirs': self.nb_previous_dirs,
+            'prev_dirs_embedding_key': self.prev_dirs_embedding_key,
+            'prev_dirs_embedding_size': self.prev_dirs_embedding_size,
         })
         return p
 
@@ -204,6 +251,55 @@ class MainModelWithPD(MainModelAbstract):
         # targets = self._format_directions(streamlines)
         # Then compute loss based on model.
         raise NotImplementedError
+
+    def run_prev_dirs_embedding_layer(self, n_prev_dirs, device=None,
+                                      unpack_results: bool = True):
+        """
+        Runs the self.prev_dirs_embedding layer, if instantiated, and returns
+        the model's output. Else, returns the data as is.
+
+        Params
+        ------
+        n_prev_dirs: Union[List, torch.tensor],
+            Batch of n past directions. If it is a tensor, it should be of
+            size [nb_points, nb_previous_dirs * 3].
+            If it is a list, length of the list is the number of streamlines in
+            the batch. Each tensor is as described above. The batch will be
+            packed and embedding will be ran on resulting tensor.
+        device: torch device
+        unpack_results: bool
+            If data was a list, unpack the model's outputs before returning.
+            Default: True. Hint: skipping unpacking can be useful if you want
+            to concatenate this embedding to your input's packed sequence's
+            embedding.
+        """
+        if self.prev_dirs_embedding is not None:
+            is_list = isinstance(n_prev_dirs, list)
+            if is_list:
+                n_prev_dirs_packed = pack_sequence(n_prev_dirs,
+                                                   enforce_sorted=False)
+
+                # Using Packed_sequence's tensor.
+                n_prev_dirs = n_prev_dirs_packed.data
+                n_prev_dirs.to(device)
+
+            n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
+
+            if is_list and unpack_results:
+                # Packing back to unpack correctly
+                batch_sizes = n_prev_dirs_packed.batch_sizes
+                sorted_indices = n_prev_dirs_packed.sorted_indices
+                unsorted_indices = n_prev_dirs_packed.unsorted_indices
+                n_prev_dirs_embedded_packed = \
+                    PackedSequence(n_prev_dirs_embedded, batch_sizes,
+                                   sorted_indices, unsorted_indices)
+
+                n_prev_dirs_embedded, _ = pad_packed_sequence(
+                    n_prev_dirs_embedded_packed, batch_first=True)
+
+            return n_prev_dirs_embedded
+        else:
+            return n_prev_dirs
 
     def get_tracking_direction_det(self, model_outputs):
         raise NotImplementedError

@@ -154,9 +154,9 @@ class MainModelAbstract(torch.nn.Module):
         # Then compute loss based on model.
         raise NotImplementedError
 
-    def format_directions(self, streamlines, device):
+    def format_directions(self, streamlines):
         targets = compute_and_normalize_directions(
-            streamlines, device, self.normalize_directions)
+            streamlines, self.device, self.normalize_directions)
         return targets
 
     def get_tracking_direction_det(self, model_outputs):
@@ -258,7 +258,7 @@ class MainModelWithPD(MainModelAbstract):
         # Then compute loss based on model.
         raise NotImplementedError
 
-    def run_prev_dirs_embedding_layer(self, streamlines, device=None,
+    def run_prev_dirs_embedding_layer(self, streamlines,
                                       unpack_results: bool = True):
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
@@ -282,8 +282,6 @@ class MainModelWithPD(MainModelAbstract):
         if self.nb_previous_dirs == 0:
             return None
         else:
-            dirs = self.format_directions(streamlines, device)
-
             # Formatting the n previous dirs for all points.
             n_prev_dirs = self.format_previous_dirs(dirs, self.device)
 
@@ -325,8 +323,7 @@ class MainModelWithPD(MainModelAbstract):
     def sample_tracking_direction_prob(self, model_outputs):
         raise NotImplementedError
 
-    def format_previous_dirs(self, all_streamline_dirs, device,
-                             point_idx=None):
+    def format_previous_dirs(self, all_streamline_dirs, point_idx=None):
         """
         Formats the previous dirs. See compute_n_previous_dirs for a
         description of parameters.
@@ -335,7 +332,7 @@ class MainModelWithPD(MainModelAbstract):
             return None
 
         n_previous_dirs = compute_n_previous_dirs(
-            all_streamline_dirs, self.nb_previous_dirs, device=device,
-            point_idx=point_idx)
+            all_streamline_dirs, self.nb_previous_dirs,
+            point_idx=point_idx, device=self.device)
 
         return n_previous_dirs

@@ -318,7 +318,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
 
         # Return inputs as a tuple containing all inputs. The comma is
         # important.
-        return subj_x_data,
+        return subj_x_data
 
     def is_voxmm_in_bound(self, pos, origin):
         mri_data = self.dataset.mri_data_list[self.volume_group]

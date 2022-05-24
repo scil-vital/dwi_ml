@@ -73,6 +73,10 @@ class MainModelAbstract(torch.nn.Module):
 
         self.device = None
 
+    @staticmethod
+    def set_logger_state(level):
+        logger.setLevel(level)
+
     @property
     def params(self):
         """All parameters necessary to create again the same model. Will be

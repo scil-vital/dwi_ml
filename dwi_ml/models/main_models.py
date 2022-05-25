@@ -258,21 +258,20 @@ class MainModelWithPD(MainModelAbstract):
         # Then compute loss based on model.
         raise NotImplementedError
 
-    def run_prev_dirs_embedding_layer(self, dirs,
-                                      unpack_results: bool = True):
+    def compute_and_embed_previous_dirs(self, dirs,
+                                        unpack_results: bool = True):
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
         the model's output. Else, returns the data as is.
 
         Params
         ------
-        n_prev_dirs: Union[List, torch.tensor],
-            Batch of n past directions. If it is a tensor, it should be of
-            size [nb_points, nb_previous_dirs * 3].
+        dirs: Union[List, torch.tensor],
+            Batch all streamline directions. If it is a tensor, it should be of
+            size [nb_points, 3].
             If it is a list, length of the list is the number of streamlines in
             the batch. Each tensor is as described above. The batch will be
             packed and embedding will be ran on resulting tensor.
-        device: torch device
         unpack_results: bool
             If data was a list, unpack the model's outputs before returning.
             Default: True. Hint: skipping unpacking can be useful if you want
@@ -312,7 +311,7 @@ class MainModelWithPD(MainModelAbstract):
                         PackedSequence(n_prev_dirs_embedded, batch_sizes,
                                        sorted_indices, unsorted_indices)
 
-                    n_prev_dirs_embedded, _ = unpack_sequence(
+                    n_prev_dirs_embedded = unpack_sequence(
                         n_prev_dirs_embedded_packed)
 
                 return n_prev_dirs_embedded

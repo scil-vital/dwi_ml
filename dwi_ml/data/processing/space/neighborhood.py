@@ -166,16 +166,16 @@ def add_args_neighborhood(p):
     """
     n = p.add_mutually_exclusive_group()
     n.add_argument(
-        '--sphere_radius', type=float,
-        help="If set, a neighborhood will be added to the input information. "
-             "This neighborhood \ndefinition lies on a sphere. It will be a "
-             "list of 6 positions \n(up, down, left, right, behind, in front) "
-             "at exactly given radius around each point \nof the streamlines, "
-             "in voxel space.")
+        '--sphere_radius', type=float, metavar='r', nargs='+',
+        help="If set, a neighborhood will be added to the input information.\n"
+             "This neighborhood definition lies on a sphere. It will be a "
+             "list \nof 6 positions (up, down, left, right, behind, in front) "
+             "at \nexactly given radius around each point of the streamlines, "
+             "\nin voxel space. You may add multiple radius values.")
     n.add_argument(
         '--grid_radius', type=int,
-        help="If set, a neighborhood will be added to the input information. "
-             "This neighborhood \ndefinition uses a list of points similar to "
-             "the original voxel grid \naround each point of the streamlines. "
-             "Ex: with radius 1, that's 27 points. \nWith radius 2, that's "
-             "125 points. Radius is in voxel space.")
+        help="If set, a neighborhood will be added to the input information.\n"
+             "This neighborhood definition uses a list of points similar to \n"
+             "the original voxel grid around each point of the streamlines.\n"
+             "Ex: with radius 1, that's 27 points. With radius 2, that's 125\n"
+             "points. Radius is in voxel space.")

@@ -148,7 +148,7 @@ class MainModelAbstract(torch.nn.Module):
 
         return model
 
-    def compute_loss(self, model_outputs, streamlines, device):
+    def compute_loss(self, model_outputs, streamlines):
         # Probably something like:
         # targets = self._format_directions(streamlines)
         # Then compute loss based on model.
@@ -252,7 +252,7 @@ class MainModelWithPD(MainModelAbstract):
         })
         return p
 
-    def compute_loss(self, outputs, targets, device):
+    def compute_loss(self, outputs, targets):
         # Probably something like:
         # targets = self._format_directions(streamlines)
         # Then compute loss based on model.

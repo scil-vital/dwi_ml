@@ -701,8 +701,7 @@ class DWIMLAbstractTrainer:
         Calls the compute_loss method of the model. Reimplement in a child
         class if targets needs to be formatted in any way before the call.
         """
-        mean_loss = self.model.compute_loss(model_outputs, targets,
-                                            self.device)
+        mean_loss = self.model.compute_loss(model_outputs, targets)
         return mean_loss
 
     def fix_parameters(self):

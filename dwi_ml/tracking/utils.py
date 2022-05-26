@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from scilpy.io.utils import add_processes_arg
 
 
 def add_mandatory_options_tracking(p):
@@ -11,48 +12,20 @@ def add_mandatory_options_tracking(p):
                    help='Path to the directory containing the experiment.\n'
                         '(Should contain a model subdir with a file \n'
                         'parameters.json and a file best_model_state.pkl.)')
+    p.add_argument('hdf5_file',
+                   help="Path to the hdf5 file.")
+    p.add_argument('subj_id',
+                   help="Subject id to use for tractography.\n"
+                        "Will also be added as prefix to add to the "
+                        "out_tractogram name.")
     p.add_argument('out_tractogram',
                    help='Tractogram output file (must be .trk or .tck).')
-    p.add_argument('algo', choices=['det', 'prob'],
-                   help="Tracking algorithm (det or prob). Must be "
-                        "implemented in the chosen model.")
-
-    sm_g = p.add_argument_group('Loading params: seeding mask: CHOOSE ONE')
-    seeding_mask = sm_g.add_mutually_exclusive_group()
-    seeding_mask.add_argument('--sm_from_hdf5', metavar='group',
-                              help="Seeding mask's volume group in the hdf5.\n"
-                                   "Must correspond to the config_file used "
-                                   "when creating the hdf5.")
-    seeding_mask.add_argument('--sm_from_data', metavar='file',
-                              help="Seeding mask's volume.")
-
-    tm_g = p.add_argument_group('Loading params: tracking mask: CHOOSE ONE')
-    tracking_mask = tm_g.add_mutually_exclusive_group()
-    tracking_mask.add_argument('--tm_from_hdf5', metavar='group',
-                               help="Tracking mask's volume group in the hdf5."
-                                    "\nMust correspond to the config_file "
-                                    "used when creating the hdf5.")
-    tracking_mask.add_argument('--tm_from_data', metavar='file',
-                               help="Tracking mask's volume.")
-
-    i_g = p.add_argument_group('Loading params: input: CHOOSE ONE')
-    inputs = i_g.add_mutually_exclusive_group()
-    inputs.add_argument('--input_from_hdf5', metavar='group',
-                        help="Model's input's volume group in the hdf5.\n"
-                             "Must correspond to the config_file used "
-                             "when creating the hdf5.")
-    inputs.add_argument('--input_from_data', metavar='file',
-                        help="Model's input's volume name.")
-
-    l_g = p.add_argument_group('Loading params')
-    l_g.add_argument('--subj_id', metavar='ID',
-                     help="For data loaded through hdf5, the subject id "
-                          "to use for tractography.\n"
-                          "For data loaded directly, prefix to add to the "
-                          "out_tractogram name.")
-    l_g.add_argument('--hdf5_file', metavar='f',
-                     help="hdf5 file path, in case any option above uses data "
-                          "loaded from a hdf5 file.")
+    p.add_argument('seeding_mask_group',
+                   help="Seeding mask's volume group in the hdf5.")
+    p.add_argument('tracking_mask_group',
+                   help="Tracking mask's volume group in the hdf5.")
+    p.add_argument('input_group',
+                   help="Model's input's volume group in the hdf5.")
 
 
 def add_tracking_options(p):
@@ -62,7 +35,9 @@ def add_tracking_options(p):
     - no sf_threshold or sh_basis args.
     """
     track_g = p.add_argument_group('  Tracking options')
-
+    track_g.add_argument('--algo', choices=['det', 'prob'], default='det',
+                         help="Tracking algorithm (det or prob). Must be "
+                              "implemented in the chosen model. [det]")
     track_g.add_argument('--step', dest='step_size', type=float, default=0.5,
                          help='Step size in mm. [%(default)s]')
     track_g.add_argument('--min_length', type=float, default=10.,
@@ -107,4 +82,33 @@ def add_tracking_options(p):
                          choices=['nearest', 'trilinear'],
                          help="Input data interpolation: nearest-neighbor or "
                               "trilinear. [%(default)s]")
+
+    # As in scilpy:
+    r_g = p.add_argument_group('  Random seeding options')
+    r_g.add_argument('--rng_seed', type=int,
+                     help='Initial value for the random number generator. '
+                          '[%(default)s]')
+    r_g.add_argument('--skip', type=int, default=0,
+                     help="Skip the first N random number. \n"
+                          "Useful if you want to create new streamlines to "
+                          "add to \na previously created tractogram with a "
+                          "fixed --rng_seed.\nEx: If tractogram_1 was created "
+                          "with -nt 1,000,000, \nyou can create tractogram_2 "
+                          "with \n--skip 1,000,000.")
+
+    # toDo. This should be clarified in scilpy eventually. Verifiy evolution.
+    r_g.add_argument('--set_mmap_to_none', action='store_true',
+                     help="If true, use mmap_mode=None. Else mmap_mode='r+'.\n"
+                          "Used in np.load(data_file_info). Available only "
+                          "with --processes.\nTO BE CLEANED")
+
+    # Preparing upcoming GPU option:
+    m_g = p.add_argument_group('  Memory options')
+    ram_options = m_g.add_mutually_exclusive_group()
+    # Parallel processing or GPU processing
+    add_processes_arg(ram_options)
+    ram_options.add_argument('--use_gpu', action='store_true',
+                             help="If set, use GPU for processing. Cannot be "
+                                  "used \ntogether with --processes.")
+
     return track_g

@@ -55,14 +55,14 @@ def test_execution_training_tracking(script_runner):
     logging.info("************ TESTING TRACKING FROM MODEL ************")
     whole_experiment_path = os.path.join(experiment_path, experiment_name)
     out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
-    ret = script_runner.run(
-        'dwiml_track_from_model.py', whole_experiment_path, out_tractogram,
-        'det', '--nt', '2',
-        '--sm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
-        '--tm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
-        '--input_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[0],
-        '--hdf5_file', hdf5_file, '--subj_id', TEST_EXPECTED_SUBJ_NAMES[0],
-        '--logging', 'debug')
 
-    # Not Working yet!
-    # assert ret.success
+    seeding_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
+    tracking_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
+    input_group = TEST_EXPECTED_VOLUME_GROUPS[0]
+    subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
+    ret = script_runner.run(
+        'dwiml_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+        out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
+        '--algo', 'det', '--nt', '2', '--logging', 'debug')
+
+    assert ret.success

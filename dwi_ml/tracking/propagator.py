@@ -237,9 +237,9 @@ class DWIMLPropagator(AbstractPropagator):
         inputs = self._prepare_inputs_at_pos(pos)
         if self.model_uses_streamlines:
             # Sending line's last 2 points, to compute one direction.
-            model_outputs = self.model.forward(inputs, self.line[-2:-1])
+            model_outputs = self.model(inputs, self.line[-2:-1])
         else:
-            model_outputs = self.model.forward(inputs)
+            model_outputs = self.model(inputs)
 
         return model_outputs
 
@@ -279,9 +279,9 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     interpolate the data.
     """
     def __init__(self, dataset: SubjectDataAbstract, model: MainModelAbstract,
-                 input_volume_group: str, neighborhood_points: np.ndarray,
-                 step_size: float, rk_order: int, algo: str, theta: float,
-                 model_uses_streamlines: bool, device=None):
+                 input_volume_group: str, step_size: float, rk_order: int,
+                 algo: str, theta: float, model_uses_streamlines: bool,
+                 device=None):
         """
         Additional params compared to super:
         ------------------------------------
@@ -297,7 +297,10 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
         self.volume_group = dataset.volume_groups.index(input_volume_group)
 
         # To help prepare the inputs
-        self.neighborhood_points = neighborhood_points
+        if hasattr(model, 'neighborhood_points'):
+            self.neighborhood_points = model.neighborhood_points
+        else:
+            self.neighborhood_points = None
         self.volume_group_str = input_volume_group
 
     def _prepare_inputs_at_pos(self, pos):

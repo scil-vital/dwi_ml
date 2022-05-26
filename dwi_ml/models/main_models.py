@@ -221,6 +221,7 @@ class MainModelWithPD(MainModelAbstract):
 
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
+        self.prev_dirs_embedding_size = prev_dirs_embedding_size
 
         if self.nb_previous_dirs > 0:
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
@@ -228,8 +229,9 @@ class MainModelWithPD(MainModelAbstract):
                                  "understood: {}"
                                  .format(self.prev_dirs_embedding_key))
 
-            self.prev_dirs_embedding_size = \
-                prev_dirs_embedding_size if not None else nb_previous_dirs * 3
+            if prev_dirs_embedding_size is None:
+                self.prev_dirs_embedding_size = nb_previous_dirs * 3
+
             prev_dirs_emb_cls = keys_to_embeddings[prev_dirs_embedding_key]
             # Preparing layer!
             self.prev_dirs_embedding = prev_dirs_emb_cls(

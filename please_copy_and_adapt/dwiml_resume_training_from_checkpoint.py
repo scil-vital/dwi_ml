@@ -3,7 +3,6 @@
 import argparse
 import logging
 import os
-from os import path
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
@@ -109,8 +108,8 @@ def main():
     logging.basicConfig(level=args.logging_choice)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
-    if not path.exists(os.path.join(args.experiments_path,
-                                    args.experiment_name, "checkpoint")):
+    if not os.path.exists(os.path.join(
+            args.experiments_path, args.experiment_name, "checkpoint")):
         raise FileNotFoundError("Experiment not found.")
 
     trainer = init_from_checkpoint(args)

@@ -44,12 +44,12 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
 def prepare_batchsamplers_train_valid(dataset, args_training, args_validation,
                                       log_level):
     with Timer("\nPreparing batch samplers...", newline=True, color='green'):
-        logging.info("Training batch sampler...")
+        logging.info("Instantiating training set's batch sampler...")
         training_batch_sampler = _prepare_batchsampler(
             dataset.training_set, args_training, log_level)
 
         if dataset.validation_set.nb_subjects > 0:
-            logging.info("Validation batch sampler...")
+            logging.info("Instantiating validation set's batch sampler...")
             validation_batch_sampler = _prepare_batchsampler(
                 dataset.validation_set, args_validation, log_level)
 
@@ -69,6 +69,6 @@ def _prepare_batchsampler(subset, args, log_level):
         # other
         rng=args.rng, log_level=log_level)
 
-    logging.info("\nSampler user-defined parameters: \n" +
+    logging.info("Batch sampler's user-defined parameters: " +
                  format_dict_to_str(batch_sampler.params))
     return batch_sampler

@@ -32,7 +32,7 @@ class ModelForTest(MainModelAbstract):
                          neighborhood_type, neighborhood_radius, log_level)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
-    def compute_loss(self, model_outputs, streamlines, device):
+    def compute_loss(self, model_outputs, streamlines):
         return self.fake_parameter
 
     def get_tracking_direction_det(self, model_outputs):
@@ -60,7 +60,7 @@ class ModelForTestWithPD(MainModelWithPD):
                          neighborhood_type, neighborhood_radius, log_level)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
-    def compute_loss(self, model_outputs, streamlines, device):
+    def compute_loss(self, model_outputs, streamlines):
         return self.fake_parameter
 
     def get_tracking_direction_det(self, model_outputs):

@@ -57,12 +57,12 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
 def prepare_batchloadersoneinput_train_valid(dataset, args_t, args_v,
                                              log_level):
     with Timer("\nPreparing batch loaders...", newline=True, color='pink'):
-        logging.info("Training batch loader...")
+        logging.info("Instantiating training set's batch loader...")
         training_batch_loader = _prepare_batchloader(
             dataset.training_set, args_t, log_level)
 
         if dataset.validation_set.nb_subjects > 0:
-            logging.info("Validation batch loader...")
+            logging.info("Instantiating validation set's batch loader...")
             validation_batch_loader = _prepare_batchloader(
                 dataset.validation_set, args_v, log_level)
 
@@ -104,7 +104,6 @@ def _prepare_batchloader(subset, args, log_level):
         # OTHER
         rng=args.rng, wait_for_gpu=args.wait_for_gpu, log_level=log_level)
 
-    logging.info(
-        "\nLoader user-defined parameters: \n" +
-        format_dict_to_str(batch_loader.params))
+    logging.info("Loader user-defined parameters: " +
+                 format_dict_to_str(batch_loader.params))
     return batch_loader

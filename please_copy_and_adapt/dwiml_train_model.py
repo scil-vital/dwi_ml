@@ -11,12 +11,11 @@ to your project and adapt it.
 import argparse
 import logging
 import os
-from os import path
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import (
-    add_args_dataset, prepare_multisubjectdataset)
+    add_dataset_args, prepare_multisubjectdataset)
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
@@ -40,7 +39,7 @@ def prepare_arg_parser():
     add_mandatory_args_training_experiment(p)
     add_printing_args_training_experiment(p)
     add_memory_args_training_experiment(p)
-    add_args_dataset(p)
+    add_dataset_args(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     add_training_args(p)
@@ -116,8 +115,8 @@ def main():
     assert_outputs_exist(p, args, args.experiments_path)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
-    if path.exists(os.path.join(args.experiments_path, args.experiment_name,
-                                "checkpoint")):
+    if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
+                                   "checkpoint")):
         raise FileExistsError(
             "This experiment already exists. Delete or use script "
             "dwiml_resume_training_from_checkpoint.py.")

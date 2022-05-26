@@ -70,7 +70,7 @@ class ModelForTestWithPD(MainModelWithPD):
         return [1., 1., 1.]
 
     def forward(self, x, streamlines):
-        self.run_prev_dirs_embedding_layer(streamlines)
+        self.compute_and_embed_previous_dirs(streamlines)
 
 
 def create_test_batch_sampler(

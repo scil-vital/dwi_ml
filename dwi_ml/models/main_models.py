@@ -6,7 +6,7 @@ import shutil
 
 import torch
 from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
-    pad_packed_sequence
+    unpack_sequence
 
 from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
@@ -154,9 +154,9 @@ class MainModelAbstract(torch.nn.Module):
         # Then compute loss based on model.
         raise NotImplementedError
 
-    def format_directions(self, streamlines, device):
+    def format_directions(self, streamlines):
         targets = compute_and_normalize_directions(
-            streamlines, device, self.normalize_directions)
+            streamlines, self.device, self.normalize_directions)
         return targets
 
     def get_tracking_direction_det(self, model_outputs):
@@ -258,21 +258,20 @@ class MainModelWithPD(MainModelAbstract):
         # Then compute loss based on model.
         raise NotImplementedError
 
-    def run_prev_dirs_embedding_layer(self, streamlines, device=None,
-                                      unpack_results: bool = True):
+    def compute_and_embed_previous_dirs(self, dirs,
+                                        unpack_results: bool = True):
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
         the model's output. Else, returns the data as is.
 
         Params
         ------
-        n_prev_dirs: Union[List, torch.tensor],
-            Batch of n past directions. If it is a tensor, it should be of
-            size [nb_points, nb_previous_dirs * 3].
+        dirs: Union[List, torch.tensor],
+            Batch all streamline directions. If it is a tensor, it should be of
+            size [nb_points, 3].
             If it is a list, length of the list is the number of streamlines in
             the batch. Each tensor is as described above. The batch will be
             packed and embedding will be ran on resulting tensor.
-        device: torch device
         unpack_results: bool
             If data was a list, unpack the model's outputs before returning.
             Default: True. Hint: skipping unpacking can be useful if you want
@@ -282,8 +281,6 @@ class MainModelWithPD(MainModelAbstract):
         if self.nb_previous_dirs == 0:
             return None
         else:
-            dirs = self.format_directions(streamlines, device)
-
             # Formatting the n previous dirs for all points.
             n_prev_dirs = self.format_previous_dirs(dirs, self.device)
 
@@ -301,7 +298,7 @@ class MainModelWithPD(MainModelAbstract):
                                                        enforce_sorted=False)
 
                     n_prev_dirs = n_prev_dirs_packed.data
-                    n_prev_dirs.to(device)
+                    n_prev_dirs.to(self.device)
 
                 n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
 
@@ -314,8 +311,8 @@ class MainModelWithPD(MainModelAbstract):
                         PackedSequence(n_prev_dirs_embedded, batch_sizes,
                                        sorted_indices, unsorted_indices)
 
-                    n_prev_dirs_embedded, _ = pad_packed_sequence(
-                        n_prev_dirs_embedded_packed, batch_first=True)
+                    n_prev_dirs_embedded = unpack_sequence(
+                        n_prev_dirs_embedded_packed)
 
                 return n_prev_dirs_embedded
 
@@ -325,8 +322,7 @@ class MainModelWithPD(MainModelAbstract):
     def sample_tracking_direction_prob(self, model_outputs):
         raise NotImplementedError
 
-    def format_previous_dirs(self, all_streamline_dirs, device,
-                             point_idx=None):
+    def format_previous_dirs(self, all_streamline_dirs, point_idx=None):
         """
         Formats the previous dirs. See compute_n_previous_dirs for a
         description of parameters.
@@ -335,7 +331,7 @@ class MainModelWithPD(MainModelAbstract):
             return None
 
         n_previous_dirs = compute_n_previous_dirs(
-            all_streamline_dirs, self.nb_previous_dirs, device=device,
-            point_idx=point_idx)
+            all_streamline_dirs, self.nb_previous_dirs,
+            point_idx=point_idx, device=self.device)
 
         return n_previous_dirs

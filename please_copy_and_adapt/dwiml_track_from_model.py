@@ -39,7 +39,7 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
 # PLEASE COPY AND ADAPT:
 ##################
 # Use your own model.
-from dwi_ml.tests.utils import ModelForTest
+from dwi_ml.tests.utils import ModelForTestWithPD
 
 # Choose appropriate classes or implement your own child classes.
 # Example:
@@ -86,15 +86,15 @@ def prepare_tracker(parser, args, hdf_handle, device,
                                               group_info=None)
 
         logging.info("Loading model.")
-        model = ModelForTest.load(args.experiment_path + '/model')
+        model = ModelForTestWithPD.load(args.experiment_path + '/model')
         model.set_logger_state(args.logging.upper())
         logging.info("* Loaded params: " + format_dict_to_str(model.params) +
                      "\n")
 
         logging.debug("Instantiating propagator.")
         theta = gm.math.radians(args.theta)
-        model_uses_streamlines = False  # Test model's forward does not require
-        # the streamlines
+        model_uses_streamlines = True  # Test model's forward uses previous
+        # dirs, which require streamlines
         propagator = DWIMLPropagatorOneInput(
             subj_data, model, args.input_group, args.step_size, args.rk_order,
             args.algo, theta, model_uses_streamlines, device)

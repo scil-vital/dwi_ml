@@ -100,6 +100,10 @@ class DWIMLPropagator(AbstractPropagator):
         # Reset state before starting a new streamline
         self._reset_memory_state()
 
+        if self.model_uses_streamlines:
+            # Reset line before starting a new streamline.
+            self.line = [list(seeding_pos)]
+
         # Our models should be able to get a direction even from with no
         # information about previous inputs.
         return None
@@ -110,9 +114,7 @@ class DWIMLPropagator(AbstractPropagator):
         to deal with in memory during streamline generation (ex, memory of the
         previous directions).
         """
-        if self.model_uses_streamlines:
-            # Reset line before starting a new streamline.
-            self.line = []
+        pass
 
     def prepare_backward(self, line, forward_dir):
         """
@@ -236,10 +238,13 @@ class DWIMLPropagator(AbstractPropagator):
         """
         inputs = self._prepare_inputs_at_pos(pos)
         if self.model_uses_streamlines:
-            # Sending line's last 2 points, to compute one direction.
-            model_outputs = self.model(inputs, self.line[-2:-1])
+            # During training, we have one more point then the number of
+            # inputs: the last point is only used to get the direction.
+            # Adding a fake last point.
+            line = torch.tensor(self.line + [[0., 0., 0.]])
+            model_outputs = self.model([inputs], [line])
         else:
-            model_outputs = self.model(inputs)
+            model_outputs = self.model([inputs])
 
         return model_outputs
 

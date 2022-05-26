@@ -164,7 +164,6 @@ class DWIMLAbstractTrainer:
         self.valid_batch_loader = batch_loader_validation
         self.model = model
         self.model_uses_streamlines = model_uses_streamlines
-
         self.max_epochs = max_epochs
         self.max_batches_per_epochs = max_batches_per_epoch
         self.learning_rate = learning_rate
@@ -268,24 +267,37 @@ class DWIMLAbstractTrainer:
                                           weight_decay=weight_decay)
 
     @property
-    def params(self) -> dict:
+    def params_for_checkpoint(self):
+        # These are the parameters necessary to use _init_
         params = {
-            'experiments_path': self.experiments_path,
-            'experiment_name': self.experiment_name,
-            'comet_key': self.comet_key,
             'model_uses_streamlines': self.model_uses_streamlines,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
-            'nb_cpu_processes': self.nb_cpu_processes,
             'max_epochs': self.max_epochs,
+            'max_batches_per_epoch': self.max_batches_per_epochs,
             'patience': self.patience,
+            'nb_cpu_processes': self.nb_cpu_processes,
+            'taskman_managed': self.taskman_managed,
+            'use_gpu': self.use_gpu,
+            'comet_workspace': self.comet_workspace,
+            'comet_project': self.comet_project
+        }
+        return params
+
+    @property
+    def params(self) -> dict:
+        params = self.params_for_checkpoint
+        params.update({
+            'experiments_path': self.experiments_path,
+            'experiment_name': self.experiment_name,
+            'comet_key': self.comet_key,
             'computed_values': {
                 'nb_training_batches_per_epoch':
                     self.nb_train_batches_per_epoch,
                 'nb_validation_batches_per_epoch':
                     self.nb_valid_batches_per_epoch
             }
-        }
+            })
         return params
 
     def _init_comet(self):
@@ -478,7 +490,6 @@ class DWIMLAbstractTrainer:
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
-
             if self.taskman_managed:
                 updates = {
                     'loss_train':
@@ -811,21 +822,6 @@ class DWIMLAbstractTrainer:
             shutil.rmtree(to_remove)
 
     def _prepare_checkpoint_state(self) -> dict:
-
-        # These are the parameters necessary to use _init_
-        params_for_init = {
-            'learning_rate': self.learning_rate,
-            'weight_decay': self.weight_decay,
-            'max_epochs': self.max_epochs,
-            'max_batches_per_epoch': self.max_batches_per_epochs,
-            'patience': self.patience,
-            'nb_cpu_processes': self.nb_cpu_processes,
-            'taskman_managed': self.taskman_managed,
-            'use_gpu': self.use_gpu,
-            'comet_workspace': self.comet_workspace,
-            'comet_project': self.comet_project
-        }
-
         # These are parameters that should be updated after instantiating cls.
         current_states = {
             'comet_key': self.comet_key,
@@ -856,7 +852,7 @@ class DWIMLAbstractTrainer:
             'valid_data_params': None,
             'train_loader_params': self.train_batch_loader.params,
             'valid_loader_params': None,
-            'params_for_init': params_for_init,
+            'params_for_init': self.params_for_checkpoint,
             'current_states': current_states
         }
 

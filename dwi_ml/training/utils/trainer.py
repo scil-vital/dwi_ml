@@ -3,9 +3,7 @@ import argparse
 import logging
 
 from dwi_ml.training.monitoring import EarlyStoppingError
-from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.trainers import DWIMLAbstractTrainer
 
 
 def add_training_args(p: argparse.ArgumentParser):
@@ -46,7 +44,7 @@ def add_training_args(p: argparse.ArgumentParser):
 def run_experiment(trainer, logging_choice):
     # Run (or continue) the experiment
     try:
-        with Timer("\n\n****** Training and validating model!!! ********",
+        with Timer("\n****** Training and validating model!!! ********",
                    newline=True, color='magenta'):
             trainer.train_and_validate(logging_choice)
     except EarlyStoppingError as e:

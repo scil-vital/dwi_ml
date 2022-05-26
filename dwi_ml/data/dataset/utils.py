@@ -34,7 +34,7 @@ def prepare_multisubjectdataset(args, load_training=True, load_validation=True,
     args: Namespace
         Must contain 'hdf5_File, 'taskman_managed', 'lazy' and 'cache_size'
     """
-    with Timer("\n\nPreparing testing and validation sets",
+    with Timer("\nPreparing testing and validation sets",
                newline=True, color='blue'):
         dataset = MultiSubjectDataset(
             args.hdf5_file, taskman_managed=args.taskman_managed,

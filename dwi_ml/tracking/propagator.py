@@ -11,6 +11,8 @@ from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.models.main_models import MainModelAbstract
 
+logger = logging.getLogger('tracker_logger')
+
 
 class DWIMLPropagator(AbstractPropagator):
     """
@@ -53,6 +55,11 @@ class DWIMLPropagator(AbstractPropagator):
         """
         super().__init__(dataset, step_size, rk_order)
 
+        if rk_order > 1:
+            logger.warning("dwi_ml is not ready for runge-kutta integration."
+                           "Changing to rk_order 1.")
+            self.rk_order = 1
+
         self.model = model
 
         self.algo = algo
@@ -77,7 +84,9 @@ class DWIMLPropagator(AbstractPropagator):
         self.device = device
 
     def reset_data(self, new_data=None):
-        """HDF5 dataset does not need to be reset for multiprocessing."""
+        """Reset data before starting a new process during multi-processing."""
+        # HDF5 dataset does not need to be reset for multiprocessing,
+        # contrary to data in scilpy.
         pass
 
     def prepare_forward(self, seeding_pos):
@@ -94,30 +103,18 @@ class DWIMLPropagator(AbstractPropagator):
         -------
         tracking_info: Any
             Any tracking information necessary for the propagation.
-            Return the str 'err' if no good tracking direction can be set at
-            current seeding position.
         """
-        # Reset state before starting a new streamline
-        self._reset_memory_state()
+        if self.model_uses_streamlines:
+            # Reset line before starting a new streamline.
+            self.line = [list(seeding_pos)]
 
         # Our models should be able to get a direction even from with no
         # information about previous inputs.
         return None
 
-    def _reset_memory_state(self):
-        """
-        Reset state before starting a new streamline. Anything your model needs
-        to deal with in memory during streamline generation (ex, memory of the
-        previous directions).
-        """
-        if self.model_uses_streamlines:
-            # Reset line before starting a new streamline.
-            self.line = []
-
     def prepare_backward(self, line, forward_dir):
         """
-        Before running the backward tracking, we may need to reset the
-        internal state of the model.
+        Preparing backward.
 
         Parameters
         ----------
@@ -133,7 +130,8 @@ class DWIMLPropagator(AbstractPropagator):
             only the seeding point (forward tracking failed), simply inverse
             the forward direction.
         """
-        self._reverse_memory_state(line)
+        if self.model_uses_streamlines:
+            self.line = line
 
         # Note. In our case, compared to scilpy, forward dir is None. So if the
         # forward tracking failed, we will just return None and try the
@@ -149,23 +147,12 @@ class DWIMLPropagator(AbstractPropagator):
             return v_in.astype(np.float32)
         return v_in
 
-    def _reverse_memory_state(self, line):
-        """
-        Prepare memory state for the backward pass. Anything your model needs
-        to deal with in memory during streamline generation (ex, memory of the
-        previous directions).
-
-        Line: Already reversed line (streamline from the forward tracking).
-        """
-        if self.model_uses_streamlines:
-            self.line = line
-
     def propagate(self, pos, v_in):
-        logging.debug("  Propagation step at pos {}".format(pos))
+        logger.debug("  Propagation step at pos {}".format(pos))
         new_pos, new_dir, is_direction_valid = super().propagate(pos, v_in)
-        logging.debug("  Coordinates are now {}".format(new_pos))
+        if self.model_uses_streamlines:
+            self.line.append(list(new_pos))
 
-        logging.debug("  Updating model's internal state")
         self._update_state_after_propagation_step(new_pos, new_dir)
 
         return new_pos, new_dir, is_direction_valid
@@ -176,8 +163,7 @@ class DWIMLPropagator(AbstractPropagator):
         needs to deal with in memory during streamline generation (ex, memory
         of the previous directions).
         """
-        if self.model_uses_streamlines:
-            self.line.append(list(new_dir))
+        pass
 
     def _sample_next_direction(self, pos, v_in):
         """
@@ -202,7 +188,6 @@ class DWIMLPropagator(AbstractPropagator):
         """
 
         # Tracking field returns the model_outputs
-        logging.debug("    Running model at pos {}".format(pos))
         model_outputs = self._get_model_outputs_at_pos(pos)
 
         # Sampling a direction from this information.
@@ -213,8 +198,6 @@ class DWIMLPropagator(AbstractPropagator):
 
         # Normalizing
         next_dir /= np.linalg.norm(next_dir)
-        logging.debug("    Next direction will be {}, if angle is within "
-                      "accepted range.".format(next_dir))
 
         # Verify curvature, else return None.
         # toDo could we find a better solution for proba tracking? Resampling
@@ -236,10 +219,14 @@ class DWIMLPropagator(AbstractPropagator):
         """
         inputs = self._prepare_inputs_at_pos(pos)
         if self.model_uses_streamlines:
-            # Sending line's last 2 points, to compute one direction.
-            model_outputs = self.model.forward(inputs, self.line[-2:-1])
+            # In case we are using runge-kutta integration
+            # During training, we have one more point then the number of
+            # inputs: the last point is only used to get the direction.
+            # Adding a fake last point.
+            line = torch.tensor(self.line + [[0., 0., 0.]])
+            model_outputs = self.model([inputs], [line])
         else:
-            model_outputs = self.model.forward(inputs)
+            model_outputs = self.model([inputs])
 
         return model_outputs
 
@@ -279,9 +266,9 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     interpolate the data.
     """
     def __init__(self, dataset: SubjectDataAbstract, model: MainModelAbstract,
-                 input_volume_group: str, neighborhood_points: np.ndarray,
-                 step_size: float, rk_order: int, algo: str, theta: float,
-                 model_uses_streamlines: bool, device=None):
+                 input_volume_group: str, step_size: float, rk_order: int,
+                 algo: str, theta: float, model_uses_streamlines: bool,
+                 device=None):
         """
         Additional params compared to super:
         ------------------------------------
@@ -297,7 +284,10 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
         self.volume_group = dataset.volume_groups.index(input_volume_group)
 
         # To help prepare the inputs
-        self.neighborhood_points = neighborhood_points
+        if hasattr(model, 'neighborhood_points'):
+            self.neighborhood_points = model.neighborhood_points
+        else:
+            self.neighborhood_points = None
         self.volume_group_str = input_volume_group
 
     def _prepare_inputs_at_pos(self, pos):

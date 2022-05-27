@@ -47,8 +47,8 @@ class ModelForTest(MainModelAbstract):
 
 class ModelForTestWithPD(MainModelWithPD):
     def __init__(self, experiment_name: str = 'test',
-                 nb_previous_dirs: int = 0,
-                 prev_dirs_embedding_size: int = 7,
+                 nb_previous_dirs: int = 1,
+                 prev_dirs_embedding_size: int = None,
                  prev_dirs_embedding_key: str = 'no_embedding',
                  normalize_directions: bool = True,
                  neighborhood_type: str = None, neighborhood_radius=None,
@@ -70,7 +70,8 @@ class ModelForTestWithPD(MainModelWithPD):
         return [1., 1., 1.]
 
     def forward(self, x, streamlines):
-        self.compute_and_embed_previous_dirs(streamlines)
+        dirs = self.format_directions(streamlines)
+        _ = self.compute_and_embed_previous_dirs(dirs)
 
 
 def create_test_batch_sampler(

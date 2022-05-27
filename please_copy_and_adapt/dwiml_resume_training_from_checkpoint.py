@@ -7,13 +7,15 @@ import os
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
 
-from dwi_ml.tests.utils import ModelForTest
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.batch_loaders import \
     prepare_batchloadersoneinput_train_valid
 from dwi_ml.training.utils.batch_samplers import \
     prepare_batchsamplers_train_valid
 from dwi_ml.training.utils.trainer import run_experiment
+
+# Please adapt:
+from dwi_ml.tests.utils import ModelForTestWithPD
 
 
 def prepare_arg_parser():
@@ -62,9 +64,8 @@ def init_from_checkpoint(args):
     #  checkpoint_state['valid_data_params']
 
     # Load model from checkpoint directory
-    model = ModelForTest.load(os.path.join(args.experiments_path,
-                                           args.experiment_name,
-                                           'checkpoint/model'))
+    model = ModelForTestWithPD.load(os.path.join(
+        args.experiments_path, args.experiment_name, 'checkpoint/model'))
 
     # Setting log level to INFO maximum for sub-loggers, else it become ugly
     sub_loggers_level = args.logging_choice

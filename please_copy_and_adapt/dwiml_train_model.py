@@ -30,7 +30,7 @@ from dwi_ml.training.utils.experiment import (
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment
 
 # Please adapt
-from dwi_ml.tests.utils import ModelForTest
+from dwi_ml.tests.utils import ModelForTestWithPD
 
 
 def prepare_arg_parser():
@@ -61,7 +61,7 @@ def init_from_args(args):
     #     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     #     nb_features = dataset.nb_features[input_group_idx]
     #     dg_args = check_args_direction_getter(args)
-    model = ModelForTest()  # To be instantiated correctly.
+    model = ModelForTestWithPD()  # To be instantiated correctly.
 
     # Setting log level to INFO maximum for sub-loggers, else it become ugly
     sub_loggers_level = args.logging_choice
@@ -81,7 +81,9 @@ def init_from_args(args):
                                                  sub_loggers_level)
 
     # Instantiate trainer
-    with Timer("\n\nPreparing trainer", newline=True, color='red'):
+    model_uses_streamlines = True  # Our test model uses previous dirs, so
+    # streamlines need to be sent to the forward method.
+    with Timer("\nPreparing trainer", newline=True, color='red'):
         trainer = DWIMLTrainerOneInput(
             model, args.experiments_path, args.experiment_name,
             training_batch_sampler, training_batch_loader,
@@ -90,6 +92,7 @@ def init_from_args(args):
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
             # TRAINING
+            model_uses_streamlines=model_uses_streamlines,
             learning_rate=args.learning_rate, max_epochs=args.max_epochs,
             max_batches_per_epoch=args.max_batches_per_epoch,
             patience=args.patience, from_checkpoint=False,

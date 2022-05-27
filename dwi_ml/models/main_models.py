@@ -155,6 +155,10 @@ class MainModelAbstract(torch.nn.Module):
         raise NotImplementedError
 
     def format_directions(self, streamlines):
+        """
+        Simply calls compute_and_normalize_directions, but with model's device
+        and options.
+        """
         targets = compute_and_normalize_directions(
             streamlines, self.device, self.normalize_directions)
         return targets
@@ -221,6 +225,7 @@ class MainModelWithPD(MainModelAbstract):
 
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
+        self.prev_dirs_embedding_size = prev_dirs_embedding_size
 
         if self.nb_previous_dirs > 0:
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
@@ -228,8 +233,9 @@ class MainModelWithPD(MainModelAbstract):
                                  "understood: {}"
                                  .format(self.prev_dirs_embedding_key))
 
-            self.prev_dirs_embedding_size = \
-                prev_dirs_embedding_size if not None else nb_previous_dirs * 3
+            if prev_dirs_embedding_size is None:
+                self.prev_dirs_embedding_size = nb_previous_dirs * 3
+
             prev_dirs_emb_cls = keys_to_embeddings[prev_dirs_embedding_key]
             # Preparing layer!
             self.prev_dirs_embedding = prev_dirs_emb_cls(
@@ -259,7 +265,8 @@ class MainModelWithPD(MainModelAbstract):
         raise NotImplementedError
 
     def compute_and_embed_previous_dirs(self, dirs,
-                                        unpack_results: bool = True):
+                                        unpack_results: bool = True,
+                                        point_idx=None):
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
         the model's output. Else, returns the data as is.
@@ -277,16 +284,19 @@ class MainModelWithPD(MainModelAbstract):
             Default: True. Hint: skipping unpacking can be useful if you want
             to concatenate this embedding to your input's packed sequence's
             embedding.
+        point_idx: int
+            Point of the streamline for which to compute the previous dirs.
         """
         if self.nb_previous_dirs == 0:
             return None
         else:
             # Formatting the n previous dirs for all points.
-            n_prev_dirs = self.format_previous_dirs(dirs, self.device)
+            n_prev_dirs = self.format_previous_dirs(dirs, point_idx=point_idx)
 
-            # Not keeping the last point: only useful to get the last direction
-            # (ex, last target), but won't be used as an input.
-            n_prev_dirs = [s[:-1] for s in n_prev_dirs]
+            if not point_idx:
+                # Not keeping the last point: only useful to get the last
+                # direction (ex, last target), but won't be used as an input.
+                n_prev_dirs = [s[:-1] for s in n_prev_dirs]
 
             if self.prev_dirs_embedding is None:
                 return n_prev_dirs

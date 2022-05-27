@@ -297,7 +297,7 @@ class DWIMLAbstractTrainer:
                 'nb_validation_batches_per_epoch':
                     self.nb_valid_batches_per_epoch
             }
-            })
+        })
         return params
 
     def _init_comet(self):

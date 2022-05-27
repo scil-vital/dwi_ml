@@ -5,7 +5,6 @@ import logging
 import os
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
-from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 
 from dwi_ml.training.trainers import DWIMLTrainerOneInput

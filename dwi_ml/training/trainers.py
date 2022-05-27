@@ -190,6 +190,8 @@ class DWIMLAbstractTrainer:
                                      "the code.")
                 # If you see a hint error below, upgrade torch.
                 torch.cuda.manual_seed(self.train_batch_sampler.rng)
+
+                logging.info("We will be using GPU!")
             else:
                 raise ValueError("You chose GPU (cuda) device but it is not "
                                  "available!")
@@ -237,7 +239,7 @@ class DWIMLAbstractTrainer:
         # overwrites the model.
         # NOTE: This ordering is important! The optimizer needs to use the cuda
         # Tensors if using the GPU...
-        self.model.to(device=self.device)
+        self.model.move_to(device=self.device)
 
         # Build optimizer (Optimizer is built here since it needs the model
         # parameters)
@@ -936,11 +938,16 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 self.logger.debug('Finalizing input data preparation on GPU.')
                 batch_streamlines, final_s_ids_per_subj = data
 
+                # toDo. Could we convert streamlines to tensor already when
+                # loading, and send to GPU here? Would need to modify methods
+                # such as extend_neighborhood_with_coods.
+
                 # Getting the inputs points from the volumes. Usually done in
                 # load_batch but we preferred to wait here to have a chance to
                 # run things on GPU.
                 batch_inputs = batch_loader.compute_inputs(
-                    batch_streamlines, final_s_ids_per_subj)
+                    batch_streamlines, final_s_ids_per_subj,
+                    device=self.device)
 
             else:
                 # Data is already ready
@@ -955,7 +962,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
             self.logger.debug('\n*** Computing forward propagation')
             if self.model_uses_streamlines:
-                model_outputs = self.model(batch_inputs, batch_streamlines)
+                streamlines = [torch.tensor(s).to(self.device) for s in
+                               batch_streamlines]
+                model_outputs = self.model(batch_inputs, streamlines)
             else:
                 model_outputs = self.model(batch_inputs)
 

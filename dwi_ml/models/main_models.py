@@ -73,6 +73,14 @@ class MainModelAbstract(torch.nn.Module):
 
         self.device = None
 
+    def move_to(self, device):
+        """
+        Careful. Calling model.to(a_device) does not influence the self.device.
+        Prefer this method for easier management.
+        """
+        self.to(device)
+        self.device = device
+
     @staticmethod
     def set_logger_state(level):
         logger.setLevel(level)

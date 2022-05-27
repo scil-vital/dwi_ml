@@ -310,7 +310,7 @@ class AbstractBatchLoader:
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
 
-            return batch_streamlines, final_s_ids_per_subj
+        return batch_streamlines, final_s_ids_per_subj
 
     def project_specific_data_augmentation(self, sft: StatefulTractogram):
         """Please override in your child class if you want to do more than
@@ -471,8 +471,9 @@ class BatchLoaderOneInput(AbstractBatchLoader):
 
         Returns
         -------
-        batch_x_data : List
-            The list of (list of) inputs for each streamlines
+        batch_x_data : List[tensor]
+            The list of tensors inputs for each streamlines. Each tensor is of
+            shape [nb points, nb_features].
         """
         batch_x_data = []
         batch_input_masks = []

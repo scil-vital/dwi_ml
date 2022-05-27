@@ -84,7 +84,9 @@ class DWIMLPropagator(AbstractPropagator):
         self.device = device
 
     def reset_data(self, new_data=None):
-        """HDF5 dataset does not need to be reset for multiprocessing."""
+        """Reset data before starting a new process during multi-processing."""
+        # HDF5 dataset does not need to be reset for multiprocessing,
+        # contrary to data in scilpy.
         pass
 
     def prepare_forward(self, seeding_pos):
@@ -101,12 +103,7 @@ class DWIMLPropagator(AbstractPropagator):
         -------
         tracking_info: Any
             Any tracking information necessary for the propagation.
-            Return the str 'err' if no good tracking direction can be set at
-            current seeding position.
         """
-        # Reset state before starting a new streamline
-        self._reset_memory_state()
-
         if self.model_uses_streamlines:
             # Reset line before starting a new streamline.
             self.line = [list(seeding_pos)]
@@ -115,18 +112,9 @@ class DWIMLPropagator(AbstractPropagator):
         # information about previous inputs.
         return None
 
-    def _reset_memory_state(self):
-        """
-        Reset state before starting a new streamline. Anything your model needs
-        to deal with in memory during streamline generation (ex, memory of the
-        previous directions).
-        """
-        pass
-
     def prepare_backward(self, line, forward_dir):
         """
-        Before running the backward tracking, we may need to reset the
-        internal state of the model.
+        Preparing backward.
 
         Parameters
         ----------
@@ -144,7 +132,6 @@ class DWIMLPropagator(AbstractPropagator):
         """
         if self.model_uses_streamlines:
             self.line = line
-        self._reverse_memory_state(line)
 
         # Note. In our case, compared to scilpy, forward dir is None. So if the
         # forward tracking failed, we will just return None and try the
@@ -160,20 +147,9 @@ class DWIMLPropagator(AbstractPropagator):
             return v_in.astype(np.float32)
         return v_in
 
-    def _reverse_memory_state(self, line):
-        """
-        Prepare memory state for the backward pass. Anything your model needs
-        to deal with in memory during streamline generation (ex, memory of the
-        previous directions).
-
-        Line: Already reversed line (streamline from the forward tracking).
-        """
-        pass
-
     def propagate(self, pos, v_in):
         logger.debug("  Propagation step at pos {}".format(pos))
         new_pos, new_dir, is_direction_valid = super().propagate(pos, v_in)
-        logger.debug("  Coordinates are now {}".format(new_pos))
         if self.model_uses_streamlines:
             self.line.append(list(new_pos))
 
@@ -212,7 +188,6 @@ class DWIMLPropagator(AbstractPropagator):
         """
 
         # Tracking field returns the model_outputs
-        logger.debug("    Running model at pos {}".format(pos))
         model_outputs = self._get_model_outputs_at_pos(pos)
 
         # Sampling a direction from this information.
@@ -223,8 +198,6 @@ class DWIMLPropagator(AbstractPropagator):
 
         # Normalizing
         next_dir /= np.linalg.norm(next_dir)
-        logger.debug("    Next direction will be {}, if angle is within "
-                     "accepted range.".format(next_dir))
 
         # Verify curvature, else return None.
         # toDo could we find a better solution for proba tracking? Resampling

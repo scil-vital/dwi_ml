@@ -155,6 +155,10 @@ class MainModelAbstract(torch.nn.Module):
         raise NotImplementedError
 
     def format_directions(self, streamlines):
+        """
+        Simply calls compute_and_normalize_directions, but with model's device
+        and options.
+        """
         targets = compute_and_normalize_directions(
             streamlines, self.device, self.normalize_directions)
         return targets
@@ -289,9 +293,10 @@ class MainModelWithPD(MainModelAbstract):
             # Formatting the n previous dirs for all points.
             n_prev_dirs = self.format_previous_dirs(dirs, point_idx=point_idx)
 
-            # Not keeping the last point: only useful to get the last direction
-            # (ex, last target), but won't be used as an input.
-            n_prev_dirs = [s[:-1] for s in n_prev_dirs]
+            if not point_idx:
+                # Not keeping the last point: only useful to get the last
+                # direction (ex, last target), but won't be used as an input.
+                n_prev_dirs = [s[:-1] for s in n_prev_dirs]
 
             if self.prev_dirs_embedding is None:
                 return n_prev_dirs

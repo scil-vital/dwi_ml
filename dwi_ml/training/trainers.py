@@ -25,8 +25,8 @@ from dwi_ml.training.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
 
 # If the remaining time is less than one epoch + X seconds, we will quit
-# training now, to allow updating taskman_report.
-QUIT_TIME_DELAY_SECONDS = 30
+# training now, to allow saving time.
+QUIT_TIME_DELAY_SECONDS = 10
 logger = logging.getLogger('train_logger')
 
 
@@ -53,9 +53,9 @@ class DWIMLAbstractTrainer:
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
                  max_batches_per_epoch: int = 1000, patience: int = None,
-                 nb_cpu_processes: int = 0, taskman_managed: bool = False,
-                 use_gpu: bool = False, comet_workspace: str = None,
-                 comet_project: str = None, from_checkpoint: bool = False,
+                 nb_cpu_processes: int = 0, use_gpu: bool = False,
+                 comet_workspace: str = None, comet_project: str = None,
+                 from_checkpoint: bool = False,
                  log_level=logging.root.level):
         """
         Parameters
@@ -99,10 +99,6 @@ class DWIMLAbstractTrainer:
         nb_cpu_processes: int
             Number of parallel CPU workers. Use 0 to avoid parallel threads.
             Default : 0.
-        taskman_managed: bool
-            If True, taskman manages the experiment. Do not output progress
-            bars and instead output special messages for taskman.
-            Default: False (i.e. use tqdm).
         use_gpu: bool
             If true, use GPU device when possible instead of CPU.
             Default = False
@@ -170,7 +166,6 @@ class DWIMLAbstractTrainer:
         self.weight_decay = weight_decay
         self.patience = patience
         self.nb_cpu_processes = nb_cpu_processes
-        self.taskman_managed = taskman_managed
         self.use_gpu = use_gpu
 
         self.comet_workspace = comet_workspace
@@ -221,17 +216,6 @@ class DWIMLAbstractTrainer:
         self.nb_train_batches_per_epoch = None
         self.nb_valid_batches_per_epoch = None
 
-        self.taskman_report = {
-            'loss_train': None,
-            'loss_valid': None,
-            'epoch': None,
-            'best_epoch': None,
-            'best_score': None,
-            'update': None,
-            'update_loss': None,
-            'time': 0.
-        }
-
         # RNG state
         # Nothing to to here.
 
@@ -277,7 +261,6 @@ class DWIMLAbstractTrainer:
             'max_batches_per_epoch': self.max_batches_per_epochs,
             'patience': self.patience,
             'nb_cpu_processes': self.nb_cpu_processes,
-            'taskman_managed': self.taskman_managed,
             'use_gpu': self.use_gpu,
             'comet_workspace': self.comet_workspace,
             'comet_project': self.comet_project
@@ -490,18 +473,6 @@ class DWIMLAbstractTrainer:
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
-            if self.taskman_managed:
-                updates = {
-                    'loss_train':
-                        self.train_loss_monitor.epochs_means_history[-1],
-                    'loss_valid':
-                        self.valid_loss_monitor.epochs_means_history[-1] if
-                        self.use_validation else None,
-                    'epoch': self.current_epoch,
-                    'best_epoch': self.best_epoch_monitoring.best_epoch,
-                    'best_loss': self.best_epoch_monitoring.best_value
-                }
-                self._update_taskman_report(updates)
 
     def save_model(self):
         self.model.save(self.saving_path)
@@ -534,7 +505,7 @@ class DWIMLAbstractTrainer:
         # Training all batches
         self.logger.debug("Training one epoch: iterating on batches using "
                           "tqdm on the dataloader...")
-        with tqdm(train_dataloader, ncols=100, disable=self.taskman_managed,
+        with tqdm(train_dataloader, ncols=100,
                   total=self.nb_train_batches_per_epoch) as pbar:
             train_iterator = enumerate(pbar)
             with train_context():
@@ -614,7 +585,7 @@ class DWIMLAbstractTrainer:
             self.valid_batch_sampler.dataset.volume_cache_manager = None
 
         # Validate all batches
-        with tqdm(valid_dataloader, ncols=100, disable=self.taskman_managed,
+        with tqdm(valid_dataloader, ncols=100,
                   total=self.nb_valid_batches_per_epoch) as pbar:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
@@ -654,21 +625,6 @@ class DWIMLAbstractTrainer:
             .format(self.valid_loss_monitor.epochs_means_history[-1]))
 
     def _update_logs(self, batch_id, mean_loss):
-        if self.taskman_managed:
-            th = self.train_loss_monitor.epochs_means_history
-            vh = self.valid_loss_monitor.epochs_means_history if \
-                self.use_validation else []
-            updates = {
-                'loss_train': th[-1] if len(th) > 0 else None,
-                'loss_valid': vh[-1] if len(vh) > 0 else None,
-                'epoch': self.current_epoch,
-                'best_epoch': self.best_epoch_monitoring.best_epoch,
-                'best_loss': self.best_epoch_monitoring.best_value,
-                'update': batch_id,
-                'update_loss': mean_loss
-            }
-            self._update_taskman_report(updates)
-
         if self.comet_exp:
             self.comet_exp.log_metric("loss_step", mean_loss, step=batch_id)
             self.comet_exp.log_metric(
@@ -865,12 +821,6 @@ class DWIMLAbstractTrainer:
 
         return checkpoint_state
 
-    def _update_taskman_report(self, updates):
-        self.taskman_report.update(updates)
-        self.taskman_report['time'] = time.time()
-        self.logger.info('!taskman' + json.dumps(self.taskman_report),
-                         flush=True)
-
     def _save_log_from_array(self, array: np.ndarray, fname: str):
         log_dir = os.path.join(self.saving_path, "logs")
         if not os.path.exists(log_dir):
@@ -946,19 +896,17 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
                  max_batches_per_epoch: int = 1000, patience: int = None,
-                 nb_cpu_processes: int = 0, taskman_managed: bool = False,
-                 use_gpu: bool = False, comet_workspace: str = None,
-                 comet_project: str = None, from_checkpoint: bool = False,
-                 log_level=logging.root.level):
+                 nb_cpu_processes: int = 0, use_gpu: bool = False,
+                 comet_workspace: str = None, comet_project: str = None,
+                 from_checkpoint: bool = False, log_level=logging.root.level):
         super().__init__(model, experiments_path, experiment_name,
                          batch_sampler_training, batch_loader_training,
                          batch_sampler_validation, batch_loader_validation,
                          model_uses_streamlines,
                          learning_rate, weight_decay, max_epochs,
                          max_batches_per_epoch, patience,
-                         nb_cpu_processes, taskman_managed, use_gpu,
-                         comet_workspace, comet_project,
-                         from_checkpoint, log_level)
+                         nb_cpu_processes, use_gpu, comet_workspace,
+                         comet_project, from_checkpoint, log_level)
 
     def run_one_batch(self, data, is_training: bool,
                       batch_loader: BatchLoaderOneInput):

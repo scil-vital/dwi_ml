@@ -32,13 +32,12 @@ def prepare_multisubjectdataset(args, load_training=True, load_validation=True,
     Params
     ------
     args: Namespace
-        Must contain 'hdf5_File, 'taskman_managed', 'lazy' and 'cache_size'
+        Must contain 'hdf5_File, 'lazy' and 'cache_size'
     """
     with Timer("\nPreparing testing and validation sets",
                newline=True, color='blue'):
         dataset = MultiSubjectDataset(
-            args.hdf5_file, taskman_managed=args.taskman_managed,
-            lazy=args.lazy, subset_cache_size=args.cache_size)
+            args.hdf5_file, lazy=args.lazy, subset_cache_size=args.cache_size)
         dataset.load_data(load_training, load_validation, load_testing)
 
         logging.info("Number of subjects loaded: \n"

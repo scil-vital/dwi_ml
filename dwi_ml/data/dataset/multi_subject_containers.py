@@ -35,12 +35,11 @@ class MultisubjectSubset(Dataset):
     Based on torch's dataset class. Provides functions for a DataLoader to
     iterate over data and process batches.
     """
-    def __init__(self, set_name: str, hdf5_file: str, taskman_managed: bool,
-                 lazy: bool, cache_size: int = 0):
+    def __init__(self, set_name: str, hdf5_file: str, lazy: bool,
+                 cache_size: int = 0):
 
         self.set_name = set_name
         self.hdf5_file = hdf5_file
-        self.taskman_managed = taskman_managed
 
         self.volume_groups = []  # type: List[str]
         self.nb_features = []  # type: List[int]
@@ -99,7 +98,6 @@ class MultisubjectSubset(Dataset):
         all_params = {
             'set_name': self.set_name,
             'hdf5_file': self.hdf5_file,
-            'taskman_managed': self.taskman_managed,
             'lazy': self.is_lazy,
             'cache_size': self.cache_size
         }
@@ -221,8 +219,7 @@ class MultisubjectSubset(Dataset):
 
         # Using tqdm progress bar, load all subjects from hdf_file
         self.make_logger_tqdm_fitted()
-        for subj_id in tqdm.tqdm(subject_keys, ncols=100,
-                                 disable=self.taskman_managed):
+        for subj_id in tqdm.tqdm(subject_keys, ncols=100):
             # Create subject's container
             # Uses SubjectData or LazySubjectData based on the class
             # calling this method.
@@ -309,15 +306,13 @@ class MultiSubjectDataset:
               datasets 'streamlines/data', 'streamlines/offsets',
               'streamlines/lengths', 'streamlines/euclidean_lengths'.
     """
-    def __init__(self, hdf5_file: str, taskman_managed: bool, lazy: bool,
+    def __init__(self, hdf5_file: str, lazy: bool,
                  subset_cache_size: int = 0, log_level=logging.root.level):
         """
         Params
         ------
         hdf5_file: str
             Path to the hdf5 file containing the data.
-        taskman_managed: bool
-            Enable or disable que tqdm progress bar.
         lazy: bool
             Use lazy or non-lazy data. Lazy data only loads data from the hdf5
             when asked explicitely. Non-lazy loads everything at once in the
@@ -330,9 +325,6 @@ class MultiSubjectDataset:
         """
         # Dataset info
         self.hdf5_file = hdf5_file
-
-        # Concerning the memory usage:
-        self.taskman_managed = taskman_managed
 
         logger.setLevel(log_level)
 
@@ -349,21 +341,17 @@ class MultiSubjectDataset:
         # Preparing the testing set and validation set
         # In non-lazy data, the cache_size is not used.
         self.training_set = MultisubjectSubset(
-            'training', hdf5_file, taskman_managed, self.is_lazy,
-            subset_cache_size)
+            'training', hdf5_file, self.is_lazy, subset_cache_size)
         self.validation_set = MultisubjectSubset(
-            'validation', hdf5_file, taskman_managed, self.is_lazy,
-            subset_cache_size)
+            'validation', hdf5_file, self.is_lazy, subset_cache_size)
         self.testing_set = MultisubjectSubset(
-            'testing', hdf5_file, taskman_managed, self.is_lazy,
-            subset_cache_size)
+            'testing', hdf5_file, self.is_lazy, subset_cache_size)
 
     @property
     def params(self) -> Dict[str, Any]:
         # Params for init:
         all_params = {
             'hdf5_file': self.hdf5_file,
-            'taskman_managed': self.taskman_managed,
             'is_lazy': self.is_lazy,
             'subset_cache_size': self.subset_cache_size,
         }

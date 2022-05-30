@@ -36,8 +36,8 @@ def test_batch_sampler():
         else:
             logging.debug('Initializing NON-LAZY dataset...')
 
-        dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=False,
-                                      lazy=False, log_level=logging.WARNING)
+        dataset = MultiSubjectDataset(hdf5_filename, lazy=False,
+                                      log_level=logging.WARNING)
         dataset.load_data()
 
         # 1) Batch size in terms of length in mm

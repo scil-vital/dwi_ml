@@ -21,18 +21,6 @@ def add_mandatory_args_training_experiment(p):
         help="Name of the streamlines group in the hdf5 dataset.")
 
 
-def add_printing_args_training_experiment(p):
-    p.add_argument(
-        '--logging', dest='logging_choice', default='WARNING', metavar='level',
-        choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
-        help="Logging level. Note that, for readability, not all debug logs \n"
-             "are printed in DEBUG mode, only the main ones.")
-    p.add_argument(
-        '--taskman_managed', action='store_true',
-        help="If set, instead of printing progression through tqdm, print \n"
-             "taskman-relevant data.")
-
-
 def add_memory_args_training_experiment(p):
     # Memory options both for the batch sampler and the trainer:
     m_g = p.add_argument_group("Memory options")

@@ -101,8 +101,8 @@ def _verify_sft_data(sft_data, group_number):
 def _non_lazy_version(hdf5_filename):
     logging.debug("*** NON-LAZY version")
     logging.debug("   Initializing dataset")
-    dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=False,
-                                  lazy=False, log_level=logging.DEBUG)
+    dataset = MultiSubjectDataset(hdf5_filename, lazy=False,
+                                  log_level=logging.DEBUG)
     dataset.load_data()
     _verify_multisubject_dataset(dataset)
 
@@ -135,7 +135,7 @@ def _non_lazy_version(hdf5_filename):
 
 def _lazy_version(hdf5_filename):
     logging.debug("*** LAZY version")
-    dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=True,
+    dataset = MultiSubjectDataset(hdf5_filename,
                                   lazy=True, subset_cache_size=1,
                                   log_level=logging.DEBUG)
     dataset.load_data()

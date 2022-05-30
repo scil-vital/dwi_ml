@@ -16,7 +16,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import (
     add_dataset_args, prepare_multisubjectdataset)
-from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.batch_samplers import (
@@ -25,8 +25,7 @@ from dwi_ml.training.utils.batch_loaders import (
     add_args_batch_loader, prepare_batchloadersoneinput_train_valid)
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_training_experiment,
-    add_memory_args_training_experiment,
-    add_printing_args_training_experiment)
+    add_memory_args_training_experiment)
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment
 
 # Please adapt
@@ -37,7 +36,7 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_mandatory_args_training_experiment(p)
-    add_printing_args_training_experiment(p)
+    add_logging_arg(p)
     add_memory_args_training_experiment(p)
     add_dataset_args(p)
     add_args_batch_sampler(p)
@@ -64,8 +63,8 @@ def init_from_args(args):
     model = ModelForTestWithPD()  # To be instantiated correctly.
 
     # Setting log level to INFO maximum for sub-loggers, else it become ugly
-    sub_loggers_level = args.logging_choice
-    if args.logging_choice == 'DEBUG':
+    sub_loggers_level = args.logging
+    if args.logging == 'DEBUG':
         sub_loggers_level = 'INFO'
 
     # Preparing the batch samplers.
@@ -99,8 +98,7 @@ def init_from_args(args):
             weight_decay=args.weight_decay,
             # MEMORY
             # toDo check this
-            nb_cpu_processes=args.processes,
-            taskman_managed=args.taskman_managed, use_gpu=args.use_gpu)
+            nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
         logging.info("Trainer params : " + format_dict_to_str(trainer.params))
 
     return trainer
@@ -111,7 +109,7 @@ def main():
     args = p.parse_args()
 
     # Initialize logger
-    logging.basicConfig(level=args.logging_choice)
+    logging.basicConfig(level=args.logging)
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])
@@ -126,7 +124,7 @@ def main():
 
     trainer = init_from_args(args)
 
-    run_experiment(trainer, args.logging_choice)
+    run_experiment(trainer, args.logging)
 
 
 if __name__ == '__main__':

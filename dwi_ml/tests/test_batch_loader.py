@@ -38,7 +38,7 @@ def test_batch_loader():
         else:
             logging.info('Initializing NON-LAZY dataset...')
 
-        dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=False,
+        dataset = MultiSubjectDataset(hdf5_filename,
                                       lazy=False, log_level=logging.WARNING)
         dataset.load_data()
 

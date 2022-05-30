@@ -50,3 +50,11 @@ def make_logger_normal(logger):
     #  I've tried a lot of things. self.logger.remove_handlers,
     #  self.logger.handlers = [] and more. Not working.
     pass
+
+
+def add_logging_arg(p):
+    p.add_argument(
+        '--logging', default='WARNING', metavar='level',
+        choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
+        help="Logging level. Note that, for readability, not all debug logs \n"
+             "are printed in DEBUG mode, only the main ones.")

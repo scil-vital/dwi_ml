@@ -40,7 +40,7 @@ def save_loaded_batch_for_visual_assessment():
         else:
             logging.info('Initializing NON-LAZY dataset...')
 
-        dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=False,
+        dataset = MultiSubjectDataset(hdf5_filename,
                                       lazy=False, log_level=logging.WARNING)
         dataset.load_data()
 
@@ -72,18 +72,16 @@ def save_loaded_batch_for_visual_assessment():
             wait_for_gpu=True)
 
         # Using last batch from batch sampler
-        _load_directly_and_verify(
-            batch_loader, batch_idx_tuples, split_ratio=0.5)
+        _load_directly_and_verify(batch_loader, batch_idx_tuples)
 
         # 2) With compressing
         logging.info('*** Test with batch size {} + loading with compress'
                      .format(batch_size))
         batch_loader = create_batch_loader(dataset.training_set, compress=True)
-        _load_directly_and_verify(
-            batch_loader, batch_idx_tuples, split_ratio=0)
+        _load_directly_and_verify(batch_loader, batch_idx_tuples)
 
 
-def _load_directly_and_verify(batch_loader, batch_idx_tuples, split_ratio):
+def _load_directly_and_verify(batch_loader, batch_idx_tuples):
     expected_nb_streamlines = 0
     for s, idx in batch_idx_tuples:
         expected_nb_streamlines += len(idx)

@@ -26,7 +26,7 @@ from dwi_ml.training.utils.batch_loaders import (
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_training_experiment,
     add_memory_args_training_experiment,
-    add_printing_args_training_experiment)
+    add_logging_args)
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment
 
 # Please adapt
@@ -37,7 +37,7 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_mandatory_args_training_experiment(p)
-    add_printing_args_training_experiment(p)
+    add_logging_args(p)
     add_memory_args_training_experiment(p)
     add_dataset_args(p)
     add_args_batch_sampler(p)
@@ -99,8 +99,7 @@ def init_from_args(args):
             weight_decay=args.weight_decay,
             # MEMORY
             # toDo check this
-            nb_cpu_processes=args.processes,
-            taskman_managed=args.taskman_managed, use_gpu=args.use_gpu)
+            nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
         logging.info("Trainer params : " + format_dict_to_str(trainer.params))
 
     return trainer

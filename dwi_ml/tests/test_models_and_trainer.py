@@ -27,8 +27,7 @@ def test_trainer_and_models():
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
     # Initializing dataset
-    dataset = MultiSubjectDataset(hdf5_filename, taskman_managed=False,
-                                  lazy=False)
+    dataset = MultiSubjectDataset(hdf5_filename, lazy=False)
     dataset.load_data()
 
     # Initializing batch sampler
@@ -75,7 +74,6 @@ def _create_trainer(batch_sampler, batch_loader, model,
         batch_loader_validation=None,
         model=model, experiments_path=tmp_dir.name, experiment_name='test',
         model_uses_streamlines=model_uses_streamlines,
-        max_batches_per_epoch=4, max_epochs=2, patience=None,
-        taskman_managed=False, use_gpu=False)
+        max_batches_per_epoch=4, max_epochs=2, patience=None, use_gpu=False)
 
     return trainer

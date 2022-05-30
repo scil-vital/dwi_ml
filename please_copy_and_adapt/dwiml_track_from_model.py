@@ -29,7 +29,7 @@ from scilpy.tracking.utils import (add_seeding_options,
                                    verify_seed_options, add_out_options)
 
 from dwi_ml.data.dataset.single_subject_containers import SubjectData
-from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.tracking.seed import DWIMLSeedGenerator
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
@@ -62,9 +62,7 @@ def build_argparser():
     add_seeding_options(p)
     add_out_options(p)
 
-    p.add_argument('--logging', metavar='level',
-                   choices=['info', 'debug', 'warning'], default='warning',
-                   help="Logging level. One of 'debug', 'info' or 'warning'.")
+    add_logging_arg(p)
 
     return p
 

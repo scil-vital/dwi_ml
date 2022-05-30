@@ -63,6 +63,6 @@ def test_execution_training_tracking(script_runner):
     ret = script_runner.run(
         'dwiml_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
-        '--algo', 'det', '--nt', '2', '--logging', 'debug')
+        '--algo', 'det', '--nt', '2', '--logging', 'INFO')
 
     assert ret.success

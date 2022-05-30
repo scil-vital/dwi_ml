@@ -201,10 +201,10 @@ class LazySubjectData(SubjectDataAbstract):
         """We could find groups directly from the subject's keys but this way
         is safer in case one subject had different keys than others. Always
         using only the wanted groups."""
-        if hdf_handle is None or not hdf_handle.id.valid:
-            logging.warning('Adding handle(), but provided handle is None or'
-                            'is non valid (probably closed)!')
-
+        # To check it handle is not initialized:
+        # Closing previous handle
+        if self.hdf_handle is not None:
+            self.hdf_handle.close()
         self.hdf_handle = hdf_handle
 
     def __del__(self):

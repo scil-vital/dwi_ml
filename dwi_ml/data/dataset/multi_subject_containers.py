@@ -48,6 +48,7 @@ class MultisubjectSubset(Dataset):
         # The subjects data list will be either a SubjectsDataList or a
         # LazySubjectsDataList depending on MultisubjectDataset.is_lazy.
         self.subjs_data_list = None
+        self.subjects = []  # type:List[str]
         self.nb_subjects = 0
 
         self.streamline_ids_per_subj = []  # type: List[defaultdict[slice]]
@@ -132,14 +133,31 @@ class MultisubjectSubset(Dataset):
 
     def get_volume_verify_cache(self, subj_idx: int, group_idx: int,
                                 device: torch.device = torch.device('cpu'),
-                                non_blocking: bool = False) -> torch.Tensor:
+                                non_blocking: bool = False,
+                                as_tensor: bool = False):
         """
         There will be one cache manager per subset. This could be moved to
         the MultiSubjectDatasetAbstract but easier to deal with here.
 
-        Loads volume as a tensor. In the case of lazy dataset, checks the cache
-        first. If data was not on the cache, loads it and sends it to the
-        cache before returning.
+        In the case of lazy dataset, checks the cache first. If data was not on
+        the cache, loads it and sends it to the cache before returning.
+
+        Params
+        ------
+        subj_idx: int
+            Index of the subject to load data from.
+        group_idx: int
+            Index of the volume to load.
+        device:
+            Torch device. Used when loading as tensor.
+        non_blocking: bool
+            Used when loading as tensor.
+        as_tensor: bool
+            If true, loads volume as a tensor. Else, as a DatasetVolume.
+
+        Returns
+        -------
+        mri_data: Union[Tensor, DatasetVolume]
         """
 
         # First verify cache (if lazy)
@@ -154,24 +172,29 @@ class MultisubjectSubset(Dataset):
 
             try:
                 # General case: Data is already cached
-                mri_data_tensor = self.volume_cache_manager[cache_key]
-                return mri_data_tensor
+                mri_data = self.volume_cache_manager[cache_key]
+                logger.debug("Loaded volume from cache")
+                was_cached = True
             except KeyError:
-                pass
+                was_cached = False
 
-        # Either non-lazy or if lazy, data was not cached.
-        mri_data_tensor = self._get_volume_as_tensor(subj_idx, group_idx,
-                                                     device, non_blocking)
+        if not was_cached:
+            # Either non-lazy or if lazy, data was not cached. Load it now.
+            mri_data = self._get_volume(subj_idx, group_idx)
 
-        if self.subjs_data_list.is_lazy and self.cache_size > 0:
-            # Send volume_data on cache
-            self.volume_cache_manager[cache_key] = mri_data_tensor
+            # Add to cache
+            if self.subjs_data_list.is_lazy and self.cache_size > 0:
+                logger.debug("Adding volume to cache")
+                # Send volume_data on cache
+                self.volume_cache_manager[cache_key] = mri_data
 
-        return mri_data_tensor
+        if as_tensor:
+            return mri_data.as_tensor.to(device=device,
+                                         non_blocking=non_blocking)
+        else:
+            return mri_data.as_data_volume
 
-    def _get_volume_as_tensor(self, subj_idx: int, group_idx: int,
-                              device: torch.device,
-                              non_blocking: bool = False):
+    def _get_volume(self, subj_idx: int, group_idx: int):
         """
         Contrary to get_volume_verify_cache, this does not send data to
         cache for later use.
@@ -184,11 +207,9 @@ class MultisubjectSubset(Dataset):
         else:
             subj_data = self.subjs_data_list[subj_idx]
 
-        mri_data_tensor = subj_data.mri_data_list[group_idx].as_tensor
-        mri_data_tensor = mri_data_tensor.to(device=device,
-                                             non_blocking=non_blocking)
+        mri_data = subj_data.mri_data_list[group_idx]
 
-        return mri_data_tensor
+        return mri_data
 
     def load(self, hdf_handle: h5py.File):
         """
@@ -198,6 +219,7 @@ class MultisubjectSubset(Dataset):
 
         # Checking if there are any subjects to load
         subject_keys = sorted(hdf_handle.attrs[self.set_name + '_subjs'])
+        self.subjects = subject_keys
         self.nb_subjects = len(subject_keys)
 
         if self.nb_subjects == 0:
@@ -248,6 +270,9 @@ class MultisubjectSubset(Dataset):
                 self._add_streamlines_ids(n_streamlines, subj_idx, i)
                 lengths[i].append(subj_sft_data.lengths)
                 lengths_mm[i].append(subj_sft_data.lengths_mm)
+
+            # Remove hdf handle
+            subj_data.hdf_handle = None
         self.remove_tqdm_handle()
 
         # Arrange final data properties

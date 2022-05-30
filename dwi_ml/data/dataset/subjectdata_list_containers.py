@@ -84,24 +84,25 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
         """
         Params
         ------
-        subject_item: Tuple(int, hdf_handle)
-            The subject id to get and the handle to add if necessary.
+        subject_item: Union[int, Tuple(int, hdf_handle)]
+            The subject id to get [and the handle to add if necessary].
         """
-        assert type(subject_item) == tuple, \
-            "Lazy SubjectsDataList: Trying to get an item, but item should " \
-            "be a tuple: (subj_idx, hdf_handle)"
+        if type(subject_item) == tuple:
 
-        subject_idx, subject_hdf_handle = subject_item
-        subj_data = self._subjects_data_list[subject_idx]
+            subject_idx, subject_hdf_handle = subject_item
+            subj_data = self._subjects_data_list[subject_idx]
 
-        if subj_data.hdf_handle:
-            if subject_hdf_handle and subj_data.hdf_handle.id.valid:
-                logging.debug("Getting item from the subjects list. You "
-                              "provided a hdf handle but subject already had "
-                              "a valid one: \n {}. Using new handle."
-                              .format(subj_data.hdf_handle))
+            if subj_data.hdf_handle:
+                if subject_hdf_handle and subj_data.hdf_handle.id.valid:
+                    logging.debug("Getting item from the subjects list. You "
+                                  "provided a hdf handle but subject already "
+                                  "had a valid one: \n {}. Using new handle."
+                                  .format(subj_data.hdf_handle))
 
-        subj_data.add_handle(subject_hdf_handle)
+            subj_data.add_handle(subject_hdf_handle)
+
+        else:
+            subj_data = self._subjects_data_list[subject_item]
 
         return subj_data
 

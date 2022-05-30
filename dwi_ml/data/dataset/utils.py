@@ -16,8 +16,9 @@ def add_dataset_args(p: argparse.ArgumentParser):
         '--cache_size', type=int, metavar='s', default=1,
         help="Relevant only if lazy data is used. Size of the cache in terms\n"
              "of length of the queue (i.e. number of volumes). NOTE: Real \n"
-             "cache size will actually be twice this value as the "
-             "training \nand validation subsets each have their cache. [1]")
+             "cache size will actually be larger depending on use;\nthe "
+             "training, validation and testing sets each have their cache. "
+             "[1]")
     dataset_group.add_argument(
         '--lazy', action='store_true',
         help="If set, do not load all the dataset in memory at once. Load \n"

@@ -26,6 +26,11 @@ def add_mandatory_options_tracking(p):
                    help="Tracking mask's volume group in the hdf5.")
     p.add_argument('input_group',
                    help="Model's input's volume group in the hdf5.")
+    p.add_argument('--subset', default='testing',
+                   choices=['training', 'validation', 'testing'],
+                   help="Subject id should probably come come the "
+                        "'testing' set but you can\n modify this to "
+                        "'training' or 'validation'.")
 
 
 def add_tracking_options(p):
@@ -95,12 +100,6 @@ def add_tracking_options(p):
                           "fixed --rng_seed.\nEx: If tractogram_1 was created "
                           "with -nt 1,000,000, \nyou can create tractogram_2 "
                           "with \n--skip 1,000,000.")
-
-    # toDo. This should be clarified in scilpy eventually. Verifiy evolution.
-    r_g.add_argument('--set_mmap_to_none', action='store_true',
-                     help="If true, use mmap_mode=None. Else mmap_mode='r+'.\n"
-                          "Used in np.load(data_file_info). Available only "
-                          "with --processes.\nTO BE CLEANED")
 
     # Preparing upcoming GPU option:
     m_g = p.add_argument_group('  Memory options')

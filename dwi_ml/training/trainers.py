@@ -246,8 +246,7 @@ class DWIMLAbstractTrainer:
         list_params = [n for n, _ in self.model.named_parameters()]
         self.logger.debug("Initiating trainer: {}".format(type(self)))
         self.logger.debug("This trainer will use Adam optimization on the "
-                          "following model.parameters: \n\n"
-                          .join(list_params) + "\n")
+                          "following model.parameters: {}".format(list_params))
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=learning_rate,
                                           weight_decay=weight_decay)
@@ -692,7 +691,7 @@ class DWIMLAbstractTrainer:
             valid_batch_sampler: Union[DWIMLBatchSampler, None],
             valid_batch_loader: Union[AbstractBatchLoader, None],
             checkpoint_state: dict, new_patience,
-            new_max_epochs):
+            new_max_epochs, log_level):
         """
         During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
         back offers a dict that can be used to instantiate an experiment and
@@ -706,7 +705,7 @@ class DWIMLAbstractTrainer:
                       batch_loader_training=train_batch_loader,
                       batch_sampler_validation=valid_batch_sampler,
                       batch_loader_validation=valid_batch_loader,
-                      from_checkpoint=True,
+                      from_checkpoint=True, log_level=log_level,
                       **checkpoint_state['params_for_init'])
 
         current_states = checkpoint_state['current_states']

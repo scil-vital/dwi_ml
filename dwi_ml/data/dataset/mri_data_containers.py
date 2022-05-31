@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from typing import Union
 
 import h5py
@@ -7,6 +8,8 @@ import torch
 
 from scilpy.image.datasets import DataVolume
 from torch import Tensor
+
+logger = logging.getLogger('dataset_logger')
 
 
 class MRIDataAbstract(object):
@@ -124,14 +127,22 @@ class LazyMRIData(MRIDataAbstract):
 
         return cls(data, voxres, interpolation)
 
+    # All three methods below load the data.
+    # Data is not loaded yet, but sending it to a np.array will load it.
+
     @property
     def as_data_volume(self) -> DataVolume:
-        # Data is not loaded yet, but sending it to a np.array will load it.
+        logger.debug("LOADING FROM HDF5 NOW {}".format(self._data))
         return DataVolume(np.array(self._data, dtype=np.float32),
                           self.voxres, self.interpolation)
 
     @property
     def as_tensor(self):
-        # Data is not loaded yet, but sending it to a np.array will load it.
+        logger.debug("LOADING FROM HDF5 NOW {}".format(self._data))
         return torch.as_tensor(np.array(self._data, dtype=np.float32),
                                dtype=torch.float)
+
+    @property
+    def as_non_lazy(self):
+        logger.debug("LOADING FROM HDF5 NOW {}".format(self._data))
+        return MRIData(np.array(self._data), self.voxres, self.interpolation)

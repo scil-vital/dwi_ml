@@ -6,6 +6,8 @@ from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
                                                            SubjectData,
                                                            LazySubjectData)
 
+logger = logging.getLogger('dataset_logger')
+
 
 class SubjectsDataListAbstract(object):
     """
@@ -94,10 +96,10 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
 
             if subj_data.hdf_handle:
                 if subject_hdf_handle and subj_data.hdf_handle.id.valid:
-                    logging.debug("Getting item from the subjects list. You "
-                                  "provided a hdf handle but subject already "
-                                  "had a valid one: \n {}. Using new handle."
-                                  .format(subj_data.hdf_handle))
+                    logger.debug("Getting item from the subjects list. You "
+                                 "provided a hdf handle but subject already "
+                                 "had a valid one: \n {}. Using new handle."
+                                 .format(subj_data.hdf_handle))
 
             subj_data.add_handle(subject_hdf_handle)
 
@@ -108,6 +110,6 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
 
     def open_handle_and_getitem(self, subject_idx) -> LazySubjectData:
         hdf_handle = h5py.File(self.hdf5_path, 'r')
-        logging.debug("Opened a new handle: {}".format(hdf_handle))
+        logger.debug("Opened a new handle: {}".format(hdf_handle))
 
         return self[(subject_idx, hdf_handle)]

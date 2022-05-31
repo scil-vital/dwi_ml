@@ -134,7 +134,7 @@ class MultisubjectSubset(Dataset):
     def get_volume_verify_cache(self, subj_idx: int, group_idx: int,
                                 device: torch.device = torch.device('cpu'),
                                 non_blocking: bool = False,
-                                as_tensor: bool = False):
+                                as_tensor: bool = True):
         """
         There will be one cache manager per subset. This could be moved to
         the MultiSubjectDatasetAbstract but easier to deal with here.
@@ -159,10 +159,11 @@ class MultisubjectSubset(Dataset):
         -------
         mri_data: Union[Tensor, DatasetVolume]
         """
-
         # First verify cache (if lazy)
         cache_key = str(subj_idx) + '.' + str(group_idx)
+        was_cached = False
         if self.subjs_data_list.is_lazy and self.cache_size > 0:
+            # Initialize the cache if not done
             # Parallel workers each build a local cache
             # (data is duplicated across workers, but there is no need to
             # serialize/deserialize everything)
@@ -170,6 +171,7 @@ class MultisubjectSubset(Dataset):
                 self.volume_cache_manager = \
                     SingleThreadCacheManager(self.cache_size)
 
+            # Access the cache
             try:
                 # General case: Data is already cached
                 mri_data = self.volume_cache_manager[cache_key]
@@ -179,15 +181,20 @@ class MultisubjectSubset(Dataset):
                 was_cached = False
 
         if not was_cached:
-            # Either non-lazy or if lazy, data was not cached. Load it now.
+            # Either non-lazy or if lazy, data was not cached.
+            # Non-lazy: direct acces. Lazy: this loads the data.
             mri_data = self._get_volume(subj_idx, group_idx)
 
             # Add to cache
+            # Saving the data as a non-lazy data to also have in memory its
+            # other attributes.
             if self.subjs_data_list.is_lazy and self.cache_size > 0:
                 logger.debug("Adding volume to cache")
                 # Send volume_data on cache
-                self.volume_cache_manager[cache_key] = mri_data
+                self.volume_cache_manager[cache_key] = mri_data.as_non_lazy
 
+        # Casting as wanted. If was cached: non-lazy. Direct access.
+        # If was not cached: depends on self.is_lazy.
         if as_tensor:
             return mri_data.as_tensor.to(device=device,
                                          non_blocking=non_blocking)

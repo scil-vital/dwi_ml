@@ -9,6 +9,8 @@ from scilpy.tracking.tracker import Tracker as ScilpyTracker
 from dwi_ml.tracking.propagator import DWIMLPropagator
 from dwi_ml.tracking.seed import DWIMLSeedGenerator
 
+logger = logging.getLogger('tracker_logger')
+
 
 class DWIMLTracker(ScilpyTracker):
     def __init__(self, propagator: DWIMLPropagator, mask: DataVolume,
@@ -16,7 +18,7 @@ class DWIMLTracker(ScilpyTracker):
                  max_nbr_pts, max_invalid_dirs, compression_th=0.1,
                  nbr_processes=1, save_seeds=False, rng_seed=1234,
                  track_forward_only=False, simultanenous_tracking=False,
-                 device=None):
+                 device=None, log_level=logging.WARNING):
         """
         Parameters: See scilpy.
         ----------
@@ -44,6 +46,8 @@ class DWIMLTracker(ScilpyTracker):
 
         # Sending model and data to device.
         self.propagator.move_to(device=self.device)
+
+        logger.setLevel(log_level)
 
     def track(self):
         """
@@ -75,7 +79,7 @@ class DWIMLTracker(ScilpyTracker):
     def _reset_data_for_new_process(self, init_args):
         """Nothing to do here. hdf5 deals well with multi-processes."""
 
-        logging.info("Preparing for process id {}".format(os.getpid()))
+        logger.info("Preparing for process id {}".format(os.getpid()))
         self.propagator.reset_data(reload_data=True)
 
     def simultanenous_tracking_on_gpu(self):

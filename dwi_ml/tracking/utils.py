@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import logging
+
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from scilpy.io.utils import add_processes_arg
 
 
@@ -111,3 +114,33 @@ def add_tracking_options(p):
                                   "used \ntogether with --processes.")
 
     return track_g
+
+
+def prepare_dataset_for_tracking(hdf5_file, args):
+    # Right now, we con only track on one subject at the time. We could
+    # instantiate a LazySubjectData directly but we want to use the cache
+    # manager (suited better for multiprocessing)
+    dataset = MultiSubjectDataset(hdf5_file, lazy=args.lazy,
+                                  subset_cache_size=args.cache_size,
+                                  log_level=logging.WARNING)
+
+    if args.subset == 'testing':
+        # Most logical choice.
+        dataset.load_data(load_training=False, load_validation=False)
+        subset = dataset.testing_set
+    elif args.subset == 'training':
+        dataset.load_data(load_validation=False, load_testing=False)
+        subset = dataset.training_set
+    elif args.subset == 'validation':
+        dataset.load_data(load_training=False, load_testing=False)
+        subset = dataset.validation_set
+    else:
+        raise ValueError("Subset must be one of 'training', 'validation' "
+                         "or 'testing.")
+
+    if args.subj_id not in subset.subjects:
+        raise ValueError("Subject {} does not belong in hdf5's {} set."
+                         .format(args.subj_id, args.subset))
+    subj_idx = subset.subjects.index(args.subj_id)
+
+    return subset, subj_idx

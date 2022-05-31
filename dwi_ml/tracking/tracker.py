@@ -31,7 +31,7 @@ class DWIMLTracker(ScilpyTracker):
 
         # Warning about the mask being an MRIData instead of DataVolume but
         # ok! Modified to be able to use as tensor more easily for torch.
-        mmap_mode = ''  # Not used here, we deal with hdf5.
+        mmap_mode = None  # Not used here, we deal with hdf5.
         super().__init__(propagator, mask, seed_generator, nbr_seeds,
                          min_nbr_pts, max_nbr_pts, max_invalid_dirs,
                          compression_th, nbr_processes, save_seeds, mmap_mode,
@@ -48,6 +48,9 @@ class DWIMLTracker(ScilpyTracker):
         self.propagator.move_to(device=self.device)
 
         logger.setLevel(log_level)
+
+        # Increase the printing frequency as compared to super
+        self.printing_frequency = 5
 
     def track(self):
         """
@@ -76,7 +79,7 @@ class DWIMLTracker(ScilpyTracker):
         pool = multiprocessing.Pool(self.nbr_processes)
         return pool
 
-    def _reset_data_for_new_process(self, init_args):
+    def _reload_data_for_new_process(self, init_args):
         """Nothing to do here. hdf5 deals well with multi-processes."""
 
         logger.info("Preparing for process id {}".format(os.getpid()))

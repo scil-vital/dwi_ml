@@ -152,14 +152,6 @@ def _lazy_version(hdf5_filename):
 
     logging.debug("    Testing properties of a LAZY SingleSubjectDataset.")
 
-    # Directly accessing (_getitem_) should bug: need to send a hdf_handle.
-    failed = False
-    try:
-        _ = training_set.subjs_data_list[0]
-    except AssertionError:
-        failed = True
-    assert failed
-
     # Accessing through open_handle_and_getitem
     subj0 = training_set.subjs_data_list.open_handle_and_getitem(0)
     assert isinstance(subj0, LazySubjectData)

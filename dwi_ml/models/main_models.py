@@ -130,7 +130,7 @@ class MainModelAbstract(torch.nn.Module):
             shutil.rmtree(to_remove)
 
     @classmethod
-    def load(cls, loading_dir):
+    def load(cls, loading_dir, log_level=logging.WARNING):
         """
         loading_dir: path to the trained parameters. Must contain files
             - parameters.json
@@ -149,7 +149,7 @@ class MainModelAbstract(torch.nn.Module):
         best_model_filename = os.path.join(model_dir, "best_model_state.pkl")
         best_model_state = torch.load(best_model_filename)
 
-        model = cls(**params)
+        model = cls(log_level=log_level, **params)
         model.load_state_dict(best_model_state)  # using torch's method
         model.update_best_model()
         model.eval()

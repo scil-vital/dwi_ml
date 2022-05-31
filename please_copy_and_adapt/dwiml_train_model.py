@@ -16,7 +16,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import (
     add_dataset_args, prepare_multisubjectdataset)
-from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
+from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.batch_samplers import (
@@ -97,8 +97,8 @@ def init_from_args(args):
             patience=args.patience, from_checkpoint=False,
             weight_decay=args.weight_decay,
             # MEMORY
-            # toDo check this
-            nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
+            nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
+            log_level=args.logging)
         logging.info("Trainer params : " + format_dict_to_str(trainer.params))
 
     return trainer
@@ -108,8 +108,9 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Initialize logger
-    logging.basicConfig(level=args.logging)
+    # Setting root logger with high level but we will set trainer to
+    # user-defined level.
+    logging.basicConfig(level=logging.WARNING)
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])

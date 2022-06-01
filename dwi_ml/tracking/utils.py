@@ -112,6 +112,9 @@ def add_tracking_options(p):
     ram_options.add_argument('--use_gpu', action='store_true',
                              help="If set, use GPU for processing. Cannot be "
                                   "used \ntogether with --processes.")
+    m_g.add_argument('--simultaneous_tracking', type=int, default=1,
+                     help='Track n streamlines at the same time. Intended for '
+                          'GPU usage. Default = 1 (no simultaneous tracking).')
 
     return track_g
 

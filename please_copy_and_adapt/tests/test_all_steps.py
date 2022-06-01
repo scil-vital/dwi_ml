@@ -52,9 +52,8 @@ def test_execution_training_tracking(script_runner):
                             '--new_max_epochs', '2')
     assert ret.success
 
-    logging.info("************ TESTING TRACKING FROM MODEL ************")
+    logging.info("************ TESTING CPU TRACKING FROM MODEL ************")
     whole_experiment_path = os.path.join(experiment_path, experiment_name)
-    out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
 
     seeding_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
     tracking_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
@@ -62,10 +61,24 @@ def test_execution_training_tracking(script_runner):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
     # Testing HDF5 data does not contain a testing set to keep it light. Using
     # subjectX from training set.
+
+    out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
     ret = script_runner.run(
         'dwiml_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
         '--algo', 'det', '--nt', '2', '--logging', 'INFO',
         '--subset', 'training')
-
     assert ret.success
+
+    # Testing multiple tracking
+    #logging.info("************ TESTING GPU TRACKING FROM MODEL ************")
+    #out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram2.trk')
+    #ret = script_runner.run(
+    #    'dwiml_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+    #    out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
+    #    '--algo', 'det', '--nt', '2', '--logging', 'INFO',
+    #    '--subset', 'training',
+    #    # Additional params compared to CPU:
+    #    '--use_gpu', '--simultaneous_tracking', '2')
+
+    #assert ret.success

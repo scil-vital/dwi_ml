@@ -42,7 +42,9 @@ class ModelForTest(MainModelAbstract):
         return [1., 1., 1.]
 
     def forward(self, x):
-        pass
+        if isinstance(x, list):
+            return [self.fake_parameter for _ in x]
+        return self.fake_parameter
 
 
 class ModelForTestWithPD(MainModelWithPD):
@@ -72,6 +74,9 @@ class ModelForTestWithPD(MainModelWithPD):
     def forward(self, x, streamlines):
         dirs = self.format_directions(streamlines)
         _ = self.compute_and_embed_previous_dirs(dirs)
+        if isinstance(x, list):
+            return [self.fake_parameter for _ in x]
+        return self.fake_parameter
 
 
 def create_test_batch_sampler(

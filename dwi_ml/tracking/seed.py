@@ -32,9 +32,9 @@ class DWIMLSeedGenerator(SeedGenerator):
         ----------
         random_generator : numpy random generator
             Initialized numpy number generator.
-        indices : List
+        indices : numpy array
             Indices of current seeding map.
-        which_seeds : List[int]
+        which_seeds : numpy array
             Seed numbers (i.e. IDs) to be processed.
 
         Return
@@ -42,6 +42,8 @@ class DWIMLSeedGenerator(SeedGenerator):
         seed_pos: List[tuple]
             Positions of next seeds expressed in mm.
         """
+        # todo Bring this to torch and use correct device?
+        #   We would need to change the seed generator.
         len_seeds = len(self.seeds)
         if len_seeds == 0:
             return []
@@ -49,14 +51,20 @@ class DWIMLSeedGenerator(SeedGenerator):
         voxel_dim = np.asarray(self.voxres)
 
         # Voxel selection from the seeding mask
-        inds = torch.fmod(which_seeds, len_seeds)
-        x, y, z = self.seeds[indices[inds]]
+        inds = which_seeds % len_seeds
 
         # Sub-voxel initial positioning
+        # Prepare sub-voxel random movement now (faster out of loop)
         n = len(which_seeds)
         r_x = random_generator.uniform(0, voxel_dim[0], size=n)
         r_y = random_generator.uniform(0, voxel_dim[1], size=n)
         r_z = random_generator.uniform(0, voxel_dim[2], size=n)
 
-        return x * self.voxres[0] + r_x, y * self.voxres[1] \
-            + r_y, z * self.voxres[2] + r_z
+        seeds = []
+        for i in range(len(which_seeds)):
+            x, y, z = self.seeds[indices[inds[i]]]
+
+            seeds.append((x * self.voxres[0] + r_x[i],
+                          y * self.voxres[1] + r_y[i],
+                          z * self.voxres[2] + r_z[i]))
+        return seeds

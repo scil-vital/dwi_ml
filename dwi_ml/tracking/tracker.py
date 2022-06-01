@@ -4,6 +4,7 @@ import multiprocessing
 import os
 
 import numpy as np
+import torch
 from scilpy.image.datasets import DataVolume
 from scilpy.tracking.tracker import Tracker as ScilpyTracker
 
@@ -18,14 +19,16 @@ class DWIMLTracker(ScilpyTracker):
                  seed_generator: DWIMLSeedGenerator, nbr_seeds, min_nbr_pts,
                  max_nbr_pts, max_invalid_dirs, compression_th=0.1,
                  nbr_processes=1, save_seeds=False, rng_seed=1234,
-                 track_forward_only=False, simultanenous_tracking=False,
-                 device=None, log_level=logging.WARNING):
+                 track_forward_only=False, simultanenous_tracking: int = 1,
+                 use_gpu: bool = False, log_level=logging.WARNING):
         """
         Parameters: See scilpy.
         ----------
         propagator: now a dwi_ml version of the propagator.
+        simultaneous_tracking: bool
+            If true, track multiple lines at the same time. Intended for GPU.
         use_gpu: bool
-            New option to use multi-tracking. Not ready
+            New option.
         hdf_file:
             Necessary to open a new hdf handle a at process.
         """
@@ -43,10 +46,20 @@ class DWIMLTracker(ScilpyTracker):
 
         # Set device
         self.simultanenous_tracking = simultanenous_tracking
-        self.device = device
+        self.use_gpy = use_gpu
+
+        if use_gpu:
+            if torch.cuda.is_available():
+                self.device = torch.device('cuda')
+                logging.info("We will be using GPU!")
+            else:
+                raise ValueError("You chose GPU (cuda) device but it is not "
+                                 "available!")
+        else:
+            self.device = torch.device('cpu')
 
         # Sending model and data to device.
-        self.propagator.move_to(device=self.device)
+        self.propagator.move_to(self.device)
 
         logger.setLevel(log_level)
 
@@ -63,7 +76,7 @@ class DWIMLTracker(ScilpyTracker):
         Here adding the GPU usage. Other changes for dwi_ml will be reflected
         in _get_streamlines.
         """
-        if self.simultanenous_tracking:
+        if self.simultanenous_tracking > 1:
             self.simultanenous_tracking_on_gpu()
         else:
             # On CPU, with possibility of parallel processing.
@@ -90,16 +103,38 @@ class DWIMLTracker(ScilpyTracker):
         """
         Creating all seeds at once and propagating all streamlines together.
         """
+        assert torch.cuda.is_available()
+        assert self.device.type == 'cuda'
+        self.propagator.move_to(self.device)
+
         random_generator, indices = self.seed_generator.init_generator(
             self.rng_seed, self.skip)
-        seeds = self.seed_generator.get_next_n_pos(random_generator,
-                                                   indices, self.skip)
 
-        self._get_lines_both_directions(seeds)
+        seed_count = 0
+        lines = []
+        while seed_count < self.nbr_seeds:
+            nb_next_seeds = self.simultanenous_tracking
+            if seed_count + nb_next_seeds > self.nbr_seeds:
+                nb_next_seeds = self.nbr_seeds - seed_count
 
-    def _get_lines_both_directions(self, n_seeds):
+            logger.info("Multiple GPU tracking: Tracking the next {} "
+                        "streamlines.".format(nb_next_seeds))
+
+            next_seeds = np.asarray(
+                range(seed_count, seed_count+nb_next_seeds))
+
+            # Using DWIMLSeedGenerator's class
+            seeds = self.seed_generator.get_next_n_pos(
+                random_generator, indices, next_seeds)
+
+            lines.append(self._get_multiple_lines_both_directions(seeds))
+
+            logger.info("Done.")
+            seed_count += nb_next_seeds
+
+    def _get_multiple_lines_both_directions(self, n_seeds):
         """
-        Equivalent of super's() _get_line_both_directions() for for multiple
+        Equivalent of super's() _get_line_both_directions() for multiple lines
         tracking at the same time (meant to be used on GPU).
 
         Params
@@ -113,11 +148,18 @@ class DWIMLTracker(ScilpyTracker):
             The generated streamline for seeding_pos.
         """
         lines = [[np.asarray(seeding_pos)] for seeding_pos in n_seeds]
+
+        logger.info("Multiple GPU tracking: Starting forward propgagation")
         tracking_info = self.propagator.prepare_forward(n_seeds)
-        lines = self._propagate_lines(lines, tracking_info)
+        lines = self.propagator.propagate(lines, tracking_info,
+                                          multiple_lines=True)
 
         if not self.track_forward_only:
-            lines = [line.reverse() if len(line)>1 else line for line in lines]
+            logger.info("Multiple GPU tracking: Starting backward "
+                        "propgagation")
+
+            lines = [line.reverse() if len(line) > 1 else line
+                     for line in lines]
 
             tracking_info = self.propagator.prepare_backward(lines,
                                                              tracking_info)
@@ -130,40 +172,60 @@ class DWIMLTracker(ScilpyTracker):
                 clean_lines.append(line)
         return clean_lines
 
-    def _propagate_lines(self, lines, tracking_info):
+    def _propagate_multiple_lines(self, lines, tracking_info):
         """
-        Equivalent of super's() _get_line_both_directions() for for multiple
-        tracking at the same time (meant to be used on GPU).
+        Equivalent of super's() _propagate_lines() for for multiple tracking at
+        the same time (meant to be used on GPU).
         """
         invalid_direction_counts = np.zeros(len(lines))
-        propagation_can_continue = np.ones(len(lines))  # Using ones as True.
+        nb_streamlines = len(lines)
         final_lines = []  # Will get the final lines when they are done.
 
         nb_points = 0
-        while nb_points < self.max_nbr_pts and \
-                np.any(propagation_can_continue):
+        all_lines_completed = False
+        # lines will only contain the remaining lines.
+        while nb_points < self.max_nbr_pts and not all_lines_completed:
             nb_points += 1
-            
-            n_new_pos, new_tracking_info, are_direction_valid = \
+
+            n_new_pos, new_tracking_info, are_directions_valid = \
                 self.propagator.propagate(lines[-1], tracking_info)
 
             # Verifying and appending
-            if is_direction_valid:
-                invalid_direction_count = 0
-            else:
-                invalid_direction_count += 1
-            propagation_can_continue = self._verify_stopping_criteria(
-                invalid_direction_count, new_pos)
-            if propagation_can_continue:
-                line.append(new_pos)
+            logging.warning("ARE VALID: {}".format(are_directions_valid))
+            invalid_direction_counts[~are_directions_valid] += 1
+            logging.warning("INVALID NB: {}".format(invalid_direction_counts))
 
+            all_lines_completed = True
+            finished_idx = []
+            for i in range(len(lines)):
+                propagation_can_continue = self._verify_stopping_criteria(
+                    invalid_direction_counts[i], n_new_pos[i])
+
+                if propagation_can_continue:
+                    logger.debug("    Streamlines {} will continue.".format(i))
+                    all_lines_completed = False
+                    lines[i].append(n_new_pos[i])
+                else:
+                    logger.debug("    Streamlines {} will stop.".format(i))
+                    final_lines.append(lines[i])
+                    finished_idx.append(i)
+
+            old_nb = len(lines)
+            lines = lines[finished_idx]
+            logging.debug("Continuing propagation for the remaining {}/{} "
+                          "streamlines.".format(len(lines), old_nb))
             tracking_info = new_tracking_info
 
+        assert len(lines) == 0
+        assert len(final_lines) == nb_streamlines
+
         # Possible last step.
-        final_pos = self.propagator.finalize_streamline(line[-1],
-                                                        tracking_info)
-        if (final_pos is not None and
-                not np.array_equal(final_pos, line[-1]) and
+        # Looping. It should not be heavy.
+        for i in range(len(final_lines)):
+            final_pos = self.propagator.finalize_streamline(final_lines[i][-1],
+                                                            tracking_info[i])
+            if (final_pos is not None and
+                not np.array_equal(final_pos, lines[i][-1]) and
                 self.mask.is_voxmm_in_bound(*final_pos, origin=self.origin)):
-            line.append(final_pos)
-        return line
+                final_lines[i].append(final_pos)
+        return final_lines

@@ -345,7 +345,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
 
         # Get data as tensor. The MRI data should already be in the cache.
         dataset_as_tensor = self.subset.get_volume_verify_cache(
-                self.subj_idx, self.volume_group, as_tensor=True)
+            self.subj_idx, self.volume_group, as_tensor=True)
 
         # Same as in the batch sampler:
         # Prepare the volume data, possibly adding neighborhood

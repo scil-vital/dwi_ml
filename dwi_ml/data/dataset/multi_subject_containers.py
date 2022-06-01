@@ -16,8 +16,8 @@ from dwi_ml.data.dataset.subjectdata_list_containers import (
     LazySubjectsDataList, SubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,
                                                            SubjectData)
-from dwi_ml.experiment_utils.prints import TqdmLoggingHandler, \
-    make_logger_tqdm_fitted, make_logger_normal
+from dwi_ml.experiment_utils.prints import (
+    make_logger_tqdm_fitted, make_logger_normal)
 
 logger = logging.getLogger('dataset_logger')
 

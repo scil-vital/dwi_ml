@@ -34,7 +34,7 @@ class DWIMLPropagator(AbstractPropagator):
     def __init__(self, subset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, step_size: float, rk_order: int,
                  algo: str, theta: float, model_uses_streamlines: bool = False,
-                 device=None):
+                 device=None, simultaneous_tracking: bool = False):
         """
         Parameters
         ----------
@@ -76,15 +76,17 @@ class DWIMLPropagator(AbstractPropagator):
 
         self.theta = theta
 
+        self.simultanous_tracking = simultaneous_tracking
         self.device = device
         if device is not None:
             self.move_to(device)
 
         self.model_uses_streamlines = model_uses_streamlines
-        if self.model_uses_streamlines:
-            # Add a line parameter. The model uses the streamline, so we need
-            # to keep track of it as additional input.
-            self.line = []
+        # The model uses the streamline, so we need to keep track of it as
+        # additional input.
+        # Without simulateneous tracking: list of coordinates
+        # With simulateneous tracking: list of lines
+        self.current_line = []
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -123,18 +125,16 @@ class DWIMLPropagator(AbstractPropagator):
 
         Parameters
         ----------
-        seeding_pos: tuple(x,y,z)
+        seeding_pos: tuple(x,y,z) or List[tuples]
+            The 3D coordinates or, for simultaneous tracking, list of 3D
+            coordinates.
 
         Returns
         -------
         tracking_info: Any
             Any tracking information necessary for the propagation.
         """
-        if self.model_uses_streamlines:
-            # Reset line before starting a new streamline.
-            self.line = [list(seeding_pos)]
-
-        # Our models should be able to get a direction even from with no
+        # Our models should be able to get an initial direction even with no
         # information about previous inputs.
         return None
 
@@ -145,51 +145,55 @@ class DWIMLPropagator(AbstractPropagator):
         Parameters
         ----------
         line: List
-            Result from the forward tracking, reversed.
-        forward_dir: ndarray (3,)
+            Result from the forward tracking, reversed. Single line: list of
+            coordinates. Simulatenous tracking: list of list of coordinates.
+        forward_dir: ndarray (3,) or List[ndarray]
             v_in chosen at the forward step.
 
         Returns
         -------
-        v_in: ndarray (3,)
+        v_in: ndarray (3,) or list[ndarray]
             Last direction of the streamline. If the streamline contains
             only the seeding point (forward tracking failed), simply inverse
             the forward direction.
         """
-        if self.model_uses_streamlines:
-            self.line = line
-
         # Note. In our case, compared to scilpy, forward dir is None. So if the
         # forward tracking failed, we will just return None and try the
         # backward again with v_in=None. So basically, we will recompute
         # exactly the same model outputs as for the forward. But maybe the
         # sampling will create a new direction.
-        v_in = super().prepare_backward(line, forward_dir)
+        if self.simultanous_tracking:
+            v_in = []
+            for i in range(len(line)):
+                this_v_in = super().prepare_backward(line[i],
+                                                     forward_dir[i])
 
-        # v_in is in double format (np.float64) but it looks like we need
-        # float32.
-        # toDo From testing with Learn2track. Always true?
-        if v_in is not None:
-            return v_in.astype(np.float32)
+                # See comment below
+                if this_v_in is not None:
+                    v_in.append(this_v_in.astype(np.float32))
+        else:
+            v_in = super().prepare_backward(line, forward_dir)
+
+            # v_in is in double format (np.float64) but it looks like we need
+            # float32.
+            # toDo From testing with Learn2track. Always true?
+            if v_in is not None:
+                v_in = v_in.astype(np.float32)
         return v_in
 
-    def propagate(self, pos, v_in):
-        logger.debug("  Propagation step at pos {}".format(pos))
-        new_pos, new_dir, is_direction_valid = super().propagate(pos, v_in)
+    def propagate(self, line, v_in):
+        logger.debug("  Propagation step !")
         if self.model_uses_streamlines:
-            self.line.append(list(new_pos))
+            # super() won't keep the whole line in memory during the sampling
+            # of next direction, but we need it. Add it in memory here.
+            self.current_line = line
 
-        self._update_state_after_propagation_step(new_pos, new_dir)
+        new_pos, new_dir, is_direction_valid = super().propagate(line, v_in)
+
+        # Reset memory
+        self.current_line = None
 
         return new_pos, new_dir, is_direction_valid
-
-    def _update_state_after_propagation_step(self, new_pos, new_dir):
-        """
-        Update memory state between propagation steps. Anything your model
-        needs to deal with in memory during streamline generation (ex, memory
-        of the previous directions).
-        """
-        pass
 
     def _sample_next_direction(self, pos, v_in):
         """
@@ -245,11 +249,13 @@ class DWIMLPropagator(AbstractPropagator):
         """
         inputs = self._prepare_inputs_at_pos(pos)
         if self.model_uses_streamlines:
-            # In case we are using runge-kutta integration
+            # Verify that we have updated memory correctly.
+            assert np.array_equal(pos, self.current_line[-1])
+
             # During training, we have one more point then the number of
             # inputs: the last point is only used to get the direction.
             # Adding a fake last point.
-            line = torch.tensor(self.line + [[0., 0., 0.]])
+            line = torch.tensor(self.current_line + [[0., 0., 0.]])
             model_outputs = self.model([inputs], [line])
         else:
             model_outputs = self.model([inputs])

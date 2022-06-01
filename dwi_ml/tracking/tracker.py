@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import os
 
+import numpy as np
 from scilpy.image.datasets import DataVolume
 from scilpy.tracking.tracker import Tracker as ScilpyTracker
 
@@ -89,12 +90,80 @@ class DWIMLTracker(ScilpyTracker):
         """
         Creating all seeds at once and propagating all streamlines together.
         """
-        # random_generator, indices = self.seed_generator.init_generator(
-        #    self.rng_seed, self.skip)
-        # seeds = self.seed_generator.get_next_n_pos(
-        #    random_generator, indices, self.skip)
+        random_generator, indices = self.seed_generator.init_generator(
+            self.rng_seed, self.skip)
+        seeds = self.seed_generator.get_next_n_pos(random_generator,
+                                                   indices, self.skip)
 
-        # toDo Finish preparing code to use an equivalent of
-        #  _get_line_both_directions but working on many streamlines at once.
-        #  See Philippe's code in vitalabai.
-        raise NotImplementedError
+        self._get_lines_both_directions(seeds)
+
+    def _get_lines_both_directions(self, n_seeds):
+        """
+        Equivalent of super's() _get_line_both_directions() for for multiple
+        tracking at the same time (meant to be used on GPU).
+
+        Params
+        ------
+        seeding_pos : tuple
+            3D position, the seed position.
+
+        Returns
+        -------
+        line: list of 3D positions
+            The generated streamline for seeding_pos.
+        """
+        lines = [[np.asarray(seeding_pos)] for seeding_pos in n_seeds]
+        tracking_info = self.propagator.prepare_forward(n_seeds)
+        lines = self._propagate_lines(lines, tracking_info)
+
+        if not self.track_forward_only:
+            lines = [line.reverse() if len(line)>1 else line for line in lines]
+
+            tracking_info = self.propagator.prepare_backward(lines,
+                                                             tracking_info)
+            lines = self._propagate_line(lines, tracking_info)
+
+        # Clean streamlines
+        clean_lines = []
+        for line in lines:
+            if self.min_nbr_pts <= len(line) <= self.max_nbr_pts:
+                clean_lines.append(line)
+        return clean_lines
+
+    def _propagate_lines(self, lines, tracking_info):
+        """
+        Equivalent of super's() _get_line_both_directions() for for multiple
+        tracking at the same time (meant to be used on GPU).
+        """
+        invalid_direction_counts = np.zeros(len(lines))
+        propagation_can_continue = np.ones(len(lines))  # Using ones as True.
+        final_lines = []  # Will get the final lines when they are done.
+
+        nb_points = 0
+        while nb_points < self.max_nbr_pts and \
+                np.any(propagation_can_continue):
+            nb_points += 1
+            
+            n_new_pos, new_tracking_info, are_direction_valid = \
+                self.propagator.propagate(lines[-1], tracking_info)
+
+            # Verifying and appending
+            if is_direction_valid:
+                invalid_direction_count = 0
+            else:
+                invalid_direction_count += 1
+            propagation_can_continue = self._verify_stopping_criteria(
+                invalid_direction_count, new_pos)
+            if propagation_can_continue:
+                line.append(new_pos)
+
+            tracking_info = new_tracking_info
+
+        # Possible last step.
+        final_pos = self.propagator.finalize_streamline(line[-1],
+                                                        tracking_info)
+        if (final_pos is not None and
+                not np.array_equal(final_pos, line[-1]) and
+                self.mask.is_voxmm_in_bound(*final_pos, origin=self.origin)):
+            line.append(final_pos)
+        return line

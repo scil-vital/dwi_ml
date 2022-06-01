@@ -170,8 +170,8 @@ class LazySubjectData(SubjectDataAbstract):
 
         if self.hdf_handle is not None:
             if not self.hdf_handle.id.valid:
-                logging.warning("Tried to access subject's volumes but its "
-                                "hdf handle is not valid (closed file?)")
+                logger.warning("Tried to access subject's volumes but its "
+                               "hdf handle is not valid (closed file?)")
             mri_data_list = []
             for group in self.volume_groups:
                 hdf_group = self.hdf_handle[self.subject_id][group]
@@ -179,7 +179,7 @@ class LazySubjectData(SubjectDataAbstract):
 
             return mri_data_list
         else:
-            logging.debug("Can't provide mri_data_list: hdf_handle not set.")
+            logger.debug("Can't provide mri_data_list: hdf_handle not set.")
             return None
 
     @property
@@ -194,17 +194,17 @@ class LazySubjectData(SubjectDataAbstract):
 
             return sft_data_list
         else:
-            logging.warning("Can't provide sft_data_list: hdf_handle not set.")
+            logger.warning("Can't provide sft_data_list: hdf_handle not set.")
         return None
 
     def add_handle(self, hdf_handle):
         """We could find groups directly from the subject's keys but this way
         is safer in case one subject had different keys than others. Always
         using only the wanted groups."""
-        # To check it handle is not initialized:
-        # Closing previous handle
-        if self.hdf_handle is not None:
-            self.hdf_handle.close()
+        # We could close old handle first but there is a possibility that old
+        # and new handle are actually the same.
+        # if self.hdf_handle is not None:
+        #    self.hdf_handle.close()
         self.hdf_handle = hdf_handle
 
     def __del__(self):

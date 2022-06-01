@@ -24,13 +24,14 @@ Can be used in a torch DataLoader. For instance:
         dataloader = DataLoader(dataset, batch_sampler=batch_sampler,
                                 collate_fn=batch_loader.load_batch)
 """
-
 import logging
 from typing import List, Tuple, Iterator
 
 import numpy as np
 import torch
 import torch.multiprocessing
+from dwi_ml.experiment_utils.prints import (
+    make_logger_tqdm_fitted, make_logger_normal)
 from torch.utils.data import Sampler
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
@@ -159,6 +160,14 @@ class DWIMLBatchSampler(Sampler):
         }
         return states
 
+    def make_logger_tqdm_fitted(self):
+        make_logger_tqdm_fitted(self.logger)
+        self.dataset.make_logger_tqdm_fitted()
+
+    def make_logger_normal(self):
+        make_logger_normal(self.logger)
+        self.dataset.make_logger_normal()
+
     def __iter__(self) -> Iterator[List[Tuple[int, list]]]:
         """
         Streamline sampling.
@@ -194,8 +203,8 @@ class DWIMLBatchSampler(Sampler):
         #   1 = this streamline has not been used yet.
         #   0 = this streamline has been used.
         global_unused_streamlines = np.ones_like(global_streamlines_ids)
-        self.logger.debug("**** Entering batch sampler iteration! "
-                          "Choosing out of {} possible streamlines"
+        self.logger.debug("**** Entering batch sampler iteration! Choosing "
+                          "out of {} possible streamlines"
                           .format(sum(global_unused_streamlines)))
 
         # This will continue "yielding" batches until it encounters a break.
@@ -215,7 +224,7 @@ class DWIMLBatchSampler(Sampler):
             # Stopping if all streamlines have been used
             if np.sum(streamlines_per_subj) == 0:
                 self.logger.info("No streamlines remain for this epoch, "
-                                 "stopping...")
+                                 "stopping.")
                 break
 
             # Choose subjects from which to sample streamlines for the next
@@ -425,11 +434,10 @@ class DWIMLBatchSampler(Sampler):
                 size_per_streamline = size_per_streamline[selected]
 
         computed_chunk_size = np.sum(size_per_streamline)
-        self.logger.debug(
-            "        Total: {} streamlines for a total size of {} "
-            "(units = {})."
-            .format(len(chosen_global_ids), computed_chunk_size,
-                    self.batch_size_units))
+        self.logger.debug("        Total: {} streamlines for a total size of "
+                          "{} (units = {})."
+                          .format(len(chosen_global_ids), computed_chunk_size,
+                                  self.batch_size_units))
 
         # Fetch subject-relative ids
         chosen_relative_ids = list(chosen_global_ids - subj_slice.start)

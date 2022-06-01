@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import shutil
-import time
 from typing import Union
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
@@ -141,7 +140,7 @@ class DWIMLAbstractTrainer:
         self.saving_path = os.path.join(self.experiments_path,
                                         self.experiment_name)
         if not from_checkpoint and not os.path.isdir(self.saving_path):
-            logger.info('Creating directory {}'.format(self.saving_path))
+            self.logger.info('Creating directory {}'.format(self.saving_path))
             os.mkdir(self.saving_path)
 
         # Note that the training/validation sets are contained in the
@@ -283,6 +282,24 @@ class DWIMLAbstractTrainer:
             }
         })
         return params
+
+    def _make_loggers_tqdm_fitted(self):
+        make_logger_tqdm_fitted(self.logger)
+        self.model.make_logger_tqdm_fitted()
+        self.train_batch_sampler.make_logger_tqdm_fitted()
+        self.train_batch_loader.make_logger_tqdm_fitted()
+        if self.valid_batch_sampler:
+            self.valid_batch_sampler.make_logger_tqdm_fitted()
+            self.valid_batch_loader.make_logger_tqdm_fitted()
+
+    def _make_loggers_normal(self):
+        make_logger_normal(self.logger)
+        self.model.make_logger_normal()
+        self.train_batch_sampler.make_logger_normal()
+        self.train_batch_loader.make_logger_normal()
+        if self.valid_batch_sampler:
+            self.valid_batch_sampler.make_logger_normal()
+            self.valid_batch_loader.make_logger_normal()
 
     def _init_comet(self):
         """
@@ -495,13 +512,7 @@ class DWIMLAbstractTrainer:
             self.comet_exp.log_metric("current_epoch", self.current_epoch)
 
         # Improving loggers for tqdm
-        make_logger_tqdm_fitted(self.logger)
-        make_logger_tqdm_fitted(self.model.logger)
-        make_logger_tqdm_fitted(self.train_batch_sampler.logger)
-        make_logger_tqdm_fitted(self.train_batch_loader.logger)
-        if self.valid_batch_sampler:
-            make_logger_tqdm_fitted(self.valid_batch_sampler.logger)
-            make_logger_tqdm_fitted(self.valid_batch_loader.logger)
+        self._make_loggers_tqdm_fitted()
 
         # Training all batches
         self.logger.debug("Training one epoch: iterating on batches using "
@@ -534,14 +545,7 @@ class DWIMLAbstractTrainer:
             # running validation
             del train_iterator
 
-        # Making loggers normal
-        make_logger_normal(self.logger)
-        make_logger_normal(self.model.logger)
-        make_logger_normal(self.train_batch_sampler.logger)
-        make_logger_normal(self.train_batch_loader.logger)
-        if self.valid_batch_sampler:
-            make_logger_normal(self.valid_batch_sampler.logger)
-            make_logger_normal(self.valid_batch_loader.logger)
+        self._make_loggers_normal()
 
         # Saving epoch's information
         self.logger.info("Finishing epoch...")
@@ -743,8 +747,8 @@ class DWIMLAbstractTrainer:
             current_states['grad_norm_monitor_state'])
         trainer.optimizer.load_state_dict(current_states['optimizer_state'])
 
-        logger.info("Resuming from checkpoint! Next epoch will be epoch #{}"
-                    .format(trainer.current_epoch))
+        trainer.logger.info("Resuming from checkpoint! Next epoch will be "
+                            "epoch #{}".format(trainer.current_epoch))
 
         return trainer
 

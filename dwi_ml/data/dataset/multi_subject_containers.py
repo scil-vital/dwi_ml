@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from collections import defaultdict
 import logging
 from typing import List, Tuple, Dict, Any
@@ -15,7 +16,8 @@ from dwi_ml.data.dataset.subjectdata_list_containers import (
     LazySubjectsDataList, SubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,
                                                            SubjectData)
-from dwi_ml.experiment_utils.prints import TqdmLoggingHandler
+from dwi_ml.experiment_utils.prints import TqdmLoggingHandler, \
+    make_logger_tqdm_fitted, make_logger_normal
 
 logger = logging.getLogger('dataset_logger')
 
@@ -77,9 +79,13 @@ class MultisubjectSubset(Dataset):
     def make_logger_tqdm_fitted():
         """Possibility to use a tqdm-compatible logger in case the model
         is used through a tqdm progress bar."""
-        if len(logger.handlers) == 0:
-            logger.addHandler(TqdmLoggingHandler())
-            logger.propagate = False
+        make_logger_tqdm_fitted(logger)
+
+    @staticmethod
+    def make_logger_normal():
+        """Possibility to use a tqdm-compatible logger in case the model
+        is used through a tqdm progress bar."""
+        make_logger_normal(logger)
 
     @staticmethod
     def remove_tqdm_handle():
@@ -172,26 +178,26 @@ class MultisubjectSubset(Dataset):
                     SingleThreadCacheManager(self.cache_size)
 
             # Access the cache
-            try:
+            if cache_key in self.volume_cache_manager:
                 # General case: Data is already cached
                 mri_data = self.volume_cache_manager[cache_key]
-                logger.debug("Loaded volume from cache")
                 was_cached = True
-            except KeyError:
-                was_cached = False
 
         if not was_cached:
             # Either non-lazy or if lazy, data was not cached.
             # Non-lazy: direct acces. Lazy: this loads the data.
+            logger.debug("Getting a new volume from the dataset.")
             mri_data = self._get_volume(subj_idx, group_idx)
 
             # Add to cache
             # Saving the data as a non-lazy data to also have in memory its
             # other attributes.
             if self.subjs_data_list.is_lazy and self.cache_size > 0:
-                logger.debug("Adding volume to cache")
+                logger.info("PROCESS ID {}. Adding volume to cache"
+                            .format(os.getpid()))
                 # Send volume_data on cache
-                self.volume_cache_manager[cache_key] = mri_data.as_non_lazy
+                mri_data = mri_data.as_non_lazy
+                self.volume_cache_manager[cache_key] = mri_data
 
         # Casting as wanted. If was cached: non-lazy. Direct access.
         # If was not cached: depends on self.is_lazy.

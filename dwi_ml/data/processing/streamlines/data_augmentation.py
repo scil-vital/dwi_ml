@@ -79,9 +79,8 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
     else:
         max_noise_unscaled = 2
 
-    logging.debug("Adding noise: between ({} and {})*{}"
-                  .format(-max_noise_unscaled, max_noise_unscaled,
-                          gaussian_size))
+    # Adding noise: between
+    # (-max_noise_unscaled, max_noise_unscaled) * gaussian_size
     flattened_coords += truncnorm.rvs(-max_noise_unscaled, max_noise_unscaled,
                                       size=flattened_coords.shape,
                                       scale=gaussian_size,
@@ -134,9 +133,8 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
     all_dpp = defaultdict(lambda: [])
     all_dps = defaultdict(lambda: [])
 
-    logging.debug("Splitting {} streamlines out of {}."
-                  "".format(len(split_ids), len(sft.streamlines)))
-    nb_streamlines_not_cut = 0
+    # Splitting len(split_ids) streamlines out of len(sft.streamlines)
+    # (If selected IDs are not too short)
     for i in range(len(sft.streamlines)):
         old_streamline = sft.streamlines[i]
         old_dpp = sft.data_per_point[i]
@@ -157,17 +155,11 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
                 all_dpp = _extend_dict(all_dpp, segments_dpp[1])
                 all_dps = _extend_dict(all_dps, old_dps)
                 all_dps = _extend_dict(all_dps, old_dps)
-            else:
-                nb_streamlines_not_cut += 1
         else:
             all_streamlines.extend([old_streamline])
             all_dpp = _extend_dict(all_dpp, old_dpp)
             all_dps = _extend_dict(all_dps, old_dps)
 
-    if nb_streamlines_not_cut > 0:
-        logging.debug('{} streamlines to split were not split because they'
-                      'were too short (< {} points)'
-                      .format(nb_streamlines_not_cut, min_nb_points))
     new_sft = StatefulTractogram.from_sft(all_streamlines, sft,
                                           data_per_point=all_dpp,
                                           data_per_streamline=all_dps)

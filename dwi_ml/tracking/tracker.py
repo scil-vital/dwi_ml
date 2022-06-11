@@ -151,8 +151,7 @@ class DWIMLTracker(ScilpyTracker):
 
         logger.info("Multiple GPU tracking: Starting forward propgagation")
         tracking_info = self.propagator.prepare_forward(n_seeds)
-        lines = self.propagator.propagate(lines, tracking_info,
-                                          multiple_lines=True)
+        lines = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:
             logger.info("Multiple GPU tracking: Starting backward "
@@ -180,6 +179,7 @@ class DWIMLTracker(ScilpyTracker):
         invalid_direction_counts = np.zeros(len(lines))
         nb_streamlines = len(lines)
         final_lines = []  # Will get the final lines when they are done.
+        final_tracking_info = []
 
         nb_points = 0
         all_lines_completed = False
@@ -188,30 +188,28 @@ class DWIMLTracker(ScilpyTracker):
             nb_points += 1
 
             n_new_pos, new_tracking_info, are_directions_valid = \
-                self.propagator.propagate(lines[-1], tracking_info)
+                self.propagator.propagate(lines, tracking_info,
+                                          multiple_lines=True)
+            invalid_direction_counts[~are_directions_valid] += 1
 
             # Verifying and appending
-            logging.warning("ARE VALID: {}".format(are_directions_valid))
-            invalid_direction_counts[~are_directions_valid] += 1
-            logging.warning("INVALID NB: {}".format(invalid_direction_counts))
-
             all_lines_completed = True
-            finished_idx = []
-            for i in range(len(lines)):
+            old_nb = len(lines)
+            for i in reversed(range(len(lines))):
                 propagation_can_continue = self._verify_stopping_criteria(
                     invalid_direction_counts[i], n_new_pos[i])
 
                 if propagation_can_continue:
-                    logger.debug("    Streamlines {} will continue.".format(i))
                     all_lines_completed = False
                     lines[i].append(n_new_pos[i])
                 else:
-                    logger.debug("    Streamlines {} will stop.".format(i))
                     final_lines.append(lines[i])
-                    finished_idx.append(i)
+                    lines.pop(i)
+                    final_tracking_info.append(new_tracking_info[i])
+                    new_tracking_info.pop(i)
+                    invalid_direction_counts = np.delete(
+                        invalid_direction_counts, i)
 
-            old_nb = len(lines)
-            lines = lines[finished_idx]
             logging.debug("Continuing propagation for the remaining {}/{} "
                           "streamlines.".format(len(lines), old_nb))
             tracking_info = new_tracking_info
@@ -222,10 +220,11 @@ class DWIMLTracker(ScilpyTracker):
         # Possible last step.
         # Looping. It should not be heavy.
         for i in range(len(final_lines)):
-            final_pos = self.propagator.finalize_streamline(final_lines[i][-1],
-                                                            tracking_info[i])
+            final_pos = self.propagator.finalize_streamline(
+                final_lines[i][-1], final_tracking_info[i])
             if (final_pos is not None and
-                not np.array_equal(final_pos, lines[i][-1]) and
-                self.mask.is_voxmm_in_bound(*final_pos, origin=self.origin)):
+                not np.array_equal(final_pos, final_lines[i][-1]) and
+                    self.mask.is_voxmm_in_bound(*final_pos,
+                                                origin=self.origin)):
                 final_lines[i].append(final_pos)
         return final_lines

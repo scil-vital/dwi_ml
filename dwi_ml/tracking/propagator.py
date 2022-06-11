@@ -222,9 +222,6 @@ class DWIMLPropagator(AbstractPropagator):
         # Reset memory
         self.current_lines = None
 
-        logging.warning("GOT NEW POS: {}, NEW DIR: {}, VALID?: {}"
-                        .format(new_pos, new_dir, is_direction_valid))
-
         return new_pos, new_dir, is_direction_valid
 
     def _propagate_multiple_lines(self, lines, n_v_in):
@@ -255,7 +252,9 @@ class DWIMLPropagator(AbstractPropagator):
                                               multiple_lines=True)
         are_directions_valid = np.array([False if v_out is None else True
                                          for v_out in n_v_out])
-        n_v_out[~are_directions_valid] = n_v_in[~are_directions_valid]
+
+        n_v_out = [n_v_out[i] if are_directions_valid[i] else n_v_in[i]
+                   for i in range(len(n_v_in))]
 
         return are_directions_valid, n_v_out
 
@@ -283,49 +282,49 @@ class DWIMLPropagator(AbstractPropagator):
         single_streamline = False
         if multiple_lines:
             n_pos = pos  # Multiple values were sent.
-            n_v_in = v_in
         else:
-            logging.warning("SINGLE STREAMLINE!")
             single_streamline = True
             n_pos = [pos]
-            n_v_in = [v_in]
-
-        nb_streamlines = len(n_pos)
-        logging.warning("n_pos: {}".format(n_pos))
-        logging.warning("n_v_in: {}".format(n_v_in))
 
         # Tracking field returns the model_outputs
         model_outputs = self._get_model_outputs_at_pos(n_pos)
 
-        logging.warning("MODEL OUTPUTS {}".format(model_outputs))
-
-        # Sampling a direction from this information.
-        next_dirs = []
-        for i in range(nb_streamlines):
+        if single_streamline:
+            # Sampling a direction from this information.
             if self.algo == 'prob':
                 next_dir = self.model.sample_tracking_direction_prob(
-                    model_outputs[i])
+                    model_outputs)
             else:
-                next_dir = self.model.get_tracking_direction_det(
-                    model_outputs[i])
+                next_dir = self.model.get_tracking_direction_det(model_outputs)
 
-            logging.warning("NEXT DIR: {}".format(next_dir))
             # Normalizing
             next_dir /= np.linalg.norm(next_dir)
 
             # Verify curvature, else return None.
-            # toDo could we find a better solution for proba tracking? Resampling
-            #  until angle < theta? Easy on the sphere (restrain probas on the
-            #  sphere pics inside a cone theta) but what do we do for other models?
-            #  Ex: For the Gaussian direction getter?
-            if n_v_in[i] is not None:
-                next_dir = self._verify_angle(next_dir, n_v_in[i])
+            # toDo could we find a better solution for proba tracking?
+            #  Resampling until angle < theta? Easy on the sphere (restrain
+            #  probas on the sphere pics inside a cone theta) but what do we do
+            #  for other models? Ex: For the Gaussian direction getter?
+            if v_in is not None:
+                next_dir = self._verify_angle(next_dir, v_in)
+            return next_dir
+        else:
+            # Loop on streamlines and do the equivalent.
+            next_dirs = []
+            nb_streamlines = len(n_pos)
+            for i in range(nb_streamlines):
+                if self.algo == 'prob':
+                    next_dir = self.model.sample_tracking_direction_prob(
+                        model_outputs[i])
+                else:
+                    next_dir = self.model.get_tracking_direction_det(
+                        model_outputs[i])
+                next_dir /= np.linalg.norm(next_dir)
+                if v_in[i] is not None:
+                    next_dir = self._verify_angle(next_dir, v_in[i])
+                next_dirs.append(next_dir)
 
-            logging.warning("streamline {} final next dir {}".format(i, next_dir))
-            if single_streamline:
-                return next_dir
-            else:
-                return next_dirs.append(next_dir)
+        return next_dirs
 
     def _get_model_outputs_at_pos(self, n_pos):
         """
@@ -348,13 +347,10 @@ class DWIMLPropagator(AbstractPropagator):
                                torch.zeros(1, 3)), dim=0)
                      for line in self.current_lines]
 
-            logging.warning("INPUTS: {}".format(inputs))
-            logging.warning("LINES: {}".format(lines))
             model_outputs = self.model(inputs, lines)
         else:
             model_outputs = self.model(inputs)
 
-        logging.warning("-- outputs {}".format(model_outputs))
         return model_outputs
 
     def _prepare_inputs_at_pos(self, pos):
@@ -368,8 +364,6 @@ class DWIMLPropagator(AbstractPropagator):
         algorithm which should already learn to output something in the right
         direction.
         """
-        logging.warning("?? {}".format(next_dir))
-        logging.warning("?? {}".format(v_in))
         cos_angle = np.dot(next_dir / np.linalg.norm(next_dir),
                            v_in.T / np.linalg.norm(v_in))
 

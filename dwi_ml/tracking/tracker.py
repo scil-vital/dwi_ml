@@ -77,7 +77,7 @@ class DWIMLTracker(ScilpyTracker):
         in _get_streamlines.
         """
         if self.simultanenous_tracking > 1:
-            self.simultanenous_tracking_on_gpu()
+            return self.simultanenous_tracking_on_gpu()
         else:
             # On CPU, with possibility of parallel processing.
             return super().track()
@@ -112,6 +112,7 @@ class DWIMLTracker(ScilpyTracker):
 
         seed_count = 0
         lines = []
+        seeds = []
         while seed_count < self.nbr_seeds:
             nb_next_seeds = self.simultanenous_tracking
             if seed_count + nb_next_seeds > self.nbr_seeds:
@@ -124,13 +125,17 @@ class DWIMLTracker(ScilpyTracker):
                 range(seed_count, seed_count+nb_next_seeds))
 
             # Using DWIMLSeedGenerator's class
-            seeds = self.seed_generator.get_next_n_pos(
+            n_seeds = self.seed_generator.get_next_n_pos(
                 random_generator, indices, next_seeds)
 
-            lines.append(self._get_multiple_lines_both_directions(seeds))
+            tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
+                n_seeds)
+            lines.extend(tmp_lines)
+            seeds.extend(tmp_seeds)
 
             logger.info("Done.")
             seed_count += nb_next_seeds
+        return lines, seeds
 
     def _get_multiple_lines_both_directions(self, n_seeds):
         """
@@ -151,25 +156,41 @@ class DWIMLTracker(ScilpyTracker):
 
         logger.info("Multiple GPU tracking: Starting forward propgagation")
         tracking_info = self.propagator.prepare_forward(n_seeds)
-        lines = self._propagate_multiple_lines(lines, tracking_info)
+        lines, order1 = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:
             logger.info("Multiple GPU tracking: Starting backward "
                         "propgagation")
 
-            lines = [line.reverse() if len(line) > 1 else line
-                     for line in lines]
+            # Reversing in place
+            for i in range(len(lines)):
+                if len(lines[i]) > 1:
+                    lines[i].reverse()
 
+            # We could loop to prepare reverse. Basic case not too heavy.
+            # However, in some cases (ex, Learn2track with memory), model
+            # needs to be re-run before starting back-propagatation. We let
+            # the propagator deal with the looping.
             tracking_info = self.propagator.prepare_backward(lines,
                                                              tracking_info)
-            lines = self._propagate_line(lines, tracking_info)
+            lines, order2 = self._propagate_multiple_lines(
+                lines, tracking_info)
+
+            if self.save_seeds:
+                final_order = [order1[idx] for idx in order2]
+        elif self.save_seeds:
+            final_order = order1
 
         # Clean streamlines
         clean_lines = []
-        for line in lines:
-            if self.min_nbr_pts <= len(line) <= self.max_nbr_pts:
-                clean_lines.append(line)
-        return clean_lines
+        clean_seeds = []
+        for i in range(len(lines)):
+            if self.min_nbr_pts <= len(lines[i]) <= self.max_nbr_pts:
+                clean_lines.append(lines[i])
+                if self.save_seeds:
+                    clean_seeds.append(n_seeds[final_order[i]])
+
+        return clean_lines, clean_seeds
 
     def _propagate_multiple_lines(self, lines, tracking_info):
         """
@@ -180,6 +201,9 @@ class DWIMLTracker(ScilpyTracker):
         nb_streamlines = len(lines)
         final_lines = []  # Will get the final lines when they are done.
         final_tracking_info = []
+        # Note! We modify the order of streamlines in final_lines!
+        # We need to remember the order to save the seeds.
+        final_lines_order = []
 
         nb_points = 0
         all_lines_completed = False
@@ -194,7 +218,6 @@ class DWIMLTracker(ScilpyTracker):
 
             # Verifying and appending
             all_lines_completed = True
-            old_nb = len(lines)
             for i in reversed(range(len(lines))):
                 propagation_can_continue = self._verify_stopping_criteria(
                     invalid_direction_counts[i], n_new_pos[i])
@@ -204,14 +227,13 @@ class DWIMLTracker(ScilpyTracker):
                     lines[i].append(n_new_pos[i])
                 else:
                     final_lines.append(lines[i])
+                    final_lines_order.append(i)
                     lines.pop(i)
                     final_tracking_info.append(new_tracking_info[i])
                     new_tracking_info.pop(i)
                     invalid_direction_counts = np.delete(
                         invalid_direction_counts, i)
 
-            logging.debug("Continuing propagation for the remaining {}/{} "
-                          "streamlines.".format(len(lines), old_nb))
             tracking_info = new_tracking_info
 
         assert len(lines) == 0
@@ -227,4 +249,4 @@ class DWIMLTracker(ScilpyTracker):
                     self.mask.is_voxmm_in_bound(*final_pos,
                                                 origin=self.origin)):
                 final_lines[i].append(final_pos)
-        return final_lines
+        return final_lines, final_lines_order

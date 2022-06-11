@@ -34,7 +34,7 @@ class DWIMLPropagator(AbstractPropagator):
     def __init__(self, subset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, step_size: float, rk_order: int,
                  algo: str, theta: float, model_uses_streamlines: bool = False,
-                 device=None, simultaneous_tracking: bool = False):
+                 device=None):
         """
         Parameters
         ----------
@@ -76,7 +76,6 @@ class DWIMLPropagator(AbstractPropagator):
 
         self.theta = theta
 
-        self.simultanous_tracking = simultaneous_tracking
         self.device = device
         if device is not None:
             self.move_to(device)
@@ -163,23 +162,23 @@ class DWIMLPropagator(AbstractPropagator):
         # backward again with v_in=None. So basically, we will recompute
         # exactly the same model outputs as for the forward. But maybe the
         # sampling will create a new direction.
-        if self.simultanous_tracking:
-            v_in = []
-            for i in range(len(line)):
-                this_v_in = super().prepare_backward(line[i],
-                                                     forward_dir[i])
-
-                # See comment below
-                if this_v_in is not None:
-                    v_in.append(this_v_in.astype(np.float32))
-        else:
+        if isinstance(line[0], np.ndarray):  # List of coords = single tracking
             v_in = super().prepare_backward(line, forward_dir)
 
             # v_in is in double format (np.float64) but it looks like we need
             # float32.
-            # toDo From testing with Learn2track. Always true?
+            # todo From testing with Learn2track. Always true?
             if v_in is not None:
                 v_in = v_in.astype(np.float32)
+        else:  # simultaneous tracking.
+            v_in = []
+            for i in range(len(line)):
+                this_v_in = super().prepare_backward(line[i],
+                                                     forward_dir[i])
+                if this_v_in is not None:
+                    this_v_in = this_v_in.astype(np.float32)
+                v_in.append(this_v_in)
+
         return v_in
 
     def propagate(self, line, v_in, multiple_lines=False):

@@ -196,8 +196,6 @@ def main():
         logging.debug("Tracked {} streamlines (out of {} seeds). Now saving..."
                       .format(len(streamlines), tracker.nbr_seeds))
 
-        logging.warning("STREAMLINES {}".format(streamlines))
-
     # save seeds if args.save_seeds is given
     data_per_streamline = {'seed': lambda: seeds} if args.save_seeds else {}
 

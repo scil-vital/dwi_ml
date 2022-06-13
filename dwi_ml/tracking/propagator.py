@@ -199,7 +199,6 @@ class DWIMLPropagator(AbstractPropagator):
         is_direction_valid: bool or list
             True if new_dir is valid.
         """
-        logger.debug("  Propagation step !")
         if self.model_uses_streamlines:
             # super() won't use the whole line as argument during the sampling
             # of next direction, but we need it. Add it in memory here.

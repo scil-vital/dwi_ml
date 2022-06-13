@@ -66,8 +66,8 @@ def test_execution_training_tracking(script_runner):
     ret = script_runner.run(
         'dwiml_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
-        '--algo', 'det', '--nt', '2', '--logging', 'DEBUG',
-        '--subset', 'training')
+        '--algo', 'det', '--nt', '2', '--logging', 'DEBUG', '--rng_seed', '0',
+        '--min_length', '0', '--subset', 'training')
     assert ret.success
 
     # Testing multiple tracking
@@ -76,9 +76,9 @@ def test_execution_training_tracking(script_runner):
     ret = script_runner.run(
         'dwiml_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
-        '--algo', 'det', '--nt', '2', '--logging', 'DEBUG',
-        '--subset', 'training',
+        '--algo', 'det', '--nt', '2', '--logging', 'DEBUG', '--rng_seed', '0',
+        '--min_length', '0', '--subset', 'training',
         # Additional params compared to CPU:
         '--use_gpu', '--simultaneous_tracking', '2')
 
-    assert ret.success
+    assert False #ret.success

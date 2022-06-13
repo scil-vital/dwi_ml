@@ -63,7 +63,8 @@ dependencies related to DWI_ML.
 
   An API (application programming interface) is a code that gets passed in by
   applications, containing information to identify its user, for instance. To
-  get a API key, see `<www.comet.ml/api/my/settings>`_.
+  get an API key, see `<www.comet.ml/api/my/settings>`_. Click on the key icon,
+  copy value to the clipboard and save it in your file in $HOME.
 
 
 Installing dwi_ml

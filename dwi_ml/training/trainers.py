@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from datetime import datetime
 import json
 import logging
 import os
@@ -229,6 +230,14 @@ class DWIMLAbstractTrainer:
         self.comet_exp = None
         self.comet_key = None
 
+        # Saving all params in a json file to help user remember what he used.
+        if from_checkpoint:
+            filename = os.path.join(self.saving_path,
+                                    "parameters_used_from_checkpoint.json")
+        else:
+            filename = os.path.join(self.saving_path, "parameters.json")
+        self.save_params_to_json(filename)
+
         # ----------------------
         # Launching optimizer!
         # ----------------------
@@ -273,6 +282,7 @@ class DWIMLAbstractTrainer:
         params.update({
             'experiments_path': self.experiments_path,
             'experiment_name': self.experiment_name,
+            'type': str(type(self)),
             'comet_key': self.comet_key,
             'computed_values': {
                 'nb_training_batches_per_epoch':
@@ -282,6 +292,22 @@ class DWIMLAbstractTrainer:
             }
         })
         return params
+
+    def save_params_to_json(self, json_filename):
+        with open(json_filename, 'w') as json_file:
+            json_file.write(json.dumps(
+                {'Date': str(datetime.now()),
+                 'Trainer params': self.params,
+                 'Training sampler params': self.train_batch_sampler.params,
+                 'Validation sampler params':
+                     self.valid_batch_sampler.params if
+                     self.valid_batch_sampler is not None else None,
+                 'Train loader params': self.train_batch_loader.params,
+                 'Validation loader params':
+                     self.valid_batch_loader.params if
+                     self.valid_batch_loader is not None else None,
+                 },
+                indent=4, separators=(',', ': ')))
 
     def _make_loggers_tqdm_fitted(self):
         make_logger_tqdm_fitted(self.logger)
@@ -429,7 +455,7 @@ class DWIMLAbstractTrainer:
 
             # Training
             self.logger.info("**********TRAINING: Epoch #{}*************"
-                             .format(epoch))
+                             .format(epoch + 1))
             self.train_one_epoch(train_dataloader, train_context, epoch)
 
             # Validation
@@ -491,9 +517,6 @@ class DWIMLAbstractTrainer:
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
-
-    def save_model(self):
-        self.model.save(self.saving_path)
 
     def train_one_epoch(self, train_dataloader, train_context, epoch):
         """

@@ -165,7 +165,7 @@ class AbstractBatchLoader:
         params = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'type': type(self),
+            'type': str(type(self)),
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
             'reverse_ratio': self.reverse_ratio,

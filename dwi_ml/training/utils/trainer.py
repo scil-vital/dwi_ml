@@ -5,6 +5,8 @@ import logging
 from dwi_ml.training.monitoring import EarlyStoppingError
 from dwi_ml.experiment_utils.timer import Timer
 
+logger = logging.getLogger('train_logger')
+
 
 def add_training_args(p: argparse.ArgumentParser):
     training_group = p.add_argument_group("Training")
@@ -50,12 +52,13 @@ def run_experiment(trainer, logging_choice):
     except EarlyStoppingError as e:
         print(e)
 
-    trainer.save_model()
+    # Model already saved in the last checkpoint, but we could save it again.
+    # trainer.model.save(trainer.saving_path)
 
-    logging.info("Script terminated successfully. \n"
-                 "Saved experiment in folder : {}"
-                 .format(trainer.saving_path))
-    print("Summary: ran {} epochs. Best loss was {} at epoch #{}"
-          .format(trainer.current_epoch + 1,
-                  trainer.best_epoch_monitoring.best_value,
-                  trainer.best_epoch_monitoring.best_epoch + 1))
+    logger.info("Script terminated successfully. \n"
+                "Saved experiment in folder : {}"
+                .format(trainer.saving_path))
+    logger.info("Summary: ran {} epochs. Best loss was {} at epoch #{}"
+                .format(trainer.current_epoch + 1,
+                        trainer.best_epoch_monitoring.best_value,
+                        trainer.best_epoch_monitoring.best_epoch + 1))

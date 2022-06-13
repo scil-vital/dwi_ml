@@ -47,6 +47,8 @@ from typing import Dict, List, Union, Tuple
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
+from dwi_ml.experiment_utils.prints import (
+    make_logger_tqdm_fitted, make_logger_normal)
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 import torch
@@ -151,8 +153,6 @@ class AbstractBatchLoader:
         if self.reverse_ratio and not 0 <= self.reverse_ratio <= 1:
             raise ValueError('Reverse ration must be a float between 0 and 1')
 
-        # Batch sampler's logging level can be changed separately from main
-        # scripts.
         self.logger = logger
         self.logger.setLevel(log_level)
 
@@ -174,6 +174,12 @@ class AbstractBatchLoader:
             'compress': self.compress,
         }
         return params
+
+    def make_logger_tqdm_fitted(self):
+        make_logger_tqdm_fitted(self.logger)
+
+    def make_logger_normal(self):
+        make_logger_normal(self.logger)
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]) \
             -> Union[Tuple[List, Dict], Tuple[List, List, List]]:
@@ -199,29 +205,6 @@ class AbstractBatchLoader:
             - final_s_ids_per_subj: Dict[int, slice]
                 The new streamline ids per subj in this augmented batch.
         """
-        self.logger.debug("        Loading a batch of streamlines!")
-
-        (batch_streamlines, final_s_ids_per_subj) = \
-            self.streamlines_data_preparation(streamline_ids_per_subj)
-
-        return batch_streamlines, final_s_ids_per_subj
-
-    def streamlines_data_preparation(
-            self, streamline_ids_per_subj: List[Tuple[int, list]]):
-        """
-        Parameters
-        -----------
-        streamline_ids_per_subj: List[Tuple[int, list]]
-            The list of streamlines for this batch, per subject (corresponding
-            to the streamlines ids in each subject's tractogram).
-
-        Returns
-        -------
-        batch_streamlines: List[np.array]
-            The new streamlines after data augmentation
-        final_s_ids_per_subj: Dict[int, slice]
-            The new streamline ids per subj in this augmented batch.
-        """
         # The batch's streamline ids will change throughout processing because
         # of data augmentation, so we need to do it subject by subject to
         # keep track of the streamline ids. These final ids will correspond to
@@ -229,17 +212,19 @@ class AbstractBatchLoader:
         final_s_ids_per_subj = defaultdict(slice)
         batch_streamlines = []
         for subj, s_ids in streamline_ids_per_subj:
-            self.logger.debug("        => Subj: {}".format(subj))
-
             self.logger.debug(
-                "          Processing data preparation for streamlines ids:\n"
-                "{}".format(s_ids))
+                "            Data loader: Processing data preparation for "
+                "subj {} (preparing {} streamlines)".format(subj, len(s_ids)))
 
+            # No cache for the sft data. Accessing it directly.
+            # Note: If this is used through the dataloader, multiprocessing
+            # is used. Each process will open an handle.
             subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(
                 subj)
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
 
             # Get streamlines as sft
+            self.logger.debug("            Loading sampled streamlines...")
             sft = subj_sft_data.as_sft(s_ids)
 
             # Resampling streamlines to a fixed step size, if any
@@ -310,7 +295,7 @@ class AbstractBatchLoader:
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
 
-            return batch_streamlines, final_s_ids_per_subj
+        return batch_streamlines, final_s_ids_per_subj
 
     def project_specific_data_augmentation(self, sft: StatefulTractogram):
         """Please override in your child class if you want to do more than
@@ -318,14 +303,14 @@ class AbstractBatchLoader:
         - adding noise
         - splitting."""
         self.logger.debug("            Project-specific data augmentation, if "
-                          "any...")
+                          "any.")
 
         return sft
 
 
 class BatchLoaderOneInput(AbstractBatchLoader):
     """
-    Samples:
+    Loads:
         input = one volume group
                 (data underlying each point of the streamline)
                 (possibly with its neighborhood)
@@ -436,7 +421,6 @@ class BatchLoaderOneInput(AbstractBatchLoader):
             batch_streamlines, final_s_ids_per_subj = batch
 
             # Get the inputs
-            self.logger.debug("        Loading a batch of inputs!")
             batch_inputs = self.compute_inputs(batch_streamlines,
                                                final_s_ids_per_subj,
                                                save_batch_input_mask)
@@ -471,8 +455,9 @@ class BatchLoaderOneInput(AbstractBatchLoader):
 
         Returns
         -------
-        batch_x_data : List
-            The list of (list of) inputs for each streamlines
+        batch_x_data : List[tensor]
+            The list of tensors inputs for each streamlines. Each tensor is of
+            shape [nb points, nb_features].
         """
         batch_x_data = []
         batch_input_masks = []
@@ -487,6 +472,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
             # Getting the subject's volume and sending to CPU/GPU
             # If data is lazy, get volume from cache or send to cache if
             # it wasn't there yet.
+            self.logger.debug("            Data loader: loading input volume.")
             data_tensor = self.dataset.get_volume_verify_cache(
                 subj, self.input_group_idx, device=device, non_blocking=True)
 
@@ -496,6 +482,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
             # Trilinear interpolation uses origin=corner, vox space, but ok
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
+            self.logger.debug("            Neighborhood + interpolation")
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, self.neighborhood_points,
                 device)

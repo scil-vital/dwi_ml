@@ -28,12 +28,13 @@ from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
 
-from dwi_ml.data.dataset.single_subject_containers import SubjectData
-from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
+from dwi_ml.data.dataset.utils import add_dataset_args
+from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.tracking.seed import DWIMLSeedGenerator
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
-                                   add_tracking_options)
+                                   add_tracking_options,
+                                   prepare_dataset_for_tracking)
 
 ##################
 # PLEASE COPY AND ADAPT:
@@ -58,6 +59,8 @@ def build_argparser():
     # If you need the sphere for your model:
     add_sphere_arg(track_g, symmetric_only=False)
 
+    add_dataset_args(p)
+
     # As in scilpy:
     add_seeding_options(p)
     add_out_options(p)
@@ -67,9 +70,10 @@ def build_argparser():
     return p
 
 
-def prepare_tracker(parser, args, hdf_handle, device,
-                    min_nbr_pts, max_nbr_pts, max_invalid_dirs,
-                    mmap_mode):
+def prepare_tracker(parser, args, hdf5_file, device,
+                    min_nbr_pts, max_nbr_pts, max_invalid_dirs):
+    hdf_handle = h5py.File(hdf5_file, 'r')
+
     with Timer("\n\nLoading data and preparing tracker...",
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
@@ -80,12 +84,11 @@ def prepare_tracker(parser, args, hdf_handle, device,
         mask, ref = _prepare_tracking_mask(args, hdf_handle)
 
         logging.info("Loading subject's data.")
-        subj_data = SubjectData.init_from_hdf(args.subj_id, hdf_handle,
-                                              group_info=None)
+        subset, subj_idx = prepare_dataset_for_tracking(hdf5_file, args)
 
         logging.info("Loading model.")
-        model = ModelForTestWithPD.load(args.experiment_path + '/model')
-        model.set_logger_state(args.logging.upper())
+        model = ModelForTestWithPD.load(args.experiment_path + '/model',
+                                        log_level=args.logging.upper())
         logging.info("* Loaded params: " + format_dict_to_str(model.params) +
                      "\n")
 
@@ -94,21 +97,15 @@ def prepare_tracker(parser, args, hdf_handle, device,
         model_uses_streamlines = True  # Test model's forward uses previous
         # dirs, which require streamlines
         propagator = DWIMLPropagatorOneInput(
-            subj_data, model, args.input_group, args.step_size, args.rk_order,
-            args.algo, theta, model_uses_streamlines, device)
+            subset, subj_idx, model, args.input_group, args.step_size,
+            args.rk_order, args.algo, theta, model_uses_streamlines, device)
 
         logging.debug("Instantiating tracker.")
-        if args.nbr_processes > 1:
-            # toDo
-            raise NotImplementedError(
-                "Usage with --processes>1 not ready in dwi_ml! "
-                "See the #toDo in scilpy! It uses tracking_field.dataset.data "
-                "which does not exist in our case!")
         tracker = DWIMLTracker(
             propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,
             max_nbr_pts, max_invalid_dirs, args.compress, args.nbr_processes,
-            args.save_seeds, mmap_mode, args.rng_seed, args.track_forward_only,
-            args.use_gpu)
+            args.save_seeds, args.rng_seed, args.track_forward_only,
+            simultanenous_tracking=args.use_gpu, log_level=args.logging)
 
     return tracker, ref
 
@@ -152,7 +149,12 @@ def main():
     parser = build_argparser()
     args = parser.parse_args()
 
-    logging.basicConfig(level=args.logging.upper())
+    # Setting root logger to high level to max info, not debug, prints way too
+    # much stuff. (but we can set our tracker's logger to debug)
+    root_level = args.logging
+    if root_level == logging.DEBUG:
+        root_level = logging.INFO
+    logging.basicConfig(level=root_level)
 
     # ----- Checks
     if not nib.streamlines.is_supported(args.out_tractogram):
@@ -172,10 +174,6 @@ def main():
     min_nbr_pts = int(args.min_length / args.step_size) + 1
     max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size))
 
-    # r+ is necessary for interpolation function in cython who need read/write
-    # rights
-    mmap_mode = None if args.set_mmap_to_none else 'r+'
-
     device = torch.device('cpu')
     if args.use_gpu:
         if args.nbr_processes > 1:
@@ -185,11 +183,8 @@ def main():
         if torch.cuda.is_available():
             device = torch.device('cuda')
 
-    hdf_handle = h5py.File(args.hdf5_file, 'r')
-
-    tracker, ref = prepare_tracker(parser, args, hdf_handle, device,
-                                   min_nbr_pts, max_nbr_pts, max_invalid_dirs,
-                                   mmap_mode)
+    tracker, ref = prepare_tracker(parser, args, args.hdf5_file, device,
+                                   min_nbr_pts, max_nbr_pts, max_invalid_dirs)
 
     # ----- Track
 

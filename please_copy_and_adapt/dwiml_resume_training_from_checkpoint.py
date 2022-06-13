@@ -5,8 +5,8 @@ import logging
 import os
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
+from dwi_ml.experiment_utils.prints import add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
-
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.batch_loaders import \
     prepare_batchloadersoneinput_train_valid
@@ -39,10 +39,7 @@ def prepare_arg_parser():
                         'to allow experiment \nto continue if the allowed '
                         'number of epochs has been previously reached.')
 
-    p.add_argument('--logging', dest='logging_choice', default='WARNING',
-                   choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
-                   help="Logging level. Note that, for readability, not all "
-                        "debug logs are printed in DEBUG mode.")
+    add_logging_arg(p)
 
     return p
 
@@ -63,14 +60,15 @@ def init_from_checkpoint(args):
     # toDo Verify that valid dataset is the same.
     #  checkpoint_state['valid_data_params']
 
+    # Setting log level to INFO maximum for sub-loggers, else it become ugly
+    sub_loggers_level = args.logging
+    if args.logging == 'DEBUG':
+        sub_loggers_level = 'INFO'
+
     # Load model from checkpoint directory
     model = ModelForTestWithPD.load(os.path.join(
-        args.experiments_path, args.experiment_name, 'checkpoint/model'))
-
-    # Setting log level to INFO maximum for sub-loggers, else it become ugly
-    sub_loggers_level = args.logging_choice
-    if args.logging_choice == 'DEBUG':
-        sub_loggers_level = 'INFO'
+        args.experiments_path, args.experiment_name, 'checkpoint/model'),
+        sub_loggers_level)
 
     # Prepare batch samplers
     args_ts = argparse.Namespace(**checkpoint_state['train_sampler_params'])
@@ -94,7 +92,8 @@ def init_from_checkpoint(args):
             model, args.experiments_path, args.experiment_name,
             training_batch_sampler, training_batch_loader,
             validation_batch_sampler, validation_batch_loader,
-            checkpoint_state, args.new_patience, args.new_max_epochs)
+            checkpoint_state, args.new_patience, args.new_max_epochs,
+            args.logging)
 
     return trainer
 
@@ -103,10 +102,9 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Initialize logger for preparation (loading data, model, experiment)
-    # If 'as_much_as_possible', we will modify the logging level when starting
-    # the training, else very ugly
-    logging.basicConfig(level=args.logging_choice)
+    # Setting root logger with high level but we will set trainer to
+    # user-defined level.
+    logging.basicConfig(level=logging.WARNING)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
     if not os.path.exists(os.path.join(
@@ -115,7 +113,7 @@ def main():
 
     trainer = init_from_checkpoint(args)
 
-    run_experiment(trainer, args.logging_choice)
+    run_experiment(trainer, args.logging)
 
 
 if __name__ == '__main__':

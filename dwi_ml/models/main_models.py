@@ -12,7 +12,8 @@ from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, compute_and_normalize_directions
-from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.experiment_utils.prints import format_dict_to_str, \
+    make_logger_tqdm_fitted, make_logger_normal
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 
 logger = logging.getLogger('model_logger')
@@ -73,9 +74,19 @@ class MainModelAbstract(torch.nn.Module):
 
         self.device = None
 
-    @staticmethod
-    def set_logger_state(level):
-        logger.setLevel(level)
+    def move_to(self, device):
+        """
+        Careful. Calling model.to(a_device) does not influence the self.device.
+        Prefer this method for easier management.
+        """
+        self.to(device)
+        self.device = device
+
+    def make_logger_tqdm_fitted(self):
+        make_logger_tqdm_fitted(self.logger)
+
+    def make_logger_normal(self):
+        make_logger_normal(self.logger)
 
     @property
     def params(self):
@@ -122,7 +133,7 @@ class MainModelAbstract(torch.nn.Module):
             shutil.rmtree(to_remove)
 
     @classmethod
-    def load(cls, loading_dir):
+    def load(cls, loading_dir, log_level=logging.WARNING):
         """
         loading_dir: path to the trained parameters. Must contain files
             - parameters.json
@@ -141,7 +152,7 @@ class MainModelAbstract(torch.nn.Module):
         best_model_filename = os.path.join(model_dir, "best_model_state.pkl")
         best_model_state = torch.load(best_model_filename)
 
-        model = cls(**params)
+        model = cls(log_level=log_level, **params)
         model.load_state_dict(best_model_state)  # using torch's method
         model.update_best_model()
         model.eval()

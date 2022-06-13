@@ -16,7 +16,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import (
     add_dataset_args, prepare_multisubjectdataset)
-from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
+from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.batch_samplers import (
@@ -51,9 +51,10 @@ def prepare_arg_parser():
     return p
 
 
-def init_from_args(args):
+def init_from_args(args, sub_loggers_level):
     # Prepare the dataset
-    dataset = prepare_multisubjectdataset(args, load_testing=False)
+    dataset = prepare_multisubjectdataset(args, load_testing=False,
+                                          log_level=sub_loggers_level)
 
     # Preparing the model
     # Possibly useful:
@@ -61,11 +62,6 @@ def init_from_args(args):
     #     nb_features = dataset.nb_features[input_group_idx]
     #     dg_args = check_args_direction_getter(args)
     model = ModelForTestWithPD()  # To be instantiated correctly.
-
-    # Setting log level to INFO maximum for sub-loggers, else it become ugly
-    sub_loggers_level = args.logging
-    if args.logging == 'DEBUG':
-        sub_loggers_level = 'INFO'
 
     # Preparing the batch samplers.
     args.wait_for_gpu = args.use_gpu
@@ -97,8 +93,8 @@ def init_from_args(args):
             patience=args.patience, from_checkpoint=False,
             weight_decay=args.weight_decay,
             # MEMORY
-            # toDo check this
-            nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
+            nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
+            log_level=args.logging)
         logging.info("Trainer params : " + format_dict_to_str(trainer.params))
 
     return trainer
@@ -108,8 +104,11 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Initialize logger
-    logging.basicConfig(level=args.logging)
+    # Setting log level to INFO maximum for sub-loggers, else it become ugly
+    # but we will set trainer to user-defined level.
+    sub_loggers_level = args.logging
+    if args.logging == 'DEBUG':
+        sub_loggers_level = 'INFO'
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])
@@ -122,7 +121,7 @@ def main():
             "This experiment already exists. Delete or use script "
             "dwiml_resume_training_from_checkpoint.py.")
 
-    trainer = init_from_args(args)
+    trainer = init_from_args(args, sub_loggers_level)
 
     run_experiment(trainer, args.logging)
 

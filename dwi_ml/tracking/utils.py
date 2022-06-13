@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import logging
+
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from scilpy.io.utils import add_processes_arg
 
 
@@ -26,6 +29,11 @@ def add_mandatory_options_tracking(p):
                    help="Tracking mask's volume group in the hdf5.")
     p.add_argument('input_group',
                    help="Model's input's volume group in the hdf5.")
+    p.add_argument('--subset', default='testing',
+                   choices=['training', 'validation', 'testing'],
+                   help="Subject id should probably come come the "
+                        "'testing' set but you can\n modify this to "
+                        "'training' or 'validation'.")
 
 
 def add_tracking_options(p):
@@ -96,12 +104,6 @@ def add_tracking_options(p):
                           "with -nt 1,000,000, \nyou can create tractogram_2 "
                           "with \n--skip 1,000,000.")
 
-    # toDo. This should be clarified in scilpy eventually. Verifiy evolution.
-    r_g.add_argument('--set_mmap_to_none', action='store_true',
-                     help="If true, use mmap_mode=None. Else mmap_mode='r+'.\n"
-                          "Used in np.load(data_file_info). Available only "
-                          "with --processes.\nTO BE CLEANED")
-
     # Preparing upcoming GPU option:
     m_g = p.add_argument_group('  Memory options')
     ram_options = m_g.add_mutually_exclusive_group()
@@ -112,3 +114,33 @@ def add_tracking_options(p):
                                   "used \ntogether with --processes.")
 
     return track_g
+
+
+def prepare_dataset_for_tracking(hdf5_file, args):
+    # Right now, we con only track on one subject at the time. We could
+    # instantiate a LazySubjectData directly but we want to use the cache
+    # manager (suited better for multiprocessing)
+    dataset = MultiSubjectDataset(hdf5_file, lazy=args.lazy,
+                                  subset_cache_size=args.cache_size,
+                                  log_level=logging.WARNING)
+
+    if args.subset == 'testing':
+        # Most logical choice.
+        dataset.load_data(load_training=False, load_validation=False)
+        subset = dataset.testing_set
+    elif args.subset == 'training':
+        dataset.load_data(load_validation=False, load_testing=False)
+        subset = dataset.training_set
+    elif args.subset == 'validation':
+        dataset.load_data(load_training=False, load_testing=False)
+        subset = dataset.validation_set
+    else:
+        raise ValueError("Subset must be one of 'training', 'validation' "
+                         "or 'testing.")
+
+    if args.subj_id not in subset.subjects:
+        raise ValueError("Subject {} does not belong in hdf5's {} set."
+                         .format(args.subj_id, args.subset))
+    subj_idx = subset.subjects.index(args.subj_id)
+
+    return subset, subj_idx

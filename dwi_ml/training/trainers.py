@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import shutil
-import time
 from typing import Union
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
@@ -141,7 +140,7 @@ class DWIMLAbstractTrainer:
         self.saving_path = os.path.join(self.experiments_path,
                                         self.experiment_name)
         if not from_checkpoint and not os.path.isdir(self.saving_path):
-            logger.info('Creating directory {}'.format(self.saving_path))
+            self.logger.info('Creating directory {}'.format(self.saving_path))
             os.mkdir(self.saving_path)
 
         # Note that the training/validation sets are contained in the
@@ -190,6 +189,8 @@ class DWIMLAbstractTrainer:
                                      "the code.")
                 # If you see a hint error below, upgrade torch.
                 torch.cuda.manual_seed(self.train_batch_sampler.rng)
+
+                logging.info("We will be using GPU!")
             else:
                 raise ValueError("You chose GPU (cuda) device but it is not "
                                  "available!")
@@ -237,15 +238,14 @@ class DWIMLAbstractTrainer:
         # overwrites the model.
         # NOTE: This ordering is important! The optimizer needs to use the cuda
         # Tensors if using the GPU...
-        self.model.to(device=self.device)
+        self.model.move_to(device=self.device)
 
         # Build optimizer (Optimizer is built here since it needs the model
         # parameters)
         list_params = [n for n, _ in self.model.named_parameters()]
         self.logger.debug("Initiating trainer: {}".format(type(self)))
         self.logger.debug("This trainer will use Adam optimization on the "
-                          "following model.parameters: \n\n"
-                          .join(list_params) + "\n")
+                          "following model.parameters: {}".format(list_params))
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=learning_rate,
                                           weight_decay=weight_decay)
@@ -282,6 +282,24 @@ class DWIMLAbstractTrainer:
             }
         })
         return params
+
+    def _make_loggers_tqdm_fitted(self):
+        make_logger_tqdm_fitted(self.logger)
+        self.model.make_logger_tqdm_fitted()
+        self.train_batch_sampler.make_logger_tqdm_fitted()
+        self.train_batch_loader.make_logger_tqdm_fitted()
+        if self.valid_batch_sampler:
+            self.valid_batch_sampler.make_logger_tqdm_fitted()
+            self.valid_batch_loader.make_logger_tqdm_fitted()
+
+    def _make_loggers_normal(self):
+        make_logger_normal(self.logger)
+        self.model.make_logger_normal()
+        self.train_batch_sampler.make_logger_normal()
+        self.train_batch_loader.make_logger_normal()
+        if self.valid_batch_sampler:
+            self.valid_batch_sampler.make_logger_normal()
+            self.valid_batch_loader.make_logger_normal()
 
     def _init_comet(self):
         """
@@ -494,13 +512,7 @@ class DWIMLAbstractTrainer:
             self.comet_exp.log_metric("current_epoch", self.current_epoch)
 
         # Improving loggers for tqdm
-        make_logger_tqdm_fitted(self.logger)
-        make_logger_tqdm_fitted(self.model.logger)
-        make_logger_tqdm_fitted(self.train_batch_sampler.logger)
-        make_logger_tqdm_fitted(self.train_batch_loader.logger)
-        if self.valid_batch_sampler:
-            make_logger_tqdm_fitted(self.valid_batch_sampler.logger)
-            make_logger_tqdm_fitted(self.valid_batch_loader.logger)
+        self._make_loggers_tqdm_fitted()
 
         # Training all batches
         self.logger.debug("Training one epoch: iterating on batches using "
@@ -533,14 +545,7 @@ class DWIMLAbstractTrainer:
             # running validation
             del train_iterator
 
-        # Making loggers normal
-        make_logger_normal(self.logger)
-        make_logger_normal(self.model.logger)
-        make_logger_normal(self.train_batch_sampler.logger)
-        make_logger_normal(self.train_batch_loader.logger)
-        if self.valid_batch_sampler:
-            make_logger_normal(self.valid_batch_sampler.logger)
-            make_logger_normal(self.valid_batch_loader.logger)
+        self._make_loggers_normal()
 
         # Saving epoch's information
         self.logger.info("Finishing epoch...")
@@ -690,7 +695,7 @@ class DWIMLAbstractTrainer:
             valid_batch_sampler: Union[DWIMLBatchSampler, None],
             valid_batch_loader: Union[AbstractBatchLoader, None],
             checkpoint_state: dict, new_patience,
-            new_max_epochs):
+            new_max_epochs, log_level):
         """
         During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
         back offers a dict that can be used to instantiate an experiment and
@@ -704,7 +709,7 @@ class DWIMLAbstractTrainer:
                       batch_loader_training=train_batch_loader,
                       batch_sampler_validation=valid_batch_sampler,
                       batch_loader_validation=valid_batch_loader,
-                      from_checkpoint=True,
+                      from_checkpoint=True, log_level=log_level,
                       **checkpoint_state['params_for_init'])
 
         current_states = checkpoint_state['current_states']
@@ -742,8 +747,8 @@ class DWIMLAbstractTrainer:
             current_states['grad_norm_monitor_state'])
         trainer.optimizer.load_state_dict(current_states['optimizer_state'])
 
-        logger.info("Resuming from checkpoint! Next epoch will be epoch #{}"
-                    .format(trainer.current_epoch))
+        trainer.logger.info("Resuming from checkpoint! Next epoch will be "
+                            "epoch #{}".format(trainer.current_epoch))
 
         return trainer
 
@@ -936,11 +941,16 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 self.logger.debug('Finalizing input data preparation on GPU.')
                 batch_streamlines, final_s_ids_per_subj = data
 
+                # toDo. Could we convert streamlines to tensor already when
+                # loading, and send to GPU here? Would need to modify methods
+                # such as extend_neighborhood_with_coods.
+
                 # Getting the inputs points from the volumes. Usually done in
                 # load_batch but we preferred to wait here to have a chance to
                 # run things on GPU.
                 batch_inputs = batch_loader.compute_inputs(
-                    batch_streamlines, final_s_ids_per_subj)
+                    batch_streamlines, final_s_ids_per_subj,
+                    device=self.device)
 
             else:
                 # Data is already ready
@@ -955,7 +965,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
             self.logger.debug('\n*** Computing forward propagation')
             if self.model_uses_streamlines:
-                model_outputs = self.model(batch_inputs, batch_streamlines)
+                streamlines = [torch.tensor(s).to(self.device) for s in
+                               batch_streamlines]
+                model_outputs = self.model(batch_inputs, streamlines)
             else:
                 model_outputs = self.model(batch_inputs)
 

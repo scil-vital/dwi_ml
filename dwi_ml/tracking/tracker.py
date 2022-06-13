@@ -122,7 +122,7 @@ class DWIMLTracker(ScilpyTracker):
                         "streamlines.".format(nb_next_seeds))
 
             next_seeds = np.asarray(
-                range(seed_count, seed_count+nb_next_seeds))
+                range(seed_count, seed_count + nb_next_seeds))
 
             # Using DWIMLSeedGenerator's class
             n_seeds = self.seed_generator.get_next_n_pos(

@@ -55,10 +55,12 @@ def run_experiment(trainer, logging_choice):
     # Model already saved in the last checkpoint, but we could save it again.
     # trainer.model.save(trainer.saving_path)
 
-    logger.info("Script terminated successfully. \n"
-                "Saved experiment in folder : {}"
-                .format(trainer.saving_path))
-    logger.info("Summary: ran {} epochs. Best loss was {} at epoch #{}"
-                .format(trainer.current_epoch + 1,
-                        trainer.best_epoch_monitoring.best_value,
-                        trainer.best_epoch_monitoring.best_epoch + 1))
+    trainer.logger.info("Script terminated successfully. \n"
+                        "Saved experiment in folder : {}"
+                        .format(trainer.saving_path))
+    trainer.logger.info("Summary: ran {} epochs (out of max {}). \n"
+                        "Best loss was {} at epoch #{}"
+                        .format(trainer.current_epoch + 1,
+                                trainer.max_epochs,
+                                trainer.best_epoch_monitoring.best_value,
+                                trainer.best_epoch_monitoring.best_epoch + 1))

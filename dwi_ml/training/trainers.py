@@ -231,12 +231,9 @@ class DWIMLAbstractTrainer:
         self.comet_key = None
 
         # Saving all params in a json file to help user remember what he used.
-        if from_checkpoint:
-            filename = os.path.join(self.saving_path,
-                                    "parameters_used_from_checkpoint.json")
-        else:
+        if not from_checkpoint:
             filename = os.path.join(self.saving_path, "parameters.json")
-        self.save_params_to_json(filename)
+            self.save_params_to_json(filename)
 
         # ----------------------
         # Launching optimizer!
@@ -770,8 +767,18 @@ class DWIMLAbstractTrainer:
             current_states['grad_norm_monitor_state'])
         trainer.optimizer.load_state_dict(current_states['optimizer_state'])
 
-        trainer.logger.info("Resuming from checkpoint! Next epoch will be "
-                            "epoch #{}".format(trainer.current_epoch))
+        # Save params
+        now = datetime.now()
+        filename = os.path.join(trainer.saving_path,
+                                "parameters_{}.json"
+                                .format(now.strftime("%d-%m-%Y_%Hh%M")))
+        with open(filename, 'w') as json_file:
+            json_file.write(json.dumps(
+                {'Date': str(datetime.now()),
+                 'New patience': new_patience,
+                 'New max_epochs': new_max_epochs
+                 },
+                indent=4, separators=(',', ': ')))
 
         return trainer
 
@@ -899,17 +906,17 @@ class DWIMLAbstractTrainer:
                     checkpoint_state['params_for_init']['max_epochs'] - 1:
                 raise ValueError(
                     "Resumed experiment had stopped after reaching the "
-                    "maximum number of epochs allowed (max_epochs = {}). "
+                    "maximum number of epochs allowed (max_epochs = {}).\n"
                     "Please increase that value in order to resume training."
                     .format(checkpoint_state['params_for_init']['max_epochs']))
         else:
-            if current_epoch > new_max_epochs:
+            if current_epoch + 1 >= new_max_epochs:
                 raise ValueError(
-                    "In resumed experiment, we had performed {} epochs). You "
+                    "In resumed experiment, we had performed {} epochs. \nYou "
                     "have now overriden max_epoch to {} but that won't be "
-                    "enough. Please increase that value in order to resume "
+                    "enough. \nPlease increase that value in order to resume "
                     "training."
-                    .format(current_epoch, new_max_epochs))
+                    .format(current_epoch + 1, new_max_epochs))
 
 
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):

@@ -360,7 +360,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         p = super().params
         p.update({
             'input_group_name': self.input_group_name,
-            'neighborhood_points': self.neighborhood_points,
+            'neighborhood_points': self.neighborhood_points.tolist(),
             'wait_for_gpu': self.wait_for_gpu
         })
         return p

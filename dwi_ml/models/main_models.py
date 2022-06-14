@@ -70,7 +70,7 @@ class MainModelAbstract(torch.nn.Module):
         self.neighborhood_points = prepare_neighborhood_vectors(
             neighborhood_type, neighborhood_radius)
         self.nb_neighbors = len(self.neighborhood_points) if \
-            self.neighborhood_points else 0
+            self.neighborhood_points is not None else 0
 
         self.device = None
 

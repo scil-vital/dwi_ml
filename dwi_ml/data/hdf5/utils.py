@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
+import shutil
 from argparse import ArgumentParser
 import json
 import logging
@@ -127,6 +128,11 @@ def prepare_hdf5_creator(args):
     # Initialize intermediate subdir
     intermediate_subdir = _initialize_intermediate_subdir(
         args.out_hdf5_file, args.save_intermediate)
+
+    # Copy config file locally
+    config_copy_name = os.path.splitext(args.out_hdf5_file)[0] + '.json'
+    logging.info("Copying json config file to {}".format(config_copy_name))
+    shutil.copyfile(args.config_file, config_copy_name)
 
     # Instantiate a creator and perform checks
     creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,

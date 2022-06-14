@@ -28,7 +28,7 @@ logger = logging.getLogger('train_logger')
 # training now, to allow saving time.
 QUIT_TIME_DELAY_SECONDS = 10
 # Update comet every 10 batch for faster management.
-COMET_UPDATE_FREQUENCY = 2  # toDo 10
+COMET_UPDATE_FREQUENCY = 10
 
 
 class DWIMLAbstractTrainer:

@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
+from typing import Union
 
 import numpy as np
 import torch
+from scilpy.image.datasets import DataVolume
+
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 
 from scilpy.tracking.propagator import AbstractPropagator
@@ -57,8 +60,8 @@ class DWIMLPropagator(AbstractPropagator):
             If true, the current line in kept in memory to be added as
             additional input.
         """
-        dataset = None  # Could load now but will be reloading at processes
-        # initialization anyway.
+        # Dataset will be reloaded at sub-processes
+        dataset: Union[DataVolume, None] = None
         super().__init__(dataset, step_size, rk_order)
 
         if rk_order > 1:
@@ -85,7 +88,7 @@ class DWIMLPropagator(AbstractPropagator):
         # additional input. List of lines. All lines have the same number of
         # points, as they are being propagated together.
         # List[list[list]]: nb_lines x (nb_points, 3).
-        self.current_lines = None  # type: list
+        self.current_lines: Union[list, None] = None
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -366,7 +369,7 @@ class DWIMLPropagator(AbstractPropagator):
                            v_in.T / np.linalg.norm(v_in))
 
         # Resolving numerical instabilities:
-        cos_angle = min(max(-1.0, cos_angle), 1.0)
+        cos_angle = min(max(-1.0, float(cos_angle)), 1.0)
 
         angle = np.arccos(cos_angle)
         if angle > self.theta:

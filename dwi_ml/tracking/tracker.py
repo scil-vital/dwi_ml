@@ -15,6 +15,11 @@ logger = logging.getLogger('tracker_logger')
 
 
 class DWIMLTracker(ScilpyTracker):
+    # Removing a few warning by explicitly telling python that the
+    # propagator type is not as in super. Supported in python > 3.5
+    propagator: DWIMLPropagator
+    seed_generator: DWIMLSeedGenerator
+
     def __init__(self, propagator: DWIMLPropagator, mask: DataVolume,
                  seed_generator: DWIMLSeedGenerator, nbr_seeds, min_nbr_pts,
                  max_nbr_pts, max_invalid_dirs, compression_th=0.1,
@@ -24,7 +29,8 @@ class DWIMLTracker(ScilpyTracker):
         """
         Parameters: See scilpy.
         ----------
-        propagator: now a dwi_ml version of the propagator.
+        propagator: DWIMLPropagator
+            Now a dwi_ml version of the propagator.
         simultaneous_tracking: bool
             If true, track multiple lines at the same time. Intended for GPU.
         use_gpu: bool
@@ -41,7 +47,7 @@ class DWIMLTracker(ScilpyTracker):
                          compression_th, nbr_processes, save_seeds, mmap_mode,
                          rng_seed, track_forward_only)
 
-        if nbr_processes > 2 and not propagator.dataset.is_lazy:
+        if nbr_processes > 2 and not propagator.subset.is_lazy:
             raise ValueError("Multiprocessing only works with lazy data.")
 
         # Set device
@@ -169,7 +175,7 @@ class DWIMLTracker(ScilpyTracker):
 
             # We could loop to prepare reverse. Basic case not too heavy.
             # However, in some cases (ex, Learn2track with memory), model
-            # needs to be re-run before starting back-propagatation. We let
+            # needs to be re-run before starting back-propagation. We let
             # the propagator deal with the looping.
             tracking_info = self.propagator.prepare_backward(lines,
                                                              tracking_info)
@@ -186,7 +192,7 @@ class DWIMLTracker(ScilpyTracker):
         clean_seeds = []
         for i in range(len(lines)):
             if self.min_nbr_pts <= len(lines[i]) <= self.max_nbr_pts:
-                clean_lines.append(lines[i])
+                clean_lines.append(np.asarray(lines[i]))
                 if self.save_seeds:
                     clean_seeds.append(n_seeds[final_order[i]])
 
@@ -226,7 +232,7 @@ class DWIMLTracker(ScilpyTracker):
                     all_lines_completed = False
                     lines[i].append(n_new_pos[i])
                 else:
-                    final_lines.append(np.asarray(lines[i]))
+                    final_lines.append(lines[i])
                     final_lines_order.append(i)
                     lines.pop(i)
                     final_tracking_info.append(new_tracking_info[i])

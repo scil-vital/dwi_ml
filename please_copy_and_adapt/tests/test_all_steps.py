@@ -79,6 +79,6 @@ def test_execution_training_tracking(script_runner):
         '--algo', 'det', '--nt', '2', '--logging', 'DEBUG', '--rng_seed', '0',
         '--min_length', '0', '--subset', 'training',
         # Additional params compared to CPU:
-        '--use_gpu', '--simultaneous_tracking', '2')
+        '--use_gpu', '--simultaneous_tracking', '3')
 
     assert ret.success

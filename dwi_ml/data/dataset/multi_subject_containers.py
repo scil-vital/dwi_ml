@@ -8,7 +8,8 @@ import h5py
 import numpy as np
 import torch.multiprocessing
 from torch.utils.data import Dataset
-import tqdm
+from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from dwi_ml.cache.cache_manager import SingleThreadCacheManager
 from dwi_ml.data.dataset.checks_for_groups import prepare_groups_info
@@ -16,8 +17,6 @@ from dwi_ml.data.dataset.subjectdata_list_containers import (
     LazySubjectsDataList, SubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,
                                                            SubjectData)
-from dwi_ml.experiment_utils.prints import (
-    make_logger_tqdm_fitted, make_logger_normal)
 
 logger = logging.getLogger('dataset_logger')
 
@@ -74,23 +73,6 @@ class MultisubjectSubset(Dataset):
         # This is only used in the lazy case.
         self.cache_size = cache_size
         self.volume_cache_manager = None
-
-    @staticmethod
-    def make_logger_tqdm_fitted():
-        """Possibility to use a tqdm-compatible logger in case the model
-        is used through a tqdm progress bar."""
-        make_logger_tqdm_fitted(logger)
-
-    @staticmethod
-    def make_logger_normal():
-        """Possibility to use a tqdm-compatible logger in case the model
-        is used through a tqdm progress bar."""
-        make_logger_normal(logger)
-
-    @staticmethod
-    def remove_tqdm_handle():
-        logger.handlers = []
-        logger.propagate = True
 
     def close_all_handles(self):
         if self.subjs_data_list.hdf_handle:
@@ -263,48 +245,48 @@ class MultisubjectSubset(Dataset):
         lengths_mm = [[] for _ in self.streamline_groups]
 
         # Using tqdm progress bar, load all subjects from hdf_file
-        self.make_logger_tqdm_fitted()
-        for subj_id in tqdm.tqdm(subject_keys, ncols=100):
-            # Create subject's container
-            # Uses SubjectData or LazySubjectData based on the class
-            # calling this method.
-            logger.debug("     Creating subject '{}':".format(subj_id))
-            subj_data = self._init_subj_from_hdf(
-                hdf_handle, subj_id, self.volume_groups, self.nb_features,
-                self.streamline_groups)
+        with logging_redirect_tqdm(loggers=[logger, logging.root],
+                                   tqdm_class=tqdm):
+            for subj_id in tqdm(subject_keys, ncols=100):
+                # Create subject's container
+                # Uses SubjectData or LazySubjectData based on the class
+                # calling this method.
+                logger.debug("     Creating subject '{}':".format(subj_id))
+                subj_data = self._init_subj_from_hdf(
+                    hdf_handle, subj_id, self.volume_groups, self.nb_features,
+                    self.streamline_groups)
 
-            # Add subject to the list
-            subj_idx = self.subjs_data_list.add_subject(subj_data)
+                # Add subject to the list
+                subj_idx = self.subjs_data_list.add_subject(subj_data)
 
-            if subj_data.is_lazy:
-                logger.debug("     Temporarily adding hdf handle to "
-                             "subj to arrange streamlines.")
-                subj_data = self.subjs_data_list[(subj_idx, hdf_handle)]
-                logger.debug("--> Handle: {}".format(subj_data.hdf_handle))
+                if subj_data.is_lazy:
+                    logger.debug("     Temporarily adding hdf handle to "
+                                 "subj to arrange streamlines.")
+                    subj_data = self.subjs_data_list[(subj_idx, hdf_handle)]
+                    logger.debug("--> Handle: {}".format(subj_data.hdf_handle))
 
-            # Arrange streamlines
-            # In the lazy case, we need to load the data first using the
-            # __getitem__ from the datalist, and passing the hdf handle.
-            # For the non-lazy version, this does nothing.
-            subj_data.add_handle(hdf_handle)
-            for i in range(len(self.streamline_groups)):
-                subj_sft_data = subj_data.sft_data_list[i]
-                n_streamlines = len(subj_sft_data.streamlines)
-                self._add_streamlines_ids(n_streamlines, subj_idx, i)
-                lengths[i].append(subj_sft_data.lengths)
-                lengths_mm[i].append(subj_sft_data.lengths_mm)
+                # Arrange streamlines
+                # In the lazy case, we need to load the data first using the
+                # __getitem__ from the datalist, and passing the hdf handle.
+                # For the non-lazy version, this does nothing.
+                subj_data.add_handle(hdf_handle)
+                for i in range(len(self.streamline_groups)):
+                    subj_sft_data = subj_data.sft_data_list[i]
+                    n_streamlines = len(subj_sft_data.streamlines)
+                    self._add_streamlines_ids(n_streamlines, subj_idx, i)
+                    lengths[i].append(subj_sft_data.lengths)
+                    lengths_mm[i].append(subj_sft_data.lengths_mm)
 
-            # Remove hdf handle
-            subj_data.hdf_handle = None
-        self.remove_tqdm_handle()
+                # Remove hdf handle
+                subj_data.hdf_handle = None
 
-        # Arrange final data properties
-        self.streamline_lengths_mm = \
-            [np.concatenate(lengths_mm[i], axis=0)
-             for i in range(len(self.streamline_groups))]
-        self.streamline_lengths = \
-            [np.concatenate(lengths[i], axis=0)
-             for i in range(len(self.streamline_groups))]
+            # Arrange final data properties
+            self.streamline_lengths_mm = \
+                [np.concatenate(lengths_mm[i], axis=0)
+                 for i in range(len(self.streamline_groups))]
+            self.streamline_lengths = \
+                [np.concatenate(lengths[i], axis=0)
+                 for i in range(len(self.streamline_groups))]
 
     def _add_streamlines_ids(self, n_streamlines: int, subj_idx: int,
                              group_idx: int):

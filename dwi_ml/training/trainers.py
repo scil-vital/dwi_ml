@@ -13,8 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
-from dwi_ml.experiment_utils.prints import (
-    make_logger_tqdm_fitted, make_logger_normal)
+from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_loaders import (
     AbstractBatchLoader, BatchLoaderOneInput)
@@ -308,24 +307,6 @@ class DWIMLAbstractTrainer:
                  },
                 indent=4, separators=(',', ': ')))
 
-    def _make_loggers_tqdm_fitted(self):
-        make_logger_tqdm_fitted(self.logger)
-        self.model.make_logger_tqdm_fitted()
-        self.train_batch_sampler.make_logger_tqdm_fitted()
-        self.train_batch_loader.make_logger_tqdm_fitted()
-        if self.valid_batch_sampler:
-            self.valid_batch_sampler.make_logger_tqdm_fitted()
-            self.valid_batch_loader.make_logger_tqdm_fitted()
-
-    def _make_loggers_normal(self):
-        make_logger_normal(self.logger)
-        self.model.make_logger_normal()
-        self.train_batch_sampler.make_logger_normal()
-        self.train_batch_loader.make_logger_normal()
-        if self.valid_batch_sampler:
-            self.valid_batch_sampler.make_logger_normal()
-            self.valid_batch_loader.make_logger_normal()
-
     def _init_comet(self):
         """
         For more information on comet, see our doc/Getting Started
@@ -513,20 +494,25 @@ class DWIMLAbstractTrainer:
         if self.comet_exp:
             self.comet_exp.log_metric("current_epoch", self.current_epoch)
 
-        # Improving loggers for tqdm
-        self._make_loggers_tqdm_fitted()
-
         # Training all batches
         self.logger.debug("Training one epoch: iterating on batches using "
                           "tqdm on the dataloader...")
-        with tqdm(train_dataloader, ncols=100,
-                  total=self.nb_train_batches_per_epoch) as pbar:
+
+        # Note: loggers = [logging.root] only.
+        # If we add our sub-loggers there, they duplicate.
+        # A handler is added in the root logger, and sub-loggers propagate
+        # their message.
+        with tqdm_logging_redirect(train_dataloader, ncols=100,
+                                   total=self.nb_train_batches_per_epoch,
+                                   loggers=[logging.root],
+                                   tqdm_class=tqdm) as pbar:
+
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
                 # Break if maximum number of epochs has been reached
                 if batch_id == self.nb_train_batches_per_epoch:
-                    # Explicitly close tqdm's progress bar to fix possible
-                    # bugs when breaking the loop
+                    # Explicitly close tqdm's progress bar to fix possible bugs
+                    # when breaking the loop
                     pbar.close()
                     break
 
@@ -544,8 +530,6 @@ class DWIMLAbstractTrainer:
             # Explicitly delete iterator to kill threads and free memory before
             # running validation
             del train_iterator
-
-        self._make_loggers_normal()
 
         # Saving epoch's information
         self.logger.info("Finishing epoch...")
@@ -572,8 +556,10 @@ class DWIMLAbstractTrainer:
             self.valid_batch_sampler.dataset.volume_cache_manager = None
 
         # Validate all batches
-        with tqdm(valid_dataloader, ncols=100,
-                  total=self.nb_valid_batches_per_epoch) as pbar:
+        with tqdm_logging_redirect(valid_dataloader, ncols=100,
+                                   total=self.nb_valid_batches_per_epoch,
+                                   loggers=[logging.root],
+                                   tqdm_class=tqdm) as pbar:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
                 # Break if maximum number of epochs has been reached
@@ -611,17 +597,19 @@ class DWIMLAbstractTrainer:
             - save values to monitors
             - send data to comet
         """
-        self.logger.info("Batch loss: {}".format(batch_mean_loss))
+        self.logger.info("Epoch {}: Batch loss = {}"
+                         .format(epoch, batch_mean_loss))
 
         loss_monitor.update(batch_mean_loss)
 
         if self.comet_exp and batch_id % COMET_UPDATE_FREQUENCY == 0:
             with comet_context():
                 # ??? epoch does not seem to show... So in fact, it only
-                # saves the current epoch.
+                # saves the current epoch. Cheating and changing the metric
+                # name at each epoch.
                 self.comet_exp.log_metric(
-                    "latest_epoch_loss_per_batch", batch_mean_loss,
-                    step=batch_id, epoch=epoch)
+                    "loss_per_batch_epoch" + str(epoch), batch_mean_loss,
+                    step=batch_id, epoch=0)
                 # When it updates here, the tqdm logger is less nice.
                 # Add a pause?
 
@@ -638,7 +626,7 @@ class DWIMLAbstractTrainer:
 
         if self.comet_exp and batch_id % COMET_UPDATE_FREQUENCY == 0:
             self.comet_exp.log_metric(
-                "latest_epoch_gradient_norm_per_batch",
+                "gradient_norm_per_batch_epoch" + str(epoch),
                 grad_norm, step=batch_id, epoch=epoch)
 
     def _update_loss_logs_after_epoch(

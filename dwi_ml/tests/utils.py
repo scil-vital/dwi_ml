@@ -12,6 +12,10 @@ from dwi_ml.training.batch_loaders import BatchLoaderOneInput
 
 
 def fetch_testing_data():
+    # Note. Data is accessible because its permission is "anyone with the link"
+    # but it can happen that github had trouble accessing it, for unclear
+    # reasons. Pushing a new commit (restarting the test) had a good chance to
+    # help.
     name_as_dict = {
         'data_for_tests_dwi_ml.zip':
             ['1beRWAorhaINCncttgwqVAP2rNOfx842Q',

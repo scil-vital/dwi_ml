@@ -4,6 +4,8 @@ import logging
 import os
 import tempfile
 
+import torch
+
 from dwi_ml.tests.expected_values import TEST_EXPECTED_VOLUME_GROUPS, \
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_SUBJ_NAMES
 from dwi_ml.tests.utils import fetch_testing_data
@@ -71,14 +73,15 @@ def test_execution_training_tracking(script_runner):
     assert ret.success
 
     # Testing multiple tracking
-    logging.info("************ TESTING GPU TRACKING FROM MODEL ************")
-    out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram2.trk')
-    ret = script_runner.run(
-        'dwiml_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
-        out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
-        '--algo', 'det', '--nt', '2', '--logging', 'DEBUG', '--rng_seed', '0',
-        '--min_length', '0', '--subset', 'training',
-        # Additional params compared to CPU:
-        '--use_gpu', '--simultaneous_tracking', '3')
+    if torch.cuda.is_available():
+        logging.info("********** TESTING GPU TRACKING FROM MODEL ************")
+        out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram2.trk')
+        ret = script_runner.run(
+            'dwiml_track_from_model.py', whole_experiment_path, hdf5_file,
+            subj_id, out_tractogram, seeding_mask_group, tracking_mask_group,
+            input_group, '--algo', 'det', '--nt', '2', '--logging', 'DEBUG',
+            '--rng_seed', '0', '--min_length', '0', '--subset', 'training',
+            # Additional params compared to CPU:
+            '--use_gpu', '--simultaneous_tracking', '3')
 
     assert ret.success

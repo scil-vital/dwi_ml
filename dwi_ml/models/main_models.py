@@ -12,8 +12,7 @@ from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, compute_and_normalize_directions
-from dwi_ml.experiment_utils.prints import format_dict_to_str, \
-    make_logger_tqdm_fitted, make_logger_normal
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 
 logger = logging.getLogger('model_logger')
@@ -70,7 +69,7 @@ class MainModelAbstract(torch.nn.Module):
         self.neighborhood_points = prepare_neighborhood_vectors(
             neighborhood_type, neighborhood_radius)
         self.nb_neighbors = len(self.neighborhood_points) if \
-            self.neighborhood_points else 0
+            self.neighborhood_points is not None else 0
 
         self.device = None
 
@@ -81,12 +80,6 @@ class MainModelAbstract(torch.nn.Module):
         """
         self.to(device)
         self.device = device
-
-    def make_logger_tqdm_fitted(self):
-        make_logger_tqdm_fitted(self.logger)
-
-    def make_logger_normal(self):
-        make_logger_normal(self.logger)
 
     @property
     def params(self):

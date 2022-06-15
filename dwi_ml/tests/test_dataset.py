@@ -23,12 +23,9 @@ from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_NB_FEATURES)
 from dwi_ml.tests.utils import fetch_testing_data
 
-data_dir = fetch_testing_data()
-
 
 def test_multisubjectdataset():
-
-    logging.basicConfig(level='DEBUG')
+    data_dir = fetch_testing_data()
 
     logging.debug("Unit test: previous dirs")
 
@@ -99,7 +96,7 @@ def _verify_sft_data(sft_data, group_number):
 
 
 def _non_lazy_version(hdf5_filename):
-    logging.debug("*** NON-LAZY version")
+    logging.debug("-------------- NON-LAZY version -----------------")
     logging.debug("   Initializing dataset")
     dataset = MultiSubjectDataset(hdf5_filename, lazy=False,
                                   log_level=logging.DEBUG)
@@ -134,7 +131,7 @@ def _non_lazy_version(hdf5_filename):
 
 
 def _lazy_version(hdf5_filename):
-    logging.debug("*** LAZY version")
+    logging.debug("-------------- LAZY version -----------------")
     dataset = MultiSubjectDataset(hdf5_filename,
                                   lazy=True, subset_cache_size=1,
                                   log_level=logging.DEBUG)

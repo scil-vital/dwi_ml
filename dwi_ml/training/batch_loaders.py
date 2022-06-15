@@ -47,8 +47,6 @@ from typing import Dict, List, Union, Tuple
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
-from dwi_ml.experiment_utils.prints import (
-    make_logger_tqdm_fitted, make_logger_normal)
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 import torch
@@ -165,7 +163,7 @@ class AbstractBatchLoader:
         params = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'type': type(self),
+            'type': str(type(self)),
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
             'reverse_ratio': self.reverse_ratio,
@@ -174,12 +172,6 @@ class AbstractBatchLoader:
             'compress': self.compress,
         }
         return params
-
-    def make_logger_tqdm_fitted(self):
-        make_logger_tqdm_fitted(self.logger)
-
-    def make_logger_normal(self):
-        make_logger_normal(self.logger)
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]) \
             -> Union[Tuple[List, Dict], Tuple[List, List, List]]:
@@ -360,7 +352,9 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         p = super().params
         p.update({
             'input_group_name': self.input_group_name,
-            'neighborhood_points': self.neighborhood_points,
+            'neighborhood_points': np.ndarray.tolist(self.neighborhood_points)
+            if isinstance(self.neighborhood_points, np.ndarray) else
+            self.neighborhood_points,
             'wait_for_gpu': self.wait_for_gpu
         })
         return p

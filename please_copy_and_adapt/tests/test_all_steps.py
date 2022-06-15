@@ -84,4 +84,4 @@ def test_execution_training_tracking(script_runner):
             # Additional params compared to CPU:
             '--use_gpu', '--simultaneous_tracking', '3')
 
-    assert ret.success
+        assert ret.success

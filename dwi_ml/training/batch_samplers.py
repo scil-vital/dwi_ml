@@ -30,8 +30,6 @@ from typing import List, Tuple, Iterator
 import numpy as np
 import torch
 import torch.multiprocessing
-from dwi_ml.experiment_utils.prints import (
-    make_logger_tqdm_fitted, make_logger_normal)
 from torch.utils.data import Sampler
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
@@ -149,7 +147,7 @@ class DWIMLBatchSampler(Sampler):
             'rng': self.rng,
             'nb_subjects_per_batch': self.nb_subjects_per_batch,
             'cycles': self.cycles,
-            'type': type(self),
+            'type': str(type(self)),
         }
         return params
 
@@ -159,14 +157,6 @@ class DWIMLBatchSampler(Sampler):
             'rng_state': self.np_rng.get_state(),
         }
         return states
-
-    def make_logger_tqdm_fitted(self):
-        make_logger_tqdm_fitted(self.logger)
-        self.dataset.make_logger_tqdm_fitted()
-
-    def make_logger_normal(self):
-        make_logger_normal(self.logger)
-        self.dataset.make_logger_normal()
 
     def __iter__(self) -> Iterator[List[Tuple[int, list]]]:
         """

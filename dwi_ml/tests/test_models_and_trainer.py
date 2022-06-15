@@ -9,10 +9,6 @@ from dwi_ml.tests.utils import (ModelForTest, create_test_batch_sampler,
                                 create_batch_loader, fetch_testing_data,
                                 ModelForTestWithPD)
 
-data_dir = fetch_testing_data()
-tmp_dir = tempfile.TemporaryDirectory()
-
-logging.basicConfig(level=logging.DEBUG)
 SAVE_RESULT_SFT_NII = False
 ref = None
 batch_size = 500
@@ -20,9 +16,7 @@ batch_size_units = 'nb_streamlines'
 
 
 def test_trainer_and_models():
-    logging.debug("\n"
-                  "Unit test: Trainer\n"
-                  "------------------------")
+    data_dir = fetch_testing_data()
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
@@ -34,6 +28,7 @@ def test_trainer_and_models():
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset)
 
     # Initializing model 1
+    logging.info("\n\n---------------TESTING MODEL # 1 -------------")
     model = ModelForTest()
 
     # Start tests
@@ -42,6 +37,7 @@ def test_trainer_and_models():
     trainer.train_and_validate()
 
     # Initializing model 2
+    logging.info("\n\n---------------TESTING MODEL # 2 -------------")
     model2 = ModelForTestWithPD()
 
     # Start tests
@@ -67,6 +63,8 @@ def _create_sampler_and_loader(dataset):
 
 def _create_trainer(batch_sampler, batch_loader, model,
                     model_uses_streamlines):
+    tmp_dir = tempfile.TemporaryDirectory()
+
     trainer = DWIMLTrainerOneInput(
         batch_sampler_training=batch_sampler,
         batch_sampler_validation=None,
@@ -74,6 +72,13 @@ def _create_trainer(batch_sampler, batch_loader, model,
         batch_loader_validation=None,
         model=model, experiments_path=tmp_dir.name, experiment_name='test',
         model_uses_streamlines=model_uses_streamlines,
-        max_batches_per_epoch=4, max_epochs=2, patience=None, use_gpu=False)
+        log_level='INFO',
+        max_batches_per_epoch=2, max_epochs=2, patience=None, use_gpu=False)
+    # Note. toDo Test fails with nb_cpu_processes=1.
 
     return trainer
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level='INFO')
+    test_trainer_and_models()

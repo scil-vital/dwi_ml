@@ -6,7 +6,6 @@ We expect the classes here to be used in single_subject_containers
 """
 from typing import Tuple, Union, List
 
-import torch
 from dipy.io.stateful_tractogram import (set_sft_logger_level,
                                          StatefulTractogram, Space)
 import h5py

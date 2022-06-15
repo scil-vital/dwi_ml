@@ -12,6 +12,10 @@ from dwi_ml.training.batch_loaders import BatchLoaderOneInput
 
 
 def fetch_testing_data():
+    # Note. Data is accessible because its permission is "anyone with the link"
+    # but it can happen that github had trouble accessing it, for unclear
+    # reasons. Pushing a new commit (restarting the test) had a good chance to
+    # help.
     name_as_dict = {
         'data_for_tests_dwi_ml.zip':
             ['1beRWAorhaINCncttgwqVAP2rNOfx842Q',
@@ -42,7 +46,9 @@ class ModelForTest(MainModelAbstract):
         return [1., 1., 1.]
 
     def forward(self, x):
-        pass
+        if isinstance(x, list):
+            return [self.fake_parameter for _ in x]
+        return self.fake_parameter
 
 
 class ModelForTestWithPD(MainModelWithPD):
@@ -72,6 +78,9 @@ class ModelForTestWithPD(MainModelWithPD):
     def forward(self, x, streamlines):
         dirs = self.format_directions(streamlines)
         _ = self.compute_and_embed_previous_dirs(dirs)
+        if isinstance(x, list):
+            return [self.fake_parameter for _ in x]
+        return self.fake_parameter
 
 
 def create_test_batch_sampler(

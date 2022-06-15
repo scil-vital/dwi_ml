@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
+from typing import Union
 
 import numpy as np
 import torch
+from scilpy.image.datasets import DataVolume
+
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 
 from scilpy.tracking.propagator import AbstractPropagator
@@ -57,8 +60,8 @@ class DWIMLPropagator(AbstractPropagator):
             If true, the current line in kept in memory to be added as
             additional input.
         """
-        dataset = None  # Could load now but will be reloading at processes
-        # initialization anyway.
+        # Dataset will be reloaded at sub-processes
+        dataset: Union[DataVolume, None] = None
         super().__init__(dataset, step_size, rk_order)
 
         if rk_order > 1:
@@ -81,10 +84,11 @@ class DWIMLPropagator(AbstractPropagator):
             self.move_to(device)
 
         self.model_uses_streamlines = model_uses_streamlines
-        if self.model_uses_streamlines:
-            # Add a line parameter. The model uses the streamline, so we need
-            # to keep track of it as additional input.
-            self.line = []
+        # The model uses the streamline, so we need to keep track of it as
+        # additional input. List of lines. All lines have the same number of
+        # points, as they are being propagated together.
+        # List[list[list]]: nb_lines x (nb_points, 3).
+        self.current_lines: Union[list, None] = None
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -104,9 +108,7 @@ class DWIMLPropagator(AbstractPropagator):
             self.subset.volume_cache_manager = None
 
             # Remove all handles
-            for i in range(len(self.subset.subjs_data_list)):
-                s = self.subset.subjs_data_list[i]
-                s.hdf_handle = None
+            self.subset.close_all_handles()
 
             if reload_data:
                 self._load_subj_data()
@@ -123,20 +125,21 @@ class DWIMLPropagator(AbstractPropagator):
 
         Parameters
         ----------
-        seeding_pos: tuple(x,y,z)
+        seeding_pos: tuple(x,y,z) or List[tuples]
+            The 3D coordinates or, for simultaneous tracking, list of 3D
+            coordinates.
 
         Returns
         -------
         tracking_info: Any
             Any tracking information necessary for the propagation.
         """
-        if self.model_uses_streamlines:
-            # Reset line before starting a new streamline.
-            self.line = [list(seeding_pos)]
-
-        # Our models should be able to get a direction even from with no
+        # Our models should be able to get an initial direction even with no
         # information about previous inputs.
-        return None
+        if isinstance(seeding_pos, tuple):
+            return None
+        else:
+            return [None for _ in seeding_pos]
 
     def prepare_backward(self, line, forward_dir):
         """
@@ -145,53 +148,118 @@ class DWIMLPropagator(AbstractPropagator):
         Parameters
         ----------
         line: List
-            Result from the forward tracking, reversed.
-        forward_dir: ndarray (3,)
+            Result from the forward tracking, reversed. Single line: list of
+            coordinates. Simulatenous tracking: list of list of coordinates.
+        forward_dir: ndarray (3,) or List[ndarray]
             v_in chosen at the forward step.
 
         Returns
         -------
-        v_in: ndarray (3,)
+        v_in: ndarray (3,) or list[ndarray]
             Last direction of the streamline. If the streamline contains
             only the seeding point (forward tracking failed), simply inverse
             the forward direction.
         """
-        if self.model_uses_streamlines:
-            self.line = line
-
         # Note. In our case, compared to scilpy, forward dir is None. So if the
         # forward tracking failed, we will just return None and try the
         # backward again with v_in=None. So basically, we will recompute
         # exactly the same model outputs as for the forward. But maybe the
         # sampling will create a new direction.
-        v_in = super().prepare_backward(line, forward_dir)
+        if isinstance(line[0], np.ndarray):  # List of coords = single tracking
+            v_in = super().prepare_backward(line, forward_dir)
 
-        # v_in is in double format (np.float64) but it looks like we need
-        # float32.
-        # toDo From testing with Learn2track. Always true?
-        if v_in is not None:
-            return v_in.astype(np.float32)
+            # v_in is in double format (np.float64) but it looks like we need
+            # float32.
+            # todo From testing with Learn2track. Always true?
+            if v_in is not None:
+                v_in = v_in.astype(np.float32)
+        else:  # simultaneous tracking.
+            v_in = []
+            for i in range(len(line)):
+                this_v_in = super().prepare_backward(line[i],
+                                                     forward_dir[i])
+                if this_v_in is not None:
+                    this_v_in = this_v_in.astype(np.float32)
+                v_in.append(this_v_in)
+
         return v_in
 
-    def propagate(self, pos, v_in):
-        logger.debug("  Propagation step at pos {}".format(pos))
-        new_pos, new_dir, is_direction_valid = super().propagate(pos, v_in)
-        if self.model_uses_streamlines:
-            self.line.append(list(new_pos))
+    def propagate(self, line, v_in, multiple_lines=False):
+        """
+        Params
+        ------
+        line: list[ndarrray (3,)] or list[list]
+            Current line, or current lines if multiple_lines.
+        v_in: ndarray (3,) or List[TrackingDirection]
+            Previous tracking direction, (or list of if multiple_lines.)
 
-        self._update_state_after_propagation_step(new_pos, new_dir)
+        Return
+        ------
+        new_pos: ndarray (3,) or list
+            The new segment position.
+        new_dir: ndarray (3,) or list
+            The new segment direction.
+        is_direction_valid: bool or list
+            True if new_dir is valid.
+        """
+        if self.model_uses_streamlines:
+            # super() won't use the whole line as argument during the sampling
+            # of next direction, but we need it. Add it in memory here.
+            # To use with r_k order > 1, we would need to compute the
+            # intermediate lines at each sub-computation, easier if we actually
+            # send the streamline, we would need to change scilpy.
+            if multiple_lines:
+                self.current_lines = line
+            else:
+                self.current_lines = [line]
+
+        if multiple_lines:
+            new_pos, new_dir, is_direction_valid = \
+                self._propagate_multiple_lines(line, v_in)
+        else:
+            new_pos, new_dir, is_direction_valid = \
+                super().propagate(line, v_in)
+
+        # Reset memory
+        self.current_lines = None
 
         return new_pos, new_dir, is_direction_valid
 
-    def _update_state_after_propagation_step(self, new_pos, new_dir):
+    def _propagate_multiple_lines(self, lines, n_v_in):
         """
-        Update memory state between propagation steps. Anything your model
-        needs to deal with in memory during streamline generation (ex, memory
-        of the previous directions).
+        Equivalent of self.propagate() for multiple lines. We do not call
+        super's at it does not support multiple lines. Super's method supports
+        rk order. We don't. We skip this and directly call
+        _sample_next_direction_or_go_straight.
         """
-        pass
+        # Finding last coordinate
+        n_pos = [line[-1] for line in lines]
 
-    def _sample_next_direction(self, pos, v_in):
+        assert self.rk_order == 1
+
+        are_directions_valid, n_new_dir = \
+            self._sample_next_multiple_directions_or_go_straight(n_pos, n_v_in)
+
+        n_new_pos = [n_pos[i] + self.step_size * np.array(n_new_dir[i])
+                     for i in range(len(lines))]
+
+        return n_new_pos, n_new_dir, are_directions_valid
+
+    def _sample_next_multiple_directions_or_go_straight(self, n_pos, n_v_in):
+        """
+        Equivalent of super's _sample_next_direction_or_go_straight.
+        """
+        n_v_out = self._sample_next_direction(n_pos, n_v_in,
+                                              multiple_lines=True)
+        are_directions_valid = np.array([False if v_out is None else True
+                                         for v_out in n_v_out])
+
+        n_v_out = [n_v_out[i] if are_directions_valid[i] else n_v_in[i]
+                   for i in range(len(n_v_in))]
+
+        return are_directions_valid, n_v_out
+
+    def _sample_next_direction(self, pos, v_in, multiple_lines=False):
         """
         Run the model to get the outputs, and sample a direction based on this
         information. None if the direction is more than theta angle
@@ -201,58 +269,88 @@ class DWIMLPropagator(AbstractPropagator):
 
         Parameters
         ----------
-        pos: ndarray (3,)
-            Current tracking position.
-        v_in: ndarray (3,)
-            Previous tracking direction.
+        pos: ndarray (3,) or list of ndarrays
+            Current tracking position(s).
+        v_in: ndarray (3,) ir list of ndarrays
+            Previous tracking direction(s).
 
         Return
         -------
-        direction: ndarray (3,)
-            A valid tracking direction. None if no valid direction is found.
-            Direction should be normalized.
+        direction: ndarray (3,) or list of ndarrays
+            Valid normalized tracking direction(s). None if no valid direction
+            is found.
         """
+        single_streamline = False
+        if multiple_lines:
+            n_pos = pos  # Multiple values were sent.
+        else:
+            single_streamline = True
+            n_pos = [pos]
 
         # Tracking field returns the model_outputs
-        model_outputs = self._get_model_outputs_at_pos(pos)
+        model_outputs = self._get_model_outputs_at_pos(n_pos)
 
-        # Sampling a direction from this information.
-        if self.algo == 'prob':
-            next_dir = self.model.sample_tracking_direction_prob(model_outputs)
+        if single_streamline:
+            # Sampling a direction from this information.
+            if self.algo == 'prob':
+                next_dir = self.model.sample_tracking_direction_prob(
+                    model_outputs)
+            else:
+                next_dir = self.model.get_tracking_direction_det(model_outputs)
+
+            # Normalizing
+            next_dir /= np.linalg.norm(next_dir)
+
+            # Verify curvature, else return None.
+            # toDo could we find a better solution for proba tracking?
+            #  Resampling until angle < theta? Easy on the sphere (restrain
+            #  probas on the sphere pics inside a cone theta) but what do we do
+            #  for other models? Ex: For the Gaussian direction getter?
+            if v_in is not None:
+                next_dir = self._verify_angle(next_dir, v_in)
+            return next_dir
         else:
-            next_dir = self.model.get_tracking_direction_det(model_outputs)
+            # Loop on streamlines and do the equivalent.
+            next_dirs = []
+            nb_streamlines = len(n_pos)
+            for i in range(nb_streamlines):
+                if self.algo == 'prob':
+                    next_dir = self.model.sample_tracking_direction_prob(
+                        model_outputs[i])
+                else:
+                    next_dir = self.model.get_tracking_direction_det(
+                        model_outputs[i])
+                next_dir /= np.linalg.norm(next_dir)
+                if v_in[i] is not None:
+                    next_dir = self._verify_angle(next_dir, v_in[i])
+                next_dirs.append(next_dir)
 
-        # Normalizing
-        next_dir /= np.linalg.norm(next_dir)
+        return next_dirs
 
-        # Verify curvature, else return None.
-        # toDo could we find a better solution for proba tracking? Resampling
-        #  until angle < theta? Easy on the sphere (restrain probas on the
-        #  sphere pics inside a cone theta) but what do we do for other models?
-        #  Ex: For the Gaussian direction getter?
-        if v_in is not None and len(v_in) > 0:
-            next_dir = self._verify_angle(next_dir, v_in)
-
-        # Need to detach grad to be able to convert to numpy array
-        return next_dir
-
-    def _get_model_outputs_at_pos(self, pos):
+    def _get_model_outputs_at_pos(self, n_pos):
         """
         Parameters
         ----------
-        pos: ndarray (3,)
-            Current position coordinates.
+        n_pos: list of ndarrays
+            Current position coordinates for each streamline.
         """
-        inputs = self._prepare_inputs_at_pos(pos)
+        inputs = self._prepare_inputs_at_pos(n_pos)
+
         if self.model_uses_streamlines:
-            # In case we are using runge-kutta integration
+            # Verify that we have updated memory correctly.
+            # for each line:
+            # assert np.array_equal(pos, self.current_lines[-1])
+
             # During training, we have one more point then the number of
             # inputs: the last point is only used to get the direction.
             # Adding a fake last point.
-            line = torch.tensor(self.line + [[0., 0., 0.]])
-            model_outputs = self.model([inputs], [line])
+            lines = [torch.cat((torch.tensor(line),
+                               torch.zeros(1, 3)), dim=0)
+                     for line in self.current_lines]
+
+            model_outputs = self.model(inputs, lines)
         else:
-            model_outputs = self.model([inputs])
+            model_outputs = self.model(inputs)
 
         return model_outputs
 
@@ -271,7 +369,7 @@ class DWIMLPropagator(AbstractPropagator):
                            v_in.T / np.linalg.norm(v_in))
 
         # Resolving numerical instabilities:
-        cos_angle = min(max(-1.0, cos_angle), 1.0)
+        cos_angle = min(max(-1.0, float(cos_angle)), 1.0)
 
         angle = np.arccos(cos_angle)
         if angle > self.theta:
@@ -321,38 +419,52 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
         # If cache is not activated, tracking will load the data at each
         # propagation step!
         if self.subset.is_lazy and self.subset.cache_size == 0:
-            raise ValueError("With lazy data and multiprocessing, you should "
-                             "not keep cache size to zero. Data would be "
-                             "loaded again at each propagation step!")
-        else:
-            # Load as DataVolume
-            self.dataset = self.subset.get_volume_verify_cache(
-                self.subj_idx, self.volume_group, as_tensor=False)
+            logger.warning("With lazy data and multiprocessing, you should "
+                           "not keep cache size to zero. Data would be "
+                           "loaded again at each propagation step!")
 
-    def _prepare_inputs_at_pos(self, pos):
+        # Load as DataVolume
+        # toDo. Not good for GPU. But allows us access to voxmm_to_vox
+        #  method.
+        self.dataset = self.subset.get_volume_verify_cache(
+            self.subj_idx, self.volume_group, as_tensor=False)
+
+    def _prepare_inputs_at_pos(self, n_pos):
+        """
+        Prepare inputs at current position: get the volume and interpolate at
+        current coordinate (possibly get the neighborhood coordinates too).
+
+        Params
+        ------
+        pos: list of ndarrrays
+            Current position (or list of positions for multiple tracking).
+        """
         # Dataset should already be loaded if multiprocessing. Else, load it
         # the first time we actually need it.
         if self.dataset is None:
             self._load_subj_data()
 
-        # torch trilinear interpolation uses origin='corner', space=vox.
-        pos_vox = self.dataset.voxmm_to_vox(*pos, self.origin)
-        if self.origin == 'center':
-            pos_vox += 0.5
+        all_inputs = []
+        for pos in n_pos:
+            # torch trilinear interpolation uses origin='corner', space=vox.
+            pos_vox = self.dataset.voxmm_to_vox(*pos, self.origin)
+            if self.origin == 'center':
+                pos_vox += 0.5
 
-        # Adding dim. array(3,) should become array (1,3)
-        pos_vox = np.expand_dims(pos_vox, axis=0)
+            # Adding dim. array(3,) should become array (1,3)
+            pos_vox = np.expand_dims(pos_vox, axis=0)
 
-        # Get data as tensor. The MRI data should already be in the cache.
-        dataset_as_tensor = self.subset.get_volume_verify_cache(
-            self.subj_idx, self.volume_group, as_tensor=True)
+            # Get data as tensor. The MRI data should already be in the cache.
+            dataset_as_tensor = self.subset.get_volume_verify_cache(
+                self.subj_idx, self.volume_group, as_tensor=True,
+                device=self.device)
 
-        # Same as in the batch sampler:
-        # Prepare the volume data, possibly adding neighborhood
-        subj_x_data, _ = interpolate_volume_in_neighborhood(
-            dataset_as_tensor, pos_vox, self.neighborhood_points,
-            self.device)
+            # Same as in the batch sampler:
+            # Prepare the volume data, possibly adding neighborhood
+            subj_x_data, _ = interpolate_volume_in_neighborhood(
+                dataset_as_tensor, pos_vox, self.neighborhood_points,
+                self.device)
 
-        # Return inputs as a tuple containing all inputs. The comma is
-        # important.
-        return subj_x_data
+            all_inputs.append(subj_x_data)
+
+        return all_inputs

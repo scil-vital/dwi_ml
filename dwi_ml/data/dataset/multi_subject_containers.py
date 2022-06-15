@@ -92,6 +92,16 @@ class MultisubjectSubset(Dataset):
         logger.handlers = []
         logger.propagate = True
 
+    def close_all_handles(self):
+        if self.subjs_data_list.hdf_handle:
+            self.subjs_data_list.hdf_handle.close()
+            self.subjs_data_list.hdf_handle = None
+        for i in range(self.nb_subjects):
+            s = self.subjs_data_list[i]
+            if s.hdf_handle:
+                s.hdf_handle.close()
+                s.hdf_handle = None
+
     def set_subset_info(self, volume_groups, nb_features, streamline_groups,
                         step_size):
         self.volume_groups = volume_groups

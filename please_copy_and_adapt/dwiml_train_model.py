@@ -95,7 +95,8 @@ def init_from_args(args, sub_loggers_level):
             # MEMORY
             nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
             log_level=args.logging)
-        logging.info("Trainer params : " + format_dict_to_str(trainer.params))
+        logging.info("Trainer params : " +
+                     format_dict_to_str(trainer.params_for_json_prints))
 
     return trainer
 

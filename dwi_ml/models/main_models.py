@@ -81,7 +81,7 @@ class MainModelAbstract(torch.nn.Module):
         self.device = device
 
     @property
-    def params(self):
+    def params_for_checkpoint(self):
         """All parameters necessary to create again the same model. Will be
         used in the trainer, when saving the checkpoint state. Params here
         will be used to re-create the model when starting an experiment from
@@ -93,6 +93,10 @@ class MainModelAbstract(torch.nn.Module):
             'neighborhood_radius': self.neighborhood_radius,
             'normalize_directions': self.normalize_directions
         }
+
+    @property
+    def params_for_json_prints(self):
+        return self.params_for_checkpoint
 
     def update_best_model(self):
         # Initialize best model
@@ -114,7 +118,7 @@ class MainModelAbstract(torch.nn.Module):
         # Save attributes
         name = os.path.join(model_dir, "parameters.json")
         with open(name, 'w') as json_file:
-            json_file.write(json.dumps(self.params, indent=4,
+            json_file.write(json.dumps(self.params_for_checkpoint, indent=4,
                                        separators=(',', ': ')))
 
         # Save model
@@ -252,8 +256,8 @@ class MainModelWithPD(MainModelAbstract):
             self.prev_dirs_embedding = None
 
     @property
-    def params(self):
-        p = super().params
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
         p.update({
             'nb_previous_dirs': self.nb_previous_dirs,
             'prev_dirs_embedding_key': self.prev_dirs_embedding_key,

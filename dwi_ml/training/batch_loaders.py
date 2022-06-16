@@ -154,7 +154,7 @@ class AbstractBatchLoader:
         logger.setLevel(log_level)
 
     @property
-    def params(self):
+    def params_for_checkpoint(self):
         """
         All parameters. Contains at least all parameters that would be
         necessary to create this batch sampler again (except the dataset).
@@ -162,7 +162,6 @@ class AbstractBatchLoader:
         params = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'type': str(type(self)),
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
             'reverse_ratio': self.reverse_ratio,
@@ -171,6 +170,13 @@ class AbstractBatchLoader:
             'compress': self.compress,
         }
         return params
+
+    @property
+    def params_for_json_prints(self):
+        # All params are all right.
+        p = self.params_for_checkpoint
+        p.update({'type': str(type(self))})
+        return p
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]) \
             -> Union[Tuple[List, Dict], Tuple[List, List, List]]:
@@ -339,6 +345,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         self.wait_for_gpu = wait_for_gpu
 
         self.input_group_name = input_group_name
+
         self.neighborhood_points = neighborhood_points
 
         # Find group index in the data_source
@@ -346,13 +353,22 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         self.input_group_idx = idx
 
     @property
-    def params(self):
-        p = super().params
+    def params_for_json_prints(self):
+        p = self.params_for_checkpoint
+
+        # Neighborhood points is a ndarray. Changing.
+        p['neighborhood_points'] = \
+            np.ndarray.tolist(self.neighborhood_points) if \
+            self.neighborhood_points is not None else None
+        return p
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
         p.update({
             'input_group_name': self.input_group_name,
-            'neighborhood_points': np.ndarray.tolist(self.neighborhood_points)
-            if isinstance(self.neighborhood_points, np.ndarray) else
-            self.neighborhood_points,
+            # Sending to list to allow json dump
+            'neighborhood_points': self.neighborhood_points,
             'wait_for_gpu': self.wait_for_gpu
         })
         return p

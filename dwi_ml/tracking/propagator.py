@@ -92,7 +92,7 @@ class DWIMLPropagator(AbstractPropagator):
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
-        self.model.to(device=device)
+        self.model.move_to(device=device)
         self.device = device
 
     def reset_data(self, reload_data: bool = True):
@@ -344,8 +344,10 @@ class DWIMLPropagator(AbstractPropagator):
             # During training, we have one more point then the number of
             # inputs: the last point is only used to get the direction.
             # Adding a fake last point.
+            # Todo. This is not perfect yet. Sending data to new device at each
+            #  new point. Could it already be a tensor in memory?
             lines = [torch.cat((torch.tensor(line),
-                               torch.zeros(1, 3)), dim=0)
+                               torch.zeros(1, 3)), dim=0).to(self.device)
                      for line in self.current_lines]
 
             model_outputs = self.model(inputs, lines)

@@ -53,8 +53,7 @@ class MainModelAbstract(torch.nn.Module):
 
         # Trainer's logging level can be changed separately from main
         # scripts.
-        self.logger = logger
-        self.logger.setLevel(log_level)
+        logger.setLevel(log_level)
 
         # Following information is actually dealt with by the data_loaders
         # (batch sampler during training and tracking_field during tracking)
@@ -290,6 +289,11 @@ class MainModelWithPD(MainModelAbstract):
             embedding.
         point_idx: int
             Point of the streamline for which to compute the previous dirs.
+
+        Returns
+        -------
+        n_prev_dirs_embedded: Union[PackedSequence, Tensor]
+            The previous dirs.
         """
         if self.nb_previous_dirs == 0:
             return None

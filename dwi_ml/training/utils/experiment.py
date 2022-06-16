@@ -36,3 +36,24 @@ def add_memory_args_training_experiment(p):
     m_g.add_argument(
         '--rng', type=int, default=1234,
         help="Random seed. [1234]")
+
+
+def add_args_resuming_experiment(p):
+    p.add_argument('experiments_path',
+                   help='Path from where to load your experiment, and where to'
+                        'save new results.\nComplete path will be '
+                        'experiments_path/experiment_name.')
+    p.add_argument('experiment_name',
+                   help='If given, name for the experiment.')
+
+    p.add_argument('--new_patience', type=int, metavar='new_p',
+                   help='If a checkpoint exists, patience can be increased '
+                        'to allow experiment \nto continue if the allowed '
+                        'number of bad epochs has been previously reached.')
+    p.add_argument('--new_max_epochs', type=int,
+                   metavar='new_max',
+                   help='If a checkpoint exists, max_epochs can be increased '
+                        'to allow experiment \nto continue if the allowed '
+                        'number of epochs has been previously reached.')
+
+    return p

@@ -47,12 +47,16 @@ class DWIMLTracker(ScilpyTracker):
                          compression_th, nbr_processes, save_seeds, mmap_mode,
                          rng_seed, track_forward_only)
 
-        if nbr_processes > 2 and not propagator.subset.is_lazy:
-            raise ValueError("Multiprocessing only works with lazy data.")
+        if nbr_processes > 2:
+            if not propagator.subset.is_lazy:
+                raise ValueError("Multiprocessing only works with lazy data.")
+            if use_gpu:
+                raise ValueError("You cannot use both multi-processes and "
+                                 "gpu.")
 
         # Set device
         self.simultanenous_tracking = simultanenous_tracking
-        self.use_gpy = use_gpu
+        self.use_gpu = use_gpu
 
         if use_gpu:
             if torch.cuda.is_available():
@@ -209,13 +213,13 @@ class DWIMLTracker(ScilpyTracker):
         final_tracking_info = []
         # Note! We modify the order of streamlines in final_lines!
         # We need to remember the order to save the seeds.
+        initial_order = list(range(nb_streamlines))
         final_lines_order = []
 
-        nb_points = 0
         all_lines_completed = False
         # lines will only contain the remaining lines.
-        while nb_points < self.max_nbr_pts and not all_lines_completed:
-            nb_points += 1
+        while not all_lines_completed:
+            logger.debug('Nb streamlines left: {}'.format(len(lines)))
 
             n_new_pos, new_tracking_info, are_directions_valid = \
                 self.propagator.propagate(lines, tracking_info,
@@ -225,16 +229,21 @@ class DWIMLTracker(ScilpyTracker):
             # Verifying and appending
             all_lines_completed = True
             for i in reversed(range(len(lines))):
-                propagation_can_continue = self._verify_stopping_criteria(
-                    invalid_direction_counts[i], n_new_pos[i])
+                # In non-simultaneous, nbr pts is verified in the loop.
+                # Here, during forward, we can do that, but during backward,
+                # all streamlines have different lengths.
+                propagation_can_continue = (self._verify_stopping_criteria(
+                    invalid_direction_counts[i], n_new_pos[i]) and
+                                            len(lines[i]) <= self.max_nbr_pts)
 
                 if propagation_can_continue:
                     all_lines_completed = False
                     lines[i].append(n_new_pos[i])
                 else:
                     final_lines.append(lines[i])
-                    final_lines_order.append(i)
                     lines.pop(i)
+                    final_lines_order.append(initial_order[i])
+                    initial_order.pop(i)
                     final_tracking_info.append(new_tracking_info[i])
                     new_tracking_info.pop(i)
                     invalid_direction_counts = np.delete(
@@ -243,7 +252,10 @@ class DWIMLTracker(ScilpyTracker):
             tracking_info = new_tracking_info
 
         assert len(lines) == 0
+        assert len(initial_order) == 0
         assert len(final_lines) == nb_streamlines
+        assert np.array_equal(np.arange(nb_streamlines),
+                              np.unique(final_lines_order))
 
         # Possible last step.
         # Looping. It should not be heavy.

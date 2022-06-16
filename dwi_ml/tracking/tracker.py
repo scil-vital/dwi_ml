@@ -234,7 +234,7 @@ class DWIMLTracker(ScilpyTracker):
                 # all streamlines have different lengths.
                 propagation_can_continue = (self._verify_stopping_criteria(
                     invalid_direction_counts[i], n_new_pos[i]) and
-                                            len(lines[i]) <= self.max_nbr_pts)
+                    len(lines[i]) <= self.max_nbr_pts)
 
                 if propagation_can_continue:
                     all_lines_completed = False

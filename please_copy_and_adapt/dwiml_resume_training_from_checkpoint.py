@@ -51,9 +51,10 @@ def init_from_checkpoint(args):
         sub_loggers_level = 'INFO'
 
     # Load model from checkpoint directory
-    model = ModelForTestWithPD.load(os.path.join(
-        args.experiments_path, args.experiment_name, 'checkpoint/model'),
-                                    sub_loggers_level)
+    model = ModelForTestWithPD.load(
+        os.path.join(args.experiments_path, args.experiment_name,
+                     'checkpoint/model'),
+        sub_loggers_level)
 
     # Prepare batch samplers
     args_ts = argparse.Namespace(**checkpoint_state['train_sampler_params'])

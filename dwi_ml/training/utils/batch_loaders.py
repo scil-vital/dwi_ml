@@ -105,5 +105,5 @@ def _prepare_batchloader(subset, args, log_level):
         rng=args.rng, wait_for_gpu=args.wait_for_gpu, log_level=log_level)
 
     logging.info("Loader user-defined parameters: " +
-                 format_dict_to_str(batch_loader.params))
+                 format_dict_to_str(batch_loader.params_for_json_prints))
     return batch_loader

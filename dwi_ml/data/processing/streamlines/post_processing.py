@@ -61,43 +61,24 @@ def compute_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
 def _get_all_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
                              unexisting_val):
     """
-    # Equivalent as a loop:
-    n_previous_dirs = []
-    for dirs in streamlines_dirs:
-        streamline_n_previous_dirs = []
+    Summary: Builds vertically:
+    first prev dir    |        second prev dir      | ...
 
-        for i in range(1, nb_previous_dirs + 1):
-            # i points have non-existing ith previous dir.
-            # The last i-1 directions are not the ith previous dir of any point
-            # and thus not used (meaning we use up to -(i-1) = -i + 1).
-            # Could use dirs[:-i+1] but bugs when i=1: accessing [:-0] does not
-            # work.
-            streamline_ith_prev_dirs = torch.cat(
-                (unexisting_val.repeat(min(len(dirs) + 1, i), 1),
-                 dirs[:len(dirs) - i + 1]))
-            streamline_n_previous_dirs.append(streamline_ith_prev_dirs)
-        n_previous_dirs.append(
-            torch.cat(tuple(streamline_n_previous_dirs), dim=1))
+    Non-existing val:
+    (0,0,0)           |         (0,0,0)             |   (0,0,0)
+      -               |         (0,0,0)             |   (0,0,0)
+      -               |           -                 |   (0,0,0)
+
+    + concat other vals:
+     -                |            -                |  -
+     dir_1            |            -                |  -
+     dir_2            |           dir_1             |  -
     """
-
-    # Summary: Builds vertically:
-    # first prev dir    |        second prev dir      | ...
-
-    # Non-existing val:
-    # (0,0,0)           |         (0,0,0)             |   (0,0,0)
-    #   -               |         (0,0,0)             |   (0,0,0)
-    #   -               |           -                 |   (0,0,0)
-
-    # Other vals:
-    #  -                |            -                |  -
-    #  dir_1            |            -                |  -
-    #  dir_2            |           dir_1             |  -
-
     n_previous_dirs = [
         torch.cat([
             torch.cat(
                 (unexisting_val.repeat(min(len(dirs) + 1, i), 1),
-                 dirs[:len(dirs) - i + 1]))
+                 dirs[:max(0, len(dirs) - i + 1)]))
             for i in range(1, nb_previous_dirs + 1)], dim=1)
         for dirs in streamlines_dirs
     ]

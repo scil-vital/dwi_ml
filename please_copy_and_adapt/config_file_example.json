@@ -1,19 +1,16 @@
-
 {
     "input": {
-        "type": "volume",
-       	"files": ["dwi/dwi_tractoflow.nii.gz", "anat/t1_tractoflow.nii.gz"],
-        "standardization": "all"
-	     },
-
-    "tracking_mask": {
-      "type": "volume",
-      "files": ["mask/mask_wm.nii.gz"],
-      "standardization": "None"
+	     "type": "volume",
+	     "files": ["anat/t1.nii.gz", "dwi/fa.nii.gz", "dwi/fodf.nii.gz"],
+         "standardization": "per_file"
     },
-
+    "wm_mask": {
+         "type": "volume",
+         "files": ["masks/wm.nii.gz"],
+         "standardization": "none"
+    },
     "streamlines": {
-        "type": "streamlines",
-        "files": ["bundles/tractoflow__interface_pft_tracking_wholebrain.trk"]
+         "type": "streamlines",
+         "files": ["tractograms/ALL"]
     }
 }

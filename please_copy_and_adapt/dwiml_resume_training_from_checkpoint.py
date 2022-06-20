@@ -12,6 +12,7 @@ from dwi_ml.training.utils.batch_loaders import \
     prepare_batchloadersoneinput_train_valid
 from dwi_ml.training.utils.batch_samplers import \
     prepare_batchsamplers_train_valid
+from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
 
 # Please adapt:
@@ -21,23 +22,7 @@ from dwi_ml.tests.utils import ModelForTestWithPD
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument('experiments_path',
-                   help='Path from where to load your experiment, and where to'
-                        'save new results.\nComplete path will be '
-                        'experiments_path/experiment_name.')
-    p.add_argument('experiment_name',
-                   help='If given, name for the experiment. Else, model will '
-                        'decide the name to \ngive based on time of day.')
-
-    p.add_argument('--new_patience', type=int, metavar='new_p',
-                   help='If a checkpoint exists, patience can be increased '
-                        'to allow experiment \nto continue if the allowed '
-                        'number of bad epochs has been previously reached.')
-    p.add_argument('--new_max_epochs', type=int,
-                   metavar='new_max',
-                   help='If a checkpoint exists, max_epochs can be increased '
-                        'to allow experiment \nto continue if the allowed '
-                        'number of epochs has been previously reached.')
+    add_args_resuming_experiment(p)
 
     add_logging_arg(p)
 
@@ -66,8 +51,9 @@ def init_from_checkpoint(args):
         sub_loggers_level = 'INFO'
 
     # Load model from checkpoint directory
-    model = ModelForTestWithPD.load(os.path.join(
-        args.experiments_path, args.experiment_name, 'checkpoint/model'),
+    model = ModelForTestWithPD.load(
+        os.path.join(args.experiments_path, args.experiment_name,
+                     'checkpoint/model'),
         sub_loggers_level)
 
     # Prepare batch samplers
@@ -87,7 +73,7 @@ def init_from_checkpoint(args):
                                                  sub_loggers_level)
 
     # Instantiate trainer
-    with Timer("\n\nPreparing trainer", newline=True, color='red'):
+    with Timer("\nPreparing trainer", newline=True, color='red'):
         trainer = DWIMLTrainerOneInput.init_from_checkpoint(
             model, args.experiments_path, args.experiment_name,
             training_batch_sampler, training_batch_loader,

@@ -151,11 +151,10 @@ class AbstractBatchLoader:
         if self.reverse_ratio and not 0 <= self.reverse_ratio <= 1:
             raise ValueError('Reverse ration must be a float between 0 and 1')
 
-        self.logger = logger
-        self.logger.setLevel(log_level)
+        logger.setLevel(log_level)
 
     @property
-    def params(self):
+    def params_for_checkpoint(self):
         """
         All parameters. Contains at least all parameters that would be
         necessary to create this batch sampler again (except the dataset).
@@ -163,7 +162,6 @@ class AbstractBatchLoader:
         params = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'type': str(type(self)),
             'noise_gaussian_size': self.noise_gaussian_size,
             'noise_gaussian_variability': self.noise_gaussian_variability,
             'reverse_ratio': self.reverse_ratio,
@@ -172,6 +170,13 @@ class AbstractBatchLoader:
             'compress': self.compress,
         }
         return params
+
+    @property
+    def params_for_json_prints(self):
+        # All params are all right.
+        p = self.params_for_checkpoint
+        p.update({'type': str(type(self))})
+        return p
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]) \
             -> Union[Tuple[List, Dict], Tuple[List, List, List]]:
@@ -204,7 +209,7 @@ class AbstractBatchLoader:
         final_s_ids_per_subj = defaultdict(slice)
         batch_streamlines = []
         for subj, s_ids in streamline_ids_per_subj:
-            self.logger.debug(
+            logger.debug(
                 "            Data loader: Processing data preparation for "
                 "subj {} (preparing {} streamlines)".format(subj, len(s_ids)))
 
@@ -216,25 +221,24 @@ class AbstractBatchLoader:
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
 
             # Get streamlines as sft
-            self.logger.debug("            Loading sampled streamlines...")
+            logger.debug("            Loading sampled streamlines...")
             sft = subj_sft_data.as_sft(s_ids)
 
             # Resampling streamlines to a fixed step size, if any
             if self.step_size:
-                self.logger.debug("            Resampling: {}"
-                                  .format(self.step_size))
+                logger.debug("            Resampling: {}"
+                             .format(self.step_size))
                 if self.dataset.step_size == self.step_size:
-                    self.logger.debug("Step size is the same as when creating "
-                                      "the hdf5 dataset. Not resampling "
-                                      "again.")
+                    logger.debug("Step size is the same as when creating "
+                                 "the hdf5 dataset. Not resampling again.")
                 else:
                     sft = resample_streamlines_step_size(
                         sft, step_size=self.step_size)
 
             # Compressing, if wanted.
             if self.compress:
-                self.logger.debug("            Compressing: {}"
-                                  .format(self.compress))
+                logger.debug("            Compressing: {}"
+                             .format(self.compress))
                 sft = compress_sft(sft)
 
             # Adding noise to coordinates
@@ -242,7 +246,7 @@ class AbstractBatchLoader:
             # rasmm space
             add_noise = bool(self.noise_gaussian_size and
                              self.noise_gaussian_size > 0)
-            self.logger.debug("            Adding noise: {}".format(add_noise))
+            logger.debug("            Adding noise: {}".format(add_noise))
             if add_noise:
                 sft.to_rasmm()
                 sft = add_noise_to_streamlines(sft,
@@ -254,7 +258,7 @@ class AbstractBatchLoader:
             # This increases the batch size, but does not change the total
             # length
             do_split = bool(self.split_ratio and self.split_ratio > 0)
-            self.logger.debug("            Splitting: {}".format(do_split))
+            logger.debug("            Splitting: {}".format(do_split))
             if do_split:
                 all_ids = np.arange(len(sft))
                 n_to_split = int(np.floor(len(sft) * self.split_ratio))
@@ -264,7 +268,7 @@ class AbstractBatchLoader:
 
             # Reversing streamlines
             do_reverse = self.reverse_ratio and self.reverse_ratio > 0
-            self.logger.debug("            Reversing: {}".format(do_reverse))
+            logger.debug("            Reversing: {}".format(do_reverse))
             if do_reverse:
                 ids = np.arange(len(sft))
                 self.np_rng.shuffle(ids)
@@ -294,8 +298,8 @@ class AbstractBatchLoader:
         - reversing
         - adding noise
         - splitting."""
-        self.logger.debug("            Project-specific data augmentation, if "
-                          "any.")
+        logger.debug("            Project-specific data augmentation, if "
+                     "any.")
 
         return sft
 
@@ -341,6 +345,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         self.wait_for_gpu = wait_for_gpu
 
         self.input_group_name = input_group_name
+
         self.neighborhood_points = neighborhood_points
 
         # Find group index in the data_source
@@ -348,13 +353,22 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         self.input_group_idx = idx
 
     @property
-    def params(self):
-        p = super().params
+    def params_for_json_prints(self):
+        p = self.params_for_checkpoint
+
+        # Neighborhood points is a ndarray. Changing.
+        p['neighborhood_points'] = \
+            np.ndarray.tolist(self.neighborhood_points) if \
+            self.neighborhood_points is not None else None
+        return p
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
         p.update({
             'input_group_name': self.input_group_name,
-            'neighborhood_points': np.ndarray.tolist(self.neighborhood_points)
-            if isinstance(self.neighborhood_points, np.ndarray) else
-            self.neighborhood_points,
+            # Sending to list to allow json dump
+            'neighborhood_points': self.neighborhood_points,
             'wait_for_gpu': self.wait_for_gpu
         })
         return p
@@ -405,8 +419,8 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         if self.wait_for_gpu:
             # Only returning the streamlines for now.
             # Note that this is the same as using data_preparation_cpu_step
-            self.logger.debug("            Not loading the input data because "
-                              "user prefers to do it later on GPU.")
+            logger.debug("            Not loading the input data because "
+                         "user prefers to do it later on GPU.")
 
             return batch
         else:
@@ -466,7 +480,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
             # Getting the subject's volume and sending to CPU/GPU
             # If data is lazy, get volume from cache or send to cache if
             # it wasn't there yet.
-            self.logger.debug("            Data loader: loading input volume.")
+            logger.debug("            Data loader: loading input volume.")
             data_tensor = self.dataset.get_volume_verify_cache(
                 subj, self.input_group_idx, device=device, non_blocking=True)
 
@@ -476,7 +490,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
             # Trilinear interpolation uses origin=corner, vox space, but ok
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
-            self.logger.debug("            Neighborhood + interpolation")
+            logger.debug("            Neighborhood + interpolation")
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, self.neighborhood_points,
                 device)

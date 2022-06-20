@@ -74,7 +74,12 @@ def prepare_tracker(parser, args, hdf5_file, device,
                     min_nbr_pts, max_nbr_pts, max_invalid_dirs):
     hdf_handle = h5py.File(hdf5_file, 'r')
 
-    with Timer("\n\nLoading data and preparing tracker...",
+    sub_logger_level = args.logging.upper()
+    if sub_logger_level == 'DEBUG':
+        # make them info max
+        sub_logger_level = 'INFO'
+
+    with Timer("\nLoading data and preparing tracker...",
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
         seed_generator, nbr_seeds = _prepare_seed_generator(parser, args,
@@ -88,8 +93,9 @@ def prepare_tracker(parser, args, hdf5_file, device,
 
         logging.info("Loading model.")
         model = ModelForTestWithPD.load(args.experiment_path + '/model',
-                                        log_level=args.logging.upper())
-        logging.info("* Loaded params: " + format_dict_to_str(model.params) +
+                                        log_level=sub_logger_level)
+        logging.info("* Loaded params: " +
+                     format_dict_to_str(model.params_for_json_prints) +
                      "\n")
 
         logging.debug("Instantiating propagator.")

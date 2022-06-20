@@ -275,7 +275,7 @@ class DWIMLAbstractTrainer:
         return params
 
     @property
-    def params(self) -> dict:
+    def params_for_json_prints(self) -> dict:
         params = self.params_for_checkpoint
         params.update({
             'experiments_path': self.experiments_path,
@@ -295,14 +295,15 @@ class DWIMLAbstractTrainer:
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
-                 'Trainer params': self.params,
+                 'Trainer params': self.params_for_json_prints,
                  'Training sampler params': self.train_batch_sampler.params,
                  'Validation sampler params':
                      self.valid_batch_sampler.params if
                      self.valid_batch_sampler is not None else None,
-                 'Train loader params': self.train_batch_loader.params,
+                 'Train loader params':
+                     self.train_batch_loader.params_for_json_prints,
                  'Validation loader params':
-                     self.valid_batch_loader.params if
+                     self.valid_batch_loader.params_for_json_prints if
                      self.valid_batch_loader is not None else None,
                  },
                 indent=4, separators=(',', ': ')))
@@ -330,7 +331,7 @@ class DWIMLAbstractTrainer:
                     log_git_metadata=True, log_git_patch=True,
                     display_summary_level=False)
                 self.comet_exp.set_name(self.experiment_name)
-                self.comet_exp.log_parameters(self.params)
+                self.comet_exp.log_parameters(self.params_for_json_prints)
                 self.comet_key = self.comet_exp.get_key()
             elif self.comet_project:
                 raise ValueError("You have provided a comet project, "
@@ -448,7 +449,7 @@ class DWIMLAbstractTrainer:
             # Validation
             if self.use_validation:
                 self.logger.info("**********VALIDATION: Epoch #{}*************"
-                                 .format(epoch))
+                                 .format(epoch + 1))
                 self.validate_one_epoch(valid_dataloader, valid_context, epoch,
                                         *args)
 
@@ -598,7 +599,7 @@ class DWIMLAbstractTrainer:
             - send data to comet
         """
         self.logger.info("Epoch {}: Batch loss = {}"
-                         .format(epoch, batch_mean_loss))
+                         .format(epoch + 1, batch_mean_loss))
 
         loss_monitor.update(batch_mean_loss)
 
@@ -883,7 +884,8 @@ class DWIMLAbstractTrainer:
             'valid_sampler_params': None,
             'train_data_params': self.train_batch_sampler.dataset.params,
             'valid_data_params': None,
-            'train_loader_params': self.train_batch_loader.params,
+            'train_loader_params':
+                self.train_batch_loader.params_for_checkpoint,
             'valid_loader_params': None,
             'params_for_init': self.params_for_checkpoint,
             'current_states': current_states
@@ -893,7 +895,8 @@ class DWIMLAbstractTrainer:
             checkpoint_info.update({
                 'valid_sampler_params': self.valid_batch_sampler.params,
                 'valid_data_params': self.valid_batch_sampler.dataset.params,
-                'valid_loader_params': self.valid_batch_loader.params
+                'valid_loader_params':
+                    self.valid_batch_loader.params_for_checkpoint
             })
 
         return checkpoint_info

@@ -52,6 +52,8 @@ def prepare_arg_parser():
 
 
 def init_from_args(args, sub_loggers_level):
+
+
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args, load_testing=False,
                                           log_level=sub_loggers_level)
@@ -63,16 +65,58 @@ def init_from_args(args, sub_loggers_level):
     #     dg_args = check_args_direction_getter(args)
     model = ModelForTestWithPD()  # To be instantiated correctly.
 
+    # Prepare args.
+    logging.debug("Initial {}".format(args))
+
     # Preparing the batch samplers.
-    args.wait_for_gpu = args.use_gpu
+    # The only parameter that may differ is the batch size.
+    args_sampler = {
+        'batch_size_units': args.batch_size_units,
+        'streamline_group_name': args.streamline_group_name,
+        'nb_streamlines_per_chunk': args.nb_streamlines_per_chunk,
+        'nb_subjects_per_batch': args.nb_subjects_per_batch,
+        'cycles': args.cycles,
+        'rng': args.rng
+    }
+
+    args_sampler_training = {
+        **args_sampler,
+        'batch_size': args.batch_size_training}
+    args_sampler_validation = {
+        **args_sampler,
+        'batch_size': args.batch_size_training}
+
     training_batch_sampler, validation_batch_sampler = \
-        prepare_batchsamplers_train_valid(dataset, args, args,
+        prepare_batchsamplers_train_valid(dataset,
+                                          args_sampler_training,
+                                          args_sampler_validation,
                                           sub_loggers_level)
 
     # Preparing the batch loaders
-    args.neighborhood_points = model.neighborhood_points
+    # The only parameter that may differ is the gaussian noise.
+    args_loader = {
+        'input_group_name': args.input_group_name,
+        'streamline_group_name': args.streamline_group_name,
+        'step_size': args.step_size,
+        'compress': args.compress,
+        'reverse_ratio': args.reverse_ratio,
+        'split_ratio': args.split_ratio,
+        'neighborhood_points': model.neighborhood_points,
+        'rng': args.rng,
+        'wait_for_gpu': args.use_gpu
+    }
+    args_loader_train = {
+        **args_loader,
+        'noise_gaussian_size': args.noise_gaussian_size_training,
+        'noise_gaussian_variability': args.noise_gaussian_variability_training}
+    args_loader_valid = {
+        **args_loader,
+        'noise_gaussian_size': args.noise_gaussian_size_validation,
+        'noise_gaussian_variability': args.noise_gaussian_variability_validation}
+
     training_batch_loader, validation_batch_loader = \
-        prepare_batchloadersoneinput_train_valid(dataset, args, args,
+        prepare_batchloadersoneinput_train_valid(dataset, args_loader_train,
+                                                 args_loader_valid,
                                                  sub_loggers_level)
 
     # Instantiate trainer
@@ -89,7 +133,8 @@ def init_from_args(args, sub_loggers_level):
             # TRAINING
             model_uses_streamlines=model_uses_streamlines,
             learning_rate=args.learning_rate, max_epochs=args.max_epochs,
-            max_batches_per_epoch=args.max_batches_per_epoch,
+            max_batches_per_epoch_training=args.max_batches_per_epoch_training,
+            max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,
             weight_decay=args.weight_decay,
             # MEMORY

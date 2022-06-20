@@ -52,8 +52,10 @@ class DWIMLAbstractTrainer:
                  model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
-                 max_batches_per_epoch: int = 1000, patience: int = None,
-                 nb_cpu_processes: int = 0, use_gpu: bool = False,
+                 max_batches_per_epoch_training: int = 1000,
+                 max_batches_per_epoch_validation: Union[int, None] = 1000,
+                 patience: int = None, nb_cpu_processes: int = 0,
+                 use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False,
                  log_level=logging.root.level):
@@ -89,7 +91,10 @@ class DWIMLAbstractTrainer:
             (torch's default).
         max_epochs: int
             Maximum number of epochs. Default = 10, for no good reason.
-        max_batches_per_epoch: int
+        max_batches_per_epoch_training: int
+            Maximum number of batches per epoch. Default = 10000, for no good
+            reason.
+        max_batches_per_epoch_validation: int
             Maximum number of batches per epoch. Default = 10000, for no good
             reason.
         patience: int
@@ -161,7 +166,8 @@ class DWIMLAbstractTrainer:
         self.model = model
         self.model_uses_streamlines = model_uses_streamlines
         self.max_epochs = max_epochs
-        self.max_batches_per_epochs = max_batches_per_epoch
+        self.max_batches_per_epochs_train = max_batches_per_epoch_training
+        self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.patience = patience
@@ -210,7 +216,7 @@ class DWIMLAbstractTrainer:
             # We won't use early stopping to stop the epoch, but we will use
             # it as monitor of the best epochs.
             self.best_epoch_monitoring = BestEpochMonitoring(
-                patience=self.max_batches_per_epochs + 1)
+                patience=self.max_epochs + 1)
 
         self.current_epoch = 0
 
@@ -265,7 +271,8 @@ class DWIMLAbstractTrainer:
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
-            'max_batches_per_epoch': self.max_batches_per_epochs,
+            'max_batches_per_epoch_training': self.max_batches_per_epochs_train,
+            'max_batches_per_epoch_validation': self.max_batches_per_epochs_valid,
             'patience': self.patience,
             'nb_cpu_processes': self.nb_cpu_processes,
             'use_gpu': self.use_gpu,
@@ -351,7 +358,8 @@ class DWIMLAbstractTrainer:
         Returns:
              (nb_training_batches_per_epoch, nb_validation_batches_per_epoch)
         """
-        return self.max_batches_per_epochs, self.max_batches_per_epochs
+        return (self.max_batches_per_epochs_train,
+                self.max_batches_per_epochs_valid)
 
     def train_and_validate(self, *args):
         """
@@ -399,18 +407,6 @@ class DWIMLAbstractTrainer:
         #     Otherwise, dataloader output is kept on CPU, and the main thread
         #     sends volumes and coords on GPU for interpolation.
         self.logger.debug("- Instantiating dataloaders...")
-
-        # toDo We wouldn't need training / valid batch samplers and loaders if
-        #  I knew how to add option 'training' and 'validation' to the
-        #  __iter__ method or to the collate_fn (load_batch). But maybe the
-        #  user wants separate options. During validation and training. Ex:
-        #  less on-the-fly noise addition to the streamlines during validation?
-        #  But I don't see why we wouldn't want the same batch sampler. We
-        #  could have only one and use the same.copy() and change the value of
-        #  the subset to training or validation.
-        #  If we also don't think users want different load_batch, solution
-        #  could be (for the dataloader) the collate_fn could be nothing, and
-        #  we call load_data() ourselves after, with options.
 
         train_dataloader = DataLoader(
             self.train_batch_sampler.dataset,
@@ -975,8 +971,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
-                 max_batches_per_epoch: int = 1000, patience: int = None,
-                 nb_cpu_processes: int = 0, use_gpu: bool = False,
+                 max_batches_per_epoch_training: int = 1000,
+                 max_batches_per_epoch_validation: Union[int, None] = 1000,
+                 patience: int = None, nb_cpu_processes: int = 0,
+                 use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, log_level=logging.root.level):
         super().__init__(model, experiments_path, experiment_name,
@@ -984,7 +982,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                          batch_sampler_validation, batch_loader_validation,
                          model_uses_streamlines,
                          learning_rate, weight_decay, max_epochs,
-                         max_batches_per_epoch, patience,
+                         max_batches_per_epoch_training,
+                         max_batches_per_epoch_validation,
+                         patience,
                          nb_cpu_processes, use_gpu, comet_workspace,
                          comet_project, from_checkpoint, log_level)
 
@@ -1046,8 +1046,8 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 batch_streamlines, final_s_ids_per_subj = data
 
                 # toDo. Could we convert streamlines to tensor already when
-                # loading, and send to GPU here? Would need to modify methods
-                # such as extend_neighborhood_with_coods.
+                #  loading, and send to GPU here? Would need to modify methods
+                #  such as extend_neighborhood_with_coods.
 
                 # Getting the inputs points from the volumes. Usually done in
                 # load_batch but we preferred to wait here to have a chance to

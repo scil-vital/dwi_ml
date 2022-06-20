@@ -12,11 +12,14 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
     g_batch_size = p.add_argument_group("Batch sampler: batch size")
 
     g_batch_size.add_argument(
-        '--batch_size', type=int, default=100, metavar='s',
+        '--batch_size_training', type=int, default=100, metavar='s',
         help="Batch size. Unit must be spectified (through batch_size_units)."
              "\nThe total size your computer will accept depends on the "
              "type of \ninput data. You will need to test this value. [100]\n"
              "Suggestion: in nb_streamlines: 100. In length_mm: 10000. \n")
+    g_batch_size.add_argument(
+        '--batch_size_validation', type=int, default=100, metavar='s',
+        help="Idem; batch size during validation.")
     g_batch_size.add_argument(
         '--batch_size_units', type=str, metavar='u',
         choices={'nb_streamlines', 'length_mm'},
@@ -43,6 +46,12 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
 
 def prepare_batchsamplers_train_valid(dataset, args_training, args_validation,
                                       log_level):
+    """
+    dataset: MultiSubjectDataset
+    args_training: dict
+    args_validation: dict
+    log_level: str
+    """
     with Timer("\nPreparing batch samplers...", newline=True, color='green'):
         logging.info("Instantiating training set's batch sampler...")
         training_batch_sampler = _prepare_batchsampler(
@@ -59,15 +68,15 @@ def prepare_batchsamplers_train_valid(dataset, args_training, args_validation,
     return training_batch_sampler, validation_batch_sampler
 
 
-def _prepare_batchsampler(subset, args, log_level):
+def _prepare_batchsampler(subset, args_dict, log_level):
     batch_sampler = DWIMLBatchSampler(
-        subset, streamline_group_name=args.streamline_group_name,
-        # BATCH SIZE
-        batch_size=args.batch_size, batch_size_units=args.batch_size_units,
-        nb_streamlines_per_chunk=args.nb_streamlines_per_chunk,
-        nb_subjects_per_batch=args.nb_subjects_per_batch, cycles=args.cycles,
-        # other
-        rng=args.rng, log_level=log_level)
+        subset, streamline_group_name=args_dict['streamline_group_name'],
+        batch_size=args_dict['batch_size'],
+        batch_size_units=args_dict['batch_size_units'],
+        nb_streamlines_per_chunk=args_dict['nb_streamlines_per_chunk'],
+        nb_subjects_per_batch=args_dict['nb_subjects_per_batch'],
+        cycles=args_dict['cycles'],
+        rng=args_dict['rng'], log_level=log_level)
 
     logging.info("Batch sampler's user-defined parameters: " +
                  format_dict_to_str(batch_sampler.params))

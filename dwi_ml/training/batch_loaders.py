@@ -129,6 +129,14 @@ class AbstractBatchLoader:
         if step_size and compress:
             raise ValueError("You may choose either resampling or compressing,"
                              "but not both.")
+        elif step_size and step_size <= 0:
+            raise ValueError("Step size can't be 0 or less!")
+            # Note. When using
+            # scilpy.tracking.tools.resample_streamlines_step_size, a warning
+            # is shown if step_size < 0.1 or > np.max(sft.voxel_sizes), saying
+            # that the value is suspicious. Not raising the same warnings here
+            # as you may be wanting to test weird things to understand better
+            # your model.
         self.step_size = step_size
         self.compress = compress
 

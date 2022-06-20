@@ -73,7 +73,9 @@ def _create_trainer(batch_sampler, batch_loader, model,
         model=model, experiments_path=tmp_dir.name, experiment_name='test',
         model_uses_streamlines=model_uses_streamlines,
         log_level='INFO',
-        max_batches_per_epoch=2, max_epochs=2, patience=None, use_gpu=False)
+        max_batches_per_epoch_training=2,
+        max_batches_per_epoch_validation=None, max_epochs=2, patience=None,
+        use_gpu=False)
     # Note. toDo Test fails with nb_cpu_processes=1.
 
     return trainer

@@ -57,17 +57,17 @@ def init_from_checkpoint(args):
         sub_loggers_level)
 
     # Prepare batch samplers
-    args_ts = argparse.Namespace(**checkpoint_state['train_sampler_params'])
+    args_ts = checkpoint_state['train_sampler_params']
     args_vs = None if checkpoint_state['valid_sampler_params'] is None else \
-        argparse.Namespace(**checkpoint_state['valid_sampler_params'])
+        checkpoint_state['valid_sampler_params']
     training_batch_sampler, validation_batch_sampler = \
         prepare_batchsamplers_train_valid(dataset, args_ts, args_vs,
                                           sub_loggers_level)
 
     # Prepare batch loaders
-    args_tl = argparse.Namespace(**checkpoint_state['train_loader_params'])
+    args_tl = checkpoint_state['train_loader_params']
     args_vl = None if checkpoint_state['valid_loader_params'] is None else \
-        argparse.Namespace(**checkpoint_state['valid_loader_params'])
+        checkpoint_state['valid_loader_params']
     training_batch_loader, validation_batch_loader = \
         prepare_batchloadersoneinput_train_valid(dataset, args_tl, args_vl,
                                                  sub_loggers_level)

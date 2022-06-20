@@ -25,22 +25,23 @@ Can be used in a torch DataLoader. For instance:
                                 collate_fn=batch_loader.load_batch)
 """
 import logging
-from typing import List, Tuple, Iterator
+from typing import List, Tuple, Iterator, Union
 
 import numpy as np
 import torch
 import torch.multiprocessing
 from torch.utils.data import Sampler
 
-from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 
 DEFAULT_CHUNK_SIZE = 256
 logger = logging.getLogger('batch_sampler_logger')
 
 
 class DWIMLBatchSampler(Sampler):
-    def __init__(self, dataset: MultisubjectSubset,
-                 streamline_group_name: str, batch_size: int,
+    def __init__(self, dataset: MultiSubjectDataset,
+                 streamline_group_name: str, batch_size_training: int,
+                 batch_size_validation: Union[int, None],
                  batch_size_units: str, nb_streamlines_per_chunk: int = None,
                  rng: int = None, nb_subjects_per_batch: int = None,
                  cycles: int = None, log_level=logging.root.level):
@@ -52,9 +53,11 @@ class DWIMLBatchSampler(Sampler):
         streamline_group_name: str
             The name of the group to use to load the sequences among all
             streamline_groups in the data_source.
-        batch_size : int
+        batch_size_training : int
             Batch size. Can be defined in number of streamlines or in total
             length_mm (specified through batch_size_units).
+        batch_size_validation: Union[int, None]
+            Idem
         batch_size_units: str
             'nb_streamlines' or 'length_mm' (which should hopefully be
             correlated to the number of input data points).
@@ -76,14 +79,15 @@ class DWIMLBatchSampler(Sampler):
             re-using the same subjects (and thus the same volumes) before
             sampling new ones. Default: None.
         """
-        super().__init__(dataset)  # This does nothing but python likes it.
+        super().__init__(None)  # This does nothing but python likes it.
 
         # Checking that batch_size is correct
-        if not isinstance(batch_size, int) or batch_size <= 0:
-            raise ValueError("batch_size (i.e. number of total timesteps in "
-                             "the batch) should be a positive integeral "
-                             "value, but got batch_size={}"
-                             .format(batch_size))
+        for batch_size in [batch_size_training, batch_size_validation]:
+            if not isinstance(batch_size, int) or batch_size <= 0:
+                raise ValueError("batch_size (i.e. number of total timesteps "
+                                 "in the batch) should be a positive int "
+                                 "value, but got batch_size={}"
+                                 .format(batch_size))
 
         if batch_size_units == 'nb_streamlines':
             if (nb_streamlines_per_chunk != batch_size and
@@ -116,7 +120,8 @@ class DWIMLBatchSampler(Sampler):
             self.nb_streamlines_per_chunk = batch_size
         else:
             self.nb_streamlines_per_chunk = nb_streamlines_per_chunk
-        self.batch_size = batch_size
+        self.batch_size_training = batch_size_training
+        self.batch_size_validation = batch_size_validation
         self.batch_size_units = batch_size_units
 
         # Find idx of streamline group
@@ -133,6 +138,11 @@ class DWIMLBatchSampler(Sampler):
         self.logger = logger
         self.logger.setLevel(log_level)
 
+        # For later use, context
+        self.context = None
+        self.context_subset = None
+        self.context_batch_size = None
+
     @property
     def params(self):
         """
@@ -141,7 +151,7 @@ class DWIMLBatchSampler(Sampler):
         """
         params = {
             'streamline_group_name': self.streamline_group_name,
-            'batch_size': self.batch_size,
+            'batch_size_training': self.batch_size_training,
             'batch_size_units': self.batch_size_units,
             'nb_streamlines_per_chunk': self.nb_streamlines_per_chunk,
             'rng': self.rng,
@@ -150,6 +160,18 @@ class DWIMLBatchSampler(Sampler):
             'type': str(type(self)),
         }
         return params
+
+    def set_context(self, context):
+        if context == 'training' and self.context != context:
+            self.context_subset = self.dataset.training_set
+            self.context_batch_size = self.batch_size_training
+        elif context == 'validation' and self.context != context:
+            self.context_subset = self.dataset.validation_set
+            self.context_batch_size = self.batch_size_validation
+        else:
+            raise ValueError("Context should be either 'training' or "
+                             "'validation'.")
+        self.context = context
 
     @property
     def states(self):
@@ -183,11 +205,15 @@ class DWIMLBatchSampler(Sampler):
             - The list of streamline ids are relative ids inside each subject's
             tractogram).
         """
+        if self.context is None:
+            raise ValueError("Context must be set prior to iterating on the "
+                             "batch sampler.")
+
         # This is the list of all possible streamline ids
         global_streamlines_ids = np.arange(
-            self.dataset.total_nb_streamlines[self.streamline_group_idx])
+            self.context_subset.total_nb_streamlines[self.streamline_group_idx])
         ids_per_subjs = \
-            self.dataset.streamline_ids_per_subj[self.streamline_group_idx]
+            self.context_subset.streamline_ids_per_subj[self.streamline_group_idx]
 
         # This contains one bool per streamline:
         #   1 = this streamline has not been used yet.
@@ -227,7 +253,7 @@ class DWIMLBatchSampler(Sampler):
                 nb_subjects = min(self.nb_subjects_per_batch,
                                   np.count_nonzero(weights))
                 sampled_subjs = self.np_rng.choice(
-                    np.arange(len(self.dataset.subjs_data_list)),
+                    np.arange(len(self.context_subset.subjs_data_list)),
                     size=nb_subjects, replace=False, p=weights)
             else:
                 # Sampling from all subjects
@@ -238,7 +264,7 @@ class DWIMLBatchSampler(Sampler):
 
             # Final subject's batch size could be smaller if no streamlines are
             # left for this subject.
-            max_batch_size_per_subj = self.batch_size / nb_subjects
+            max_batch_size_per_subj = self.context_batch_size / nb_subjects
 
             # Preparing to iterate on these chosen subjects for a predefined
             # number of cycles
@@ -442,7 +468,7 @@ class DWIMLBatchSampler(Sampler):
         without loading the streamlines, particularly with the lazy data.
         """
         if self.batch_size_units == 'length_mm':
-            l_mm = self.dataset.streamline_lengths_mm
+            l_mm = self.current_subset.streamline_lengths_mm
             l_mm = l_mm[self.streamline_group_idx][chosen_global_ids]
             size_per_streamline = l_mm
         else:  # units = nb_streamlines

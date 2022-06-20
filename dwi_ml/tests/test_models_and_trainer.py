@@ -68,7 +68,7 @@ def _create_trainer(batch_sampler, batch_loader, model,
     trainer = DWIMLTrainerOneInput(
         batch_sampler_training=batch_sampler,
         batch_sampler_validation=None,
-        batch_loader_training=batch_loader,
+        batch_loader=batch_loader,
         batch_loader_validation=None,
         model=model, experiments_path=tmp_dir.name, experiment_name='test',
         model_uses_streamlines=model_uses_streamlines,

@@ -17,7 +17,7 @@ from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_loaders import (
     AbstractBatchLoader, BatchLoaderOneInput)
-from dwi_ml.training.batch_samplers import DWIMLBatchSampler
+from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.gradient_norm import compute_gradient_norm
 from dwi_ml.training.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
@@ -45,7 +45,7 @@ class DWIMLAbstractTrainer:
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
-                 batch_sampler: DWIMLBatchSampler,
+                 batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: AbstractBatchLoader,
                  model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
@@ -68,7 +68,7 @@ class DWIMLAbstractTrainer:
         experiment_name: str
             Name of this experiment. This will also be the name that will
             appear online for comet.ml experiment.
-        batch_sampler: DWIMLBatchSampler
+        batch_sampler: DWIMLBatchIDSampler
             Instantiated class used for sampling batches.
             Data in batch_sampler.dataset must be already loaded.
         batch_loader: AbstractBatchLoader
@@ -230,9 +230,22 @@ class DWIMLAbstractTrainer:
         # ---------------------
         # Dataloader: usage will depend on context
         # ---------------------
-        # No dataset. They are known by the sampler and loader
-        self.dataloader = DataLoader(
-            dataset=None,
+        # Create DataLoaders from the BatchSamplers
+        #   * Before usage, context must be set for the batch sampler and the
+        #     batch loader, to use appropriate parameters.
+        #   * Pin memory if interpolation is done by workers; this means that
+        #     dataloader output is on GPU, ready to be fed to the model.
+        #     Otherwise, dataloader output is kept on CPU, and the main thread
+        #     sends volumes and coords on GPU for interpolation.
+        self.logger.debug("- Instantiating dataloaders...")
+        self.train_dataloader = DataLoader(
+            dataset=self.batch_sampler.dataset.training_set,
+            batch_sampler=self.batch_sampler,
+            num_workers=self.nb_cpu_processes,
+            collate_fn=self.batch_loader.load_batch,
+            pin_memory=self.use_gpu)
+        self.valid_dataloader = DataLoader(
+            dataset=self.batch_sampler.dataset.validation_set,
             batch_sampler=self.batch_sampler,
             num_workers=self.nb_cpu_processes,
             collate_fn=self.batch_loader.load_batch,
@@ -375,13 +388,6 @@ class DWIMLAbstractTrainer:
              self.nb_valid_batches_per_epoch) = \
                 self.estimate_nb_batches_per_epoch()
 
-        # Create DataLoaders from the BatchSamplers
-        #   * Pin memory if interpolation is done by workers; this means that
-        #     dataloader output is on GPU, ready to be fed to the model.
-        #     Otherwise, dataloader output is kept on CPU, and the main thread
-        #     sends volumes and coords on GPU for interpolation.
-        self.logger.debug("- Instantiating dataloaders...")
-
         # Instantiating our IterTimer.
         # After each iteration, checks that the maximum allowed time has not
         # been reached.
@@ -461,7 +467,7 @@ class DWIMLAbstractTrainer:
         # If we add our sub-loggers there, they duplicate.
         # A handler is added in the root logger, and sub-loggers propagate
         # their message.
-        with tqdm_logging_redirect(self.dataloader, ncols=100,
+        with tqdm_logging_redirect(self.train_dataloader, ncols=100,
                                    total=self.nb_train_batches_per_epoch,
                                    loggers=[logging.root],
                                    tqdm_class=tqdm) as pbar:
@@ -516,7 +522,7 @@ class DWIMLAbstractTrainer:
             self.batch_sampler.context_subset.volume_cache_manager = None
 
         # Validate all batches
-        with tqdm_logging_redirect(self.dataloader, ncols=100,
+        with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
                                    total=self.nb_valid_batches_per_epoch,
                                    loggers=[logging.root],
                                    tqdm_class=tqdm) as pbar:
@@ -704,7 +710,7 @@ class DWIMLAbstractTrainer:
     @classmethod
     def init_from_checkpoint(
             cls, model: MainModelAbstract, experiments_path, experiment_name,
-            batch_sampler: DWIMLBatchSampler,
+            batch_sampler: DWIMLBatchIDSampler,
             batch_loader: AbstractBatchLoader,
             checkpoint_state: dict, new_patience,
             new_max_epochs, log_level):
@@ -907,7 +913,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
-                 batch_sampler: DWIMLBatchSampler,
+                 batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: BatchLoaderOneInput,
                  model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,

@@ -51,10 +51,10 @@ def _create_sampler_and_loader(dataset):
     # Initialize batch sampler
     logging.debug('\nInitializing sampler...')
     batch_sampler = create_test_batch_sampler(
-        dataset.training_set, batch_size=batch_size,
+        dataset, batch_size=batch_size,
         batch_size_units='nb_streamlines', log_level=logging.WARNING)
 
-    batch_loader = create_batch_loader(dataset.training_set,
+    batch_loader = create_batch_loader(dataset,
                                        log_level=logging.WARNING,
                                        wait_for_gpu=False)
 
@@ -66,10 +66,8 @@ def _create_trainer(batch_sampler, batch_loader, model,
     tmp_dir = tempfile.TemporaryDirectory()
 
     trainer = DWIMLTrainerOneInput(
-        batch_sampler_training=batch_sampler,
-        batch_sampler_validation=None,
+        batch_sampler=batch_sampler,
         batch_loader=batch_loader,
-        batch_loader_validation=None,
         model=model, experiments_path=tmp_dir.name, experiment_name='test',
         model_uses_streamlines=model_uses_streamlines,
         log_level='INFO',

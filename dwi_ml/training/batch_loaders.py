@@ -70,8 +70,8 @@ class AbstractBatchLoader:
                  split_ratio: float = 0.,
                  noise_gaussian_size_training: float = 0.,
                  noise_gaussian_variability_training: float = 0.,
-                 noise_gaussian_size_validation: float = 0.,
-                 noise_gaussian_variability_validation: float = 0.,
+                 noise_gaussian_size_validation: float = None,
+                 noise_gaussian_variability_validation: float = None,
                  reverse_ratio: float = 0., log_level=logging.root.level):
         """
         Parameters
@@ -107,7 +107,7 @@ class AbstractBatchLoader:
             your step size to avoid flipping direction. Ex, you could choose
             0.1 * step-size. Noise is truncated to +/- 2*noise_sigma and to
             +/- 0.5 * step-size (if given). Default = 0.
-        noise_gaussian_size_validation : float
+        noise_gaussian_size_validation : float or None
             Idem
         noise_gaussian_variability_training: float
             DATA AUGMENTATION: If this is given, a variation is applied to the
@@ -115,7 +115,7 @@ class AbstractBatchLoader:
             less noisy streamlines. This means that the real gaussian_size will
             be a random number between [size - variability, size + variability]
             Default = 0.
-        noise_gaussian_variability_validation: float
+        noise_gaussian_variability_validation: float or None
             Idem
         reverse_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
@@ -204,18 +204,20 @@ class AbstractBatchLoader:
         return p
 
     def set_context(self, context: str):
-        if context == 'training' and self.context != context:
-            self.context_subset = self.dataset.training_set
-            self.context_noise_size = self.noise_gaussian_size_train
-            self.context_noise_var = self.noise_gaussian_var_train
-        elif context == 'validation' and self.context != context:
-            self.context_subset = self.dataset.validation_set
-            self.context_noise_size = self.noise_gaussian_size_valid
-            self.context_noise_var = self.noise_gaussian_var_valid
-        else:
-            raise ValueError("Context should be either 'training' or "
-                             "'validation'.")
-        self.context = context
+        if self.context != context:
+            if context == 'training':
+                self.context_subset = self.dataset.training_set
+                self.context_noise_size = self.noise_gaussian_size_train
+                self.context_noise_var = self.noise_gaussian_var_train
+            elif context == 'validation':
+                self.context_subset = self.dataset.validation_set
+                self.context_noise_size = self.noise_gaussian_size_valid
+                self.context_noise_var = self.noise_gaussian_var_valid
+            else:
+                raise ValueError("Context should be either 'training' or "
+                                 "'validation'.")
+            self.context = context
+        self.dataset.context = context
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]):
         """
@@ -288,7 +290,9 @@ class AbstractBatchLoader:
             # Noise is considered in mm so we need to make sure the sft is in
             # rasmm space
             if self.context_noise_size and self.context_noise_size > 0:
-                logger.debug("            Adding noise")
+                logger.debug("            Adding noise {} +- {}"
+                             .format(self.context_noise_size,
+                                     self.context_noise_var))
                 sft.to_rasmm()
                 sft = add_noise_to_streamlines(sft, self.context_noise_size,
                                                self.context_noise_var,
@@ -298,7 +302,8 @@ class AbstractBatchLoader:
             # This increases the batch size, but does not change the total
             # length
             if self.split_ratio and self.split_ratio > 0:
-                logger.debug("            Splitting")
+                logger.debug("            Splitting: {}"
+                             .format(self.split_ratio))
                 all_ids = np.arange(len(sft))
                 n_to_split = int(np.floor(len(sft) * self.split_ratio))
                 split_ids = self.np_rng.choice(all_ids, size=n_to_split,

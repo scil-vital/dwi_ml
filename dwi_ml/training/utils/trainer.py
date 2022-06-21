@@ -48,12 +48,12 @@ def add_training_args(p: argparse.ArgumentParser):
     return training_group
 
 
-def run_experiment(trainer, logging_choice):
+def run_experiment(trainer):
     # Run (or continue) the experiment
     try:
         with Timer("\n****** Training and validating model!!! ********",
                    newline=True, color='magenta'):
-            trainer.train_and_validate(logging_choice)
+            trainer.train_and_validate()
     except EarlyStoppingError as e:
         print(e)
 

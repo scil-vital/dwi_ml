@@ -19,7 +19,7 @@ from dwi_ml.data.dataset.utils import (
 from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.batch_loaders import BatchLoaderOneInput
-from dwi_ml.training.batch_samplers import DWIMLBatchSampler
+from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.batch_samplers import add_args_batch_sampler
 from dwi_ml.training.utils.batch_loaders import add_args_batch_loader
@@ -70,7 +70,7 @@ def init_from_args(args, sub_loggers_level):
     # Preparing the batch samplers.
     # The only parameter that may differ is the batch size.
     with Timer("\nPreparing batch sampler...", newline=True, color='green'):
-        batch_sampler = DWIMLBatchSampler(
+        batch_sampler = DWIMLBatchIDSampler(
             dataset, streamline_group_name=args.streamline_group_name,
             batch_size_training=args.batch_size_training,
             batch_size_validation=args.batch_size_validation,
@@ -85,22 +85,6 @@ def init_from_args(args, sub_loggers_level):
 
     # Preparing the batch loaders
     # The only parameter that may differ is the gaussian noise.
-    args_loader = {
-        'input_group_name': args.input_group_name,
-        'streamline_group_name': args.streamline_group_name,
-        'step_size': args.step_size,
-        'compress': args.compress,
-        'reverse_ratio': args.reverse_ratio,
-        'split_ratio': args.split_ratio,
-        'neighborhood_points': model.neighborhood_points,
-        'rng': args.rng,
-        'wait_for_gpu': args.use_gpu,
-        'noise_gaussian_size_training': args.noise_gaussian_size_training,
-        'noise_gaussian_var_training': args.noise_gaussian_variability_training,
-        'noise_gaussian_size_validation': args.noise_gaussian_size_validation,
-        'noise_gaussian_variability_validation': args.noise_gaussian_variability_validation
-    }
-
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
         batch_loader = BatchLoaderOneInput(
             dataset, input_group_name=args.input_group_name,
@@ -171,7 +155,7 @@ def main():
 
     trainer = init_from_args(args, sub_loggers_level)
 
-    run_experiment(trainer, args.logging)
+    run_experiment(trainer)
 
 
 if __name__ == '__main__':

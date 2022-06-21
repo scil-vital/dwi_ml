@@ -38,7 +38,7 @@ DEFAULT_CHUNK_SIZE = 256
 logger = logging.getLogger('batch_sampler_logger')
 
 
-class DWIMLBatchSampler(Sampler):
+class DWIMLBatchIDSampler(Sampler):
     def __init__(self, dataset: MultiSubjectDataset,
                  streamline_group_name: str, batch_size_training: int,
                  batch_size_validation: Union[int, None],
@@ -83,15 +83,14 @@ class DWIMLBatchSampler(Sampler):
 
         # Checking that batch_size is correct
         for batch_size in [batch_size_training, batch_size_validation]:
-            if not isinstance(batch_size, int) or batch_size <= 0:
+            if batch_size and batch_size <= 0:
                 raise ValueError("batch_size (i.e. number of total timesteps "
                                  "in the batch) should be a positive int "
                                  "value, but got batch_size={}"
                                  .format(batch_size))
 
         if batch_size_units == 'nb_streamlines':
-            if (nb_streamlines_per_chunk != batch_size and
-                    nb_streamlines_per_chunk is not None):
+            if nb_streamlines_per_chunk is not None:
                 logging.warning("With a max_batch_size computed in terms of "
                                 "number of streamlines, the chunk size is not "
                                 "used. Ignored")
@@ -117,7 +116,7 @@ class DWIMLBatchSampler(Sampler):
         self.nb_subjects_per_batch = nb_subjects_per_batch
         self.cycles = cycles
         if batch_size_units == 'nb_streamlines':
-            self.nb_streamlines_per_chunk = batch_size
+            self.nb_streamlines_per_chunk = None
         else:
             self.nb_streamlines_per_chunk = nb_streamlines_per_chunk
         self.batch_size_training = batch_size_training
@@ -162,16 +161,22 @@ class DWIMLBatchSampler(Sampler):
         return params
 
     def set_context(self, context):
-        if context == 'training' and self.context != context:
-            self.context_subset = self.dataset.training_set
-            self.context_batch_size = self.batch_size_training
-        elif context == 'validation' and self.context != context:
-            self.context_subset = self.dataset.validation_set
-            self.context_batch_size = self.batch_size_validation
-        else:
-            raise ValueError("Context should be either 'training' or "
-                             "'validation'.")
-        self.context = context
+        if self.context != context:
+            if context == 'training':
+                self.context_subset = self.dataset.training_set
+                self.context_batch_size = self.batch_size_training
+                if self.batch_size_units == 'nb_streamlines':
+                    self.nb_streamlines_per_chunk = self.batch_size_training
+            elif context == 'validation':
+                self.context_subset = self.dataset.validation_set
+                self.context_batch_size = self.batch_size_validation
+                if self.batch_size_units == 'nb_streamlines':
+                    self.nb_streamlines_per_chunk = self.batch_size_validation
+            else:
+                raise ValueError("Context should be either 'training' or "
+                                 "'validation'.")
+            self.context = context
+        self.dataset.context = context
 
     @property
     def states(self):
@@ -350,9 +355,9 @@ class DWIMLBatchSampler(Sampler):
                 break
 
             if len(chunk_rel_ids) == 0:
-                logging.warning(
-                    "MAJOR WARNING. Got no streamline for this subject in "
-                    "this batch, but there are streamlines left. \n"
+                raise ValueError(
+                    "Implementation error? Got no streamline for this subject "
+                    "in this batch, but there are streamlines left. \n"
                     "Possibly means that the allowed batch size does not even "
                     "allow one streamline per batch.\n Check your batch size "
                     "choice!")
@@ -468,7 +473,7 @@ class DWIMLBatchSampler(Sampler):
         without loading the streamlines, particularly with the lazy data.
         """
         if self.batch_size_units == 'length_mm':
-            l_mm = self.current_subset.streamline_lengths_mm
+            l_mm = self.context_subset.streamline_lengths_mm
             l_mm = l_mm[self.streamline_group_idx][chosen_global_ids]
             size_per_streamline = l_mm
         else:  # units = nb_streamlines

@@ -67,8 +67,7 @@ def init_from_args(args, sub_loggers_level):
     # Prepare args.
     logging.debug("Initial {}".format(args))
 
-    # Preparing the batch samplers.
-    # The only parameter that may differ is the batch size.
+    # Preparing the batch sampler.
     with Timer("\nPreparing batch sampler...", newline=True, color='green'):
         batch_sampler = DWIMLBatchIDSampler(
             dataset, streamline_group_name=args.streamline_group_name,
@@ -83,8 +82,7 @@ def init_from_args(args, sub_loggers_level):
         logging.info("Batch sampler's user-defined parameters: " +
                      format_dict_to_str(batch_sampler.params))
 
-    # Preparing the batch loaders
-    # The only parameter that may differ is the gaussian noise.
+    # Preparing the batch loader.
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
         batch_loader = DWIMLBatchLoaderOneInput(
             dataset, input_group_name=args.input_group_name,

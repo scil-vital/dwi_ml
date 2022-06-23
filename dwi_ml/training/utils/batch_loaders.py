@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
 import argparse
-import logging
-
-from dwi_ml.experiment_utils.prints import format_dict_to_str
-from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 
 
 def add_args_batch_loader(p: argparse.ArgumentParser):
@@ -61,29 +56,3 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
         '--reverse_ratio', type=float, metavar='r', default=0.,
         help="Percentage of streamlines to randomly reverse in each batch. "
              "[0]")
-
-
-def prepare_batchloadersoneinput(dataset, args, log_level):
-    with Timer("\nPreparing batch loaders...", newline=True, color='pink'):
-        logging.info("Instantiating training set's batch loader...")
-
-        batch_loader = DWIMLBatchLoaderOneInput(
-            dataset, input_group_name=args['input_group_name'],
-            streamline_group_name=args['streamline_group_name'],
-            # STREAMLINES PREPROCESSING
-            step_size=args['step_size'], compress=args['compress'],
-            # STREAMLINES AUGMENTATION
-            noise_gaussian_size_training=args['noise_gaussian_size_training'],
-            noise_gaussian_var_training=args['noise_gaussian_variability_training'],
-            noise_gaussian_size_validation=args['noise_gaussian_size_validation'],
-            noise_gaussian_var_validation=args['noise_gaussian_variability_validation'],
-            reverse_ratio=args['reverse_ratio'], split_ratio=args['split_ratio'],
-            # NEIGHBORHOOD
-            neighborhood_points=args['neighborhood_points'],
-            # OTHER
-            rng=args['rng'], wait_for_gpu=args['wait_for_gpu'],
-            log_level=log_level)
-
-        logging.info("Loader user-defined parameters: " +
-                     format_dict_to_str(batch_loader.params_for_json_prints))
-    return batch_loader

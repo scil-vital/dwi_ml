@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
 import argparse
-import logging
-
-from dwi_ml.experiment_utils.prints import format_dict_to_str
-from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 
 
 def add_args_batch_sampler(p: argparse.ArgumentParser):
@@ -42,12 +37,3 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
         '--cycles', type=int, metavar='c',
         help="Relevant only if nb_subject_per_batch is set. Number of cycles\n"
              "before changing to new subjects (and thus loading new volumes).")
-
-
-def prepare_batchsampler(dataset, args, log_level):
-    """
-    dataset: MultiSubjectDataset
-    args_training: dict
-    log_level: str
-    """
-

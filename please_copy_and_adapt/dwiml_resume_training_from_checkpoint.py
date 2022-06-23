@@ -52,7 +52,7 @@ def init_from_checkpoint(args):
                      'checkpoint/model'),
         sub_loggers_level)
 
-    # Prepare batch samplers
+    # Prepare batch sampler
     _args = checkpoint_state['batch_sampler_params']
     with Timer("\nPreparing batch samplers...", newline=True, color='green'):
         logging.info("Instantiating training set's batch sampler...")
@@ -70,7 +70,7 @@ def init_from_checkpoint(args):
         logging.info("Batch sampler's user-defined parameters: " +
                      format_dict_to_str(batch_sampler.params))
 
-    # Prepare batch loaders
+    # Prepare batch loader
     _args = checkpoint_state['batch_loader_params']
     with Timer("\nPreparing batch loaders...", newline=True, color='pink'):
         logging.info("Instantiating training set's batch loader...")

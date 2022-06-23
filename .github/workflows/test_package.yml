@@ -27,6 +27,7 @@ jobs:
       run: |
         # python -m pip install --upgrade --user pip
         # pip install pytest
+        pip install -r requirements_github.txt
         pip install -r requirements.txt
         pip install .
 

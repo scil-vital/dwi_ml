@@ -16,7 +16,7 @@ from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_loaders import (
-    AbstractBatchLoader, BatchLoaderOneInput)
+    DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.gradient_norm import compute_gradient_norm
 from dwi_ml.training.monitoring import (
@@ -46,7 +46,7 @@ class DWIMLAbstractTrainer:
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
                  batch_sampler: DWIMLBatchIDSampler,
-                 batch_loader: AbstractBatchLoader,
+                 batch_loader: DWIMLAbstractBatchLoader,
                  model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
@@ -71,7 +71,7 @@ class DWIMLAbstractTrainer:
         batch_sampler: DWIMLBatchIDSampler
             Instantiated class used for sampling batches.
             Data in batch_sampler.dataset must be already loaded.
-        batch_loader: AbstractBatchLoader
+        batch_loader: DWIMLAbstractBatchLoader
             Instantiated class with a load_batch method able to load data
             associated to sampled batch ids. Data in batch_sampler.dataset must
             be already loaded.
@@ -711,7 +711,7 @@ class DWIMLAbstractTrainer:
     def init_from_checkpoint(
             cls, model: MainModelAbstract, experiments_path, experiment_name,
             batch_sampler: DWIMLBatchIDSampler,
-            batch_loader: AbstractBatchLoader,
+            batch_loader: DWIMLAbstractBatchLoader,
             checkpoint_state: dict, new_patience,
             new_max_epochs, log_level):
         """
@@ -908,13 +908,13 @@ class DWIMLAbstractTrainer:
 
 
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
-    batch_loader: BatchLoaderOneInput
+    batch_loader: DWIMLBatchLoaderOneInput
 
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
                  batch_sampler: DWIMLBatchIDSampler,
-                 batch_loader: BatchLoaderOneInput,
+                 batch_loader: DWIMLBatchLoaderOneInput,
                  model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,

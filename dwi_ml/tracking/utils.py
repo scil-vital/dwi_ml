@@ -124,7 +124,7 @@ def prepare_dataset_for_tracking(hdf5_file, args):
     # instantiate a LazySubjectData directly but we want to use the cache
     # manager (suited better for multiprocessing)
     dataset = MultiSubjectDataset(hdf5_file, lazy=args.lazy,
-                                  subset_cache_size=args.cache_size,
+                                  cache_size=args.cache_size,
                                   log_level=logging.WARNING)
 
     if args.subset == 'testing':

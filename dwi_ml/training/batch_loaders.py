@@ -63,15 +63,15 @@ from dwi_ml.data.processing.volume.interpolation import \
 logger = logging.getLogger('batch_loader_logger')
 
 
-class AbstractBatchLoader:
+class DWIMLAbstractBatchLoader:
     def __init__(self, dataset: MultiSubjectDataset,
                  streamline_group_name: str, rng: int,
                  step_size: float = None, compress: bool = False,
                  split_ratio: float = 0.,
                  noise_gaussian_size_training: float = 0.,
-                 noise_gaussian_variability_training: float = 0.,
+                 noise_gaussian_var_training: float = 0.,
                  noise_gaussian_size_validation: float = None,
-                 noise_gaussian_variability_validation: float = None,
+                 noise_gaussian_var_validation: float = None,
                  reverse_ratio: float = 0., log_level=logging.root.level):
         """
         Parameters
@@ -107,16 +107,16 @@ class AbstractBatchLoader:
             your step size to avoid flipping direction. Ex, you could choose
             0.1 * step-size. Noise is truncated to +/- 2*noise_sigma and to
             +/- 0.5 * step-size (if given). Default = 0.
-        noise_gaussian_size_validation : float or None
-            Idem
-        noise_gaussian_variability_training: float
+        noise_gaussian_var_training: float
             DATA AUGMENTATION: If this is given, a variation is applied to the
             streamline_noise_gaussian_size to have more noisy streamlines and
             less noisy streamlines. This means that the real gaussian_size will
-            be a random number between [size - variability, size + variability]
+            be a random number between [size - var, size + var].
             Default = 0.
-        noise_gaussian_variability_validation: float or None
-            Idem
+        noise_gaussian_size_validation : float or None
+            Same as training
+        noise_gaussian_var_validation: float or None
+            Same as training
         reverse_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
             the batch. You could want to reverse ALL your data and then use
@@ -158,9 +158,9 @@ class AbstractBatchLoader:
 
         # Data augmentation for streamlines:
         self.noise_gaussian_size_train = noise_gaussian_size_training
-        self.noise_gaussian_var_train = noise_gaussian_variability_training
+        self.noise_gaussian_var_train = noise_gaussian_var_training
         self.noise_gaussian_size_valid = noise_gaussian_size_validation
-        self.noise_gaussian_var_valid = noise_gaussian_variability_validation
+        self.noise_gaussian_var_valid = noise_gaussian_var_validation
         self.split_ratio = split_ratio
         self.reverse_ratio = reverse_ratio
         if self.split_ratio and not 0 <= self.split_ratio <= 1:
@@ -186,9 +186,9 @@ class AbstractBatchLoader:
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
             'noise_gaussian_size_training': self.noise_gaussian_size_train,
-            'noise_gaussian_variability_training': self.noise_gaussian_var_train,
+            'noise_gaussian_var_training': self.noise_gaussian_var_train,
             'noise_gaussian_size_validation': self.noise_gaussian_size_valid,
-            'noise_gaussian_variability_validation': self.noise_gaussian_var_valid,
+            'noise_gaussian_var_validation': self.noise_gaussian_var_valid,
             'reverse_ratio': self.reverse_ratio,
             'split_ratio': self.split_ratio,
             'step_size': self.step_size,
@@ -347,7 +347,7 @@ class AbstractBatchLoader:
         return sft
 
 
-class BatchLoaderOneInput(AbstractBatchLoader):
+class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
     """
     Loads:
         input = one volume group
@@ -359,9 +359,9 @@ class BatchLoaderOneInput(AbstractBatchLoader):
                  streamline_group_name: str, rng: int, compress: bool,
                  step_size: float = None, split_ratio: float = 0.,
                  noise_gaussian_size_training: float = 0.,
-                 noise_gaussian_variability_training: float = 0.,
+                 noise_gaussian_var_training: float = 0.,
                  noise_gaussian_size_validation: float = 0.,
-                 noise_gaussian_variability_validation: float = 0.,
+                 noise_gaussian_var_validation: float = 0.,
                  reverse_ratio: float = 0., wait_for_gpu: bool = False,
                  neighborhood_points: np.ndarray = None,
                  log_level=logging.root.level):
@@ -381,9 +381,9 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         """
         super().__init__(dataset, streamline_group_name, rng, step_size,
                          compress, split_ratio, noise_gaussian_size_training,
-                         noise_gaussian_variability_training,
+                         noise_gaussian_var_training,
                          noise_gaussian_size_validation,
-                         noise_gaussian_variability_validation, reverse_ratio,
+                         noise_gaussian_var_validation, reverse_ratio,
                          log_level)
 
         # toDo. Would be more logical to send this as params when using

@@ -151,6 +151,7 @@ class DWIMLBatchIDSampler(Sampler):
         params = {
             'streamline_group_name': self.streamline_group_name,
             'batch_size_training': self.batch_size_training,
+            'batch_size_validation': self.batch_size_validation,
             'batch_size_units': self.batch_size_units,
             'nb_streamlines_per_chunk': self.nb_streamlines_per_chunk,
             'rng': self.rng,

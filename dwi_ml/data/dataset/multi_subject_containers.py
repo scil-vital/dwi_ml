@@ -337,7 +337,7 @@ class MultiSubjectDataset:
               'streamlines/lengths', 'streamlines/euclidean_lengths'.
     """
     def __init__(self, hdf5_file: str, lazy: bool,
-                 subset_cache_size: int = 0, log_level=logging.root.level):
+                 cache_size: int = 0, log_level=logging.root.level):
         """
         Params
         ------
@@ -347,7 +347,7 @@ class MultiSubjectDataset:
             Use lazy or non-lazy data. Lazy data only loads data from the hdf5
             when asked explicitely. Non-lazy loads everything at once in the
             load_data method.
-        subset_cache_size: int
+        cache_size: int
             Only useful with lazy data. Size of the cache in terms of length of
             the queue (i.e. number of volumes). Default = 0.
             NOTE: Real cache size will actually be twice or trice this value as
@@ -363,7 +363,7 @@ class MultiSubjectDataset:
         self.streamline_groups = []  # type: List[str]
 
         self.is_lazy = lazy
-        self.subset_cache_size = subset_cache_size
+        self.subset_cache_size = cache_size
         if self.is_lazy and self.subset_cache_size == 0:
             raise ValueError("For lazy data, the cache size cannot be None. "
                              "Maybe you meant 0?")
@@ -371,19 +371,19 @@ class MultiSubjectDataset:
         # Preparing the testing set and validation set
         # In non-lazy data, the cache_size is not used.
         self.training_set = MultisubjectSubset(
-            'training', hdf5_file, self.is_lazy, subset_cache_size)
+            'training', hdf5_file, self.is_lazy, cache_size)
         self.validation_set = MultisubjectSubset(
-            'validation', hdf5_file, self.is_lazy, subset_cache_size)
+            'validation', hdf5_file, self.is_lazy, cache_size)
         self.testing_set = MultisubjectSubset(
-            'testing', hdf5_file, self.is_lazy, subset_cache_size)
+            'testing', hdf5_file, self.is_lazy, cache_size)
 
     @property
     def params(self) -> Dict[str, Any]:
         # Params for init:
         all_params = {
             'hdf5_file': self.hdf5_file,
-            'is_lazy': self.is_lazy,
-            'subset_cache_size': self.subset_cache_size,
+            'lazy': self.is_lazy,
+            'cache_size': self.subset_cache_size,
         }
 
         # Subsets:

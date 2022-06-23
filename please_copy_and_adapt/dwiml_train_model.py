@@ -18,7 +18,7 @@ from dwi_ml.data.dataset.utils import (
     add_dataset_args, prepare_multisubjectdataset)
 from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.batch_loaders import BatchLoaderOneInput
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.batch_samplers import add_args_batch_sampler
@@ -86,16 +86,16 @@ def init_from_args(args, sub_loggers_level):
     # Preparing the batch loaders
     # The only parameter that may differ is the gaussian noise.
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
-        batch_loader = BatchLoaderOneInput(
+        batch_loader = DWIMLBatchLoaderOneInput(
             dataset, input_group_name=args.input_group_name,
             streamline_group_name=args.streamline_group_name,
             # STREAMLINES PREPROCESSING
             step_size=args.step_size, compress=args.compress,
             # STREAMLINES AUGMENTATION
             noise_gaussian_size_training=args.noise_gaussian_size_training,
-            noise_gaussian_variability_training=args.noise_gaussian_variability_training,
+            noise_gaussian_var_training=args.noise_gaussian_variability_training,
             noise_gaussian_size_validation=args.noise_gaussian_size_validation,
-            noise_gaussian_variability_validation=args.noise_gaussian_variability_validation,
+            noise_gaussian_var_validation=args.noise_gaussian_variability_validation,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # NEIGHBORHOOD
             neighborhood_points=model.neighborhood_points,

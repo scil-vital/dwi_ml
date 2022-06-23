@@ -26,9 +26,14 @@ def add_training_args(p: argparse.ArgumentParser):
              "the model should stop if the loss hasn't improved. \n"
              "Default: same as max_epochs.")
     training_group.add_argument(
-        '--max_batches_per_epoch', type=int, default=1000, metavar='n',
+        '--max_batches_per_epoch_training', type=int, default=1000,
+        metavar='n',
         help="Maximum number of batches per epoch. This will help avoid long\n"
              "epochs, to ensure that we save checkpoints regularly. [1000]")
+    training_group.add_argument(
+        '--max_batches_per_epoch_validation', type=int, default=1000,
+        metavar='n',
+        help="Maximum number of batches per epoch during validation.")
 
     comet_g = p.add_argument_group("Comet")
     comet_g.add_argument(
@@ -43,12 +48,12 @@ def add_training_args(p: argparse.ArgumentParser):
     return training_group
 
 
-def run_experiment(trainer, logging_choice):
+def run_experiment(trainer):
     # Run (or continue) the experiment
     try:
         with Timer("\n****** Training and validating model!!! ********",
                    newline=True, color='magenta'):
-            trainer.train_and_validate(logging_choice)
+            trainer.train_and_validate()
     except EarlyStoppingError as e:
         print(e)
 

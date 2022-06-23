@@ -7,8 +7,8 @@ from scilpy.io.fetcher import fetch_data, get_home
 from dwi_ml.models.main_models import MainModelAbstract, MainModelWithPD
 from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
-from dwi_ml.training.batch_samplers import DWIMLBatchSampler
-from dwi_ml.training.batch_loaders import BatchLoaderOneInput
+from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 
 
 def fetch_testing_data():
@@ -94,9 +94,10 @@ def create_test_batch_sampler(
     test_default_rng = 1234
 
     logging.debug('    Initializing batch sampler...')
-    batch_sampler = DWIMLBatchSampler(
+    batch_sampler = DWIMLBatchIDSampler(
         subset, TEST_EXPECTED_STREAMLINE_GROUPS[0],
-        batch_size=batch_size, batch_size_units=batch_size_units,
+        batch_size_training=batch_size, batch_size_validation=0,
+        batch_size_units=batch_size_units,
         nb_streamlines_per_chunk=chunk_size,
         rng=test_default_rng,
         nb_subjects_per_batch=test_default_nb_subjects_per_batch,
@@ -111,12 +112,14 @@ def create_batch_loader(
         wait_for_gpu=True, log_level=logging.DEBUG):
 
     logging.debug('    Initializing batch loader...')
-    batch_loader = BatchLoaderOneInput(
+    batch_loader = DWIMLBatchLoaderOneInput(
         subset, TEST_EXPECTED_VOLUME_GROUPS[0],
         TEST_EXPECTED_STREAMLINE_GROUPS[0], rng=1234,
         compress=compress, step_size=step_size, split_ratio=split_ratio,
-        noise_gaussian_size=noise_size,
-        noise_gaussian_variability=noise_variability,
+        noise_gaussian_size_training=noise_size,
+        noise_gaussian_var_training=noise_variability,
+        noise_gaussian_size_validation=0,
+        noise_gaussian_var_validation=0,
         reverse_ratio=reverse_ratio,
         neighborhood_points=None, wait_for_gpu=wait_for_gpu,
         log_level=log_level)

@@ -133,7 +133,7 @@ def _non_lazy_version(hdf5_filename):
 def _lazy_version(hdf5_filename):
     logging.debug("-------------- LAZY version -----------------")
     dataset = MultiSubjectDataset(hdf5_filename,
-                                  lazy=True, subset_cache_size=1,
+                                  lazy=True, cache_size=1,
                                   log_level=logging.DEBUG)
     dataset.load_data()
     _verify_multisubject_dataset(dataset)

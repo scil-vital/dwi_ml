@@ -1,8 +1,6 @@
 #!/usr/bin/env python
-from datetime import datetime
 import logging
 import os
-import tempfile
 
 from dipy.tracking.metrics import length
 
@@ -11,20 +9,13 @@ from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_SUBJ_NAMES, TEST_EXPECTED_NB_STREAMLINES)
 from dwi_ml.tests.utils import create_test_batch_sampler, fetch_testing_data
 
-data_dir = fetch_testing_data()
-tmp_dir = tempfile.TemporaryDirectory()
-
-logging.basicConfig(level=logging.DEBUG)
-now = datetime.now().time()
-millisecond = round(now.microsecond / 10000)
-now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
-
-# Change to true to allow debug mode: saves the mask for visual assessment.
-# Requires a reference.
-ref = None  # Todo. Load from data fetcher
-
 
 def test_batch_sampler():
+    data_dir = fetch_testing_data()
+
+    # Change to true to allow debug mode: saves the mask for visual assessment.
+    # Requires a reference.
+
     logging.debug("Unit test: batch sampler iteration")
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
@@ -45,8 +36,10 @@ def test_batch_sampler():
         logging.debug('*** Test with batch size {} in terms of length_mm'
                       .format(batch_size))
         batch_sampler = create_test_batch_sampler(
-            dataset.training_set, batch_size=batch_size, chunk_size=100,
-            batch_size_units='length_mm')
+            dataset, batch_size=batch_size, chunk_size=100,
+            batch_size_units='length_mm', log_level=logging.DEBUG)
+        batch_sampler.set_context('training')
+
         iterate_on_sampler_and_verify(
             batch_sampler, batch_size=batch_size, batch_size_units='length_mm')
 
@@ -56,8 +49,9 @@ def test_batch_sampler():
             logging.debug('*** Test with batch size {} streamlines'
                           .format(batch_size))
             batch_sampler = create_test_batch_sampler(
-                dataset.training_set, batch_size=batch_size,
+                dataset, batch_size=batch_size,
                 batch_size_units='nb_streamlines')
+            batch_sampler.set_context('training')
             iterate_on_sampler_and_verify(
                 batch_sampler, batch_size=batch_size,
                 batch_size_units='nb_streamlines')
@@ -92,7 +86,7 @@ def iterate_on_sampler_and_verify(
 
             assert nb_streamlines_sampled == batch_size / nb_subjs
         else:
-            subj0 = batch_sampler.dataset.subjs_data_list[0]
+            subj0 = batch_sampler.context_subset.subjs_data_list[0]
             sub0_sft = subj0.sft_data_list[0].as_sft(subj0_streamlines_idx)
             sub0_sft.to_rasmm()
             lengths = [length(s) for s in sub0_sft.streamlines]
@@ -114,3 +108,4 @@ def iterate_on_sampler_and_verify(
 if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
     test_batch_sampler()
+

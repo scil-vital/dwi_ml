@@ -1,10 +1,9 @@
 #!/usr/bin/env python
-from datetime import datetime
 import logging
 import os
-import tempfile
 
 import numpy as np
+from dipy.io.stateful_tractogram import set_sft_logger_level
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
@@ -12,22 +11,19 @@ from dwi_ml.tests.expected_values import TEST_EXPECTED_NB_STREAMLINES
 from dwi_ml.tests.utils import (
     create_test_batch_sampler, create_batch_loader, fetch_testing_data)
 
-data_dir = fetch_testing_data()
-tmp_dir = tempfile.TemporaryDirectory()
-
-logging.basicConfig(level=logging.INFO)
-now = datetime.now().time()
-millisecond = round(now.microsecond / 10000)
-now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
-
-# Change to true to allow debug mode: saves the mask for visual assessment.
-# Requires a reference.
-ref = None  # Todo. Load from data fetcher
-batch_size = 500  # Testing only one value here.
-wait_for_gpu = False  # Testing both True and False is heavier...
+SPLIT_RATIO = 0.5
 
 
 def test_batch_loader():
+    data_dir = fetch_testing_data()
+
+    logging.basicConfig(level=logging.INFO)
+
+    # Change to true to allow debug mode: saves the mask for visual assessment.
+    # Requires a reference.
+    batch_size = 500  # Testing only one value here.
+    wait_for_gpu = False  # Testing both True and False is heavier...
+
     logging.info("Unit test: batch sampler iteration")
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
@@ -41,6 +37,8 @@ def test_batch_loader():
         dataset = MultiSubjectDataset(hdf5_filename,
                                       lazy=False, log_level=logging.WARNING)
         dataset.load_data()
+        # Faking a validation set
+        dataset.validation_set = dataset.training_set
 
         # Initialize batch sampler. Only using units 'nb_streamlines' here
         # for easier management. See test_batch_sampler for other uses of the
@@ -48,11 +46,13 @@ def test_batch_loader():
         batch_size_per_subj = round(batch_size /
                                     dataset.training_set.nb_subjects)
 
-        batch_sampler = create_test_batch_sampler(
-            dataset.training_set, batch_size=batch_size,
+        batch_id_sampler = create_test_batch_sampler(
+            dataset, batch_size=batch_size,
             batch_size_units='nb_streamlines', log_level=logging.WARNING)
-        batch_generator = batch_sampler.__iter__()
-        batch_idx_tuples = next(batch_generator)
+        batch_id_sampler.set_context('training')
+
+        batch_id_generator = batch_id_sampler.__iter__()
+        batch_idx_tuples = next(batch_id_generator)
         subj0, batch_indices = batch_idx_tuples[0]
         assert len(batch_indices) == batch_size_per_subj, \
             "Error, batch size was set to {} per subjects but the batch " \
@@ -65,27 +65,29 @@ def test_batch_loader():
                      'resample, noise, split, reverse, with '
                      'wait_for_gpu = {}'.format(batch_size, wait_for_gpu))
         batch_loader = create_batch_loader(
-            dataset.training_set, step_size=0.5, noise_size=0.2,
-            noise_variability=0.1, split_ratio=0.5, reverse_ratio=0.5,
+            dataset, step_size=0.5, noise_size=0.2,
+            noise_variability=0.1, split_ratio=SPLIT_RATIO, reverse_ratio=0.5,
             wait_for_gpu=True)
+        batch_loader.set_context('training')
 
         # Using last batch from batch sampler
-        _load_directly_and_verify(batch_loader, batch_idx_tuples,
-                                  split_ratio=0.5)
+        _load_directly_and_verify(batch_loader, batch_idx_tuples)
 
         # Using torch's dataloader
-        _load_from_torch_and_verify(dataset, batch_sampler, batch_loader,
-                                    split_ratio=0.5)
+        _load_from_torch_and_verify(dataset.training_set, batch_id_sampler,
+                                    batch_loader)
 
         # 2) With compressing
         logging.info('*** Test with batch size {} + loading with compress'
                      .format(batch_size))
-        batch_loader = create_batch_loader(dataset.training_set, compress=True)
+        batch_loader = create_batch_loader(dataset, compress=True)
+        batch_loader.set_context('training')
         _load_directly_and_verify(batch_loader, batch_idx_tuples,
                                   split_ratio=0)
 
 
-def _load_directly_and_verify(batch_loader, batch_idx_tuples, split_ratio):
+def _load_directly_and_verify(batch_loader, batch_idx_tuples,
+                              split_ratio=SPLIT_RATIO):
     expected_nb_streamlines = 0
     for s, idx in batch_idx_tuples:
         expected_nb_streamlines += len(idx)
@@ -97,13 +99,14 @@ def _load_directly_and_verify(batch_loader, batch_idx_tuples, split_ratio):
 
 
 def _load_from_torch_and_verify(
-        dataset, batch_sampler, batch_loader, split_ratio=0.):
+        dataset, batch_sampler, batch_loader, split_ratio=SPLIT_RATIO):
     logging.info('TESTING THE DATA LOADER: Using the batch sampler + loader '
                  'in a dataLoader')
 
-    dataloader = DataLoader(dataset.training_set, batch_sampler=batch_sampler,
+    dataloader = DataLoader(dataset, batch_sampler=batch_sampler,
                             collate_fn=batch_loader.load_batch)
 
+    batch_loader.set_context('training')
     # Iterating
     batch_sizes = []
     for i, batch in enumerate(dataloader):
@@ -119,6 +122,17 @@ def _load_from_torch_and_verify(
                      .format(i + 1, np.mean(batch_sizes), sum(batch_sizes)))
 
         assert sum(batch_sizes) == TEST_EXPECTED_NB_STREAMLINES[0]
+
+    # Confirm that batch loader is using the right context
+    # We cannot really assert anything here but during logs, verify
+    # that the noise is indeed 0, contrary to training.
+    logging.info("*** Test on validation")
+    batch_loader.set_context('validation')
+    batch_sizes = []
+    for i, batch in enumerate(dataloader):
+        # expected_nb_streamlines = batch_sampler.batch_size
+        # _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio)
+        batch_sizes.append(len(batch[0]))
 
 
 def _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio):
@@ -141,5 +155,8 @@ def _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='DEBUG')
+    logging.basicConfig(level='INFO')
+    # Silencing SFT's logger if our logging is in DEBUG mode, because it
+    # typically produces a lot of outputs!
+    set_sft_logger_level('WARNING')
     test_batch_loader()

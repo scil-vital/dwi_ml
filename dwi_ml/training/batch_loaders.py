@@ -43,7 +43,7 @@ Can be used in a torch DataLoader. For instance:
 
 from collections import defaultdict
 import logging
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Tuple
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
@@ -52,7 +52,7 @@ from scilpy.utils.streamlines import compress_sft
 import torch
 import torch.multiprocessing
 
-from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
 
@@ -63,12 +63,15 @@ from dwi_ml.data.processing.volume.interpolation import \
 logger = logging.getLogger('batch_loader_logger')
 
 
-class AbstractBatchLoader:
-    def __init__(self, dataset: MultisubjectSubset,
+class DWIMLAbstractBatchLoader:
+    def __init__(self, dataset: MultiSubjectDataset,
                  streamline_group_name: str, rng: int,
                  step_size: float = None, compress: bool = False,
-                 split_ratio: float = 0., noise_gaussian_size: float = 0.,
-                 noise_gaussian_variability: float = 0.,
+                 split_ratio: float = 0.,
+                 noise_gaussian_size_training: float = 0.,
+                 noise_gaussian_var_training: float = 0.,
+                 noise_gaussian_size_validation: float = None,
+                 noise_gaussian_var_validation: float = None,
                  reverse_ratio: float = 0., log_level=logging.root.level):
         """
         Parameters
@@ -97,19 +100,23 @@ class AbstractBatchLoader:
             The reason for cutting is to help the ML algorithm to track from
             the middle of WM by having already seen half-streamlines. If you
             are using interface seeding, this is not necessary.
-        noise_gaussian_size : float
+        noise_gaussian_size_training : float
             DATA AUGMENTATION: Add random Gaussian noise to streamline
             coordinates with given variance. This corresponds to the std of the
             Gaussian. If step_size is not given, make sure it is smaller than
             your step size to avoid flipping direction. Ex, you could choose
             0.1 * step-size. Noise is truncated to +/- 2*noise_sigma and to
             +/- 0.5 * step-size (if given). Default = 0.
-        noise_gaussian_variability: float
+        noise_gaussian_var_training: float
             DATA AUGMENTATION: If this is given, a variation is applied to the
             streamline_noise_gaussian_size to have more noisy streamlines and
             less noisy streamlines. This means that the real gaussian_size will
-            be a random number between [size - variability, size + variability]
+            be a random number between [size - var, size + var].
             Default = 0.
+        noise_gaussian_size_validation : float or None
+            Same as training
+        noise_gaussian_var_validation: float or None
+            Same as training
         reverse_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
             the batch. You could want to reverse ALL your data and then use
@@ -129,6 +136,14 @@ class AbstractBatchLoader:
         if step_size and compress:
             raise ValueError("You may choose either resampling or compressing,"
                              "but not both.")
+        elif step_size and step_size <= 0:
+            raise ValueError("Step size can't be 0 or less!")
+            # Note. When using
+            # scilpy.tracking.tools.resample_streamlines_step_size, a warning
+            # is shown if step_size < 0.1 or > np.max(sft.voxel_sizes), saying
+            # that the value is suspicious. Not raising the same warnings here
+            # as you may be wanting to test weird things to understand better
+            # your model.
         self.step_size = step_size
         self.compress = compress
 
@@ -142,8 +157,10 @@ class AbstractBatchLoader:
         torch.manual_seed(self.rng)  # Set torch seed
 
         # Data augmentation for streamlines:
-        self.noise_gaussian_size = noise_gaussian_size
-        self.noise_gaussian_variability = noise_gaussian_variability
+        self.noise_gaussian_size_train = noise_gaussian_size_training
+        self.noise_gaussian_var_train = noise_gaussian_var_training
+        self.noise_gaussian_size_valid = noise_gaussian_size_validation
+        self.noise_gaussian_var_valid = noise_gaussian_var_validation
         self.split_ratio = split_ratio
         self.reverse_ratio = reverse_ratio
         if self.split_ratio and not 0 <= self.split_ratio <= 1:
@@ -152,6 +169,12 @@ class AbstractBatchLoader:
             raise ValueError('Reverse ration must be a float between 0 and 1')
 
         logger.setLevel(log_level)
+
+        # For later use, context
+        self.context = None
+        self.context_subset = None
+        self.context_noise_size = None
+        self.context_noise_var = None
 
     @property
     def params_for_checkpoint(self):
@@ -162,8 +185,10 @@ class AbstractBatchLoader:
         params = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'noise_gaussian_size': self.noise_gaussian_size,
-            'noise_gaussian_variability': self.noise_gaussian_variability,
+            'noise_gaussian_size_training': self.noise_gaussian_size_train,
+            'noise_gaussian_var_training': self.noise_gaussian_var_train,
+            'noise_gaussian_size_validation': self.noise_gaussian_size_valid,
+            'noise_gaussian_var_validation': self.noise_gaussian_var_valid,
             'reverse_ratio': self.reverse_ratio,
             'split_ratio': self.split_ratio,
             'step_size': self.step_size,
@@ -178,8 +203,23 @@ class AbstractBatchLoader:
         p.update({'type': str(type(self))})
         return p
 
-    def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]) \
-            -> Union[Tuple[List, Dict], Tuple[List, List, List]]:
+    def set_context(self, context: str):
+        if self.context != context:
+            if context == 'training':
+                self.context_subset = self.dataset.training_set
+                self.context_noise_size = self.noise_gaussian_size_train
+                self.context_noise_var = self.noise_gaussian_var_train
+            elif context == 'validation':
+                self.context_subset = self.dataset.validation_set
+                self.context_noise_size = self.noise_gaussian_size_valid
+                self.context_noise_var = self.noise_gaussian_var_valid
+            else:
+                raise ValueError("Context should be either 'training' or "
+                                 "'validation'.")
+            self.context = context
+        self.dataset.context = context
+
+    def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]):
         """
         Fetches the chosen streamlines for all subjects in batch.
         Pocesses data augmentation.
@@ -202,6 +242,10 @@ class AbstractBatchLoader:
             - final_s_ids_per_subj: Dict[int, slice]
                 The new streamline ids per subj in this augmented batch.
         """
+        if self.context is None:
+            raise ValueError("Context must be set prior to using the batch "
+                             "loader.")
+
         # The batch's streamline ids will change throughout processing because
         # of data augmentation, so we need to do it subject by subject to
         # keep track of the streamline ids. These final ids will correspond to
@@ -216,8 +260,9 @@ class AbstractBatchLoader:
             # No cache for the sft data. Accessing it directly.
             # Note: If this is used through the dataloader, multiprocessing
             # is used. Each process will open an handle.
-            subj_data = self.dataset.subjs_data_list.open_handle_and_getitem(
-                subj)
+            subj_data = \
+                self.context_subset.subjs_data_list.open_handle_and_getitem(
+                    subj)
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
 
             # Get streamlines as sft
@@ -228,7 +273,7 @@ class AbstractBatchLoader:
             if self.step_size:
                 logger.debug("            Resampling: {}"
                              .format(self.step_size))
-                if self.dataset.step_size == self.step_size:
+                if self.context_subset.step_size == self.step_size:
                     logger.debug("Step size is the same as when creating "
                                  "the hdf5 dataset. Not resampling again.")
                 else:
@@ -244,22 +289,21 @@ class AbstractBatchLoader:
             # Adding noise to coordinates
             # Noise is considered in mm so we need to make sure the sft is in
             # rasmm space
-            add_noise = bool(self.noise_gaussian_size and
-                             self.noise_gaussian_size > 0)
-            logger.debug("            Adding noise: {}".format(add_noise))
-            if add_noise:
+            if self.context_noise_size and self.context_noise_size > 0:
+                logger.debug("            Adding noise {} +- {}"
+                             .format(self.context_noise_size,
+                                     self.context_noise_var))
                 sft.to_rasmm()
-                sft = add_noise_to_streamlines(sft,
-                                               self.noise_gaussian_size,
-                                               self.noise_gaussian_variability,
+                sft = add_noise_to_streamlines(sft, self.context_noise_size,
+                                               self.context_noise_var,
                                                self.np_rng, self.step_size)
 
             # Splitting streamlines
             # This increases the batch size, but does not change the total
             # length
-            do_split = bool(self.split_ratio and self.split_ratio > 0)
-            logger.debug("            Splitting: {}".format(do_split))
-            if do_split:
+            if self.split_ratio and self.split_ratio > 0:
+                logger.debug("            Splitting: {}"
+                             .format(self.split_ratio))
                 all_ids = np.arange(len(sft))
                 n_to_split = int(np.floor(len(sft) * self.split_ratio))
                 split_ids = self.np_rng.choice(all_ids, size=n_to_split,
@@ -267,9 +311,8 @@ class AbstractBatchLoader:
                 sft = split_streamlines(sft, self.np_rng, split_ids)
 
             # Reversing streamlines
-            do_reverse = self.reverse_ratio and self.reverse_ratio > 0
-            logger.debug("            Reversing: {}".format(do_reverse))
-            if do_reverse:
+            if self.reverse_ratio and self.reverse_ratio > 0:
+                logger.debug("            Reversing")
                 ids = np.arange(len(sft))
                 self.np_rng.shuffle(ids)
                 reverse_ids = ids[:int(len(ids) * self.reverse_ratio)]
@@ -304,7 +347,7 @@ class AbstractBatchLoader:
         return sft
 
 
-class BatchLoaderOneInput(AbstractBatchLoader):
+class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
     """
     Loads:
         input = one volume group
@@ -312,11 +355,13 @@ class BatchLoaderOneInput(AbstractBatchLoader):
                 (possibly with its neighborhood)
         target = the whole streamlines as sequences.
     """
-    def __init__(self, dataset: MultisubjectSubset, input_group_name,
+    def __init__(self, dataset: MultiSubjectDataset, input_group_name,
                  streamline_group_name: str, rng: int, compress: bool,
                  step_size: float = None, split_ratio: float = 0.,
-                 noise_gaussian_size: float = 0.,
-                 noise_gaussian_variability: float = 0.,
+                 noise_gaussian_size_training: float = 0.,
+                 noise_gaussian_var_training: float = 0.,
+                 noise_gaussian_size_validation: float = 0.,
+                 noise_gaussian_var_validation: float = 0.,
                  reverse_ratio: float = 0., wait_for_gpu: bool = False,
                  neighborhood_points: np.ndarray = None,
                  log_level=logging.root.level):
@@ -335,8 +380,10 @@ class BatchLoaderOneInput(AbstractBatchLoader):
             None or [] mean that no neighborhood is added. Default: None.
         """
         super().__init__(dataset, streamline_group_name, rng, step_size,
-                         compress, split_ratio, noise_gaussian_size,
-                         noise_gaussian_variability, reverse_ratio,
+                         compress, split_ratio, noise_gaussian_size_training,
+                         noise_gaussian_var_training,
+                         noise_gaussian_size_validation,
+                         noise_gaussian_var_validation, reverse_ratio,
                          log_level)
 
         # toDo. Would be more logical to send this as params when using
@@ -381,9 +428,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         return states
 
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
-                   save_batch_input_mask: bool = False) \
-            -> Union[Tuple[List, Dict],
-                     Tuple[List, List, List]]:
+                   save_batch_input_mask: bool = False):
         """
         Same as super but also interpolated the underlying inputs (if
         wanted) for all subjects in batch.
@@ -442,7 +487,9 @@ class BatchLoaderOneInput(AbstractBatchLoader):
         """
         Get the DWI (depending on volume: as raw, SH, fODF, etc.) volume for
         each point in each streamline (+ depending on options: neighborhood,
-        and preceding diretion)
+        and preceding diretion).
+
+        Current context must be set.
 
         Params
         ------
@@ -481,7 +528,7 @@ class BatchLoaderOneInput(AbstractBatchLoader):
             # If data is lazy, get volume from cache or send to cache if
             # it wasn't there yet.
             logger.debug("            Data loader: loading input volume.")
-            data_tensor = self.dataset.get_volume_verify_cache(
+            data_tensor = self.context_subset.get_volume_verify_cache(
                 subj, self.input_group_idx, device=device, non_blocking=True)
 
             # Prepare the volume data, possibly adding neighborhood

@@ -16,8 +16,8 @@ from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_loaders import (
-    AbstractBatchLoader, BatchLoaderOneInput)
-from dwi_ml.training.batch_samplers import DWIMLBatchSampler
+    DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
+from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.gradient_norm import compute_gradient_norm
 from dwi_ml.training.monitoring import (
     BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
@@ -45,15 +45,15 @@ class DWIMLAbstractTrainer:
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
-                 batch_sampler_training: DWIMLBatchSampler,
-                 batch_loader_training: AbstractBatchLoader,
-                 batch_sampler_validation: DWIMLBatchSampler = None,
-                 batch_loader_validation: AbstractBatchLoader = None,
+                 batch_sampler: DWIMLBatchIDSampler,
+                 batch_loader: DWIMLAbstractBatchLoader,
                  model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
-                 max_batches_per_epoch: int = 1000, patience: int = None,
-                 nb_cpu_processes: int = 0, use_gpu: bool = False,
+                 max_batches_per_epoch_training: int = 1000,
+                 max_batches_per_epoch_validation: Union[int, None] = 1000,
+                 patience: int = None, nb_cpu_processes: int = 0,
+                 use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False,
                  log_level=logging.root.level):
@@ -68,17 +68,13 @@ class DWIMLAbstractTrainer:
         experiment_name: str
             Name of this experiment. This will also be the name that will
             appear online for comet.ml experiment.
-        batch_sampler_training: DWIMLBatchSampler
-            Instantiated class used for sampling batches of training data.
-            Data in batch_sampler_training.source_data must be already loaded.
-        batch_loader_training: AbstractBatchLoader
+        batch_sampler: DWIMLBatchIDSampler
+            Instantiated class used for sampling batches.
+            Data in batch_sampler.dataset must be already loaded.
+        batch_loader: DWIMLAbstractBatchLoader
             Instantiated class with a load_batch method able to load data
-            associated to sampled batch ids.
-        batch_sampler_validation: DWIMLBatchSampler
-            Similar as before, for the validation set. Can be set to None if no
-            validation is used. Then, best model is based on training loss.
-        batch_loader_validation: AbstractBatchLoader
-            Again, similar as before but can be set to None.
+            associated to sampled batch ids. Data in batch_sampler.dataset must
+            be already loaded.
         model_uses_streamlines: bool
             If true, the batch streamlines will be sent to the model when
             calling the forward method. Else, only the inputs. Default: False.
@@ -89,7 +85,10 @@ class DWIMLAbstractTrainer:
             (torch's default).
         max_epochs: int
             Maximum number of epochs. Default = 10, for no good reason.
-        max_batches_per_epoch: int
+        max_batches_per_epoch_training: int
+            Maximum number of batches per epoch. Default = 10000, for no good
+            reason.
+        max_batches_per_epoch_validation: int
             Maximum number of batches per epoch. Default = 10000, for no good
             reason.
         patience: int
@@ -146,22 +145,21 @@ class DWIMLAbstractTrainer:
 
         # Note that the training/validation sets are contained in the
         # data_loaders.data_source
-        self.train_batch_sampler = batch_sampler_training
-        self.valid_batch_sampler = batch_sampler_validation
-        if self.valid_batch_sampler is None:
+        self.batch_sampler = batch_sampler
+        if self.batch_sampler.dataset.validation_set.nb_subjects == 0:
             self.use_validation = False
             self.logger.warning(
-                "WARNING! There is not validation set. Loss for best epoch "
+                "WARNING! There is no validation set. Loss for best epoch "
                 "monitoring will be the training loss. \n"
                 "Best practice is to have a validation set.")
         else:
             self.use_validation = True
-        self.train_batch_loader = batch_loader_training
-        self.valid_batch_loader = batch_loader_validation
+        self.batch_loader = batch_loader
         self.model = model
         self.model_uses_streamlines = model_uses_streamlines
         self.max_epochs = max_epochs
-        self.max_batches_per_epochs = max_batches_per_epoch
+        self.max_batches_per_epochs_train = max_batches_per_epoch_training
+        self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.patience = patience
@@ -181,15 +179,8 @@ class DWIMLAbstractTrainer:
             if torch.cuda.is_available():
                 self.device = torch.device('cuda')
 
-                # Setting the rng seed
-                if (self.use_validation and
-                        self.train_batch_sampler.rng !=
-                        self.valid_batch_sampler.rng):
-                    raise ValueError("Training and validation batch samplers "
-                                     "do not have the same rng. Please verify "
-                                     "the code.")
-                # If you see a hint error below, upgrade torch.
-                torch.cuda.manual_seed(self.train_batch_sampler.rng)
+                # If you see a hint error below in code editor, upgrade torch.
+                torch.cuda.manual_seed(self.batch_sampler.rng)
 
                 logging.info("We will be using GPU!")
             else:
@@ -210,7 +201,7 @@ class DWIMLAbstractTrainer:
             # We won't use early stopping to stop the epoch, but we will use
             # it as monitor of the best epochs.
             self.best_epoch_monitoring = BestEpochMonitoring(
-                patience=self.max_batches_per_epochs + 1)
+                patience=self.max_epochs + 1)
 
         self.current_epoch = 0
 
@@ -235,6 +226,30 @@ class DWIMLAbstractTrainer:
         if not from_checkpoint:
             filename = os.path.join(self.saving_path, "parameters.json")
             self.save_params_to_json(filename)
+
+        # ---------------------
+        # Dataloader: usage will depend on context
+        # ---------------------
+        # Create DataLoaders from the BatchSamplers
+        #   * Before usage, context must be set for the batch sampler and the
+        #     batch loader, to use appropriate parameters.
+        #   * Pin memory if interpolation is done by workers; this means that
+        #     dataloader output is on GPU, ready to be fed to the model.
+        #     Otherwise, dataloader output is kept on CPU, and the main thread
+        #     sends volumes and coords on GPU for interpolation.
+        self.logger.debug("- Instantiating dataloaders...")
+        self.train_dataloader = DataLoader(
+            dataset=self.batch_sampler.dataset.training_set,
+            batch_sampler=self.batch_sampler,
+            num_workers=self.nb_cpu_processes,
+            collate_fn=self.batch_loader.load_batch,
+            pin_memory=self.use_gpu)
+        self.valid_dataloader = DataLoader(
+            dataset=self.batch_sampler.dataset.validation_set,
+            batch_sampler=self.batch_sampler,
+            num_workers=self.nb_cpu_processes,
+            collate_fn=self.batch_loader.load_batch,
+            pin_memory=self.use_gpu)
 
         # ----------------------
         # Launching optimizer!
@@ -265,7 +280,8 @@ class DWIMLAbstractTrainer:
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
-            'max_batches_per_epoch': self.max_batches_per_epochs,
+            'max_batches_per_epoch_training': self.max_batches_per_epochs_train,
+            'max_batches_per_epoch_validation': self.max_batches_per_epochs_valid,
             'patience': self.patience,
             'nb_cpu_processes': self.nb_cpu_processes,
             'use_gpu': self.use_gpu,
@@ -296,15 +312,9 @@ class DWIMLAbstractTrainer:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
                  'Trainer params': self.params_for_json_prints,
-                 'Training sampler params': self.train_batch_sampler.params,
-                 'Validation sampler params':
-                     self.valid_batch_sampler.params if
-                     self.valid_batch_sampler is not None else None,
-                 'Train loader params':
-                     self.train_batch_loader.params_for_json_prints,
-                 'Validation loader params':
-                     self.valid_batch_loader.params_for_json_prints if
-                     self.valid_batch_loader is not None else None,
+                 'Sampler params': self.batch_sampler.params,
+                 'Batch loader params':
+                     self.batch_loader.params_for_json_prints,
                  },
                 indent=4, separators=(',', ': ')))
 
@@ -351,9 +361,10 @@ class DWIMLAbstractTrainer:
         Returns:
              (nb_training_batches_per_epoch, nb_validation_batches_per_epoch)
         """
-        return self.max_batches_per_epochs, self.max_batches_per_epochs
+        return (self.max_batches_per_epochs_train,
+                self.max_batches_per_epochs_valid)
 
-    def train_and_validate(self, *args):
+    def train_and_validate(self):
         """
         Train + validates the model (+ computes loss)
 
@@ -365,10 +376,6 @@ class DWIMLAbstractTrainer:
             - saves the model if the loss is good.
         - Checks if allowed training time is exceeded.
 
-        Parameters
-        ----------
-        All *args will be passed all the way to _train_one_epoch and
-        _train_one_batch, in case you want to override them.
         """
         self.logger.debug("Trainer {}: \n"
                           "Running the model {}.\n\n"
@@ -380,53 +387,6 @@ class DWIMLAbstractTrainer:
             (self.nb_train_batches_per_epoch,
              self.nb_valid_batches_per_epoch) = \
                 self.estimate_nb_batches_per_epoch()
-
-        # Instantiate comet experiment
-        # If self.comet_key is None: new experiment, will create a key
-        # Else, resuming from checkpoint. Will continue with given key.
-        self._init_comet()
-        if self.comet_exp:
-            train_context = self.comet_exp.train
-            valid_context = self.comet_exp.validate
-        else:
-            # Instantiating contexts doing nothing instead
-            train_context = None  # contextlib2.nullcontext
-            valid_context = None  # contextlib2.nullcontext
-
-        # Create DataLoaders from the BatchSamplers
-        #   * Pin memory if interpolation is done by workers; this means that
-        #     dataloader output is on GPU, ready to be fed to the model.
-        #     Otherwise, dataloader output is kept on CPU, and the main thread
-        #     sends volumes and coords on GPU for interpolation.
-        self.logger.debug("- Instantiating dataloaders...")
-
-        # toDo We wouldn't need training / valid batch samplers and loaders if
-        #  I knew how to add option 'training' and 'validation' to the
-        #  __iter__ method or to the collate_fn (load_batch). But maybe the
-        #  user wants separate options. During validation and training. Ex:
-        #  less on-the-fly noise addition to the streamlines during validation?
-        #  But I don't see why we wouldn't want the same batch sampler. We
-        #  could have only one and use the same.copy() and change the value of
-        #  the subset to training or validation.
-        #  If we also don't think users want different load_batch, solution
-        #  could be (for the dataloader) the collate_fn could be nothing, and
-        #  we call load_data() ourselves after, with options.
-
-        train_dataloader = DataLoader(
-            self.train_batch_sampler.dataset,
-            batch_sampler=self.train_batch_sampler,
-            num_workers=self.nb_cpu_processes,
-            collate_fn=self.train_batch_loader.load_batch,
-            pin_memory=self.use_gpu)
-
-        valid_dataloader = None
-        if self.use_validation:
-            valid_dataloader = DataLoader(
-                self.valid_batch_sampler.dataset,
-                batch_sampler=self.valid_batch_sampler,
-                num_workers=self.nb_cpu_processes,
-                collate_fn=self.valid_batch_loader.load_batch,
-                pin_memory=self.use_gpu)
 
         # Instantiating our IterTimer.
         # After each iteration, checks that the maximum allowed time has not
@@ -444,14 +404,13 @@ class DWIMLAbstractTrainer:
             # Training
             self.logger.info("**********TRAINING: Epoch #{}*************"
                              .format(epoch + 1))
-            self.train_one_epoch(train_dataloader, train_context, epoch)
+            self.train_one_epoch(epoch)
 
             # Validation
             if self.use_validation:
                 self.logger.info("**********VALIDATION: Epoch #{}*************"
                                  .format(epoch + 1))
-                self.validate_one_epoch(valid_dataloader, valid_context, epoch,
-                                        *args)
+                self.validate_one_epoch(epoch)
 
                 last_loss = self.valid_loss_monitor.epochs_means_history[-1]
             else:
@@ -479,18 +438,23 @@ class DWIMLAbstractTrainer:
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
 
-    def train_one_epoch(self, train_dataloader, train_context, epoch):
+    def train_one_epoch(self, epoch):
         """
         Train one epoch of the model: loop on all batches.
 
         All *args will be passed all to run_one_batch, which you should
         implement, in case you need some variables.
         """
+        # Setting contexts
+        self.batch_loader.set_context('training')
+        self.batch_sampler.set_context('training')
+        comet_context = self.comet_exp.train if self.comet_exp else None
+
         # Make sure there are no existing HDF handles if using parallel workers
         if (self.nb_cpu_processes > 0 and
-                self.train_batch_sampler.dataset.is_lazy):
-            self.train_batch_sampler.dataset.close_all_handles()
-            self.train_batch_sampler.dataset.volume_cache_manager = None
+                self.batch_sampler.context_subset.is_lazy):
+            self.batch_sampler.context_subset.close_all_handles()
+            self.batch_sampler.context_subset.volume_cache_manager = None
 
         if self.comet_exp:
             self.comet_exp.log_metric("current_epoch", self.current_epoch)
@@ -503,7 +467,7 @@ class DWIMLAbstractTrainer:
         # If we add our sub-loggers there, they duplicate.
         # A handler is added in the root logger, and sub-loggers propagate
         # their message.
-        with tqdm_logging_redirect(train_dataloader, ncols=100,
+        with tqdm_logging_redirect(self.train_dataloader, ncols=100,
                                    total=self.nb_train_batches_per_epoch,
                                    loggers=[logging.root],
                                    tqdm_class=tqdm) as pbar:
@@ -518,12 +482,11 @@ class DWIMLAbstractTrainer:
                     break
 
                 batch_mean_loss, grad_norm = self.run_one_batch(
-                    data, is_training=True,
-                    batch_loader=self.train_batch_loader)
+                    data, is_training=True)
 
                 # Update information and logs
                 self._update_loss_logs_after_batch(
-                    train_context, epoch, batch_id, batch_mean_loss,
+                    comet_context, epoch, batch_id, batch_mean_loss,
                     self.train_loss_monitor)
                 self._update_gradnorm_logs_after_batch(epoch, batch_id,
                                                        grad_norm)
@@ -536,28 +499,30 @@ class DWIMLAbstractTrainer:
         self.logger.info("Finishing epoch...")
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
-        self._update_loss_logs_after_epoch(train_context, 'Training_', epoch,
+        self._update_loss_logs_after_epoch(comet_context, 'Training_', epoch,
                                            self.train_loss_monitor)
-        self._update_gradnorm_logs_after_epoch(train_context, epoch)
+        self._update_gradnorm_logs_after_epoch(comet_context, epoch)
 
-    def validate_one_epoch(self, valid_dataloader, valid_context, epoch,
-                           *args):
+    def validate_one_epoch(self, epoch):
         """
         Validate one epoch of the model: loop on all batches.
 
         All *args will be passed all to run_one_batch, which you should
         implement, in case you need some variables.
         """
-        self.logger.debug('Unused args in validate: {}'.format(args))
+        # Setting contexts
+        self.batch_loader.set_context('validation')
+        self.batch_sampler.set_context('validation')
+        comet_context = self.comet_exp.validate if self.comet_exp else None
 
         # Make sure there are no existing HDF handles if using parallel workers
         if (self.nb_cpu_processes > 0 and
-                self.valid_batch_sampler.dataset.is_lazy):
-            self.valid_batch_sampler.dataset.hdf_handle = None
-            self.valid_batch_sampler.dataset.volume_cache_manager = None
+                self.batch_sampler.context_subset.is_lazy):
+            self.batch_sampler.context_subset.close_all_handles()
+            self.batch_sampler.context_subset.volume_cache_manager = None
 
         # Validate all batches
-        with tqdm_logging_redirect(valid_dataloader, ncols=100,
+        with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
                                    total=self.nb_valid_batches_per_epoch,
                                    loggers=[logging.root],
                                    tqdm_class=tqdm) as pbar:
@@ -572,12 +537,11 @@ class DWIMLAbstractTrainer:
 
                 # Validate this batch: forward propagation + loss
                 batch_mean_loss, _ = self.run_one_batch(
-                    data, is_training=False,
-                    batch_loader=self.valid_batch_loader)
+                    data, is_training=False)
                 self.valid_loss_monitor.update(batch_mean_loss)
 
                 self._update_loss_logs_after_batch(
-                    valid_context, epoch, batch_id, batch_mean_loss,
+                    comet_context, epoch, batch_id, batch_mean_loss,
                     self.valid_loss_monitor)
 
             # Explicitly delete iterator to kill threads and free memory before
@@ -586,7 +550,7 @@ class DWIMLAbstractTrainer:
 
         # Save info
         self.valid_loss_monitor.end_epoch()
-        self._update_loss_logs_after_epoch(valid_context, 'Validation_', epoch,
+        self._update_loss_logs_after_epoch(comet_context, 'Validation_', epoch,
                                            self.valid_loss_monitor)
 
     def _update_loss_logs_after_batch(
@@ -698,7 +662,7 @@ class DWIMLAbstractTrainer:
                 "best_epoch",
                 self.best_epoch_monitoring.best_epoch)
 
-    def run_one_batch(self, data, is_training: bool, batch_loader):
+    def run_one_batch(self, data, is_training: bool):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -713,9 +677,6 @@ class DWIMLAbstractTrainer:
         is_training : bool
             If True, record the computation graph and backprop through the
             model parameters.
-        batch_loader: AbstractBatchLoader
-            Either self.train_batch_loader or valid_batch_loader, depending
-            on the case.
 
         Returns
         -------
@@ -749,10 +710,8 @@ class DWIMLAbstractTrainer:
     @classmethod
     def init_from_checkpoint(
             cls, model: MainModelAbstract, experiments_path, experiment_name,
-            train_batch_sampler: DWIMLBatchSampler,
-            train_batch_loader: AbstractBatchLoader,
-            valid_batch_sampler: Union[DWIMLBatchSampler, None],
-            valid_batch_loader: Union[AbstractBatchLoader, None],
+            batch_sampler: DWIMLBatchIDSampler,
+            batch_loader: DWIMLAbstractBatchLoader,
             checkpoint_state: dict, new_patience,
             new_max_epochs, log_level):
         """
@@ -764,10 +723,7 @@ class DWIMLAbstractTrainer:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
         trainer = cls(model, experiments_path, experiment_name,
-                      batch_sampler_training=train_batch_sampler,
-                      batch_loader_training=train_batch_loader,
-                      batch_sampler_validation=valid_batch_sampler,
-                      batch_loader_validation=valid_batch_loader,
+                      batch_sampler=batch_sampler, batch_loader=batch_loader,
                       from_checkpoint=True, log_level=log_level,
                       **checkpoint_state['params_for_init'])
 
@@ -794,11 +750,8 @@ class DWIMLAbstractTrainer:
 
         # Set RNG states
         torch.set_rng_state(current_states['torch_rng_state'])
-        trainer.train_batch_sampler.np_rng.set_state(
+        trainer.batch_sampler.np_rng.set_state(
             current_states['numpy_rng_state'])
-        if trainer.use_validation:
-            trainer.valid_batch_sampler.np_rng.set_state(
-                current_states['numpy_rng_state'])
         if trainer.use_gpu:
             torch.cuda.set_rng_state(current_states['torch_cuda_state'])
 
@@ -867,7 +820,7 @@ class DWIMLAbstractTrainer:
             'torch_rng_state': torch.random.get_rng_state(),
             'torch_cuda_state':
                 torch.cuda.get_rng_state() if self.use_gpu else None,
-            'numpy_rng_state': self.train_batch_sampler.np_rng.get_state(),
+            'numpy_rng_state': self.batch_sampler.np_rng.get_state(),
             'best_epoch_monitoring_state':
                 self.best_epoch_monitoring.get_state() if
                 self.best_epoch_monitoring else None,
@@ -880,24 +833,14 @@ class DWIMLAbstractTrainer:
         # Additional params are the parameters necessary to load data, batch
         # samplers/loaders (see the example script dwiml_train_model.py).
         checkpoint_info = {
-            'train_sampler_params': self.train_batch_sampler.params,
-            'valid_sampler_params': None,
-            'train_data_params': self.train_batch_sampler.dataset.params,
-            'valid_data_params': None,
-            'train_loader_params':
-                self.train_batch_loader.params_for_checkpoint,
-            'valid_loader_params': None,
+            # todo Verify:
+            #  batch sampler and batch loader should have the same dataset
+            'dataset_params': self.batch_sampler.dataset.params,
+            'batch_sampler_params': self.batch_sampler.params,
+            'batch_loader_params': self.batch_loader.params_for_checkpoint,
             'params_for_init': self.params_for_checkpoint,
             'current_states': current_states
         }
-
-        if self.use_validation:
-            checkpoint_info.update({
-                'valid_sampler_params': self.valid_batch_sampler.params,
-                'valid_data_params': self.valid_batch_sampler.dataset.params,
-                'valid_loader_params':
-                    self.valid_batch_loader.params_for_checkpoint
-            })
 
         return checkpoint_info
 
@@ -965,31 +908,32 @@ class DWIMLAbstractTrainer:
 
 
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
+    batch_loader: DWIMLBatchLoaderOneInput
+
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
-                 batch_sampler_training: DWIMLBatchSampler,
-                 batch_loader_training: BatchLoaderOneInput,
-                 batch_sampler_validation: DWIMLBatchSampler = None,
-                 batch_loader_validation: BatchLoaderOneInput = None,
+                 batch_sampler: DWIMLBatchIDSampler,
+                 batch_loader: DWIMLBatchLoaderOneInput,
                  model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001,
                  weight_decay: float = 0.01, max_epochs: int = 10,
-                 max_batches_per_epoch: int = 1000, patience: int = None,
-                 nb_cpu_processes: int = 0, use_gpu: bool = False,
+                 max_batches_per_epoch_training: int = 1000,
+                 max_batches_per_epoch_validation: Union[int, None] = 1000,
+                 patience: int = None, nb_cpu_processes: int = 0,
+                 use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, log_level=logging.root.level):
         super().__init__(model, experiments_path, experiment_name,
-                         batch_sampler_training, batch_loader_training,
-                         batch_sampler_validation, batch_loader_validation,
-                         model_uses_streamlines,
+                         batch_sampler, batch_loader, model_uses_streamlines,
                          learning_rate, weight_decay, max_epochs,
-                         max_batches_per_epoch, patience,
+                         max_batches_per_epoch_training,
+                         max_batches_per_epoch_validation,
+                         patience,
                          nb_cpu_processes, use_gpu, comet_workspace,
                          comet_project, from_checkpoint, log_level)
 
-    def run_one_batch(self, data, is_training: bool,
-                      batch_loader: BatchLoaderOneInput):
+    def run_one_batch(self, data, is_training: bool):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -1007,9 +951,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         is_training : bool
             If True, record the computation graph and backprop through the
             model parameters.
-        batch_loader: AbstractBatchLoader
-            Either self.train_batch_loader or valid_batch_loader, depending
-            on the case.
 
         Returns
         -------
@@ -1023,15 +964,17 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             # If training, enable gradients for backpropagation.
             # Uses torch's module train(), which "turns on" the training mode.
             self.model.train()
+            self.batch_loader.set_context('training')
             grad_context = torch.enable_grad
         else:
             # If evaluating, turn gradients off for back-propagation
             # Uses torch's module eval(), which "turns off" the training mode.
             self.model.eval()
+            self.batch_loader.set_context('validation')
             grad_context = torch.no_grad
 
         with grad_context():
-            if batch_loader.wait_for_gpu:
+            if self.batch_loader.wait_for_gpu:
                 if not self.use_gpu:
                     self.logger.warning(
                         "Batch sampler has been created with use_gpu=True, so "
@@ -1046,13 +989,13 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 batch_streamlines, final_s_ids_per_subj = data
 
                 # toDo. Could we convert streamlines to tensor already when
-                # loading, and send to GPU here? Would need to modify methods
-                # such as extend_neighborhood_with_coods.
+                #  loading, and send to GPU here? Would need to modify methods
+                #  such as extend_neighborhood_with_coods.
 
                 # Getting the inputs points from the volumes. Usually done in
                 # load_batch but we preferred to wait here to have a chance to
                 # run things on GPU.
-                batch_inputs = batch_loader.compute_inputs(
+                batch_inputs = self.batch_loader.compute_inputs(
                     batch_streamlines, final_s_ids_per_subj,
                     device=self.device)
 

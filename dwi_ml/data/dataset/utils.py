@@ -39,7 +39,7 @@ def prepare_multisubjectdataset(args, load_training=True, load_validation=True,
     with Timer("\nPreparing testing and validation sets",
                newline=True, color='blue'):
         dataset = MultiSubjectDataset(
-            args.hdf5_file, lazy=args.lazy, subset_cache_size=args.cache_size,
+            args.hdf5_file, lazy=args.lazy, cache_size=args.cache_size,
             log_level=log_level)
         dataset.load_data(load_training, load_validation, load_testing)
 

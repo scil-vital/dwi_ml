@@ -164,6 +164,11 @@ class HDF5Creator:
         # -------- Performing checks
 
         # Check that all subjects exist.
+        logging.debug("Preparing hdf5 creator for \n"
+                      "  training subjs {}, \n"
+                      "  validation subjs {},\n"
+                      "  testing subjs {}"
+                      .format(training_subjs, validation_subjs, testing_subjs))
         self.all_subjs = training_subjs + validation_subjs + testing_subjs
         self._verify_subjects_list()
 
@@ -233,15 +238,22 @@ class HDF5Creator:
         Raises error if some subjects do not exit in the root folder. Prints
         logging info if some subjects in the root folder were not chosen.
         """
-        # Find list of subjects existing  inside folder
-        all_subjs = [str(s.name) for s in Path(self.root_folder).iterdir()
-                     if s.is_dir()]
-        if len(all_subjs) == 0:
+        # Find list of subjects existing inside folder
+        possible_subjs = [str(s.name) for s in Path(self.root_folder).iterdir()
+                          if s.is_dir()]
+        if len(possible_subjs) == 0:
             raise ValueError('No subject found in dwi_ml folder: '
                              '{}'.format(self.root_folder))
 
+        # Check that no subject was added twice. We do not support it.
+        unique_subjs = list(set(self.all_subjs))
+        if len(unique_subjs) != len(self.all_subjs):
+            raise ValueError("Some subjects were added twice! We do not "
+                             "support this. {}".format(self.all_subjs))
+
         # Checking that chosen subjects exist.
-        non_existing_subjs = [s for s in all_subjs if s not in all_subjs]
+        non_existing_subjs = [s for s in self.all_subjs if s not in
+                              possible_subjs]
         if len(non_existing_subjs) > 0:
             raise ValueError(
                 'Following subjects were chosen for the hdf5 file but their '
@@ -249,11 +261,12 @@ class HDF5Creator:
                 .format(self.root_folder, non_existing_subjs))
 
         # Checking if some existing subjects were not chosen.
-        ignored_subj = [s for s in all_subjs if s not in all_subjs]
+        ignored_subj = [s for s in possible_subjs if s not in self.all_subjs]
         if len(ignored_subj) > 0:
-            logging.info("    Careful! NOT processing subjects {} "
-                         "because they were not included in training set nor "
-                         "validation set!".format(ignored_subj))
+            logging.info("    Careful! NOT processing subjects {} from folder "
+                         "because they were not included in training set, "
+                         "validation set nor testing set!"
+                         .format(ignored_subj))
 
     def _check_files_presence(self):
         """

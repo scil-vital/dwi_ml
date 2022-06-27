@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Union
+from typing import Union, List
 
 import numpy as np
 import torch
@@ -48,8 +48,9 @@ class DWIMLAbstractTrainer:
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
                  model_uses_streamlines: bool = False,
-                 learning_rate: float = 0.001,
-                 weight_decay: float = 0.01, max_epochs: int = 10,
+                 learning_rate: float = 0.001, weight_decay: float = 0.01,
+                 use_radam: bool = False, betas: List[float] = None,
+                 max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None, nb_cpu_processes: int = 0,
@@ -83,6 +84,11 @@ class DWIMLAbstractTrainer:
         weight_decay: float
             Add a weight decay penalty on the parameters. Default: 0.01.
             (torch's default).
+        use_radam: bool
+            If true, use RAdam optimizer. Else, use Adam.
+        betas: List[float]
+            With RAdam optimizer, beta values. Default: None (use torch's
+            default; (0.9, 0.999).
         max_epochs: int
             Maximum number of epochs. Default = 10, for no good reason.
         max_batches_per_epoch_training: int
@@ -162,6 +168,14 @@ class DWIMLAbstractTrainer:
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+        self.betas = betas
+        self.use_radam = use_radam
+        if self.betas is not None and self.use_radam:
+            logger.warning("Beta values were given, but use_radam option was "
+                           "not chosen. This value is discarded.")
+            self.betas = None
+        if self.betas is None and self.use_radam:
+            self.betas = (0.9, 0.99)
         self.patience = patience
         self.nb_cpu_processes = nb_cpu_processes
         self.use_gpu = use_gpu
@@ -268,9 +282,16 @@ class DWIMLAbstractTrainer:
         self.logger.debug("Initiating trainer: {}".format(type(self)))
         self.logger.debug("This trainer will use Adam optimization on the "
                           "following model.parameters: {}".format(list_params))
-        self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                          lr=learning_rate,
-                                          weight_decay=weight_decay)
+
+        if self.use_radam:
+            self.optimizer = torch.optim.RAdam(self.model.parameters(),
+                                               lr=learning_rate,
+                                               betas=self.betas,
+                                               weight_decay=weight_decay)
+        else:
+            self.optimizer = torch.optim.Adam(self.model.parameters(),
+                                              lr=learning_rate,
+                                              weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
@@ -919,8 +940,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLBatchLoaderOneInput,
                  model_uses_streamlines: bool = False,
-                 learning_rate: float = 0.001,
-                 weight_decay: float = 0.01, max_epochs: int = 10,
+                 learning_rate: float = 0.001, weight_decay: float = 0.01,
+                 use_radam: bool = False, betas: List[float] = None,
+                 max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None, nb_cpu_processes: int = 0,
@@ -929,11 +951,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                  from_checkpoint: bool = False, log_level=logging.root.level):
         super().__init__(model, experiments_path, experiment_name,
                          batch_sampler, batch_loader, model_uses_streamlines,
-                         learning_rate, weight_decay, max_epochs,
-                         max_batches_per_epoch_training,
+                         learning_rate, weight_decay, use_radam, betas,
+                         max_epochs, max_batches_per_epoch_training,
                          max_batches_per_epoch_validation,
-                         patience,
-                         nb_cpu_processes, use_gpu, comet_workspace,
+                         patience, nb_cpu_processes, use_gpu, comet_workspace,
                          comet_project, from_checkpoint, log_level)
 
     def run_one_batch(self, data, is_training: bool):

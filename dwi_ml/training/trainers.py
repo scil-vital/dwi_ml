@@ -388,6 +388,9 @@ class DWIMLAbstractTrainer:
              self.nb_valid_batches_per_epoch) = \
                 self.estimate_nb_batches_per_epoch()
 
+        # Intantiating comet
+        self._init_comet()
+
         # Instantiating our IterTimer.
         # After each iteration, checks that the maximum allowed time has not
         # been reached.

@@ -20,7 +20,8 @@ from dwi_ml.training.batch_loaders import (
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.gradient_norm import compute_gradient_norm
 from dwi_ml.training.monitoring import (
-    BestEpochMonitoring, EarlyStoppingError, IterTimer, ValueHistoryMonitor)
+    BestEpochMonitoring, IterTimer, ValueHistoryMonitor, TimeMonitor,
+    EarlyStoppingError)
 
 logger = logging.getLogger('train_logger')
 # If the remaining time is less than one epoch + X seconds, we will quit
@@ -234,6 +235,8 @@ class DWIMLAbstractTrainer:
         self.train_loss_monitor = ValueHistoryMonitor("Training loss")
         self.valid_loss_monitor = ValueHistoryMonitor("Validation loss")
         self.grad_norm_monitor = ValueHistoryMonitor("Grad Norm")
+        self.training_time_monitor = TimeMonitor()
+        self.validation_time_monitor = TimeMonitor()
 
         # Comet values will be instantiated in train().
         self.comet_exp = None
@@ -412,7 +415,7 @@ class DWIMLAbstractTrainer:
              self.nb_valid_batches_per_epoch) = \
                 self.estimate_nb_batches_per_epoch()
 
-        # Intantiating comet
+        # Instantiating comet
         self._init_comet()
 
         # Instantiating our IterTimer.
@@ -439,31 +442,40 @@ class DWIMLAbstractTrainer:
                                  .format(epoch + 1))
                 self.validate_one_epoch(epoch)
 
-                last_loss = self.valid_loss_monitor.epochs_means_history[-1]
+                mean_epoch_loss = self.valid_loss_monitor.epochs_means[epoch]
             else:
-                last_loss = self.train_loss_monitor.epochs_means_history[-1]
+                mean_epoch_loss = self.train_loss_monitor.epochs_means[epoch]
 
             # Updating info
-            self.best_epoch_monitoring.update(last_loss, epoch)
+            self.best_epoch_monitoring.update(mean_epoch_loss, epoch)
+
+            # Check if current best has been reached
+            if self.best_epoch_monitoring.best_epoch == epoch:
+                self._save_info_best_epoch()
+
+            # End of epoch, save checkpoint for resuming later
+            self.save_checkpoint()
 
             # Check for early stopping
             if self.best_epoch_monitoring.is_patience_reached:
-                self.save_checkpoint()
-                raise EarlyStoppingError(
+                logger.warning(
                     "Early stopping! Loss has not improved after {} epochs!\n"
                     "Best result: {}; At epoch #{}"
                     .format(self.patience,
                             self.best_epoch_monitoring.best_value,
                             self.best_epoch_monitoring.best_epoch))
+                break
 
-            # Else, check if current best has been reached
-            # If that is the case, the monitor has just reset its n_bad_epochs
-            # to 0
-            if self.best_epoch_monitoring.n_bad_epochs == 0:
-                self._save_info_best_epoch()
-
-            # End of epoch, save checkpoint for resuming later
-            self.save_checkpoint()
+        self._save_log_from_array(self.train_loss_monitor.epochs_means,
+                                  "training_loss_per_epoch.npy")
+        self._save_log_from_array(self.valid_loss_monitor.epochs_means,
+                                  "validation_loss_per_epoch.npy")
+        self._save_log_from_array(self.grad_norm_monitor.epochs_means,
+                                  "gradient_norm.npy")
+        self._save_log_from_array(self.training_time_monitor.epoch_durations,
+                                  "training_epochs_duration")
+        self._save_log_from_array(self.validation_time_monitor.epoch_durations,
+                                  "validation_epochs_duration")
 
     def train_one_epoch(self, epoch):
         """
@@ -472,6 +484,11 @@ class DWIMLAbstractTrainer:
         All *args will be passed all to run_one_batch, which you should
         implement, in case you need some variables.
         """
+        logging.warning(epoch)
+        self.training_time_monitor.start_new_epoch()
+        self.train_loss_monitor.start_new_epoch()
+        self.grad_norm_monitor.start_new_epoch()
+
         # Setting contexts
         self.batch_loader.set_context('training')
         self.batch_sampler.set_context('training')
@@ -513,10 +530,10 @@ class DWIMLAbstractTrainer:
 
                 # Update information and logs
                 self.train_loss_monitor.update(batch_mean_loss)
+                self.grad_norm_monitor.update(grad_norm)
                 if self.save_logs_per_batch:
                     self._update_loss_logs_after_batch(
-                        comet_context, epoch, batch_id, batch_mean_loss,
-                        self.train_loss_monitor)
+                        comet_context, epoch, batch_id, batch_mean_loss)
                     self._update_gradnorm_logs_after_batch(epoch, batch_id,
                                                            grad_norm)
 
@@ -528,8 +545,9 @@ class DWIMLAbstractTrainer:
         self.logger.info("Finishing epoch...")
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
-        self._update_loss_logs_after_epoch(comet_context, 'Training_', epoch,
-                                           self.train_loss_monitor)
+        self.training_time_monitor.end_epoch()
+        self._update_loss_logs_after_epoch(
+            comet_context, epoch, self.train_loss_monitor.epochs_means[epoch])
         self._update_gradnorm_logs_after_epoch(comet_context, epoch)
 
     def validate_one_epoch(self, epoch):
@@ -539,6 +557,9 @@ class DWIMLAbstractTrainer:
         All *args will be passed all to run_one_batch, which you should
         implement, in case you need some variables.
         """
+        self.validation_time_monitor.start_new_epoch()
+        self.valid_loss_monitor.start_new_epoch()
+
         # Setting contexts
         self.batch_loader.set_context('validation')
         self.batch_sampler.set_context('validation')
@@ -567,13 +588,11 @@ class DWIMLAbstractTrainer:
                 # Validate this batch: forward propagation + loss
                 batch_mean_loss, _ = self.run_one_batch(
                     data, is_training=False)
-                self.valid_loss_monitor.update(batch_mean_loss)
 
                 self.valid_loss_monitor.update(batch_mean_loss)
                 if self.save_logs_per_batch:
                     self._update_loss_logs_after_batch(
-                        comet_context, epoch, batch_id, batch_mean_loss,
-                        self.valid_loss_monitor)
+                        comet_context, epoch, batch_id, batch_mean_loss)
 
             # Explicitly delete iterator to kill threads and free memory before
             # running training again
@@ -581,12 +600,13 @@ class DWIMLAbstractTrainer:
 
         # Save info
         self.valid_loss_monitor.end_epoch()
-        self._update_loss_logs_after_epoch(comet_context, 'Validation_', epoch,
-                                           self.valid_loss_monitor)
+        self.validation_time_monitor.end_epoch()
+        self._update_loss_logs_after_epoch(
+            comet_context, epoch, self.valid_loss_monitor.epochs_means[epoch])
 
     def _update_loss_logs_after_batch(
             self, comet_context, epoch: int, batch_id: int,
-            batch_mean_loss: float, loss_monitor):
+            batch_mean_loss: float):
         """
         Update logs:
             - logging to user
@@ -604,8 +624,6 @@ class DWIMLAbstractTrainer:
                 self.comet_exp.log_metric(
                     "loss_per_batch_epoch" + str(epoch), batch_mean_loss,
                     step=batch_id, epoch=0)
-                # When it updates here, the tqdm logger is less nice.
-                # Add a pause?
 
     def _update_gradnorm_logs_after_batch(self, epoch: int, batch_id: int,
                                           grad_norm: float):
@@ -616,16 +634,13 @@ class DWIMLAbstractTrainer:
 
         Should only be done during training
         """
-        self.grad_norm_monitor.update(grad_norm)
-
         if self.comet_exp and batch_id % COMET_UPDATE_FREQUENCY == 0:
             self.comet_exp.log_metric(
                 "gradient_norm_per_batch_epoch" + str(epoch),
                 grad_norm, step=batch_id, epoch=epoch)
 
-    def _update_loss_logs_after_epoch(
-            self, comet_context, local_context: str, epoch: int,
-            loss_monitor):
+    def _update_loss_logs_after_epoch(self, comet_context, epoch: int,
+                                      loss: float):
         """
         Update logs:
             - logging to user
@@ -635,11 +650,8 @@ class DWIMLAbstractTrainer:
         local_context: prefix when saving log. Training_ or Validate_ for
         instance.
         """
-        self.logger.info("Mean loss for this epoch: {}"
-                         .format(loss_monitor.epochs_means_history[-1]))
+        self.logger.info("Mean loss for this epoch: {}".format(loss))
 
-        self._save_log_from_array(loss_monitor.epochs_means_history,
-                                  local_context + "_loss_per_epoch.npy")
         if self.comet_exp:
             with comet_context():
                 # Not really implemented yet.
@@ -647,21 +659,19 @@ class DWIMLAbstractTrainer:
                 # Cheating. To have a correct plotting per epoch (no step)
                 # using step = epoch. In comet_ml, it is intended to be
                 # step = batch.
-                self.comet_exp.log_metric(
-                    "loss_per_epoch",
-                    loss_monitor.epochs_means_history[-1], epoch=0, step=epoch)
+                self.comet_exp.log_metric("loss_per_epoch", loss, epoch=0,
+                                          step=epoch)
 
     def _update_gradnorm_logs_after_epoch(self, comet_context, epoch: int):
         self.logger.info(
             "Mean gradient norm : {}"
-            .format(self.grad_norm_monitor.epochs_means_history[-1]))
-        self._save_log_from_array(self.grad_norm_monitor.epochs_means_history,
-                                  "gradient_norm.npy")
+            .format(self.grad_norm_monitor.epochs_means[epoch]))
+
         if self.comet_exp:
             with comet_context():
                 self.comet_exp.log_metric(
                     "mean_gradient_norm_per_epoch",
-                    self.grad_norm_monitor.epochs_means_history[-1],
+                    self.grad_norm_monitor.epochs_means[epoch],
                     epoch=epoch, step=None)
 
     def _save_info_best_epoch(self):
@@ -673,7 +683,7 @@ class DWIMLAbstractTrainer:
 
         best_losses = {
             'train_loss':
-                self.train_loss_monitor.epochs_means_history[
+                self.train_loss_monitor.epochs_means[
                     self.best_epoch_monitoring.best_epoch],
             'valid_loss':
                 self.best_epoch_monitoring.best_value if
@@ -1019,7 +1029,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
                 # toDo. Could we convert streamlines to tensor already when
                 #  loading, and send to GPU here? Would need to modify methods
-                #  such as extend_neighborhood_with_coods.
+                #  such as extend_neighborhood_with_coords.
 
                 # Getting the inputs points from the volumes. Usually done in
                 # load_batch but we preferred to wait here to have a chance to

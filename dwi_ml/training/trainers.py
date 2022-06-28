@@ -42,6 +42,9 @@ class DWIMLAbstractTrainer:
     Comet is used to save training information, but some logs will also be
     saved locally in the saving_path.
     """
+    # For now, this is ugly... But the option is there if you want.
+    save_logs_per_batch = False
+
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str,
@@ -509,11 +512,13 @@ class DWIMLAbstractTrainer:
                     data, is_training=True)
 
                 # Update information and logs
-                self._update_loss_logs_after_batch(
-                    comet_context, epoch, batch_id, batch_mean_loss,
-                    self.train_loss_monitor)
-                self._update_gradnorm_logs_after_batch(epoch, batch_id,
-                                                       grad_norm)
+                self.train_loss_monitor.update(batch_mean_loss)
+                if self.save_logs_per_batch:
+                    self._update_loss_logs_after_batch(
+                        comet_context, epoch, batch_id, batch_mean_loss,
+                        self.train_loss_monitor)
+                    self._update_gradnorm_logs_after_batch(epoch, batch_id,
+                                                           grad_norm)
 
             # Explicitly delete iterator to kill threads and free memory before
             # running validation
@@ -564,9 +569,11 @@ class DWIMLAbstractTrainer:
                     data, is_training=False)
                 self.valid_loss_monitor.update(batch_mean_loss)
 
-                self._update_loss_logs_after_batch(
-                    comet_context, epoch, batch_id, batch_mean_loss,
-                    self.valid_loss_monitor)
+                self.valid_loss_monitor.update(batch_mean_loss)
+                if self.save_logs_per_batch:
+                    self._update_loss_logs_after_batch(
+                        comet_context, epoch, batch_id, batch_mean_loss,
+                        self.valid_loss_monitor)
 
             # Explicitly delete iterator to kill threads and free memory before
             # running training again
@@ -588,8 +595,6 @@ class DWIMLAbstractTrainer:
         """
         self.logger.info("Epoch {}: Batch loss = {}"
                          .format(epoch + 1, batch_mean_loss))
-
-        loss_monitor.update(batch_mean_loss)
 
         if self.comet_exp and batch_id % COMET_UPDATE_FREQUENCY == 0:
             with comet_context():

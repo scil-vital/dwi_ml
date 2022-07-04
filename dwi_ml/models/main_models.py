@@ -183,8 +183,8 @@ class MainModelAbstract(torch.nn.Module):
 
         Returns
         -------
-        next_dir: array(3,)
-            Numpy array with x,y,z value.
+        next_dir: list[array(3,)]
+            Numpy arrays with x,y,z value, one per streamline data point.
         """
         raise NotImplementedError
 
@@ -197,7 +197,7 @@ class MainModelAbstract(torch.nn.Module):
 
         Returns
         -------
-        next_dir: array(3,)
+        next_dir: list[array(3,)]
             Numpy array with x,y,z value.
         """
         raise NotImplementedError
@@ -342,10 +342,12 @@ class MainModelWithPD(MainModelAbstract):
 
                 return n_prev_dirs_embedded
 
-    def get_tracking_direction_det(self, model_outputs):
+    def get_tracking_direction_det(self, model_outputs,
+                                   streamline_lengths=None):
         raise NotImplementedError
 
-    def sample_tracking_direction_prob(self, model_outputs):
+    def sample_tracking_direction_prob(self, model_outputs,
+                                       streamline_lengths=None):
         raise NotImplementedError
 
     def format_previous_dirs(self, all_streamline_dirs, point_idx=None):

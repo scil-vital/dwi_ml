@@ -82,11 +82,15 @@ class DWIMLPropagator(AbstractPropagator):
             self.move_to(device)
 
         self.model_uses_streamlines = model_uses_streamlines
+
         # The model uses the streamline, so we need to keep track of it as
         # additional input. List of lines. All lines have the same number of
         # points, as they are being propagated together.
         # List[list[list]]: nb_lines x (nb_points, 3).
-        self.current_lines: Union[list, None] = None
+        self.current_lines = None  # type: Union[list, None]
+
+        # Propagate method call will influence how we get the streamlines
+        self._track_multiple_lines = None  # type: Union[bool, None]
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -175,6 +179,13 @@ class DWIMLPropagator(AbstractPropagator):
 
         return v_in
 
+    def multiple_lines_update(self, lines_that_continue: list):
+        """
+        This is used by the tracker with simulatenous tracking, in case you
+        need to update your model's memory when removing a streamline.
+        """
+        pass
+
     def propagate(self, line, v_in, multiple_lines=False):
         """
         Params
@@ -193,6 +204,8 @@ class DWIMLPropagator(AbstractPropagator):
         is_direction_valid: bool or list
             True if new_dir is valid.
         """
+        self._track_multiple_lines = multiple_lines
+
         if self.model_uses_streamlines:
             # super() won't use the whole line as argument during the sampling
             # of next direction, but we need it. Add it in memory here.
@@ -205,16 +218,18 @@ class DWIMLPropagator(AbstractPropagator):
                 self.current_lines = [line]
 
         if multiple_lines:
-            new_pos, new_dir, is_direction_valid = \
+            n_new_pos, n_new_dir, are_directions_valid = \
                 self._propagate_multiple_lines(line, v_in)
+
+            return n_new_pos, n_new_dir, are_directions_valid
         else:
+            # We could use self._propagate_multiple_lines([line], v_in).
+            # Keeping this version with super in case we prepare everything for
+            # use with runge_kutta order > 1.
             new_pos, new_dir, is_direction_valid = \
                 super().propagate(line, v_in)
 
-        # Reset memory
-        self.current_lines = None
-
-        return new_pos, new_dir, is_direction_valid
+            return new_pos, new_dir, is_direction_valid
 
     def _propagate_multiple_lines(self, lines, n_v_in):
         """
@@ -225,15 +240,14 @@ class DWIMLPropagator(AbstractPropagator):
         """
         # Keeping one coordinate per streamline; the last one.
         # If model needs the streamlines, use current memory.
-        n_pos = [[line[-1]] for line in lines]
+        n_pos = [line[-1] for line in lines]
 
         assert self.rk_order == 1
 
         are_directions_valid, n_new_dir = \
             self._sample_next_multiple_directions_or_go_straight(n_pos, n_v_in)
 
-        # Taking the first (and only) point of the streamlines.
-        n_new_pos = [n_pos[i][0] + self.step_size * np.array(n_new_dir[i])
+        n_new_pos = [n_pos[i] + self.step_size * np.array(n_new_dir[i])
                      for i in range(len(lines))]
 
         return n_new_pos, n_new_dir, are_directions_valid
@@ -242,8 +256,8 @@ class DWIMLPropagator(AbstractPropagator):
         """
         Equivalent of super's _sample_next_direction_or_go_straight.
         """
-        n_v_out = self._sample_next_direction(n_pos, n_v_in,
-                                              multiple_lines=True)
+
+        n_v_out = self._sample_next_direction(n_pos, n_v_in)
         are_directions_valid = np.array([False if v_out is None else True
                                          for v_out in n_v_out])
 
@@ -252,7 +266,7 @@ class DWIMLPropagator(AbstractPropagator):
 
         return are_directions_valid, n_v_out
 
-    def _sample_next_direction(self, pos, v_in, multiple_lines=False):
+    def _sample_next_direction(self, pos, v_in):
         """
         Run the model to get the outputs, and sample a direction based on this
         information. None if the direction is more than theta angle
@@ -273,51 +287,42 @@ class DWIMLPropagator(AbstractPropagator):
             Valid normalized tracking direction(s). None if no valid direction
             is found.
         """
-        single_streamline = False
-        if multiple_lines:
-            n_pos = pos  # Multiple values were sent.
+        if self._track_multiple_lines:
+            n_pos = pos
+            streamline_lengths = [1 for _ in n_pos]
         else:
-            single_streamline = True
             n_pos = [pos]
+            streamline_lengths = None
 
         # Tracking field returns the model_outputs
         model_outputs = self._get_model_outputs_at_pos(n_pos)
 
-        if single_streamline:
-            # Sampling a direction from this information.
-            if self.algo == 'prob':
-                next_dir = self.model.sample_tracking_direction_prob(
-                    model_outputs)
-            else:
-                next_dir = self.model.get_tracking_direction_det(model_outputs)
+        start_time = datetime.now()
+        if self.algo == 'prob':
+            next_dirs = self.model.sample_tracking_direction_prob(model_outputs)
+        else:
+            next_dirs = self.model.get_tracking_direction_det(model_outputs)
+        duration_direction_getter = datetime.now() - start_time
 
-            # Normalizing
-            next_dir /= np.linalg.norm(next_dir)
-
+        start_time = datetime.now()
+        for i in range(len(n_pos)):
+            next_dirs[i] /= np.linalg.norm(next_dirs[i])
             # Verify curvature, else return None.
             # toDo could we find a better solution for proba tracking?
             #  Resampling until angle < theta? Easy on the sphere (restrain
             #  probas on the sphere pics inside a cone theta) but what do we do
             #  for other models? Ex: For the Gaussian direction getter?
-            if v_in is not None:
-                next_dir = self._verify_angle(next_dir, v_in)
-            return next_dir
-        else:
-            # Loop on streamlines and do the equivalent.
-            # toDo skip loop
-            next_dirs = []
-            nb_streamlines = len(n_pos)
-            for i in range(nb_streamlines):
-                if self.algo == 'prob':
-                    next_dir = self.model.sample_tracking_direction_prob(
-                        model_outputs[i])
-                else:
-                    next_dir = self.model.get_tracking_direction_det(
-                        model_outputs[i])
-                next_dir /= np.linalg.norm(next_dir)
-                if v_in[i] is not None:
-                    next_dir = self._verify_angle(next_dir, v_in[i])
-                next_dirs.append(next_dir)
+            if v_in[i] is not None:
+                next_dirs[i] = self._verify_angle(next_dirs[i], v_in[i])
+        duration_norm_angle = datetime.now() - start_time
+
+        logging.debug("Time for direction getter: {}s. Time for normalization "
+                      "+ verifying angle: {}s."
+                      .format(duration_direction_getter.total_seconds(),
+                              duration_norm_angle.total_seconds()))
+
+        if not self._track_multiple_lines:
+            return next_dirs[0]
 
         return next_dirs
 
@@ -328,9 +333,7 @@ class DWIMLPropagator(AbstractPropagator):
         n_pos: list of ndarrays
             Current position coordinates for each streamline.
         """
-        start_time = datetime.now()
         inputs = self._prepare_inputs_at_pos(n_pos)
-        duration_inputs = datetime.now() - start_time
 
         if self.model_uses_streamlines:
             # Verify that we have updated memory correctly.
@@ -353,11 +356,8 @@ class DWIMLPropagator(AbstractPropagator):
             model_outputs = self.model(inputs)
         duration_running_model = datetime.now() - start_time
 
-        logger.debug("\n"
-                     "Time to prepare the inputs (1 point, {} streamlines): "
-                     "{}.\nTime to run the model: {}"
-                     .format(len(n_pos), duration_inputs.total_seconds(),
-                             duration_running_model.total_seconds()))
+        logger.debug("Time to run the model: {}"
+                     .format(duration_running_model.total_seconds()))
 
         return model_outputs
 
@@ -434,13 +434,14 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
 
         Params
         ------
-        pos: list of ndarrrays
-            Current position (or list of positions for multiple tracking).
+        pos: list[n x [[x, y, z]]]
+            List of n "streamlines" composed of one point.
         """
-
         # torch trilinear interpolation uses origin='corner', space=vox.
         # We're ok.
+        lines = [[point] for point in n_pos]
+
         inputs, _ = MainModelOneInput.prepare_batch_one_input(
-            n_pos, self.dataset, self.subj_idx, self.volume_group,
+            lines, self.dataset, self.subj_idx, self.volume_group,
             self.neighborhood_points, self.device)
         return inputs

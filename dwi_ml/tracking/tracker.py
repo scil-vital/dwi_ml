@@ -78,6 +78,10 @@ class DWIMLTracker(ScilpyTracker):
         # Increase the printing frequency as compared to super
         self.printing_frequency = 1
 
+        # Contrary to scilpy, everything our in tracker is in 'corner', 'vox'
+        self.origin = 'corner'
+        self.space = 'vox'
+
     def track(self):
         """
         Scilpy's Tracker.track():
@@ -130,7 +134,7 @@ class DWIMLTracker(ScilpyTracker):
             if seed_count + nb_next_seeds > self.nbr_seeds:
                 nb_next_seeds = self.nbr_seeds - seed_count
 
-            logger.info("Multiple GPU tracking: Tracking the next {} "
+            logger.info("*** Multiple GPU tracking: Tracking the next {} "
                         "streamlines.".format(nb_next_seeds))
 
             next_seeds = np.asarray(
@@ -145,7 +149,6 @@ class DWIMLTracker(ScilpyTracker):
             lines.extend(tmp_lines)
             seeds.extend(tmp_seeds)
 
-            logger.info("Done.")
             seed_count += nb_next_seeds
         return lines, seeds
 
@@ -164,7 +167,7 @@ class DWIMLTracker(ScilpyTracker):
         line: list of 3D positions
             The generated streamline for seeding_pos.
         """
-        lines = [[np.asarray(seeding_pos)] for seeding_pos in n_seeds]
+        lines = [[list(seeding_pos)] for seeding_pos in n_seeds]
 
         logger.info("Multiple GPU tracking: Starting forward propagation for "
                     "the next {} streamlines.".format(len(n_seeds)))
@@ -172,8 +175,6 @@ class DWIMLTracker(ScilpyTracker):
         lines, order1 = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:
-            logger.info("Multiple GPU tracking: Starting backward "
-                        "propagation.")
 
             # Reversing in place
             for i in range(len(lines)):
@@ -186,6 +187,9 @@ class DWIMLTracker(ScilpyTracker):
             # the propagator deal with the looping.
             tracking_info = self.propagator.prepare_backward(lines,
                                                              tracking_info)
+
+            logger.info("Multiple GPU tracking: Starting backward "
+                        "propagation.")
             lines, order2 = self._propagate_multiple_lines(
                 lines, tracking_info)
 
@@ -210,8 +214,8 @@ class DWIMLTracker(ScilpyTracker):
         Equivalent of super's() _propagate_lines() for for multiple tracking at
         the same time (meant to be used on GPU).
         """
-        invalid_direction_counts = np.zeros(len(lines))
         nb_streamlines = len(lines)
+        invalid_direction_counts = np.zeros(nb_streamlines)
         final_lines = []  # Will get the final lines when they are done.
         final_tracking_info = []
         # Note! We modify the order of streamlines in final_lines!
@@ -227,9 +231,13 @@ class DWIMLTracker(ScilpyTracker):
                                           multiple_lines=True)
             invalid_direction_counts[~are_directions_valid] += 1
 
+            # ToDo. Check what is faster. Removing finished streamlines or
+            #  continue with all streamlines but remember where they ended.
             # Verifying and appending
             all_lines_completed = True
-            for i in reversed(range(len(lines))):
+            lines_that_continue = []
+            lines_that_stop = []
+            for i in range(len(lines)):
                 # In non-simultaneous, nbr pts is verified in the loop.
                 # Here, during forward, we can do that, but during backward,
                 # all streamlines have different lengths.
@@ -240,15 +248,29 @@ class DWIMLTracker(ScilpyTracker):
                 if propagation_can_continue:
                     all_lines_completed = False
                     lines[i].append(n_new_pos[i])
+                    lines_that_continue.append(i)
                 else:
-                    final_lines.append(lines[i])
-                    lines.pop(i)
-                    final_lines_order.append(initial_order[i])
-                    initial_order.pop(i)
-                    final_tracking_info.append(new_tracking_info[i])
-                    new_tracking_info.pop(i)
-                    invalid_direction_counts = np.delete(
-                        invalid_direction_counts, i)
+                    lines_that_stop.append(i)
+
+            # Note. Indexing would be simpler with lines as an array but now
+            # propagator is coded to deal with a list.
+            final_lines.extend([lines[i] for i in lines_that_stop])
+            lines = [lines[i] for i in lines_that_continue]
+
+            final_lines_order.extend(
+                [initial_order[i] for i in lines_that_stop])
+            initial_order = \
+                [initial_order[i] for i in lines_that_continue]
+
+            final_tracking_info.extend(
+                [new_tracking_info[i] for i in lines_that_stop])
+            new_tracking_info = \
+                [new_tracking_info[i] for i in lines_that_continue]
+
+            invalid_direction_counts = np.asanyarray(
+                [invalid_direction_counts[i] for i in lines_that_continue])
+
+            self.propagator.multiple_lines_update(lines_that_continue)
 
             tracking_info = new_tracking_info
 

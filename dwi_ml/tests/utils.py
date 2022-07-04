@@ -39,16 +39,18 @@ class ModelForTest(MainModelAbstract):
     def compute_loss(self, model_outputs, streamlines):
         return self.fake_parameter
 
-    def get_tracking_direction_det(self, model_outputs):
-        return [1., 1., 1.]
+    def get_tracking_direction_det(self, regressed_dirs : torch.Tensor):
+        return regressed_dirs
 
-    def sample_tracking_direction_prob(self, model_outputs):
-        return [1., 1., 1.]
+    def sample_tracking_direction_prob(self, regressed_dir):
+        raise NotImplementedError("(Fake) Regression does not allow prob "
+                                  "tracking.")
 
-    def forward(self, x):
-        if isinstance(x, list):
-            return [self.fake_parameter for _ in x]
-        return self.fake_parameter
+    def forward(self, x: list):
+        _ = self.fake_parameter
+        regressed_dir = [1., 1., 1.]
+
+        return [regressed_dir for _ in x]
 
 
 class ModelForTestWithPD(MainModelWithPD):
@@ -69,18 +71,20 @@ class ModelForTestWithPD(MainModelWithPD):
     def compute_loss(self, model_outputs, streamlines):
         return self.fake_parameter
 
-    def get_tracking_direction_det(self, model_outputs):
-        return [1., 1., 1.]
+    def get_tracking_direction_det(self, regressed_dirs):
+        return regressed_dirs
 
-    def sample_tracking_direction_prob(self, model_outputs):
-        return [1., 1., 1.]
+    def sample_tracking_direction_prob(self, regressed_dir):
+        raise NotImplementedError("(Fake) Regression does not allow prob "
+                                  "tracking.")
 
     def forward(self, x, streamlines):
         dirs = self.format_directions(streamlines)
         _ = self.compute_and_embed_previous_dirs(dirs)
-        if isinstance(x, list):
-            return [self.fake_parameter for _ in x]
-        return self.fake_parameter
+        _ = self.fake_parameter
+        regressed_dir = [1., 1., 1.]
+
+        return [regressed_dir for _ in x]
 
 
 def create_test_batch_sampler(

@@ -86,7 +86,11 @@ def prepare_tracker(parser, args, hdf5_file, device,
                                                             hdf_handle, device)
 
         logging.info("Loading tracking mask.")
-        mask, ref = _prepare_tracking_mask(args, hdf_handle)
+        mask, ref, vox_res = _prepare_tracking_mask(args, hdf_handle)
+        if not vox_res[0] == vox_res[1] == vox_res[2]:
+            raise NotImplementedError("This is not ready for anisotropic "
+                                      "resolution.")
+        step_size_vox_space = args.step_size / vox_res[0]
 
         logging.info("Loading subject's data.")
         subset, subj_idx = prepare_dataset_for_tracking(hdf5_file, args)
@@ -103,7 +107,7 @@ def prepare_tracker(parser, args, hdf5_file, device,
         model_uses_streamlines = True  # Test model's forward uses previous
         # dirs, which require streamlines
         propagator = DWIMLPropagatorOneInput(
-            subset, subj_idx, model, args.input_group, args.step_size,
+            subset, subj_idx, model, args.input_group, step_size_vox_space,
             args.rk_order, args.algo, theta, model_uses_streamlines, device)
 
         logging.debug("Instantiating tracker.")
@@ -150,7 +154,7 @@ def _prepare_tracking_mask(args, hdf_handle):
     ref = nib.Nifti1Image(mask_data, affine)
 
     mask = DataVolume(mask_data, mask_res, args.mask_interp)
-    return mask, ref
+    return mask, ref, mask_res
 
 
 def main():
@@ -177,7 +181,7 @@ def main():
     verify_seed_options(parser, args)
 
     # ----- Prepare values
-
+    # Using step size in mm here.
     max_nbr_pts = int(args.max_length / args.step_size)
     min_nbr_pts = int(args.min_length / args.step_size) + 1
     max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size))

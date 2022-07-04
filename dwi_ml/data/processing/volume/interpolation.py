@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import torch
 import numpy as np
-from scipy.ndimage import map_coordinates
 
 from dwi_ml.data.processing.space.neighborhood import \
     extend_coordinates_with_neighborhood
@@ -138,7 +137,7 @@ def interpolate_volume_in_neighborhood(
         trilinear interpolation.
     neighborhood_points:
         The neighboors to add to each coord. If none, only the given coords
-        are interpolated (i.e. neighborhood = (0,0,0) ).
+        are interpolated (i.e. neighborhood = (0,0,0) ), IN VOXEL SPACE.
     device: torch device.
     """
     if neighborhood_points is not None and len(neighborhood_points) > 0:

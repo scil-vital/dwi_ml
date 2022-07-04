@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
 import logging
+from datetime import datetime
 from typing import Union
 
 import numpy as np
 import torch
-from scilpy.image.datasets import DataVolume
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 
 from scilpy.tracking.propagator import AbstractPropagator
 
-from dwi_ml.data.processing.volume.interpolation import \
-    interpolate_volume_in_neighborhood
-from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.models.main_models import MainModelAbstract, MainModelOneInput
 
 logger = logging.getLogger('tracker_logger')
 
@@ -34,14 +32,16 @@ class DWIMLPropagator(AbstractPropagator):
         - theta would be very complex to include here as a cone and will rather
         be used as stopping criteria, later.
     """
-    def __init__(self, subset: MultisubjectSubset, subj_idx: int,
+    dataset: MultisubjectSubset
+
+    def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, step_size: float, rk_order: int,
                  algo: str, theta: float, model_uses_streamlines: bool = False,
                  device=None):
         """
         Parameters
         ----------
-        subset: MultisubjectSubset
+        dataset: MultisubjectSubset
             Loaded testing set. Must be lazy to allow multiprocessing.
             Multi-subject tracking not implemented; it should contain only
             one subject.
@@ -61,7 +61,6 @@ class DWIMLPropagator(AbstractPropagator):
             additional input.
         """
         # Dataset will be reloaded at sub-processes
-        dataset: Union[DataVolume, None] = None
         super().__init__(dataset, step_size, rk_order)
 
         if rk_order > 1:
@@ -69,7 +68,6 @@ class DWIMLPropagator(AbstractPropagator):
                            "Changing to rk_order 1.")
             self.rk_order = 1
 
-        self.subset = subset
         self.subj_idx = subj_idx
         self.model = model
 
@@ -103,19 +101,12 @@ class DWIMLPropagator(AbstractPropagator):
             If true, reload data to cache. Else, erase all data and hdf handles
             from memory.
         """
-        if self.subset.is_lazy:
+        if self.dataset.is_lazy:
             # Empty cache
-            self.subset.volume_cache_manager = None
+            self.dataset.volume_cache_manager = None
 
             # Remove all handles
-            self.subset.close_all_handles()
-
-            if reload_data:
-                self._load_subj_data()
-
-    def _load_subj_data(self):
-        # To be implemented in child classes
-        raise NotImplementedError
+            self.dataset.close_all_handles()
 
     def prepare_forward(self, seeding_pos):
         """
@@ -232,15 +223,17 @@ class DWIMLPropagator(AbstractPropagator):
         rk order. We don't. We skip this and directly call
         _sample_next_direction_or_go_straight.
         """
-        # Finding last coordinate
-        n_pos = [line[-1] for line in lines]
+        # Keeping one coordinate per streamline; the last one.
+        # If model needs the streamlines, use current memory.
+        n_pos = [[line[-1]] for line in lines]
 
         assert self.rk_order == 1
 
         are_directions_valid, n_new_dir = \
             self._sample_next_multiple_directions_or_go_straight(n_pos, n_v_in)
 
-        n_new_pos = [n_pos[i] + self.step_size * np.array(n_new_dir[i])
+        # Taking the first (and only) point of the streamlines.
+        n_new_pos = [n_pos[i][0] + self.step_size * np.array(n_new_dir[i])
                      for i in range(len(lines))]
 
         return n_new_pos, n_new_dir, are_directions_valid
@@ -311,6 +304,7 @@ class DWIMLPropagator(AbstractPropagator):
             return next_dir
         else:
             # Loop on streamlines and do the equivalent.
+            # toDo skip loop
             next_dirs = []
             nb_streamlines = len(n_pos)
             for i in range(nb_streamlines):
@@ -334,7 +328,9 @@ class DWIMLPropagator(AbstractPropagator):
         n_pos: list of ndarrays
             Current position coordinates for each streamline.
         """
+        start_time = datetime.now()
         inputs = self._prepare_inputs_at_pos(n_pos)
+        duration_inputs = datetime.now() - start_time
 
         if self.model_uses_streamlines:
             # Verify that we have updated memory correctly.
@@ -350,9 +346,18 @@ class DWIMLPropagator(AbstractPropagator):
                                torch.zeros(1, 3)), dim=0).to(self.device)
                      for line in self.current_lines]
 
+            start_time = datetime.now()
             model_outputs = self.model(inputs, lines)
         else:
+            start_time = datetime.now()
             model_outputs = self.model(inputs)
+        duration_running_model = datetime.now() - start_time
+
+        logger.debug("\n"
+                     "Time to prepare the inputs (1 point, {} streamlines): "
+                     "{}.\nTime to run the model: {}"
+                     .format(len(n_pos), duration_inputs.total_seconds(),
+                             duration_running_model.total_seconds()))
 
         return model_outputs
 
@@ -391,7 +396,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     the data points from the volume (+possibly add a neighborhood) and
     interpolate the data.
     """
-    def __init__(self, subset: MultisubjectSubset, subj_idx: int,
+    def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, input_volume_group: str,
                  step_size: float, rk_order: int, algo: str, theta: float,
                  model_uses_streamlines: bool, device=None):
@@ -402,12 +407,13 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             The volume group to use as input in the model.
         neighborhood_points: np.ndarray
             The list of neighborhood points (does not contain 0,0,0 point)
+        step_size: NOW IN VOXEL RESOLUTION.
         """
-        super().__init__(subset, subj_idx, model, step_size, rk_order, algo,
+        super().__init__(dataset, subj_idx, model, step_size, rk_order, algo,
                          theta, model_uses_streamlines, device)
 
         # Find group index in the data
-        self.volume_group = subset.volume_groups.index(input_volume_group)
+        self.volume_group = dataset.volume_groups.index(input_volume_group)
 
         # To help prepare the inputs
         if hasattr(model, 'neighborhood_points'):
@@ -416,20 +422,10 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             self.neighborhood_points = None
         self.volume_group_str = input_volume_group
 
-    def _load_subj_data(self):
-        # This will open a new handle and get the volume to cache.
-        # If cache is not activated, tracking will load the data at each
-        # propagation step!
-        if self.subset.is_lazy and self.subset.cache_size == 0:
+        if self.dataset.is_lazy and self.dataset.cache_size == 0:
             logger.warning("With lazy data and multiprocessing, you should "
                            "not keep cache size to zero. Data would be "
                            "loaded again at each propagation step!")
-
-        # Load as DataVolume
-        # toDo. Not good for GPU. But allows us access to voxmm_to_vox
-        #  method.
-        self.dataset = self.subset.get_volume_verify_cache(
-            self.subj_idx, self.volume_group, as_tensor=False)
 
     def _prepare_inputs_at_pos(self, n_pos):
         """
@@ -441,32 +437,10 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
         pos: list of ndarrrays
             Current position (or list of positions for multiple tracking).
         """
-        # Dataset should already be loaded if multiprocessing. Else, load it
-        # the first time we actually need it.
-        if self.dataset is None:
-            self._load_subj_data()
 
-        all_inputs = []
-        for pos in n_pos:
-            # torch trilinear interpolation uses origin='corner', space=vox.
-            pos_vox = self.dataset.voxmm_to_vox(*pos, self.origin)
-            if self.origin == 'center':
-                pos_vox += 0.5
-
-            # Adding dim. array(3,) should become array (1,3)
-            pos_vox = np.expand_dims(pos_vox, axis=0)
-
-            # Get data as tensor. The MRI data should already be in the cache.
-            dataset_as_tensor = self.subset.get_volume_verify_cache(
-                self.subj_idx, self.volume_group, as_tensor=True,
-                device=self.device)
-
-            # Same as in the batch sampler:
-            # Prepare the volume data, possibly adding neighborhood
-            subj_x_data, _ = interpolate_volume_in_neighborhood(
-                dataset_as_tensor, pos_vox, self.neighborhood_points,
-                self.device)
-
-            all_inputs.append(subj_x_data)
-
-        return all_inputs
+        # torch trilinear interpolation uses origin='corner', space=vox.
+        # We're ok.
+        inputs, _ = MainModelOneInput.prepare_batch_one_input(
+            n_pos, self.dataset, self.subj_idx, self.volume_group,
+            self.neighborhood_points, self.device)
+        return inputs

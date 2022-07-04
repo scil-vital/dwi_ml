@@ -55,10 +55,7 @@ import torch.multiprocessing
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
-
-# For the batch sampler with inputs
-from dwi_ml.data.processing.volume.interpolation import \
-    interpolate_volume_in_neighborhood
+from dwi_ml.models.main_models import MainModelOneInput
 
 logger = logging.getLogger('batch_loader_logger')
 
@@ -238,7 +235,8 @@ class DWIMLAbstractBatchLoader:
             (batch_streamlines, final_s_ids_per_subj)
         Where
             - batch_streamlines: list[np.array]
-                The new streamlines after data augmentation
+                The new streamlines after data augmentation, IN VOXEL SPACE,
+                CORNER.
             - final_s_ids_per_subj: Dict[int, slice]
                 The new streamline ids per subj in this augmented batch.
         """
@@ -518,50 +516,28 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         batch_input_masks = []
 
         for subj, y_ids in streamline_ids_per_subj.items():
-            # Flatten = concatenate signal for all streamlines to process
-            # faster. We don't use the last coord because it is used only to
-            # compute the last target direction, it's not really an input
-            flat_subj_x_coords = np.concatenate(
-                [s[:-1] for s in batch_streamlines[y_ids]], axis=0)
-
-            # Getting the subject's volume and sending to CPU/GPU
-            # If data is lazy, get volume from cache or send to cache if
-            # it wasn't there yet.
             logger.debug("            Data loader: loading input volume.")
-            data_tensor = self.context_subset.get_volume_verify_cache(
-                subj, self.input_group_idx, device=device, non_blocking=True)
 
-            # Prepare the volume data, possibly adding neighborhood
-            # (Thus new coords_torch possibly contain the neighborhood points)
-            # Coord_clipped contain the coords after interpolation
+            streamlines = batch_streamlines[y_ids]
+            # We don't use the last coord because it is used only to
+            # compute the last target direction, it's not really an input
+            streamlines = [s[:-1] for s in streamlines]
+
+            logger.setLevel('DEBUG')
             # Trilinear interpolation uses origin=corner, vox space, but ok
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
-            logger.debug("            Neighborhood + interpolation")
-            subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, self.neighborhood_points,
-                device)
+            subbatch_x_data, input_mask = \
+                MainModelOneInput.prepare_batch_one_input(
+                    streamlines, self.context_subset, subj,
+                    self.input_group_idx, self.neighborhood_points, device)
+            logger.setLevel('INFO')
 
-            # Split the flattened signal back to streamlines
-            lengths = [len(s) - 1 for s in batch_streamlines[y_ids]]
-            subbatch_x_data = subj_x_data.split(lengths)
             batch_x_data.extend(subbatch_x_data)
 
             if save_batch_input_mask:
                 print("DEBUGGING MODE. Returning batch_streamlines "
                       "and mask together with inputs.")
-
-                # Clipping used coords (i.e. possibly with neighborhood)
-                # outside volume
-                lower = torch.as_tensor([0, 0, 0], device=device)
-                upper = torch.as_tensor(data_tensor.shape[:3], device=device)
-                upper -= 1
-                coords_to_idx_clipped = torch.min(
-                    torch.max(torch.floor(coords_torch).long(), lower),
-                    upper)
-                input_mask = torch.tensor(np.zeros(data_tensor.shape[0:3]))
-                for s in range(len(coords_torch)):
-                    input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
                 batch_input_masks.append(input_mask)
 
                 return batch_input_masks, batch_x_data

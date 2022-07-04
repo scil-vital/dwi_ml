@@ -3,7 +3,9 @@ import json
 import logging
 import os
 import shutil
+from datetime import datetime
 
+import numpy as np
 import torch
 from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
     unpack_sequence
@@ -12,6 +14,8 @@ from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, compute_and_normalize_directions
+from dwi_ml.data.processing.volume.interpolation import \
+    interpolate_volume_in_neighborhood
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 
@@ -357,3 +361,70 @@ class MainModelWithPD(MainModelAbstract):
             point_idx=point_idx, device=self.device)
 
         return n_previous_dirs
+
+
+class MainModelOneInput(MainModelAbstract):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+
+    @staticmethod
+    def prepare_batch_one_input(
+            streamlines, subset, subj, input_group_idx,
+            neighborhood_points, device, prepare_mask=False):
+        """
+        Params
+        ------
+        streamlines: list, The streamlines, IN VOXEL SPACE, CORNER ORIGIN
+        subjset: MultisubjectSubset, The dataset
+        subj: str, The subject id
+        input_groupd_idx: int, The volume group
+        neighborhood_points: list, The neighborhood coordinates
+        device: Torch device
+        prepare_mask: bool, If true, return a mask of chosen coordinates
+        logger: logging logger.
+        """
+        start_time = datetime.now()
+
+        # Flatten = concatenate signal for all streamlines to process
+        # faster.
+        flat_subj_x_coords = np.concatenate(streamlines, axis=0)
+
+        # Getting the subject's volume and sending to CPU/GPU
+        # If data is lazy, get volume from cache or send to cache if
+        # it wasn't there yet.
+        data_tensor = subset.get_volume_verify_cache(
+            subj, input_group_idx, device=device, non_blocking=True)
+
+        # Prepare the volume data, possibly adding neighborhood
+        # (Thus new coords_torch possibly contain the neighborhood points)
+        # Coord_clipped contain the coords after interpolation
+        subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
+            data_tensor, flat_subj_x_coords, neighborhood_points,
+            device)
+
+        # Split the flattened signal back to streamlines
+        lengths = [len(s) for s in streamlines]
+        subj_x_data = subj_x_data.split(lengths)
+        duration_inputs = datetime.now() - start_time
+        logger.debug("Time to prepare the inputs ({} streamlines, total {} "
+                     "points): {} s".format(len(streamlines), sum(lengths),
+                                            duration_inputs.total_seconds()))
+
+        input_mask = None
+        if prepare_mask:
+            print("DEBUGGING MODE. Returning batch_streamlines "
+                  "and mask together with inputs.")
+
+            # Clipping used coords (i.e. possibly with neighborhood)
+            # outside volume
+            lower = torch.as_tensor([0, 0, 0], device=device)
+            upper = torch.as_tensor(data_tensor.shape[:3], device=device)
+            upper -= 1
+            coords_to_idx_clipped = torch.min(
+                torch.max(torch.floor(coords_torch).long(), lower),
+                upper)
+            input_mask = torch.tensor(np.zeros(data_tensor.shape[0:3]))
+            for s in range(len(coords_torch)):
+                input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
+
+        return subj_x_data, input_mask

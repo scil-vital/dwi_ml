@@ -17,6 +17,8 @@ logger = logging.getLogger('tracker_logger')
 class DWIMLTracker(ScilpyTracker):
     # Removing a few warning by explicitly telling python that the
     # propagator type is not as in super. Supported in python > 3.5
+    # NOTE: CONTRARY TO SCILPY, WE WORK WITH STREAMLINE COORDINATES IN VOX
+    # SPACE. (We keep corner origin).
     propagator: DWIMLPropagator
     seed_generator: DWIMLSeedGenerator
 
@@ -48,7 +50,7 @@ class DWIMLTracker(ScilpyTracker):
                          rng_seed, track_forward_only)
 
         if nbr_processes > 2:
-            if not propagator.subset.is_lazy:
+            if not propagator.dataset.is_lazy:
                 raise ValueError("Multiprocessing only works with lazy data.")
             if use_gpu:
                 raise ValueError("You cannot use both multi-processes and "
@@ -154,8 +156,8 @@ class DWIMLTracker(ScilpyTracker):
 
         Params
         ------
-        seeding_pos : tuple
-            3D position, the seed position.
+        n_seeds : list[tuple]
+            3D positions, the seed position.
 
         Returns
         -------
@@ -164,13 +166,14 @@ class DWIMLTracker(ScilpyTracker):
         """
         lines = [[np.asarray(seeding_pos)] for seeding_pos in n_seeds]
 
-        logger.info("Multiple GPU tracking: Starting forward propgagation")
+        logger.info("Multiple GPU tracking: Starting forward propagation for "
+                    "the next {} streamlines.".format(len(n_seeds)))
         tracking_info = self.propagator.prepare_forward(n_seeds)
         lines, order1 = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:
             logger.info("Multiple GPU tracking: Starting backward "
-                        "propgagation")
+                        "propagation.")
 
             # Reversing in place
             for i in range(len(lines)):
@@ -219,8 +222,6 @@ class DWIMLTracker(ScilpyTracker):
         all_lines_completed = False
         # lines will only contain the remaining lines.
         while not all_lines_completed:
-            logger.debug('Nb streamlines left: {}'.format(len(lines)))
-
             n_new_pos, new_tracking_info, are_directions_valid = \
                 self.propagator.propagate(lines, tracking_info,
                                           multiple_lines=True)

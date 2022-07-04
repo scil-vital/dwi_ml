@@ -42,6 +42,8 @@ class DWIMLAbstractTrainer:
 
     Comet is used to save training information, but some logs will also be
     saved locally in the saving_path.
+
+    NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, TO CORNER.
     """
     # For now, this is ugly... But the option is there if you want.
     save_logs_per_batch = False

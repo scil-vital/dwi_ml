@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import torch
+from dipy.io.stateful_tractogram import Space
 
 from scilpy.tracking.seed import SeedGenerator
 
@@ -18,6 +19,9 @@ class DWIMLSeedGenerator(SeedGenerator):
         self.device = device
         if device is not None:
             self.move_to(device)
+
+        # CONTRARY TO SCILPY, WE USE VOX SPACE (we keep corner origin)
+        self.space = Space.VOX
 
     def move_to(self, device):
         self.data = self.data.to(device=device)
@@ -40,10 +44,13 @@ class DWIMLSeedGenerator(SeedGenerator):
         Return
         ------
         seed_pos: List[tuple]
-            Positions of next seeds expressed in mm.
+            Positions of next seeds expressed in VOXEL SPACE.
         """
         # todo Bring this to torch and use correct device?
         #   We would need to change the seed generator.
+
+        # todo This copies scilpy's, but see Charles's GPU version, uses dipy
+        #  random_seeds_from_mask
         len_seeds = len(self.seeds)
         if len_seeds == 0:
             return []
@@ -56,15 +63,23 @@ class DWIMLSeedGenerator(SeedGenerator):
         # Sub-voxel initial positioning
         # Prepare sub-voxel random movement now (faster out of loop)
         n = len(which_seeds)
-        r_x = random_generator.uniform(0, voxel_dim[0], size=n)
-        r_y = random_generator.uniform(0, voxel_dim[1], size=n)
-        r_z = random_generator.uniform(0, voxel_dim[2], size=n)
+        r_x = random_generator.uniform(0, 1, size=n)
+        r_y = random_generator.uniform(0, 1, size=n)
+        r_z = random_generator.uniform(0, 1, size=n)
 
         seeds = []
         for i in range(len(which_seeds)):
             x, y, z = self.seeds[indices[inds[i]]]
 
-            seeds.append((x * self.voxres[0] + r_x[i],
-                          y * self.voxres[1] + r_y[i],
-                          z * self.voxres[2] + r_z[i]))
+            if self.space == Space.VOXMM:
+                # Should not happen now. Kept in case we modify something.
+                seeds.append((x * self.voxres[0] + r_x[i] * voxel_dim[0],
+                              y * self.voxres[1] + r_y[i] * voxel_dim[1],
+                              z * self.voxres[2] + r_z[i] * voxel_dim[2]))
+            elif self.space == Space.VOX:
+                seeds.append((x + r_x[i],
+                              y + r_y[i],
+                              z + r_z[i]))
+            else:
+                raise NotImplementedError("Not ready for rasmm")
         return seeds

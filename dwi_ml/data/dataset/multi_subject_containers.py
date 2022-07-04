@@ -53,7 +53,10 @@ class MultisubjectSubset(Dataset):
         self.nb_subjects = 0
 
         self.streamline_ids_per_subj = []  # type: List[defaultdict[slice]]
+
+        # One value per streamline group.
         self.total_nb_streamlines = []  # type: List[int]
+        self.total_nb_points = []  # type: List[int]
 
         # Remembering heaviness here to help the batch sampler instead of
         # having to loop on all subjects (again) later.
@@ -239,6 +242,7 @@ class MultisubjectSubset(Dataset):
         self.streamline_ids_per_subj = \
             [defaultdict(slice) for _ in self.streamline_groups]
         self.total_nb_streamlines = [0 for _ in self.streamline_groups]
+        self.total_nb_points = [0 for _ in self.streamline_groups]
 
         # Remembering heaviness. One np array per subj per group.
         lengths = [[] for _ in self.streamline_groups]
@@ -274,6 +278,7 @@ class MultisubjectSubset(Dataset):
                     subj_sft_data = subj_data.sft_data_list[i]
                     n_streamlines = len(subj_sft_data.streamlines)
                     self._add_streamlines_ids(n_streamlines, subj_idx, i)
+                    self._count_points(subj_sft_data.streamlines, i)
                     lengths[i].append(subj_sft_data.lengths)
                     lengths_mm[i].append(subj_sft_data.lengths_mm)
 
@@ -305,6 +310,9 @@ class MultisubjectSubset(Dataset):
 
         # Update total nb of streamlines in the dataset for this group
         self.total_nb_streamlines[group_idx] += n_streamlines
+
+    def _count_points(self, streamlines, group_idx):
+        self.total_nb_points[group_idx] += sum([len(s) for s in streamlines])
 
     def _build_empty_data_list(self):
         if self.is_lazy:

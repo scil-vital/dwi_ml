@@ -388,8 +388,26 @@ class DWIMLAbstractTrainer:
         Returns:
              (nb_training_batches_per_epoch, nb_validation_batches_per_epoch)
         """
-        return (self.max_batches_per_epochs_train,
-                self.max_batches_per_epochs_valid)
+        streamline_group = self.batch_sampler.streamline_group_idx
+        train_set = self.batch_sampler.dataset.training_set
+        valid_set = self.batch_sampler.dataset.validation_set
+
+        nb_valid = 0
+        if self.batch_sampler.batch_size_units == 'nb_streamlines':
+            nb_train = train_set.total_nb_streamlines[streamline_group]
+            if self.use_validation:
+                nb_valid = valid_set.total_nb_streamlines[streamline_group]
+        else:
+            nb_train = train_set.total_nb_points[streamline_group]
+            if self.use_validation:
+                nb_valid = valid_set.total_nb_points[streamline_group]
+
+        nb_train /= self.batch_sampler.batch_size_training
+        nb_valid /= self.batch_sampler.batch_size_validation
+
+        final_nb_train = min(nb_train, self.max_batches_per_epochs_train)
+        final_nb_valid = min(nb_valid, self.max_batches_per_epochs_valid)
+        return int(final_nb_train), int(final_nb_valid)
 
     def train_and_validate(self):
         """

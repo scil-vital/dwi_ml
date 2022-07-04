@@ -64,9 +64,6 @@ def init_from_args(args, sub_loggers_level):
     #     dg_args = check_args_direction_getter(args)
     model = ModelForTestWithPD()  # To be instantiated correctly.
 
-    # Prepare args.
-    logging.debug("Initial {}".format(args))
-
     # Preparing the batch sampler.
     with Timer("\nPreparing batch sampler...", newline=True, color='green'):
         batch_sampler = DWIMLBatchIDSampler(

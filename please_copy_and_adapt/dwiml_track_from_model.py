@@ -82,15 +82,28 @@ def prepare_tracker(parser, args, hdf5_file, device,
     with Timer("\nLoading data and preparing tracker...",
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
-        seed_generator, nbr_seeds = _prepare_seed_generator(parser, args,
-                                                            hdf_handle, device)
+        seed_generator, nbr_seeds, seed_res, seed_data = \
+            _prepare_seed_generator(parser, args, hdf_handle)
 
         logging.info("Loading tracking mask.")
-        mask, ref, vox_res = _prepare_tracking_mask(args, hdf_handle)
-        if not vox_res[0] == vox_res[1] == vox_res[2]:
+        mask, ref, mask_res, mask_data = \
+            _prepare_tracking_mask(args, hdf_handle)
+        if not mask_res[0] == mask_res[1] == mask_res[2]:
             raise NotImplementedError("This is not ready for anisotropic "
                                       "resolution.")
-        step_size_vox_space = args.step_size / vox_res[0]
+
+        if not np.array_equal(mask_res, seed_res):
+            parser.error("Not the same resolution for the tracking and "
+                         "seeding masks! ({} vs {})".format(mask_res,
+                                                            seed_res))
+        if not np.array_equal(mask_data.shape, seed_data.shape):
+            parser.error("Not the same data size for the tracking and "
+                         "seeding masks! ({} vs {})"
+                         .format(mask_data.shape, seed_data.shape))
+
+        step_size_vox_space = args.step_size / mask_res[0]
+        logging.info("Step size in voxel space will be {}"
+                     .format(step_size_vox_space))
 
         logging.info("Loading subject's data.")
         subset, subj_idx = prepare_dataset_for_tracking(hdf5_file, args)
@@ -122,14 +135,16 @@ def prepare_tracker(parser, args, hdf5_file, device,
     return tracker, ref
 
 
-def _prepare_seed_generator(parser, args, hdf_handle, device):
+def _prepare_seed_generator(parser, args, hdf_handle):
     seeding_group = hdf_handle[args.subj_id][args.seeding_mask_group]
+    logging.info("Preparing seeding mask from hdf5's {} group"
+                 .format(seeding_group))
     seed_data = np.array(seeding_group['data'], dtype=np.float32)
     seed_res = np.array(seeding_group.attrs['voxres'], dtype=np.float32)
 
-    seed_generator = DWIMLSeedGenerator(seed_data, seed_res, device)
+    seed_generator = DWIMLSeedGenerator(seed_data, seed_res)
 
-    if len(seed_generator.seeds) == 0:
+    if len(seed_generator.seeds_vox) == 0:
         parser.error('Seed mask "{}" does not have any voxel with value > 0.'
                      .format(args.in_seed))
 
@@ -143,18 +158,20 @@ def _prepare_seed_generator(parser, args, hdf_handle, device):
         # Setting npv = 1.
         nbr_seeds = len(seed_generator.seeds)
 
-    return seed_generator, nbr_seeds
+    return seed_generator, nbr_seeds, seed_res, seed_data
 
 
 def _prepare_tracking_mask(args, hdf_handle):
     tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
+
+    logging.info("Preparing tracking mask from {}".format(tm_group))
     mask_data = np.array(tm_group['data'], dtype=np.float64)
     mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
     affine = np.array(tm_group.attrs['affine'], dtype=np.float32)
     ref = nib.Nifti1Image(mask_data, affine)
 
     mask = DataVolume(mask_data, mask_res, args.mask_interp)
-    return mask, ref, mask_res
+    return mask, ref, mask_res, mask_data
 
 
 def main():
@@ -206,15 +223,31 @@ def main():
         logging.debug("Tracked {} streamlines (out of {} seeds). Now saving..."
                       .format(len(streamlines), tracker.nbr_seeds))
 
+    if len(streamlines) == 0:
+        logging.warning("No streamlines created! Not saving tractogram!")
+        return
+
     # save seeds if args.save_seeds is given
-    data_per_streamline = {'seed': lambda: seeds} if args.save_seeds else {}
+    # We seeded (and tracked) in vox, corner, but in dipy, they use
+    # vox, center. In other scripts using the seeds (ex,
+    # scil_compute_density_map), this is what they will expect.
+    if args.save_seeds:
+        print("Saving seeds in data_per_streamline.")
+        seeds = [np.asanyarray(seed) - 0.5 for seed in seeds]  # to_center
+        data_per_streamline = {'seeds': seeds}
+    else:
+        data_per_streamline = {}
 
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!
     set_sft_logger_level('WARNING')
 
-    sft = StatefulTractogram(streamlines, ref, Space.VOXMM, Origin.TRACKVIS,
+    sft = StatefulTractogram(streamlines, ref, Space.VOX,
+                             origin=Origin.TRACKVIS,
                              data_per_streamline=data_per_streamline)
+
+    print("Saving tractogram {} with {} streamlines"
+          .format(args.out_tractogram, len(sft.streamlines)))
     save_tractogram(sft, args.out_tractogram,
                     bbox_valid_check=False)
 

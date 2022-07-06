@@ -289,10 +289,9 @@ class DWIMLPropagator(AbstractPropagator):
         """
         if self._track_multiple_lines:
             n_pos = pos
-            streamline_lengths = [1 for _ in n_pos]
         else:
             n_pos = [pos]
-            streamline_lengths = None
+            v_in = [v_in]
 
         # Tracking field returns the model_outputs
         model_outputs = self._get_model_outputs_at_pos(n_pos)

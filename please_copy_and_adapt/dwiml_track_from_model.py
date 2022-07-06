@@ -13,7 +13,7 @@ import math
 
 import dipy.core.geometry as gm
 from dipy.io.stateful_tractogram import (StatefulTractogram, Space,
-                                         set_sft_logger_level)
+                                         set_sft_logger_level, Origin)
 from dipy.io.streamline import save_tractogram
 import h5py
 import nibabel as nib
@@ -213,7 +213,7 @@ def main():
     # typically produces a lot of outputs!
     set_sft_logger_level('WARNING')
 
-    sft = StatefulTractogram(streamlines, ref, Space.VOXMM,
+    sft = StatefulTractogram(streamlines, ref, Space.VOXMM, Origin.TRACKVIS,
                              data_per_streamline=data_per_streamline)
     save_tractogram(sft, args.out_tractogram,
                     bbox_valid_check=False)

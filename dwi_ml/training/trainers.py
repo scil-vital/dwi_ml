@@ -504,7 +504,6 @@ class DWIMLAbstractTrainer:
         All *args will be passed all to run_one_batch, which you should
         implement, in case you need some variables.
         """
-        logging.warning(epoch)
         self.training_time_monitor.start_new_epoch()
         self.train_loss_monitor.start_new_epoch()
         self.grad_norm_monitor.start_new_epoch()

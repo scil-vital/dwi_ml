@@ -28,6 +28,9 @@ def load_file_to4d(data_file):
 
     img = nib.load(data_file)
     data = img.get_fdata(dtype=np.float32)
+
+    # A note on the affine. May not be the same as when using mrinfo, because
+    # nibabel flips the axes. Should be as before when saved.
     affine = img.affine
     header = img.header
     img.uncache()

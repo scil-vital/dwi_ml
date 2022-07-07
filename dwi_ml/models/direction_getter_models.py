@@ -252,13 +252,25 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
             The loss between the outputs and the targets, averaged across
             timesteps (and sequences).
         """
-        print(learned_directions[0:4, :])
-        print(target_directions[0:4, :])
+        # A reminder: a cosine of -1 = aligned but wrong direction!
+        #             a cosine of 0 = 90 degrees apart.
+        #             a cosine of 1 = small angle
+        # Thus we aim for a big cosine (maximize)! We minimize -cosine.
 
         # losses is of shape [nb_points,]
-        losses = -self.loss(learned_directions, target_directions)
-        print(losses[0:4])
-        mean_loss = losses.mean()
+        losses = self.loss(learned_directions, target_directions)
+
+        mean_loss = -losses.mean()
+
+        # Note. Using the mean of all points of all streamlines has the
+        # potential of learning only to go straight, which would be fine in
+        # most cases.
+        # Could we increase the weight of wrong results? Tried
+        # mean_loss = torch.sqrt(torch.pow((losses - 1), 2)).mean()
+        #      ( cosine - 1: brings it back to range [-2,  0]
+        #        pow2: - 2 becomes very important.)
+        # But with Learn2track, exploding gradients.
+
         return mean_loss
 
 
@@ -288,6 +300,7 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
         """
         # If outputs and targets are of shape (N, D), losses is of shape N
         losses = self.loss(learned_directions, target_directions)
+
         mean_loss = losses.mean()
         return mean_loss
 

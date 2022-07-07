@@ -37,7 +37,7 @@ class DWIMLPropagator(AbstractPropagator):
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, step_size: float, rk_order: int,
                  algo: str, theta: float, model_uses_streamlines: bool = False,
-                 device=None):
+                 device=None, normalize_directions: bool = True):
         """
         Parameters
         ----------
@@ -76,6 +76,12 @@ class DWIMLPropagator(AbstractPropagator):
             raise ValueError("Propagator's algo should be 'det' or 'prob'.")
 
         self.theta = theta
+        self.normalize_directions = normalize_directions
+        if not normalize_directions and step_size != 1:
+            logging.warning("Tracker not normalizing directions obtained as "
+                            "output from the model. Using a step size other "
+                            "than 1 does not really make sense. You probably "
+                            "want to advance of exactly 1 * output.")
 
         self.device = device
         if device is not None:
@@ -83,14 +89,18 @@ class DWIMLPropagator(AbstractPropagator):
 
         self.model_uses_streamlines = model_uses_streamlines
 
-        # The model uses the streamline, so we need to keep track of it as
-        # additional input. List of lines. All lines have the same number of
-        # points, as they are being propagated together.
+        # If the model uses the streamline (ex: to compute the list of the n
+        # previous directions), we need to keep track of it as additional
+        # input. List of lines. All lines have the same number of points
+        # as they are being propagated together.
         # List[list[list]]: nb_lines x (nb_points, 3).
         self.current_lines = None  # type: Union[list, None]
 
         # Propagate method call will influence how we get the streamlines
         self._track_multiple_lines = None  # type: Union[bool, None]
+
+        # Contrary to super: normalize direction is optional
+        self.normalize_directions = normalize_directions
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -136,7 +146,7 @@ class DWIMLPropagator(AbstractPropagator):
         else:
             return [None for _ in seeding_pos]
 
-    def prepare_backward(self, line, forward_dir):
+    def prepare_backward(self, line, forward_dir, multiple_lines=False):
         """
         Preparing backward.
 
@@ -147,6 +157,8 @@ class DWIMLPropagator(AbstractPropagator):
             coordinates. Simulatenous tracking: list of list of coordinates.
         forward_dir: ndarray (3,) or List[ndarray]
             v_in chosen at the forward step.
+        multiple_lines: bool
+            If true, using version simulteanous tracking.
 
         Returns
         -------
@@ -155,12 +167,15 @@ class DWIMLPropagator(AbstractPropagator):
             only the seeding point (forward tracking failed), simply inverse
             the forward direction.
         """
+        # If forward tracking succeeded, takes the last direction, inverted and
+        # normalized (if self.normalize_directions).
+
         # Note. In our case, compared to scilpy, forward dir is None. So if the
         # forward tracking failed, we will just return None and try the
         # backward again with v_in=None. So basically, we will recompute
         # exactly the same model outputs as for the forward. But maybe the
         # sampling will create a new direction.
-        if isinstance(line[0], np.ndarray):  # List of coords = single tracking
+        if not multiple_lines:
             v_in = super().prepare_backward(line, forward_dir)
 
             # v_in is in double format (np.float64) but it looks like we need
@@ -186,58 +201,59 @@ class DWIMLPropagator(AbstractPropagator):
         """
         pass
 
-    def propagate(self, line, v_in, multiple_lines=False):
+    def propagate(self, line, v_in):
         """
         Params
         ------
-        line: list[ndarrray (3,)] or list[list]
-            Current line, or current lines if multiple_lines.
-        v_in: ndarray (3,) or List[TrackingDirection]
-            Previous tracking direction, (or list of if multiple_lines.)
+        line: list[ndarrray (3,)]
+            Current line
+        v_in: ndarray (3,)
+            Previous tracking direction
 
         Return
         ------
-        new_pos: ndarray (3,) or list
+        new_pos: ndarray (3,)
             The new segment position.
-        new_dir: ndarray (3,) or list
+        new_dir: ndarray (3,)
             The new segment direction.
-        is_direction_valid: bool or list
+        is_direction_valid: bool
             True if new_dir is valid.
         """
-        self._track_multiple_lines = multiple_lines
-
         if self.model_uses_streamlines:
             # super() won't use the whole line as argument during the sampling
             # of next direction, but we need it. Add it in memory here.
-            # To use with r_k order > 1, we would need to compute the
-            # intermediate lines at each sub-computation, easier if we actually
-            # send the streamline, we would need to change scilpy.
-            if multiple_lines:
-                self.current_lines = line
-            else:
-                self.current_lines = [line]
+            self.current_lines = [line]
 
-        if multiple_lines:
-            n_new_pos, n_new_dir, are_directions_valid = \
-                self._propagate_multiple_lines(line, v_in)
+        return super().propagate(line, v_in)
 
-            return n_new_pos, n_new_dir, are_directions_valid
-        else:
-            # We could use self._propagate_multiple_lines([line], v_in).
-            # Keeping this version with super in case we prepare everything for
-            # use with runge_kutta order > 1.
-            new_pos, new_dir, is_direction_valid = \
-                super().propagate(line, v_in)
-
-            return new_pos, new_dir, is_direction_valid
-
-    def _propagate_multiple_lines(self, lines, n_v_in):
+    def propagate_multiple_lines(self, lines, n_v_in):
         """
         Equivalent of self.propagate() for multiple lines. We do not call
         super's at it does not support multiple lines. Super's method supports
         rk order. We don't. We skip this and directly call
         _sample_next_direction_or_go_straight.
+
+        Params
+        ------
+        line: list[list[ndarrray (3,)]]
+            Current lines.
+        v_in: list[ndarray (3,)]
+            Previous tracking directions.
+
+        Return
+        ------
+        n_new_pos: list[ndarray (3,)]
+            The new segment position.
+        n_new_dir: list[ndarray (3,)]
+            The new segment direction.
+        are_directions_valid: list[bool]
+            True if new_dir is valid.
         """
+        self._track_multiple_lines = True
+
+        if self.model_uses_streamlines:
+            self.current_lines = lines
+
         # Keeping one coordinate per streamline; the last one.
         # If model needs the streamlines, use current memory.
         n_pos = [line[-1] for line in lines]
@@ -284,8 +300,9 @@ class DWIMLPropagator(AbstractPropagator):
         Return
         -------
         direction: ndarray (3,) or list of ndarrays
-            Valid normalized tracking direction(s). None if no valid direction
-            is found.
+            Valid tracking direction(s). None if no valid direction
+            is found. If self.normalize_directions, direction must be
+            normalized.
         """
         if self._track_multiple_lines:
             n_pos = pos
@@ -305,7 +322,8 @@ class DWIMLPropagator(AbstractPropagator):
 
         start_time = datetime.now()
         for i in range(len(n_pos)):
-            next_dirs[i] /= np.linalg.norm(next_dirs[i])
+            if self.normalize_directions:
+                next_dirs[i] /= np.linalg.norm(next_dirs[i])
             # Verify curvature, else return None.
             # toDo could we find a better solution for proba tracking?
             #  Resampling until angle < theta? Easy on the sphere (restrain

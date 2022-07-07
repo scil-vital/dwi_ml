@@ -185,8 +185,8 @@ class DWIMLTracker(ScilpyTracker):
             # However, in some cases (ex, Learn2track with memory), model
             # needs to be re-run before starting back-propagation. We let
             # the propagator deal with the looping.
-            tracking_info = self.propagator.prepare_backward(lines,
-                                                             tracking_info)
+            tracking_info = self.propagator.prepare_backward(
+                lines, tracking_info, multiple_lines=True)
 
             logger.info("Multiple GPU tracking: Starting backward "
                         "propagation.")
@@ -226,9 +226,8 @@ class DWIMLTracker(ScilpyTracker):
         all_lines_completed = False
         # lines will only contain the remaining lines.
         while not all_lines_completed:
-            n_new_pos, new_tracking_info, are_directions_valid = \
-                self.propagator.propagate(lines, tracking_info,
-                                          multiple_lines=True)
+            n_new_pos, tracking_info, are_directions_valid = \
+                self.propagator.propagate_multiple_lines(lines, tracking_info)
             invalid_direction_counts[~are_directions_valid] += 1
 
             # ToDo. Check what is faster. Removing finished streamlines or
@@ -263,16 +262,13 @@ class DWIMLTracker(ScilpyTracker):
                 [initial_order[i] for i in lines_that_continue]
 
             final_tracking_info.extend(
-                [new_tracking_info[i] for i in lines_that_stop])
-            new_tracking_info = \
-                [new_tracking_info[i] for i in lines_that_continue]
+                [tracking_info[i] for i in lines_that_stop])
+            tracking_info = [tracking_info[i] for i in lines_that_continue]
 
             invalid_direction_counts = np.asanyarray(
                 [invalid_direction_counts[i] for i in lines_that_continue])
 
             self.propagator.multiple_lines_update(lines_that_continue)
-
-            tracking_info = new_tracking_info
 
         assert len(lines) == 0
         assert len(initial_order) == 0

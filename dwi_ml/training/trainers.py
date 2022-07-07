@@ -142,21 +142,15 @@ class DWIMLAbstractTrainer:
                                      "({})".format(experiments_path))
 
         self.experiments_path = experiments_path
+        self.experiment_name = experiment_name
         self.saving_path = os.path.join(experiments_path,
                                         experiment_name)
         if not from_checkpoint and not os.path.isdir(self.saving_path):
             logging.info('Creating directory {}'.format(self.saving_path))
             os.mkdir(self.saving_path)
 
-        self.experiment_name = experiment_name
-        self.saving_path = os.path.join(self.experiments_path,
-                                        self.experiment_name)
-        if not from_checkpoint and not os.path.isdir(self.saving_path):
-            self.logger.info('Creating directory {}'.format(self.saving_path))
-            os.mkdir(self.saving_path)
-
-        # Note that the training/validation sets are contained in the
-        # data_loaders.data_source
+        # Note that the training/validation sets are also contained in the
+        # data_loaders.dataset
         self.batch_sampler = batch_sampler
         if self.batch_sampler.dataset.validation_set.nb_subjects == 0:
             self.use_validation = False
@@ -999,7 +993,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
 
-        If the sampler was instantiated with wait_for_gpu, then we need to
+        If the batch_loader was instantiated with wait_for_gpu, then we need to
         compute the inputs here; not done yet.
 
         Parameters

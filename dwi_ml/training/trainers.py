@@ -231,7 +231,7 @@ class DWIMLAbstractTrainer:
         self.nb_valid_batches_per_epoch = None
 
         # RNG state
-        # Nothing to to here.
+        # Nothing to do here.
 
         # Setup monitors
         self.train_loss_monitor = ValueHistoryMonitor("Training loss")
@@ -1064,6 +1064,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 # Data is already ready
                 batch_streamlines, _, batch_inputs = data
 
+            lengths = [len(s) - 1 for s in batch_streamlines]
+            logger.debug("Loaded a batch of {} streamlines, {} inputs points"
+                         .format(len(batch_streamlines), sum(lengths)))
             if is_training:
                 # Reset parameter gradients
                 # See here for some explanation

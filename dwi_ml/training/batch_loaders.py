@@ -523,7 +523,6 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             # compute the last target direction, it's not really an input
             streamlines = [s[:-1] for s in streamlines]
 
-            logger.setLevel('DEBUG')
             # Trilinear interpolation uses origin=corner, vox space, but ok
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
@@ -531,7 +530,6 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
                 MainModelOneInput.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,
                     self.input_group_idx, self.neighborhood_points, device)
-            logger.setLevel('INFO')
 
             batch_x_data.extend(subbatch_x_data)
 

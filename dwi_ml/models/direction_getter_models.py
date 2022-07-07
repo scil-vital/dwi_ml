@@ -239,14 +239,25 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
         directions and the target directions (both tensors should contain
         x,y,z values).
 
+        Params
+        ------
+        learned_directions: Tensor
+            Shape: [nb_points, 3]
+        target_directions: Tensor
+            Shape: [nb_points, 3]
+
         Returns
         -------
         mean_loss : torch.Tensor
             The loss between the outputs and the targets, averaged across
             timesteps (and sequences).
         """
-        # loss has shape [n_sequences*seq_len]
+        print(learned_directions[0:4, :])
+        print(target_directions[0:4, :])
+
+        # losses is of shape [nb_points,]
         losses = -self.loss(learned_directions, target_directions)
+        print(losses[0:4])
         mean_loss = losses.mean()
         return mean_loss
 

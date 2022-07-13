@@ -39,7 +39,7 @@ class ModelForTest(MainModelAbstract):
     def compute_loss(self, model_outputs, streamlines):
         return self.fake_parameter
 
-    def get_tracking_direction_det(self, regressed_dirs : torch.Tensor):
+    def get_tracking_direction_det(self, regressed_dirs: torch.Tensor):
         return regressed_dirs
 
     def sample_tracking_direction_prob(self, regressed_dir):
@@ -71,10 +71,12 @@ class ModelForTestWithPD(MainModelWithPD):
     def compute_loss(self, model_outputs, streamlines):
         return self.fake_parameter
 
-    def get_tracking_direction_det(self, regressed_dirs):
+    def get_tracking_direction_det(self, regressed_dirs,
+                                   streamline_lengths=None):
         return regressed_dirs
 
-    def sample_tracking_direction_prob(self, regressed_dir):
+    def sample_tracking_direction_prob(self, regressed_dir,
+                                       streamline_lengths=None):
         raise NotImplementedError("(Fake) Regression does not allow prob "
                                   "tracking.")
 

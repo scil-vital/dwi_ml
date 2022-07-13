@@ -25,7 +25,7 @@ class MRIDataAbstract(object):
     could contain data from many "real" MRI volumes concatenated together.
     """
     def __init__(self, data: Union[np.ndarray, h5py.Group], voxres: np.ndarray,
-                 interpolation: str = None):
+                 affine: np.ndarray, interpolation: str = None):
         """
         Parameters
         ----------
@@ -35,6 +35,8 @@ class MRIDataAbstract(object):
             h5py.Group containing the data.
         voxres: np.array(3,)
             The pixel resolution, ex, using img.header.get_zooms()[:3].
+        affine: np.array
+            The affine.
         interpolation: str or None
             The interpolation choice amongst "trilinear" or "nearest". If
             None, functions getting a coordinate in mm instead of voxel
@@ -42,6 +44,7 @@ class MRIDataAbstract(object):
         """
         # Data management depends on lazy or not
         self.voxres = voxres
+        self.affine = affine
         self.interpolation = interpolation
 
         # _data: in lazy, it is a hdf5 group. In non-lazy, it is the already
@@ -78,8 +81,8 @@ class MRIData(MRIDataAbstract):
     In this child class, the data is a np.array containing the loaded data.
     """
     def __init__(self, data: np.ndarray, voxres: np.ndarray,
-                 interpolation: str = None):
-        super().__init__(data, voxres, interpolation)
+                 affine: np.ndarray, interpolation: str = None):
+        super().__init__(data, voxres, affine, interpolation)
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group,
@@ -90,8 +93,9 @@ class MRIData(MRIDataAbstract):
         """
         data = np.array(hdf_group['data'], dtype=np.float32)
         voxres = np.array(hdf_group.attrs['voxres'], dtype=np.float32)
+        affine = np.array(hdf_group.attrs['affine'], dtype=np.float32)
 
-        return cls(data, voxres, interpolation)
+        return cls(data, voxres, affine, interpolation)
 
     @property
     def as_data_volume(self) -> DataVolume:
@@ -111,9 +115,9 @@ class LazyMRIData(MRIDataAbstract):
     keeping the whole volume in memory.
     """
 
-    def __init__(self, data: h5py.Group = None, voxres: np.ndarray = None,
-                 interpolation: str = None):
-        super().__init__(data, voxres, interpolation)
+    def __init__(self, data: Union[h5py.Group, None], voxres: np.ndarray,
+                 affine: np.ndarray, interpolation: str = None):
+        super().__init__(data, voxres, affine, interpolation)
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group,
@@ -124,8 +128,9 @@ class LazyMRIData(MRIDataAbstract):
         """
         data = hdf_group['data']
         voxres = np.array(hdf_group.attrs['voxres'], dtype=np.float32)
+        affine = np.array(hdf_group.attrs['affine'], dtype=np.float32)
 
-        return cls(data, voxres, interpolation)
+        return cls(data, voxres, affine, interpolation)
 
     # All three methods below load the data.
     # Data is not loaded yet, but sending it to a np.array will load it.
@@ -145,4 +150,5 @@ class LazyMRIData(MRIDataAbstract):
     @property
     def as_non_lazy(self):
         logger.info("LOADING FROM HDF5 NOW {}".format(self._data))
-        return MRIData(np.array(self._data), self.voxres, self.interpolation)
+        return MRIData(np.array(self._data), self.voxres, self.affine,
+                       self.interpolation)

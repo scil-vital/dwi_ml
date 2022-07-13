@@ -259,8 +259,7 @@ class DWIMLAbstractBatchLoader:
             # Note: If this is used through the dataloader, multiprocessing
             # is used. Each process will open an handle.
             subj_data = \
-                self.context_subset.subjs_data_list.open_handle_and_getitem(
-                    subj)
+                self.context_subset.subjs_data_list.get_subj_with_handle(subj)
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
 
             # Get streamlines as sft

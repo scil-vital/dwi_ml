@@ -259,7 +259,7 @@ class DWIMLBatchIDSampler(Sampler):
                 nb_subjects = min(self.nb_subjects_per_batch,
                                   np.count_nonzero(weights))
                 sampled_subjs = self.np_rng.choice(
-                    np.arange(len(self.context_subset.subjs_data_list)),
+                    np.arange(self.context_subset.nb_subjects),
                     size=nb_subjects, replace=False, p=weights)
             else:
                 # Sampling from all subjects

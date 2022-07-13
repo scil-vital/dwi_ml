@@ -149,8 +149,8 @@ def _lazy_version(hdf5_filename):
 
     logging.debug("    Testing properties of a LAZY SingleSubjectDataset.")
 
-    # Accessing through open_handle_and_getitem
-    subj0 = training_set.subjs_data_list.open_handle_and_getitem(0)
+    # Getting subject and adding handle to allow loading.
+    subj0 = training_set.subjs_data_list.get_subj_with_handle(0)
     assert isinstance(subj0, LazySubjectData)
     _verify_subj_data(subj0, subj_number=0)
 

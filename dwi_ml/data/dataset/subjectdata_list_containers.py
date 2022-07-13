@@ -44,7 +44,7 @@ class SubjectsDataListAbstract(object):
         """
         raise NotImplementedError
 
-    def open_handle_and_getitem(self, subject_idx):
+    def get_subj_with_handle(self, subject_idx):
         """
         Similar to __getitem__, but first opens a hdf handle with known hdf
         path.
@@ -69,7 +69,7 @@ class SubjectsDataList(SubjectsDataListAbstract):
         """
         return self._subjects_data_list[subject_idx]
 
-    def open_handle_and_getitem(self, subject_idx):
+    def get_subj_with_handle(self, subject_idx):
         # Non-lazy. No need to add a handle. Simply use __getitem__
         # (indirectly).
         return self[subject_idx]
@@ -96,47 +96,42 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
         Returns
         -------
         subj: LazySubjectData
+            Subject as is (loaded or not).
         """
-        if type(subject_item) == tuple:
-            subject_idx, new_hdf_handle = subject_item
-            subj_data = self._subjects_data_list[subject_idx]
+        if isinstance(subject_item, tuple):
+            raise DeprecationWarning("Deprecated use. Simply add "
+                                     "subj.add_handle to your getitem(idx).")
 
-            if new_hdf_handle is not None:
-                if subj_data.hdf_handle and subj_data.hdf_handle.id.valid:
-                    logger.debug("Getting item from the subjects list. You "
-                                 "provided a hdf handle but subject already "
-                                 "had a valid one: {}. Using new handle {}"
-                                 .format(subj_data.hdf_handle, new_hdf_handle))
+        return self._subjects_data_list[subject_item]
 
-            if not new_hdf_handle.id.valid:
-                logger.warning("Adding an invalid handle to subject!")
-
-            logger.debug("Giving handle information to subject.")
-
-            subj_data.add_handle(new_hdf_handle)
-
-        else:
-            subj_data = self._subjects_data_list[subject_item]
-
-        return subj_data
-
-    def open_handle_and_getitem(self, subject_idx) -> LazySubjectData:
+    def get_subj_with_handle(self, subject_idx) -> LazySubjectData:
         """
         getitem but open an handle first (if none existed).
+
+        Params
+        ------
+        subject_idx: int
+            Subject index.
+        new_hdf_handle: hdf handle or None
+            If None, use list's self.handle, or open a new one if not valid.
+            If it is not None, ignore self.handle and use provided handle
+            instead.
 
         Returns
         -------
         subj: LazySubjectData
         """
+        subj_data = self.__getitem__(subject_idx)
+
+        logger.debug("Giving handle information to subject.")
+
         # Verify current handle.
-        if self.hdf_handle and self.hdf_handle.id.valid:
-            logger.debug("Not opening a new handle; one is already open.")
-        else:
+        if not self.hdf_handle or not self.hdf_handle.id.valid:
+            if self.hdf_handle:
+                self.hdf_handle.close()
             self.hdf_handle = h5py.File(self.hdf5_path, 'r')
             logger.debug("PROCESS ID {}: Opened a new handle: {}"
                          .format(os.getpid(), self.hdf_handle))
-
-        # Call __getitem__
-        subj_data = self[(subject_idx, self.hdf_handle)]
+        subj_data.add_handle(self.hdf_handle)
 
         return subj_data

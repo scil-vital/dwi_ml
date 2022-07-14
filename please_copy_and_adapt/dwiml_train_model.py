@@ -29,7 +29,7 @@ from dwi_ml.training.utils.experiment import (
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment
 
 # Please adapt
-from dwi_ml.tests.utils import ModelForTestWithPD
+from dwi_ml.tests.utils import TrackingModelForTestWithPD
 
 
 def prepare_arg_parser():
@@ -62,7 +62,7 @@ def init_from_args(args, sub_loggers_level):
     #     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     #     nb_features = dataset.nb_features[input_group_idx]
     #     dg_args = check_args_direction_getter(args)
-    model = ModelForTestWithPD()  # To be instantiated correctly.
+    model = TrackingModelForTestWithPD()  # To be instantiated correctly.
 
     # Preparing the batch sampler.
     with Timer("\nPreparing batch sampler...", newline=True, color='green'):

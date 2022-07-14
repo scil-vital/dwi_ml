@@ -207,13 +207,12 @@ class MainModelWithPD(MainModelAbstract):
     Hint: In your forward method, first concantenate your input with the result
     of the previous directions embedding layer!
     """
-    def __init__(self, experiment_name: str, nb_previous_dirs: int = 0,
+    def __init__(self, nb_previous_dirs: int = 0,
                  prev_dirs_embedding_size: int = None,
-                 prev_dirs_embedding_key: str = None,
-                 normalize_directions: bool = True,
-                 neighborhood_type: str = None, neighborhood_radius=None,
-                 log_level=logging.root.level):
+                 prev_dirs_embedding_key: str = None, **kw):
         """
+        Params
+        ------
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received. Default: 0.
@@ -226,9 +225,7 @@ class MainModelWithPD(MainModelAbstract):
             dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
             Default: None (no previous directions added).
         """
-        super().__init__(experiment_name, normalize_directions,
-                         neighborhood_type, neighborhood_radius,
-                         log_level)
+        super().__init__(**kw)
 
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
@@ -237,8 +234,9 @@ class MainModelWithPD(MainModelAbstract):
         if self.nb_previous_dirs > 0:
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
                 raise ValueError("Embedding choice for previous dirs not "
-                                 "understood: {}"
-                                 .format(self.prev_dirs_embedding_key))
+                                 "understood: {}. It should be one of {}"
+                                 .format(self.prev_dirs_embedding_key,
+                                         keys_to_embeddings.keys()))
 
             if prev_dirs_embedding_size is None:
                 self.prev_dirs_embedding_size = nb_previous_dirs * 3
@@ -264,12 +262,6 @@ class MainModelWithPD(MainModelAbstract):
             'prev_dirs_embedding_size': self.prev_dirs_embedding_size,
         })
         return p
-
-    def compute_loss(self, outputs, targets):
-        # Probably something like:
-        # targets = self._format_directions(streamlines)
-        # Then compute loss based on model.
-        raise NotImplementedError
 
     def compute_and_embed_previous_dirs(self, dirs,
                                         unpack_results: bool = True,
@@ -337,14 +329,6 @@ class MainModelWithPD(MainModelAbstract):
                         n_prev_dirs_embedded_packed)
 
                 return n_prev_dirs_embedded
-
-    def get_tracking_direction_det(self, model_outputs,
-                                   streamline_lengths=None):
-        raise NotImplementedError
-
-    def sample_tracking_direction_prob(self, model_outputs,
-                                       streamline_lengths=None):
-        raise NotImplementedError
 
     def format_previous_dirs(self, all_streamline_dirs, point_idx=None):
         """
@@ -426,3 +410,9 @@ class MainModelOneInput(MainModelAbstract):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
         return subj_x_data, input_mask
+
+class MainModelForTracking(MainModelAbstract):
+    def __init__(self, save_estimated_outputs: bool = False, **kw):
+        super().__init__(**kw)
+
+        self.save_estimated_outputs = save_estimated_outputs

@@ -14,7 +14,7 @@ from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
 
 # Please adapt:
-from dwi_ml.tests.utils import ModelForTestWithPD
+from dwi_ml.tests.utils import TrackingModelForTestWithPD
 
 
 def prepare_arg_parser():
@@ -47,7 +47,7 @@ def init_from_checkpoint(args):
         sub_loggers_level = 'INFO'
 
     # Load model from checkpoint directory
-    model = ModelForTestWithPD.load_params_and_state(
+    model = TrackingModelForTestWithPD.load_params_and_state(
         os.path.join(args.experiments_path, args.experiment_name,
                      'checkpoint/model'),
         sub_loggers_level)

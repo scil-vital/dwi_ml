@@ -40,7 +40,7 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
 # PLEASE COPY AND ADAPT:
 ##################
 # Use your own model.
-from dwi_ml.tests.utils import ModelForTestWithPD
+from dwi_ml.tests.utils import TrackingModelForTestWithPD
 
 # Choose appropriate classes or implement your own child classes.
 # Example:
@@ -109,7 +109,7 @@ def prepare_tracker(parser, args, hdf5_file, device,
         subset, subj_idx = prepare_dataset_for_tracking(hdf5_file, args)
 
         logging.info("Loading model.")
-        model = ModelForTestWithPD.load_params_and_state(
+        model = TrackingModelForTestWithPD.load_params_and_state(
             args.experiment_path + '/best_model', log_level=sub_logger_level)
         logging.info("* Loaded params: " +
                      format_dict_to_str(model.params_for_json_prints) +

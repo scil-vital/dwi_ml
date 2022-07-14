@@ -4,7 +4,8 @@ import os
 import torch
 from scilpy.io.fetcher import fetch_data, get_home
 
-from dwi_ml.models.main_models import MainModelAbstract, MainModelWithPD
+from dwi_ml.models.main_models import MainModelAbstract, MainModelWithPD, \
+    MainModelForTracking
 from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -53,7 +54,7 @@ class ModelForTest(MainModelAbstract):
         return [regressed_dir for _ in x]
 
 
-class ModelForTestWithPD(MainModelWithPD):
+class TrackingModelForTestWithPD(MainModelWithPD, MainModelForTracking):
     def __init__(self, experiment_name: str = 'test',
                  nb_previous_dirs: int = 1,
                  prev_dirs_embedding_size: int = None,
@@ -61,11 +62,15 @@ class ModelForTestWithPD(MainModelWithPD):
                  normalize_directions: bool = True,
                  neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
-        super().__init__(experiment_name, nb_previous_dirs,
-                         prev_dirs_embedding_size,
-                         prev_dirs_embedding_key,
-                         normalize_directions,
-                         neighborhood_type, neighborhood_radius, log_level)
+        super().__init__(experiment_name=experiment_name,
+                         nb_previous_dirs=nb_previous_dirs,
+                         prev_dirs_embedding_size=prev_dirs_embedding_size,
+                         prev_dirs_embedding_key=prev_dirs_embedding_key,
+                         normalize_directions=normalize_directions,
+                         neighborhood_type=neighborhood_type,
+                         neighborhood_radius=neighborhood_radius,
+                         log_level=log_level,
+                         save_estimated_outputs=False)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, streamlines):

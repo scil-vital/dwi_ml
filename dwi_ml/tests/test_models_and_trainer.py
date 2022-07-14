@@ -7,7 +7,7 @@ from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.tests.utils import (ModelForTest, create_test_batch_sampler,
                                 create_batch_loader, fetch_testing_data,
-                                ModelForTestWithPD)
+                                TrackingModelForTestWithPD)
 
 SAVE_RESULT_SFT_NII = False
 ref = None
@@ -38,7 +38,7 @@ def test_trainer_and_models():
 
     # Initializing model 2
     logging.info("\n\n---------------TESTING MODEL # 2 -------------")
-    model2 = ModelForTestWithPD()
+    model2 = TrackingModelForTestWithPD()
 
     # Start tests
     trainer2 = _create_trainer(batch_sampler, batch_loader, model2,

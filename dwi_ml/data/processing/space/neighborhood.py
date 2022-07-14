@@ -86,7 +86,7 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
 def get_neighborhood_vectors_grid(radius: int):
     """
     This neighborhood definition lies on a grid. Returns a list of vectors
-    pointing to points surrounding the origin that mimics the original voxel
+    pointing to points surrounding the origin that mimic the original voxel
     grid, in voxel space. Ex: with radius 1, this is 26 points. With radius 2,
     it's 124 points.
 
@@ -157,25 +157,3 @@ def extend_coordinates_with_neighborhood(
     coords += tiled_vectors
 
     return coords
-
-
-def add_args_neighborhood(p):
-    """
-    Optional arguments that should be added to an argparser to use a
-    neighborhood.
-    """
-    n = p.add_mutually_exclusive_group()
-    n.add_argument(
-        '--sphere_radius', type=float, metavar='r', nargs='+',
-        help="If set, a neighborhood will be added to the input information.\n"
-             "This neighborhood definition lies on a sphere. It will be a "
-             "list \nof 6 positions (up, down, left, right, behind, in front) "
-             "at \nexactly given radius around each point of the streamlines, "
-             "\nin voxel space. You may add multiple radius values.")
-    n.add_argument(
-        '--grid_radius', type=int,
-        help="If set, a neighborhood will be added to the input information.\n"
-             "This neighborhood definition uses a list of points similar to \n"
-             "the original voxel grid around each point of the streamlines.\n"
-             "Ex: with radius 1, that's 27 points. With radius 2, that's 125\n"
-             "points. Radius is in voxel space.")

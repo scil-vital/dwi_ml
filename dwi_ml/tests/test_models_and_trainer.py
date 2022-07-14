@@ -7,15 +7,17 @@ from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.tests.utils import (ModelForTest, create_test_batch_sampler,
                                 create_batch_loader, fetch_testing_data,
-                                ModelForTestWithPD)
+                                TrackingModelForTestWithPD)
 
 SAVE_RESULT_SFT_NII = False
 ref = None
-batch_size = 500
+batch_size = 50
 batch_size_units = 'nb_streamlines'
 
 
 def test_trainer_and_models():
+    # logging.basicConfig(level='DEBUG')
+
     data_dir = fetch_testing_data()
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
@@ -32,17 +34,15 @@ def test_trainer_and_models():
     model = ModelForTest()
 
     # Start tests
-    trainer = _create_trainer(batch_sampler, batch_loader, model,
-                              model_uses_streamlines=False)
+    trainer = _create_trainer(batch_sampler, batch_loader, model)
     trainer.train_and_validate()
 
     # Initializing model 2
     logging.info("\n\n---------------TESTING MODEL # 2 -------------")
-    model2 = ModelForTestWithPD()
+    model2 = TrackingModelForTestWithPD()
 
     # Start tests
-    trainer2 = _create_trainer(batch_sampler, batch_loader, model2,
-                               model_uses_streamlines=True)
+    trainer2 = _create_trainer(batch_sampler, batch_loader, model2)
     trainer2.train_and_validate()
 
 
@@ -61,20 +61,18 @@ def _create_sampler_and_loader(dataset):
     return batch_sampler, batch_loader
 
 
-def _create_trainer(batch_sampler, batch_loader, model,
-                    model_uses_streamlines):
+def _create_trainer(batch_sampler, batch_loader, model):
     tmp_dir = tempfile.TemporaryDirectory()
 
     trainer = DWIMLTrainerOneInput(
         batch_sampler=batch_sampler,
         batch_loader=batch_loader,
         model=model, experiments_path=tmp_dir.name, experiment_name='test',
-        model_uses_streamlines=model_uses_streamlines,
-        log_level='INFO',
+        log_level='DEBUG',
         max_batches_per_epoch_training=2,
         max_batches_per_epoch_validation=None, max_epochs=2, patience=None,
         use_gpu=False)
-    # Note. toDo Test fails with nb_cpu_processes=1.
+    # Note. toDo Test fails with nb_cpu_processes=1. Why??
 
     return trainer
 

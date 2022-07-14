@@ -107,26 +107,39 @@ def _get_one_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
     return n_previous_dirs
 
 
-def compute_and_normalize_directions(streamlines, device=torch.device('cpu'),
-                                     normalize_directions: bool = True):
+def compute_directions(streamlines, device=torch.device('cpu')):
     """
     Params
     ------
     batch_streamlines: list[np.array]
             The streamlines (after data augmentation)
     device: torch device
-    normalize_directions: bool
     """
-    # Getting directions
     # todo Would it be better to cast s as a tensor and use torch.diff?
+    #  in the trainer, when we call this, just one line further we do convert
+    #  streamlines to tensors.
     batch_directions = [torch.as_tensor(s[1:] - s[:-1],
                                         dtype=torch.float32,
                                         device=device)
                         for s in streamlines]
 
-    # Normalization:
-    if normalize_directions:
-        batch_directions = [s / torch.linalg.norm(s, dim=-1, keepdim=True)
-                            for s in batch_directions]
-
     return batch_directions
+
+
+def normalize_directions(directions):
+    """
+    Params
+    ------
+    directions: list[tensor]
+    """
+    if isinstance(directions, torch.Tensor):
+        # Not using /= because if this is used in forward propagation, backward
+        # propagation will fail.
+        directions = directions / torch.linalg.norm(directions, dim=-1,
+                                                    keepdim=True)
+
+    else:
+        directions = [s / torch.linalg.norm(s, dim=-1, keepdim=True)
+                      for s in directions]
+
+    return directions

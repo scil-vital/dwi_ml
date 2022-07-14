@@ -7,13 +7,15 @@ from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
-from dwi_ml.models.main_models import MainModelWithPD
+from dwi_ml.models.main_models import (
+    MainModelWithPD, MainModelOneInput, MainModelForTracking)
 from dwi_ml.models.projects.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
 
-class Learn2TrackModel(MainModelWithPD):
+class Learn2TrackModel(MainModelWithPD, MainModelOneInput,
+                       MainModelForTracking):
     """
     Recurrent tracking model.
 
@@ -30,6 +32,7 @@ class Learn2TrackModel(MainModelWithPD):
                  nb_previous_dirs: int = 0,
                  prev_dirs_embedding_size: int = None,
                  prev_dirs_embedding_key: str = None,
+                 normalize_prev_dirs: bool = True,
                  # INPUTS
                  input_embedding_key: str = 'no_embedding',
                  input_embedding_size: int = None,
@@ -41,10 +44,10 @@ class Learn2TrackModel(MainModelWithPD):
                  dropout: float = 0.,
                  # DIRECTION GETTER
                  dg_key: str = 'cosine-regression', dg_args: dict = None,
+                 normalize_targets: bool = True,
                  # Other
                  neighborhood_type: str = None,
                  neighborhood_radius: Union[int, float, List[float]] = None,
-                 normalize_directions: bool = True,
                  log_level=logging.root.level):
         """
         Params
@@ -70,6 +73,9 @@ class Learn2TrackModel(MainModelWithPD):
             Key to an embedding class (one of
             dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
             Default: None (no previous directions added).
+        normalize_prev_dirs: bool
+            If true, direction vectors are normalized (norm=1) when computing
+            the previous direction.
         input_embedding_key: str
             Key to an embedding class (one of
             dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
@@ -109,7 +115,7 @@ class Learn2TrackModel(MainModelWithPD):
                 - For a grid neighborhood: type must be int.
                 - For an axes neighborhood: type must be float. If it is an
                 iterable of floats, we will use a multi-radius neighborhood.
-        normalize_directions: bool
+        normalize_targets: bool
             If true, direction vectors are normalized (norm=1). If the step
             size is fixed, it shouldn't make any difference. If streamlines are
             compressed, in theory you should normalize, but you could hope that
@@ -119,10 +125,20 @@ class Learn2TrackModel(MainModelWithPD):
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
         """
-        super().__init__(experiment_name, nb_previous_dirs,
-                         prev_dirs_embedding_size, prev_dirs_embedding_key,
-                         normalize_directions, neighborhood_type,
-                         neighborhood_radius, log_level)
+        super().__init__(experiment_name=experiment_name,
+                         neighborhood_type=neighborhood_type,
+                         neighborhood_radius=neighborhood_radius,
+                         log_level=log_level,
+                         # For super MainModelWithPD:
+                         nb_previous_dirs=nb_previous_dirs,
+                         prev_dirs_embedding_size=prev_dirs_embedding_size,
+                         prev_dirs_embedding_key=prev_dirs_embedding_key,
+                         normalize_prev_dirs=normalize_prev_dirs,
+                         # For super MainModelForTracking:
+                         dg_args=dg_args, dg_key=dg_key,
+                         dg_input_size=nb_features * (nb_neighbors + 1),
+                         normalize_targets=normalize_targets,
+                         )
 
         self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features
@@ -299,14 +315,13 @@ class Learn2TrackModel(MainModelWithPD):
         # RUNNING THE MODEL
         logger.debug("*** 1. Previous dir embedding, if any "
                      "(on packed_sequence's tensor!)...")
-        dirs = self.format_directions(streamlines)
         if is_tracking:
             point_idx = -1
         else:
             # Currently training. We need all the previous directions.
             point_idx = None
         n_prev_dirs_embedded = self.compute_and_embed_previous_dirs(
-            dirs, unpack_results=False, point_idx=point_idx)
+            streamlines, unpack_results=False, point_idx=point_idx)
 
         logger.debug("*** 2. Inputs embedding (on packed_sequence's "
                      "tensor!)...")

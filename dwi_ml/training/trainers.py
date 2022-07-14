@@ -12,9 +12,11 @@ from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
-from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.models.main_models import MainModelAbstract, ModelForTracking
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -53,7 +55,6 @@ class DWIMLAbstractTrainer:
                  experiment_name: str,
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
-                 model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001, weight_decay: float = 0.01,
                  use_radam: bool = False, betas: List[float] = None,
                  max_epochs: int = 10,
@@ -82,9 +83,6 @@ class DWIMLAbstractTrainer:
             Instantiated class with a load_batch method able to load data
             associated to sampled batch ids. Data in batch_sampler.dataset must
             be already loaded.
-        model_uses_streamlines: bool
-            If true, the batch streamlines will be sent to the model when
-            calling the forward method. Else, only the inputs. Default: False.
         learning_rate: float
             Learning rate. Default: 0.001 (torch's default)
         weight_decay: float
@@ -162,7 +160,6 @@ class DWIMLAbstractTrainer:
             self.use_validation = True
         self.batch_loader = batch_loader
         self.model = model
-        self.model_uses_streamlines = model_uses_streamlines
         self.max_epochs = max_epochs
         self.max_batches_per_epochs_train = max_batches_per_epoch_training
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
@@ -186,6 +183,8 @@ class DWIMLAbstractTrainer:
         # ----------------------
         # Values fixed by us
         # ----------------------
+        self.space = 'vox'
+        self.origin = 'corner'
 
         # Device and rng value. Note that if loading from a checkpoint, the
         # complete state should be updated.
@@ -237,11 +236,6 @@ class DWIMLAbstractTrainer:
         # Comet values will be instantiated in train().
         self.comet_exp = None
         self.comet_key = None
-
-        # Saving all params in a json file to help user remember what he used.
-        if not from_checkpoint:
-            filename = os.path.join(self.saving_path, "parameters.json")
-            self.save_params_to_json(filename)
 
         # ---------------------
         # Dataloader: usage will depend on context
@@ -299,7 +293,6 @@ class DWIMLAbstractTrainer:
     def params_for_checkpoint(self):
         # These are the parameters necessary to use _init_
         params = {
-            'model_uses_streamlines': self.model_uses_streamlines,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
@@ -330,7 +323,13 @@ class DWIMLAbstractTrainer:
         })
         return params
 
-    def save_params_to_json(self, json_filename):
+    def save_params_to_json(self):
+        """
+        Utility method to save the parameters to a json file in the same
+        folder as the experiment. Suggestion, call this after instantiating
+        your trainer.
+        """
+        json_filename = os.path.join(self.saving_path, "parameters.json")
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
@@ -743,14 +742,6 @@ class DWIMLAbstractTrainer:
         """
         raise NotImplementedError
 
-    def compute_loss(self, model_outputs, targets):
-        """
-        Calls the compute_loss method of the model. Reimplement in a child
-        class if targets needs to be formatted in any way before the call.
-        """
-        mean_loss = self.model.compute_loss(model_outputs, targets)
-        return mean_loss
-
     def fix_parameters(self):
         """
         This function is called during training, after the forward and
@@ -777,7 +768,10 @@ class DWIMLAbstractTrainer:
         Hint: If you want to use this in your child class, use:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
-        trainer = cls(model, experiments_path, experiment_name,
+        print(cls)
+        trainer = cls(model=model,
+                      experiments_path=experiments_path,
+                      experiment_name=experiment_name,
                       batch_sampler=batch_sampler, batch_loader=batch_loader,
                       from_checkpoint=True, log_level=log_level,
                       **checkpoint_state['params_for_init'])
@@ -965,28 +959,18 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def __init__(self,
-                 model: MainModelAbstract, experiments_path: str,
-                 experiment_name: str,
-                 batch_sampler: DWIMLBatchIDSampler,
-                 batch_loader: DWIMLBatchLoaderOneInput,
-                 model_uses_streamlines: bool = False,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
-                 use_radam: bool = False, betas: List[float] = None,
-                 max_epochs: int = 10,
-                 max_batches_per_epoch_training: int = 1000,
-                 max_batches_per_epoch_validation: Union[int, None] = 1000,
-                 patience: int = None, nb_cpu_processes: int = 0,
-                 use_gpu: bool = False,
-                 comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, log_level=logging.root.level):
-        super().__init__(model, experiments_path, experiment_name,
-                         batch_sampler, batch_loader, model_uses_streamlines,
-                         learning_rate, weight_decay, use_radam, betas,
-                         max_epochs, max_batches_per_epoch_training,
-                         max_batches_per_epoch_validation,
-                         patience, nb_cpu_processes, use_gpu, comet_workspace,
-                         comet_project, from_checkpoint, log_level)
+    def __init__(self, save_estimated_outputs: bool = False, **kw):
+        """
+        Params
+        ------
+        save_estimated_outputs: bool
+            If true, during validation (or training, if there is no validation
+            set), and if model allows it, we will send additional parameters
+            to the forward method to save outputs to allow visual supervision
+            of the model.
+        """
+        super().__init__(**kw)
+        self.save_estimated_outputs = save_estimated_outputs
 
     def run_one_batch(self, data, is_training: bool):
         """
@@ -1015,12 +999,15 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             The total norm (sqrt(sum(params**2))) of parameters before gradient
             clipping, if any.
         """
+        save_estimated_outputs = self.save_estimated_outputs
         if is_training:
             # If training, enable gradients for backpropagation.
             # Uses torch's module train(), which "turns on" the training mode.
             self.model.train()
             self.batch_loader.set_context('training')
             grad_context = torch.enable_grad
+            if self.use_validation:
+                save_estimated_outputs = False
         else:
             # If evaluating, turn gradients off for back-propagation
             # Uses torch's module eval(), which "turns off" the training mode.
@@ -1056,11 +1043,13 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
             else:
                 # Data is already ready
-                batch_streamlines, _, batch_inputs = data
+                batch_streamlines, final_s_ids_per_subj, batch_inputs = data
 
             lengths = [len(s) - 1 for s in batch_streamlines]
             logger.debug("Loaded a batch of {} streamlines, {} inputs points"
                          .format(len(batch_streamlines), sum(lengths)))
+            logger.debug("Loaded the associated {} inputs.".
+                         format(len(batch_inputs)))
             if is_training:
                 # Reset parameter gradients
                 # See here for some explanation
@@ -1068,17 +1057,50 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 # to-call-zero-grad-in-pytorch
                 self.optimizer.zero_grad()
 
+            forward_kwargs = {}
+            loss_kwargs = {}
+            if self.model.model_uses_streamlines:
+                logger.debug("Sending streamlines to tensor and using in "
+                             "model.")
+                batch_streamlines = [torch.tensor(s).to(self.device) for s in
+                                     batch_streamlines]
+                forward_kwargs.update({'target_streamlines': batch_streamlines})
+                loss_kwargs.update({'target_streamlines': batch_streamlines})
+            if self.model.model_uses_dirs:
+                logger.debug("Computing directions and using in model.")
+                dirs = compute_directions(batch_streamlines, self.device)
+                forward_kwargs.update({'target_dirs': dirs})
+                loss_kwargs.update({'target_dirs': dirs})
+
+                if (save_estimated_outputs and
+                        isinstance(self.model, ModelForTracking) and
+                        self.model.allow_saving_estimated_outputs):
+                    logger.debug("Getting reference; we wil save estimated "
+                                 "outputs as a sft.")
+                    # If we allow it, it means any subject in the batch sampler
+                    # can be used as ref.
+                    # ids is a Dict[int, slice]
+                    ref_subj = final_s_ids_per_subj.keys()[0]
+
+                    # Getting the subject (no need to load it here, just
+                    # getting its affine, always loaded even with lazy).
+                    ref = self.batch_loader.context_subset.get_volume(
+                        ref_subj, self.batch_loader.input_group_idx,
+                        load_it=False).affine
+                    path = os.path.join(self.saving_path,
+                                        'latest_batch_outputs')
+
+                    forward_kwargs.update({'ref': ref,
+                                           'saving_path': path,
+                                           'space': self.space,
+                                           'origin': self.origin})
+
             self.logger.debug('*** Computing forward propagation')
-            if self.model_uses_streamlines:
-                streamlines = [torch.tensor(s).to(self.device) for s in
-                               batch_streamlines]
-                model_outputs = self.model(batch_inputs, streamlines)
-            else:
-                model_outputs = self.model(batch_inputs)
+            model_outputs = self.model(batch_inputs, **forward_kwargs)
 
             # Compute loss
             self.logger.debug('*** Computing loss')
-            mean_loss = self.compute_loss(model_outputs, batch_streamlines)
+            mean_loss = self.model.compute_loss(model_outputs, **loss_kwargs)
 
             if is_training:
                 self.logger.debug('*** Computing back propagation')

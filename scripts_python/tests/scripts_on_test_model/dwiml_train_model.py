@@ -29,7 +29,7 @@ from dwi_ml.training.utils.experiment import (
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment
 
 # Please adapt
-from dwi_ml.tests.utils import ModelForTestWithPD
+from dwi_ml.tests.utils import TrackingModelForTestWithPD
 
 
 def prepare_arg_parser():
@@ -62,7 +62,7 @@ def init_from_args(args, sub_loggers_level):
     #     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     #     nb_features = dataset.nb_features[input_group_idx]
     #     dg_args = check_args_direction_getter(args)
-    model = ModelForTestWithPD()  # To be instantiated correctly.
+    model = TrackingModelForTestWithPD()  # To be instantiated correctly.
 
     # Preparing the batch sampler.
     with Timer("\nPreparing batch sampler...", newline=True, color='green'):
@@ -102,17 +102,16 @@ def init_from_args(args, sub_loggers_level):
                      format_dict_to_str(batch_loader.params_for_json_prints))
 
     # Instantiate trainer
-    model_uses_streamlines = True  # Our test model uses previous dirs, so
     # streamlines need to be sent to the forward method.
     with Timer("\nPreparing trainer", newline=True, color='red'):
         trainer = DWIMLTrainerOneInput(
-            model, args.experiments_path, args.experiment_name,
-            batch_sampler, batch_loader,
+            model=model, experiments_path=args.experiments_path,
+            experiment_name=args.experiment_name,
+            batch_sampler=batch_sampler, batch_loader=batch_loader,
             # COMET
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
             # TRAINING
-            model_uses_streamlines=model_uses_streamlines,
             learning_rate=args.learning_rate, weight_decay=args.weight_decay,
             use_radam=args.use_radam, betas=args.betas,
             max_epochs=args.max_epochs,
@@ -124,6 +123,8 @@ def init_from_args(args, sub_loggers_level):
             log_level=args.logging)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_json_prints))
+        # Saving params to json to help user remember
+        trainer.save_params_to_json()
 
     return trainer
 

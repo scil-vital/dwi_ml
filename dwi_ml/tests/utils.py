@@ -59,18 +59,17 @@ class TrackingModelForTestWithPD(MainModelWithPD, MainModelForTracking):
                  nb_previous_dirs: int = 1,
                  prev_dirs_embedding_size: int = None,
                  prev_dirs_embedding_key: str = 'no_embedding',
-                 normalize_directions: bool = True,
+                 normalize_targets: bool = True,
                  neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
         super().__init__(experiment_name=experiment_name,
                          nb_previous_dirs=nb_previous_dirs,
                          prev_dirs_embedding_size=prev_dirs_embedding_size,
                          prev_dirs_embedding_key=prev_dirs_embedding_key,
-                         normalize_directions=normalize_directions,
+                         normalize_targets=normalize_targets,
                          neighborhood_type=neighborhood_type,
                          neighborhood_radius=neighborhood_radius,
-                         log_level=log_level,
-                         save_estimated_outputs=False)
+                         log_level=log_level)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, streamlines):

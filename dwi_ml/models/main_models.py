@@ -7,6 +7,9 @@ from datetime import datetime
 
 import numpy as np
 import torch
+from dipy.io.stateful_tractogram import StatefulTractogram
+from dipy.io.streamline import save_tractogram
+from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
     unpack_sequence
 
@@ -29,7 +32,7 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name: str, normalize_directions: bool = True,
+    def __init__(self, experiment_name: str,
                  neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
         """
@@ -37,12 +40,6 @@ class MainModelAbstract(torch.nn.Module):
         ------
         experiment_name: str
             Name of the experiment
-        normalize_directions: bool
-            If true, direction vectors are normalized (norm=1). If the step
-            size is fixed, it shouldn't make any difference. If streamlines are
-            compressed, in theory you should normalize, but you could hope that
-            not normalizing could give back to the algorithm a sense of
-            distance between points. Default: True.
         neighborhood_type: str
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
@@ -57,13 +54,6 @@ class MainModelAbstract(torch.nn.Module):
         # Trainer's logging level can be changed separately from main
         # scripts.
         logger.setLevel(log_level)
-
-        # Following information is actually dealt with by the data_loaders
-        # (batch sampler during training and tracking_field during tracking)
-        # or even by the trainers.
-        # But saving the parameters directly in the model to ensure that batch
-        # sampler and tracking field will both receive the same information.
-        self.normalize_directions = normalize_directions
 
         # Possible neighbors for each input.
         self.neighborhood_radius = neighborhood_radius
@@ -94,7 +84,6 @@ class MainModelAbstract(torch.nn.Module):
             'experiment_name': self.experiment_name,
             'neighborhood_type': self.neighborhood_type,
             'neighborhood_radius': self.neighborhood_radius,
-            'normalize_directions': self.normalize_directions
         }
 
     @property
@@ -161,15 +150,6 @@ class MainModelAbstract(torch.nn.Module):
         # Then compute loss based on model.
         raise NotImplementedError
 
-    def format_directions(self, streamlines):
-        """
-        Simply calls compute_and_normalize_directions, but with model's device
-        and options.
-        """
-        targets = compute_and_normalize_directions(
-            streamlines, self.device, self.normalize_directions)
-        return targets
-
     def get_tracking_direction_det(self, model_outputs):
         """
         This needs to be implemented in order to use the model for
@@ -206,10 +186,21 @@ class MainModelWithPD(MainModelAbstract):
 
     Hint: In your forward method, first concantenate your input with the result
     of the previous directions embedding layer!
+
+    Hint: Your forward method could look like:
+
+        # Compute and embed previous dirs
+        n_prev_dirs_embedded = self.compute_and_embed_previous_dirs(dirs)
+
+        # Concatenate with inputs
+        inputs = torch.cat((inputs, n_prev_dirs_embedded), dim=-1)
+
+        ...
     """
     def __init__(self, nb_previous_dirs: int = 0,
                  prev_dirs_embedding_size: int = None,
-                 prev_dirs_embedding_key: str = None, **kw):
+                 prev_dirs_embedding_key: str = None,
+                 normalize_prev_dirs: bool = True, **kw):
         """
         Params
         ------
@@ -224,12 +215,16 @@ class MainModelWithPD(MainModelAbstract):
             Key to an embedding class (one of
             dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
             Default: None (no previous directions added).
+        normalize_prev_dirs: bool
+            If true, direction vectors are normalized (norm=1) when computing
+            the previous direction.
         """
         super().__init__(**kw)
 
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
         self.prev_dirs_embedding_size = prev_dirs_embedding_size
+        self.normalize_prev_dirs = normalize_prev_dirs
 
         if self.nb_previous_dirs > 0:
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
@@ -263,12 +258,13 @@ class MainModelWithPD(MainModelAbstract):
         })
         return p
 
-    def compute_and_embed_previous_dirs(self, dirs,
+    def compute_and_embed_previous_dirs(self, streamlines,
                                         unpack_results: bool = True,
                                         point_idx=None):
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
-        the model's output. Else, returns the data as is.
+        the model's output. Else, returns the data as is. Should be used in
+        your forward method.
 
         Params
         ------
@@ -294,6 +290,9 @@ class MainModelWithPD(MainModelAbstract):
         if self.nb_previous_dirs == 0:
             return None
         else:
+            dirs = compute_and_normalize_directions(
+                streamlines, self.device, self.normalize_prev_dirs)
+
             # Formatting the n previous dirs for all points.
             n_prev_dirs = self.format_previous_dirs(dirs, point_idx=point_idx)
 
@@ -411,8 +410,118 @@ class MainModelOneInput(MainModelAbstract):
 
         return subj_x_data, input_mask
 
+
 class MainModelForTracking(MainModelAbstract):
-    def __init__(self, save_estimated_outputs: bool = False, **kw):
+    """
+    Adding typical options for models intended for learning to track.
+    - Last layer should be a direction getter.
+    - Added option to save the estimated outputs after a batch to compare
+      with targets (in the case of regression).
+    """
+    def __init__(self, dg_input_size: int, dg_key: str = 'cosine-regression',
+                 dg_args: dict = None, normalize_targets: bool = True, **kw):
+        """
+
+        Params
+        ------
+        dg_key: str
+            Key to a direction getter class (one of
+            dwi_ml.direction_getter_models.keys_to_direction_getters).
+            Default: Default: 'cosine-regression'.
+        dg_args: dict
+            Arguments necessary for the instantiation of the chosen direction
+            getter (other than input size, which will be the rnn's output
+            size).
+        dg_input_size: int
+        normalize_targets: bool
+            If true, target streamline's directions vectors are normalized
+            (norm=1). If the step size is fixed, it shouldn't make any
+            difference. If streamlines are compressed, in theory you should
+            normalize, but you could hope that not normalizing could give back
+            to the algorithm a sense of distance between points.
+            If true and the dg_key is a regression model, then, output
+            directions are also normalized too. Default: True.
+        """
         super().__init__(**kw)
 
-        self.save_estimated_outputs = save_estimated_outputs
+        self.dg_key = dg_key
+        self.dg_args = dg_args or {}
+
+        # Checks
+        if self.dg_key not in keys_to_direction_getters.keys():
+            raise ValueError("Direction getter choice not understood: {}"
+                             .format(self.positional_encoding_key))
+
+        # Instantiating direction getter
+        direction_getter_cls = keys_to_direction_getters[dg_key]
+        self.dg_input_size = dg_input_size
+        self.direction_getter = direction_getter_cls(dg_input_size,
+                                                     **self.dg_args)
+
+        # About the targets and outputs
+        self.normalize_targets = False
+        if normalize_targets and (self.dg_key == 'cosine-regression' or
+                                  self.dg_key == 'l2-regression'):
+            self.normalize_targets = True
+
+        # Everything in dwi_ml is in vox, corner.
+        self.space = 'vox'
+        self.origin = 'corner'
+
+        # Verify if outputs can be saved for visualisation during training
+        if 'regression' in self.dg_key:
+            self.outputs_can_be_saved = True
+        else:
+            self.outputs_can_be_saved = False
+
+    @property
+    def params_for_json_prints(self):
+        params = super().params_for_json_prints
+        params.update({
+            'direction_getter': self.direction_getter.params,
+        })
+        return params
+
+    def compute_target_directions(self, target_streamlines):
+        """
+        Compute targets as a list of directions. Should be used in your
+        compute_loss method.
+        """
+        # Computing directions. Note that if previous dirs are used, this was
+        # already computed when calling the forward method. We could try to
+        # prevent double calculations, but a little complicated in actual class
+        # structure.
+        targets_dirs = compute_and_normalize_directions(
+            target_streamlines, self.device, self.normalize_targets)
+        return targets_dirs
+
+    def _save_estimated_output(self, target_streamlines, model_outputs,
+                               ref, estimated_output_path, space, origin):
+        """
+        Add this in your forward method.
+        if self.save_estimated_outputs:
+            self._save_estimated_outputs(target_streamlines, model_outputs)
+        """
+        sft_target = StatefulTractogram(target_streamlines, ref,
+                                        space, origin)
+        save_tractogram(sft_target,
+                        os.path.join(estimated_output_path,
+                                     'last_batch_targets.trk'))
+
+        output_streamlines = self._format_output_to_sft(model_outputs)
+        sft_output = StatefulTractogram(output_streamlines, ref,
+                                        space, origin)
+        save_tractogram(sft_output,
+                        os.path.join(estimated_output_path,
+                                     'last_batch_estimated_outputs.trk'))
+
+    def _format_output_to_streamlines(self, model_outputs):
+        """
+        Depending on your model's output format, prepare streamlines
+
+        Returns
+        -------
+        streamlines: list
+            The streamlines.
+        """
+        raise NotImplementedError

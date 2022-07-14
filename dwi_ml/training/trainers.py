@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
-from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.models.main_models import MainModelAbstract, MainModelForTracking
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -965,28 +965,9 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def __init__(self,
-                 model: MainModelAbstract, experiments_path: str,
-                 experiment_name: str,
-                 batch_sampler: DWIMLBatchIDSampler,
-                 batch_loader: DWIMLBatchLoaderOneInput,
-                 model_uses_streamlines: bool = False,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
-                 use_radam: bool = False, betas: List[float] = None,
-                 max_epochs: int = 10,
-                 max_batches_per_epoch_training: int = 1000,
-                 max_batches_per_epoch_validation: Union[int, None] = 1000,
-                 patience: int = None, nb_cpu_processes: int = 0,
-                 use_gpu: bool = False,
-                 comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, log_level=logging.root.level):
-        super().__init__(model, experiments_path, experiment_name,
-                         batch_sampler, batch_loader, model_uses_streamlines,
-                         learning_rate, weight_decay, use_radam, betas,
-                         max_epochs, max_batches_per_epoch_training,
-                         max_batches_per_epoch_validation,
-                         patience, nb_cpu_processes, use_gpu, comet_workspace,
-                         comet_project, from_checkpoint, log_level)
+    def __init__(self, **kw):
+        # No more parameters than super.
+        super().__init__(**kw)
 
     def run_one_batch(self, data, is_training: bool):
         """
@@ -1072,7 +1053,14 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             if self.model_uses_streamlines:
                 streamlines = [torch.tensor(s).to(self.device) for s in
                                batch_streamlines]
-                model_outputs = self.model(batch_inputs, streamlines)
+
+                if isinstance(self.model, MainModelForTracking) and \
+                        save_estimated_outputs:
+                    model_outputs = self.model(batch_inputs, streamlines,
+                                               ref, name, self.space,
+                                               self.origin)
+                else:
+                    model_outputs = self.model(batch_inputs, streamlines)
             else:
                 model_outputs = self.model(batch_inputs)
 
@@ -1114,3 +1102,4 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 log_gpu_memory_usage(self.logger)
 
         return mean_loss.cpu().item(), grad_norm
+

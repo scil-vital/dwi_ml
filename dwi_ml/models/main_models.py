@@ -4,22 +4,23 @@ import logging
 import os
 import shutil
 from datetime import datetime
+from typing import List, Union
 
-import numpy as np
-import torch
 from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters
+import numpy as np
+import torch
 from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
     unpack_sequence
 
 from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_n_previous_dirs, compute_and_normalize_directions
+    compute_n_previous_dirs, normalize_directions
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 
 logger = logging.getLogger('model_logger')
@@ -65,6 +66,10 @@ class MainModelAbstract(torch.nn.Module):
 
         self.device = None
 
+        # To tell our trainer what to send to the forward / loss methods.
+        self.model_uses_streamlines = False
+        self.model_uses_dirs = False
+
     def move_to(self, device):
         """
         Careful. Calling model.to(a_device) does not influence the self.device.
@@ -88,6 +93,9 @@ class MainModelAbstract(torch.nn.Module):
 
     @property
     def params_for_json_prints(self):
+        """
+        Adding more information, if necessary, for loggings.
+        """
         return self.params_for_checkpoint
 
     def save_params_and_state(self, model_dir):
@@ -135,7 +143,8 @@ class MainModelAbstract(torch.nn.Module):
         model_state_file = os.path.join(model_dir, "model_state.pkl")
         model_state = torch.load(model_state_file)
 
-        model = cls(log_level=log_level, **params)
+        params.update(log_level=log_level)
+        model = cls(**params)
         model.load_state_dict(model_state)  # using torch's method
 
         # By default, setting to eval state. If this will be used by the
@@ -144,10 +153,7 @@ class MainModelAbstract(torch.nn.Module):
 
         return model
 
-    def compute_loss(self, model_outputs, streamlines):
-        # Probably something like:
-        # targets = self._format_directions(streamlines)
-        # Then compute loss based on model.
+    def compute_loss(self, *model_outputs, **kw):
         raise NotImplementedError
 
     def get_tracking_direction_det(self, model_outputs):
@@ -178,24 +184,14 @@ class MainModelAbstract(torch.nn.Module):
         """
         raise NotImplementedError
 
+    def forward(self, *inputs, **kw):
+        raise NotImplementedError
+
 
 class MainModelWithPD(MainModelAbstract):
     """
     Adds tools to work with previous directions. Prepares a layer for previous
     directions embedding, and a tool method for direction formatting.
-
-    Hint: In your forward method, first concantenate your input with the result
-    of the previous directions embedding layer!
-
-    Hint: Your forward method could look like:
-
-        # Compute and embed previous dirs
-        n_prev_dirs_embedded = self.compute_and_embed_previous_dirs(dirs)
-
-        # Concatenate with inputs
-        inputs = torch.cat((inputs, n_prev_dirs_embedded), dim=-1)
-
-        ...
     """
     def __init__(self, nb_previous_dirs: int = 0,
                  prev_dirs_embedding_size: int = None,
@@ -248,6 +244,9 @@ class MainModelWithPD(MainModelAbstract):
                                 "no previous directions are used!")
             self.prev_dirs_embedding = None
 
+        # To tell our trainer what to send to the forward / loss methods.
+        self.model_uses_dirs = True
+
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
@@ -255,12 +254,24 @@ class MainModelWithPD(MainModelAbstract):
             'nb_previous_dirs': self.nb_previous_dirs,
             'prev_dirs_embedding_key': self.prev_dirs_embedding_key,
             'prev_dirs_embedding_size': self.prev_dirs_embedding_size,
+            'normalize_prev_dirs': self.normalize_prev_dirs
         })
         return p
 
-    def compute_and_embed_previous_dirs(self, streamlines,
-                                        unpack_results: bool = True,
-                                        point_idx=None):
+    @property
+    def params_for_json_prints(self):
+        p = super().params_for_json_prints
+        p.update({
+            'prev_dirs_embedding':
+                self.prev_dirs_embedding.params if
+                self.prev_dirs_embedding else None,
+        })
+        return p
+
+    def normalize_and_embed_previous_dirs(
+            self, dirs: Union[list, torch.tensor],
+            unpack_results: bool = True, point_idx=None) \
+            -> Union[PackedSequence, List[torch.tensor], None]:
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
         the model's output. Else, returns the data as is. Should be used in
@@ -268,8 +279,8 @@ class MainModelWithPD(MainModelAbstract):
 
         Params
         ------
-        dirs: Union[List, torch.tensor],
-            Batch all streamline directions. If it is a tensor, it should be of
+        dirs: list or tensor
+            Batch all streamline directions If it is a tensor, it should be of
             size [nb_points, 3].
             If it is a list, length of the list is the number of streamlines in
             the batch. Each tensor is as described above. The batch will be
@@ -284,50 +295,55 @@ class MainModelWithPD(MainModelAbstract):
 
         Returns
         -------
-        n_prev_dirs_embedded: Union[PackedSequence, Tensor]
-            The previous dirs.
+        n_prev_dirs_embedded: Union[List[Tensor], PackedSequence, None]
+            The previous dirs, as list of tensors (or as PackedSequence if
+            unpack_result is False). Returns None if nb_previous_dirs is 0.
         """
         if self.nb_previous_dirs == 0:
             return None
-        else:
-            dirs = compute_and_normalize_directions(
-                streamlines, self.device, self.normalize_prev_dirs)
 
-            # Formatting the n previous dirs for all points.
-            n_prev_dirs = self.format_previous_dirs(dirs, point_idx=point_idx)
+        if self.normalize_prev_dirs:
+            dirs = normalize_directions(dirs)
 
-            if not point_idx:
-                # Not keeping the last point: only useful to get the last
-                # direction (ex, last target), but won't be used as an input.
-                n_prev_dirs = [s[:-1] for s in n_prev_dirs]
+        # Formatting the n previous dirs for all points.
+        n_prev_dirs = self.format_previous_dirs(dirs, point_idx=point_idx)
 
-            if self.prev_dirs_embedding is None:
-                return n_prev_dirs
-            else:
-                is_list = isinstance(n_prev_dirs, list)
-                if is_list:
-                    # Using Packed_sequence's tensor.
-                    n_prev_dirs_packed = pack_sequence(n_prev_dirs,
-                                                       enforce_sorted=False)
+        if not point_idx:
+            # Not keeping the last point: only useful to get the last
+            # direction (ex, last target), but won't be used as an input.
+            n_prev_dirs = [s[:-1] for s in n_prev_dirs]
 
-                    n_prev_dirs = n_prev_dirs_packed.data
-                    n_prev_dirs.to(self.device)
+        if self.prev_dirs_embedding is None:
+            return n_prev_dirs
 
-                n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
+        # Embedding, if asked
+        is_list = isinstance(n_prev_dirs, list)
+        n_prev_dirs_packed = None
+        if is_list:
+            # We could loop on all lists and embed each.
+            # Probably faster to pack result, run model once on all points
+            # and unpack later.
+            n_prev_dirs_packed = pack_sequence(n_prev_dirs,
+                                               enforce_sorted=False)
 
-                if is_list and unpack_results:
-                    # Packing back to unpack correctly
-                    batch_sizes = n_prev_dirs_packed.batch_sizes
-                    sorted_indices = n_prev_dirs_packed.sorted_indices
-                    unsorted_indices = n_prev_dirs_packed.unsorted_indices
-                    n_prev_dirs_embedded_packed = \
-                        PackedSequence(n_prev_dirs_embedded, batch_sizes,
-                                       sorted_indices, unsorted_indices)
+            n_prev_dirs = n_prev_dirs_packed.data
+            n_prev_dirs.to(self.device)
 
-                    n_prev_dirs_embedded = unpack_sequence(
-                        n_prev_dirs_embedded_packed)
+        # Result is a tensor
+        n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
 
-                return n_prev_dirs_embedded
+        if is_list:
+            # Packing back to correctly unpack.
+            n_prev_dirs_embedded = \
+                PackedSequence(n_prev_dirs_embedded,
+                               n_prev_dirs_packed.batch_sizes,
+                               n_prev_dirs_packed.sorted_indices,
+                               n_prev_dirs_packed.unsorted_indices)
+
+            if unpack_results:
+                n_prev_dirs_embedded = unpack_sequence(n_prev_dirs_embedded)
+
+        return n_prev_dirs_embedded
 
     def format_previous_dirs(self, all_streamline_dirs, point_idx=None):
         """
@@ -342,6 +358,25 @@ class MainModelWithPD(MainModelAbstract):
             point_idx=point_idx, device=self.device)
 
         return n_previous_dirs
+
+    def forward(self, inputs, target_dirs: List[torch.tensor], **kw):
+        """
+        Params
+        ------
+        inputs: Any
+            Batch of inputs.
+            [nb_points, nb_features].
+        target_dirs: List[torch.tensor]
+            Directions computed from the streamlines. Not normalized yet.
+        """
+        # Hints : Should start with:
+
+        # n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
+        #       target_dirs)
+
+        # Concatenate with inputs
+        # Ex: inputs = torch.cat((inputs, n_prev_dirs_embedded), dim=-1)
+        raise NotImplementedError
 
 
 class MainModelOneInput(MainModelAbstract):
@@ -419,9 +454,9 @@ class MainModelForTracking(MainModelAbstract):
       with targets (in the case of regression).
     """
     def __init__(self, dg_input_size: int, dg_key: str = 'cosine-regression',
-                 dg_args: dict = None, normalize_targets: bool = True, **kw):
+                 dg_args: dict = None, normalize_targets: bool = True,
+                 allow_saving_estimated_outputs: bool = False, **kw):
         """
-
         Params
         ------
         dg_key: str
@@ -430,9 +465,9 @@ class MainModelForTracking(MainModelAbstract):
             Default: Default: 'cosine-regression'.
         dg_args: dict
             Arguments necessary for the instantiation of the chosen direction
-            getter (other than input size, which will be the rnn's output
-            size).
+            getter.
         dg_input_size: int
+            Probably your last layer's output size.
         normalize_targets: bool
             If true, target streamline's directions vectors are normalized
             (norm=1). If the step size is fixed, it shouldn't make any
@@ -441,6 +476,11 @@ class MainModelForTracking(MainModelAbstract):
             to the algorithm a sense of distance between points.
             If true and the dg_key is a regression model, then, output
             directions are also normalized too. Default: True.
+        allow_saving_estimated_outputs: bool
+            If true, when trainer calls the forward method with
+            save_estimated_outputs = True, we will save the estimated outputs
+            as a SFT along with the targets for that batch to allow comparison.
+            Can only be set to true if the model is a regression model.
         """
         super().__init__(**kw)
 
@@ -459,20 +499,35 @@ class MainModelForTracking(MainModelAbstract):
                                                      **self.dg_args)
 
         # About the targets and outputs
-        self.normalize_targets = False
-        if normalize_targets and (self.dg_key == 'cosine-regression' or
-                                  self.dg_key == 'l2-regression'):
-            self.normalize_targets = True
-
-        # Everything in dwi_ml is in vox, corner.
-        self.space = 'vox'
-        self.origin = 'corner'
+        self.normalize_targets = normalize_targets
+        self.normalize_outputs = False
+        if normalize_targets and 'regression' in self.dg_key:
+            self.normalize_outputs = True
 
         # Verify if outputs can be saved for visualisation during training
-        if 'regression' in self.dg_key:
-            self.outputs_can_be_saved = True
-        else:
-            self.outputs_can_be_saved = False
+        self.allow_saving_estimated_outputs = allow_saving_estimated_outputs
+        if 'regression' not in self.dg_key and allow_saving_estimated_outputs:
+            logging.warning(
+                "You wanted to allow your model to save estimated outputs, "
+                "but it is not a regression model. Ignoring.")
+            self.allow_saving_estimated_outputs = False
+
+        # To tell our trainer what to send to the forward / loss methods.
+        if self.allow_saving_estimated_outputs:
+            self.model_uses_streamlines = True  # Else, false like in super.
+        self.model_uses_dirs = True
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
+        p.update({
+            'dg_key': self.dg_key,
+            'dg_args': self.dg_args,
+            'dg_input_size': self.dg_input_size,
+            'normalize_targets': self.normalize_targets,
+            'allow_saving_estimated_outputs': self.allow_saving_estimated_outputs
+        })
+        return p
 
     @property
     def params_for_json_prints(self):
@@ -482,25 +537,11 @@ class MainModelForTracking(MainModelAbstract):
         })
         return params
 
-    def compute_target_directions(self, target_streamlines):
+    def _save_estimated_output(self, target_streamlines, target_dirs,
+                               model_outputs, ref, estimated_output_path,
+                               space, origin):
         """
-        Compute targets as a list of directions. Should be used in your
-        compute_loss method.
-        """
-        # Computing directions. Note that if previous dirs are used, this was
-        # already computed when calling the forward method. We could try to
-        # prevent double calculations, but a little complicated in actual class
-        # structure.
-        targets_dirs = compute_and_normalize_directions(
-            target_streamlines, self.device, self.normalize_targets)
-        return targets_dirs
-
-    def _save_estimated_output(self, target_streamlines, model_outputs,
-                               ref, estimated_output_path, space, origin):
-        """
-        Add this in your forward method.
-        if self.save_estimated_outputs:
-            self._save_estimated_outputs(target_streamlines, model_outputs)
+        Converts targets and model outputs to tractograms and saves them.
         """
         sft_target = StatefulTractogram(target_streamlines, ref,
                                         space, origin)
@@ -508,20 +549,96 @@ class MainModelForTracking(MainModelAbstract):
                         os.path.join(estimated_output_path,
                                      'last_batch_targets.trk'))
 
-        output_streamlines = self._format_output_to_sft(model_outputs)
+        output_streamlines = self._format_output_to_streamlines(
+            model_outputs, target_streamlines, target_dirs)
         sft_output = StatefulTractogram(output_streamlines, ref,
                                         space, origin)
         save_tractogram(sft_output,
                         os.path.join(estimated_output_path,
                                      'last_batch_estimated_outputs.trk'))
 
-    def _format_output_to_streamlines(self, model_outputs):
+    def _format_output_to_streamlines(self, output_dirs, ref_streamlines,
+                                      ref_dirs):
         """
-        Depending on your model's output format, prepare streamlines
+        Depending on your model's output format, transform to streamlines
+        format.
+
+        Here is an example of use. Overwrite if it does not fit with your data.
+
+        Params
+        ------
+        model_outputs: Any
+            Your model's output.
+        ref_streamlines: list
+            The target streamlines, to use as reference.
+        ref_dirs: list
+            The target dirs.
 
         Returns
         -------
         streamlines: list
             The streamlines.
         """
+        if not self.normalize_outputs:
+            # We normalize them here to eventually give them the right length.
+            output_dirs = normalize_directions(output_dirs)
+
+        initial_lengths = [torch.linalg.norm(s, dim=-1, keepdim=True) for s in
+                           ref_dirs]
+
+        # First point is the same
+        # Next points start from real streamline but advance in the output
+        # direction instead. We don't know the step size (or compress use) so
+        # giving them the same lengths as reference dirs.
+        output_streamlines = [
+            s[0].append(s[0:-1] + d * initial_lengths[i]) for
+            i, s, d in enumerate(zip(ref_streamlines, output_dirs))]
+
+        return output_streamlines
+
+    def forward(self, inputs, target_dirs, target_streamlines=None,
+                save_estimated_outputs: bool = False,
+                ref=None, estimated_output_path: str = None,
+                space: str = None, origin: str = None, **kw):
+        """
+        Params
+        ------
+        inputs: Any
+        target_dirs: List[torch.tensor]
+            Unnormalized directions.
+        target_streamlines: List[torch.tensor],
+            Batch of streamlines (only necessary to save estimated outputs,
+            if asked).
+        save_estimated_outputs: bool
+            Trainer's opinion of if we should save the estimated outputs. Will
+            only be done if self.allow_saving_estimated_outputs.
+        ref: Any
+            A reference to save the resulting SFT.
+        estimated_output_path: str
+            The saving path for the estimated results.
+        space: str
+            The training space (vox, voxmm, rasmm).
+        origin: str
+            The training origin (corner, center).
+        """
+        # Should end with:
+        # model_outputs = self.direction_getter(last_layer_output)
+        # if self.normalize_outputs:
+        #     model_outputs = normalize_directions(model_outputs)
+        #
+        # if save_estimated_outputs and self.allow_saving_estimated_outputs:
+        #    self._save_estimated_outputs(
+        #        streamlines, dirs, model_outputs,
+        #        ref, estimated_output_path, space, origin)
         raise NotImplementedError
+
+    def compute_loss(self, model_outputs, target_dirs, target_streamlines=None,
+                     **kw):
+        # Should probably use:
+        # if self.normalize_targets:
+        #     target_dirs = normalize_directions(target_dirs)
+        raise NotImplementedError
+
+    def move_to(self, device):
+        super().move_to(device)
+        self.direction_getter.to(device)

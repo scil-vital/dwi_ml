@@ -80,13 +80,15 @@ class TrackingModelForTestWithPD(MainModelWithPD, MainModelForTracking):
             normalize_prev_dirs=normalize_prev_dirs,
             # For super MainModelForTracking:
             normalize_targets=normalize_targets, dg_key=dg_key,
-            dg_args=dg_args, dg_input_size=dg_input_size,
+            dg_args=dg_args,
             allow_saving_estimated_outputs=allow_saving_estimated_outputs)
 
         # If multiple inheritance goes well, these params should be set
         # correctly
         assert self.model_uses_dirs
         assert not self.model_uses_streamlines
+
+        self.instantiate_direction_getter(dg_input_size)
 
     def compute_loss(self, model_outputs: torch.tensor, target_dirs: list,
                      target_streamlines=None, **kw):
@@ -134,7 +136,7 @@ class TrackingModelForTestWithPD(MainModelWithPD, MainModelForTracking):
             assert len(n_prev_dirs_embedded) == len(target_dirs)
 
         # Fake intermediate layer
-        model_outputs = [torch.ones(len(s), self.dg_input_size)
+        model_outputs = [torch.ones(len(s), self.direction_getter.input_size)
                          for s in inputs]
 
         # Packing results

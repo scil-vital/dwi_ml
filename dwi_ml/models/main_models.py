@@ -20,7 +20,8 @@ from dwi_ml.data.processing.streamlines.post_processing import \
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.experiment_utils.prints import format_dict_to_str
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters
+from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
+    AbstractDirectionGetterModel
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 
 logger = logging.getLogger('model_logger')
@@ -215,6 +216,8 @@ class MainModelWithPD(MainModelAbstract):
             If true, direction vectors are normalized (norm=1) when computing
             the previous direction.
         """
+        print("ENTERING PD INIT")
+
         super().__init__(**kw)
 
         self.nb_previous_dirs = nb_previous_dirs
@@ -453,7 +456,7 @@ class MainModelForTracking(MainModelAbstract):
     - Added option to save the estimated outputs after a batch to compare
       with targets (in the case of regression).
     """
-    def __init__(self, dg_input_size: int, dg_key: str = 'cosine-regression',
+    def __init__(self, dg_key: str = 'cosine-regression',
                  dg_args: dict = None, normalize_targets: bool = True,
                  allow_saving_estimated_outputs: bool = False, **kw):
         """
@@ -466,8 +469,6 @@ class MainModelForTracking(MainModelAbstract):
         dg_args: dict
             Arguments necessary for the instantiation of the chosen direction
             getter.
-        dg_input_size: int
-            Probably your last layer's output size.
         normalize_targets: bool
             If true, target streamline's directions vectors are normalized
             (norm=1). If the step size is fixed, it shouldn't make any
@@ -484,19 +485,17 @@ class MainModelForTracking(MainModelAbstract):
         """
         super().__init__(**kw)
 
+
+        # Instantiating direction getter
+        # Preparing value here but not instantiating;
+        # typically, user will need to know his model output size to call
+        # this with correct input size. Waiting.
         self.dg_key = dg_key
         self.dg_args = dg_args or {}
-
-        # Checks
+        self.direction_getter = None  # type: AbstractDirectionGetterModel
         if self.dg_key not in keys_to_direction_getters.keys():
             raise ValueError("Direction getter choice not understood: {}"
                              .format(self.positional_encoding_key))
-
-        # Instantiating direction getter
-        direction_getter_cls = keys_to_direction_getters[dg_key]
-        self.dg_input_size = dg_input_size
-        self.direction_getter = direction_getter_cls(dg_input_size,
-                                                     **self.dg_args)
 
         # About the targets and outputs
         self.normalize_targets = normalize_targets
@@ -517,13 +516,17 @@ class MainModelForTracking(MainModelAbstract):
             self.model_uses_streamlines = True  # Else, false like in super.
         self.model_uses_dirs = True
 
+    def instantiate_direction_getter(self, dg_input_size):
+        direction_getter_cls = keys_to_direction_getters[self.dg_key]
+        self.direction_getter = direction_getter_cls(
+            dg_input_size, **self.dg_args)
+
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
         p.update({
             'dg_key': self.dg_key,
             'dg_args': self.dg_args,
-            'dg_input_size': self.dg_input_size,
             'normalize_targets': self.normalize_targets,
             'allow_saving_estimated_outputs': self.allow_saving_estimated_outputs
         })

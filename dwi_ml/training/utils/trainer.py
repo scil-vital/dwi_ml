@@ -2,7 +2,7 @@
 import argparse
 import logging
 
-from dwi_ml.training.monitoring import EarlyStoppingError
+from dwi_ml.training.utils.monitoring import EarlyStoppingError
 from dwi_ml.experiment_utils.timer import Timer
 
 logger = logging.getLogger('train_logger')

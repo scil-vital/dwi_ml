@@ -24,6 +24,7 @@ from scilpy.image.datasets import DataVolume
 from scilpy.io.utils import (add_sphere_arg,
                              assert_inputs_exist, assert_outputs_exist,
                              verify_compression_th)
+from scilpy.tracking.seed import SeedGenerator
 from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
@@ -31,7 +32,6 @@ from scilpy.tracking.utils import (add_seeding_options,
 from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.tracking.seed import DWIMLSeedGenerator
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,
                                    prepare_dataset_for_tracking)
@@ -103,9 +103,15 @@ def prepare_tracker(parser, args, hdf5_file, device,
                          "seeding masks! ({} vs {})"
                          .format(mask_data.shape, seed_data.shape))
 
-        step_size_vox_space = args.step_size / mask_res[0]
-        logging.info("Step size in voxel space will be {}"
-                     .format(step_size_vox_space))
+        if args.step_size == 0:
+            logging.warning("Step size 0 is understood here as 'keep model "
+                            "output as is'")
+            step_size_vox_space = 1
+            args.step_size = 1
+        else:
+            step_size_vox_space = args.step_size / mask_res[0]
+            logging.info("Step size in voxel space will be {}"
+                         .format(step_size_vox_space))
 
         logging.info("Loading subject's data.")
         subset, subj_idx = prepare_dataset_for_tracking(hdf5_file, args)
@@ -144,7 +150,9 @@ def _prepare_seed_generator(parser, args, hdf_handle):
     seed_data = np.array(seeding_group['data'], dtype=np.float32)
     seed_res = np.array(seeding_group.attrs['voxres'], dtype=np.float32)
 
-    seed_generator = DWIMLSeedGenerator(seed_data, seed_res)
+    # NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, TO CORNER.
+    seed_generator = SeedGenerator(seed_data, seed_res,
+                                   space=Space.VOX, origin=Origin('corner'))
 
     if len(seed_generator.seeds_vox) == 0:
         parser.error('Seed mask "{}" does not have any voxel with value > 0.'
@@ -153,12 +161,12 @@ def _prepare_seed_generator(parser, args, hdf_handle):
     if args.npv:
         # toDo. Not really nb seed per voxel, just in average. Waiting for this
         #  to be modified in scilpy, and we will adapt here.
-        nbr_seeds = len(seed_generator.seeds) * args.npv
+        nbr_seeds = len(seed_generator.seeds_vox) * args.npv
     elif args.nt:
         nbr_seeds = args.nt
     else:
         # Setting npv = 1.
-        nbr_seeds = len(seed_generator.seeds)
+        nbr_seeds = len(seed_generator.seeds_vox)
 
     return seed_generator, nbr_seeds, seed_res, seed_data
 

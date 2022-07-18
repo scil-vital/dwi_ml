@@ -1,8 +1,23 @@
 # -*- coding: utf-8 -*-
-import logging
-
 import torch
 from torch import Tensor
+
+"""
+Hint: To use on packed sequences:
+
+    # Unpacking
+    inputs_tensor = inputs.data
+
+    result = embedding(inputs_tensor)
+
+    # Packing back
+    # Not using pack_sequence because we want to keep the same info as
+    # the inputs (nb of feature has changed, but not the number of inputs
+    # -- i.e. streamlines)
+    result = PackedSequence(result, inputs.batch_sizes,
+                            inputs.sorted_indices,
+                            inputs.unsorted_indices)
+"""
 
 
 class EmbeddingAbstract(torch.nn.Module):

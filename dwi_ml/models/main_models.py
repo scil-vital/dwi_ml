@@ -24,6 +24,7 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
+from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
 logger = logging.getLogger('model_logger')
 
@@ -221,7 +222,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
     def __init__(self, nb_previous_dirs: int = 0,
                  prev_dirs_embedding_size: int = None,
                  prev_dirs_embedding_key: str = None,
-                 _keys_to_embeddings: dict = None,
                  normalize_prev_dirs: bool = True, **kw):
         """
         Params
@@ -249,9 +249,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
         self.normalize_prev_dirs = normalize_prev_dirs
 
         if self.nb_previous_dirs > 0:
-            if _keys_to_embeddings is None:
-                raise ValueError("Please indicate the dict of possible "
-                                 "embedding keys for the previous direction")
             if (prev_dirs_embedding_key is not None and
                     prev_dirs_embedding_size is None):
                 raise ValueError(
@@ -282,18 +279,13 @@ class ModelWithPreviousDirections(MainModelAbstract):
         self.model_uses_dirs = True
 
     @staticmethod
-    def add_args_model_with_pd(p, _keys_to_embeddings: dict):
-        """
-        keys to embeddings: one of
-        dwi_ml.models.embeddings_on_packed_sequences.keys_to_embeddings
-        dwi_ml.models.embeddings_on_tensors.keys_to_embeddings
-        """
+    def add_args_model_with_pd(p):
         p.add_argument(
             '--nb_previous_dirs', type=int, default=0, metavar='n',
             help="Concatenate the n previous streamline directions to the "
                  "input vector. \nDefault: 0")
         p.add_argument(
-            '--prev_dirs_embedding_key', choices=_keys_to_embeddings.keys(),
+            '--prev_dirs_embedding_key', choices=keys_to_embeddings.keys(),
             default='no_embedding',
             help="Type of model for the previous directions embedding layer.\n"
                  "Default: no_embedding (identity model).")
@@ -545,7 +537,6 @@ class MainModelForTracking(MainModelAbstract):
         """
         super().__init__(**kw)
 
-
         # Instantiating direction getter
         # Preparing value here but not instantiating;
         # typically, user will need to know his model output size to call
@@ -580,6 +571,17 @@ class MainModelForTracking(MainModelAbstract):
         direction_getter_cls = keys_to_direction_getters[self.dg_key]
         self.direction_getter = direction_getter_cls(
             dg_input_size, **self.dg_args)
+
+    @staticmethod
+    def add_args_tracking_model(p):
+        p.add_argument(
+            '--normalize_directions', action='store_true',
+            help="If true, directions will be normalized, both during "
+                 "tracking (usually, we normalize. But by not normalizing and "
+                 "working with compressed streamlines, you could hope your "
+                 "model will gain a sense of distance) and during training "
+                 "(if you train a regression model).")
+        add_direction_getter_args(p)
 
     @property
     def params_for_checkpoint(self):

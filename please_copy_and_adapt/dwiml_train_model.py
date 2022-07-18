@@ -43,6 +43,8 @@ def prepare_arg_parser():
     add_args_batch_loader(p)
     add_training_args(p)
 
+    TrackingModelForTestWithPD.add_args_tracking_model(p)
+    TrackingModelForTestWithPD.add_args_model_with_pd(p)
     # To be defined: add_model_args(p)
     # Possibly:
     # models.utils.direction_getters.add_direction_getter_args(p)

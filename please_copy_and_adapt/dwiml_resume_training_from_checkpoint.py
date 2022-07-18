@@ -76,7 +76,7 @@ def init_from_checkpoint(args):
         logging.info("Instantiating training set's batch loader...")
 
         batch_loader = DWIMLBatchLoaderOneInput(
-            dataset, input_group_name=_args['input_group_name'],
+            dataset=dataset, input_group_name=_args['input_group_name'],
             streamline_group_name=_args['streamline_group_name'],
             # STREAMLINES PREPROCESSING
             step_size=_args['step_size'], compress=_args['compress'],

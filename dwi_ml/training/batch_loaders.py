@@ -352,19 +352,11 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
                 (possibly with its neighborhood)
         target = the whole streamlines as sequences.
     """
-    def __init__(self, dataset: MultiSubjectDataset, input_group_name,
-                 streamline_group_name: str, rng: int, compress: bool,
-                 step_size: float = None, split_ratio: float = 0.,
-                 noise_gaussian_size_training: float = 0.,
-                 noise_gaussian_var_training: float = 0.,
-                 noise_gaussian_size_validation: float = 0.,
-                 noise_gaussian_var_validation: float = 0.,
-                 reverse_ratio: float = 0., wait_for_gpu: bool = False,
-                 neighborhood_points: np.ndarray = None,
-                 log_level=logging.root.level):
+    def __init__(self, input_group_name, wait_for_gpu: bool = False,
+                 neighborhood_points: np.ndarray = None, **kw):
         """
-        Additional parameters compared to super:
-        --------
+        Params
+        ------
         input_group_name: str
             Name of the input group in the hdf5 dataset.
         wait_for_gpu: bool
@@ -376,12 +368,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             The list of neighborhood points (does not contain 0,0,0 point).
             None or [] mean that no neighborhood is added. Default: None.
         """
-        super().__init__(dataset, streamline_group_name, rng, step_size,
-                         compress, split_ratio, noise_gaussian_size_training,
-                         noise_gaussian_var_training,
-                         noise_gaussian_size_validation,
-                         noise_gaussian_var_validation, reverse_ratio,
-                         log_level)
+        super().__init__(**kw)
 
         # toDo. Would be more logical to send this as params when using
         #  load_batch as collate_fn in the Dataloader during training.
@@ -398,7 +385,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
 
     @property
     def params_for_json_prints(self):
-        p = self.params_for_checkpoint
+        p = super().params_for_json_prints
 
         # Neighborhood points is a ndarray. Changing.
         p['neighborhood_points'] = \

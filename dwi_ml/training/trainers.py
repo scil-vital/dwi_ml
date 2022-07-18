@@ -20,8 +20,8 @@ from dwi_ml.models.main_models import MainModelAbstract, ModelForTracking
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
-from dwi_ml.training.gradient_norm import compute_gradient_norm
-from dwi_ml.training.monitoring import (
+from dwi_ml.training.utils.gradient_norm import compute_gradient_norm
+from dwi_ml.training.utils.monitoring import (
     BestEpochMonitoring, IterTimer, ValueHistoryMonitor, TimeMonitor,
     EarlyStoppingError)
 
@@ -959,19 +959,6 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def __init__(self, save_estimated_outputs: bool = False, **kw):
-        """
-        Params
-        ------
-        save_estimated_outputs: bool
-            If true, during validation (or training, if there is no validation
-            set), and if model allows it, we will send additional parameters
-            to the forward method to save outputs to allow visual supervision
-            of the model.
-        """
-        super().__init__(**kw)
-        self.save_estimated_outputs = save_estimated_outputs
-
     def run_one_batch(self, data, is_training: bool):
         """
         Run a batch of data through the model (calling its forward method)
@@ -999,15 +986,12 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             The total norm (sqrt(sum(params**2))) of parameters before gradient
             clipping, if any.
         """
-        save_estimated_outputs = self.save_estimated_outputs
         if is_training:
             # If training, enable gradients for backpropagation.
             # Uses torch's module train(), which "turns on" the training mode.
             self.model.train()
             self.batch_loader.set_context('training')
             grad_context = torch.enable_grad
-            if self.use_validation:
-                save_estimated_outputs = False
         else:
             # If evaluating, turn gradients off for back-propagation
             # Uses torch's module eval(), which "turns off" the training mode.
@@ -1072,28 +1056,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 forward_kwargs.update({'target_dirs': dirs})
                 loss_kwargs.update({'target_dirs': dirs})
 
-                if (save_estimated_outputs and
-                        isinstance(self.model, ModelForTracking) and
-                        self.model.allow_saving_estimated_outputs):
-                    logger.debug("Getting reference; we wil save estimated "
-                                 "outputs as a sft.")
-                    # If we allow it, it means any subject in the batch sampler
-                    # can be used as ref.
-                    # ids is a Dict[int, slice]
-                    ref_subj = final_s_ids_per_subj.keys()[0]
-
-                    # Getting the subject (no need to load it here, just
-                    # getting its affine, always loaded even with lazy).
-                    ref = self.batch_loader.context_subset.get_volume(
-                        ref_subj, self.batch_loader.input_group_idx,
-                        load_it=False).affine
-                    path = os.path.join(self.saving_path,
-                                        'latest_batch_outputs')
-
-                    forward_kwargs.update({'ref': ref,
-                                           'saving_path': path,
-                                           'space': self.space,
-                                           'origin': self.origin})
+            forward_kwargs.update(
+                self._prepare_other_forward_kwargs(is_training,
+                                                   final_s_ids_per_subj))
 
             self.logger.debug('*** Computing forward propagation')
             model_outputs = self.model(batch_inputs, **forward_kwargs)
@@ -1136,3 +1101,65 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 log_gpu_memory_usage(self.logger)
 
         return mean_loss.cpu().item(), grad_norm
+
+    def _prepare_other_forward_kwargs(self, is_training: bool,
+                                      final_s_ids_per_subj):
+        """
+        By default, during run_one_batch, inputs and streamlines / directions
+        are sent to the forward method of the model. Here, you can prepare any
+        additional arguments your model may need.
+        """
+        return {}
+
+
+class DWIMLTrainerForTrackerModel(DWIMLAbstractTrainer):
+    batch_loader: DWIMLBatchLoaderOneInput
+
+    def __init__(self, save_estimated_outputs: bool = False, **kw):
+        """
+        Params
+        ------
+        save_estimated_outputs: bool
+            If true, during validation (or training, if there is no validation
+            set), and if model allows it, we will send additional parameters
+            to the forward method to save outputs to allow visual supervision
+            of the model.
+        """
+        super().__init__(**kw)
+        self.save_estimated_outputs = save_estimated_outputs
+        assert isinstance(self.model, ModelForTracking)
+
+    def _prepare_other_forward_kwargs(self, is_training, final_s_ids_per_subj):
+        """
+        By default, during run_one_batch (or at least during current
+        implementation one the OneInput version), inputs and
+        streamlines / directions are sent to the forward method of the model.
+        Here, we prepare any additional arguments the Tracking model needs.
+        """
+        save_estimated_outputs = self.save_estimated_outputs
+        if is_training and self.use_validation:
+            save_estimated_outputs = False
+
+        if (save_estimated_outputs and
+                self.model.allow_saving_estimated_outputs):
+            logger.debug("Getting reference; we wil save estimated "
+                         "outputs as a sft.")
+            # If we allow it, it means any subject in the batch sampler
+            # can be used as ref.
+            # ids is a Dict[int, slice]
+            ref_subj = final_s_ids_per_subj.keys()[0]
+
+            # Getting the subject (no need to load it here, just
+            # getting its affine, always loaded even with lazy).
+            ref = self.batch_loader.context_subset.get_volume(
+                ref_subj, self.batch_loader.input_group_idx,
+                load_it=False).affine
+            path = os.path.join(self.saving_path,
+                                'latest_batch_outputs')
+
+            return {'ref': ref,
+                    'saving_path': path,
+                    'space': self.space,
+                    'origin': self.origin}
+        else:
+            return {}

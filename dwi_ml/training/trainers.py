@@ -16,7 +16,7 @@ from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
-from dwi_ml.models.main_models import MainModelAbstract, MainModelForTracking
+from dwi_ml.models.main_models import MainModelAbstract, ModelForTracking
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -237,11 +237,6 @@ class DWIMLAbstractTrainer:
         self.comet_exp = None
         self.comet_key = None
 
-        # Saving all params in a json file to help user remember what he used.
-        if not from_checkpoint:
-            filename = os.path.join(self.saving_path, "parameters.json")
-            self.save_params_to_json(filename)
-
         # ---------------------
         # Dataloader: usage will depend on context
         # ---------------------
@@ -328,7 +323,13 @@ class DWIMLAbstractTrainer:
         })
         return params
 
-    def save_params_to_json(self, json_filename):
+    def save_params_to_json(self):
+        """
+        Utility method to save the parameters to a json file in the same
+        folder as the experiment. Suggestion, call this after instantiating
+        your trainer.
+        """
+        json_filename = os.path.join(self.saving_path, "parameters.json")
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
@@ -1072,7 +1073,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 loss_kwargs.update({'target_dirs': dirs})
 
                 if (save_estimated_outputs and
-                        isinstance(self.model, MainModelForTracking) and
+                        isinstance(self.model, ModelForTracking) and
                         self.model.allow_saving_estimated_outputs):
                     logger.debug("Getting reference; we wil save estimated "
                                  "outputs as a sft.")

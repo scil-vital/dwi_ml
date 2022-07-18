@@ -7,8 +7,9 @@ from dwi_ml.data.processing.streamlines.post_processing import \
     normalize_directions
 from scilpy.io.fetcher import fetch_data, get_home
 
-from dwi_ml.models.main_models import MainModelAbstract, MainModelWithPD, \
-    MainModelForTracking
+from dwi_ml.models.main_models import MainModelAbstract, \
+    ModelWithPreviousDirections, \
+    ModelForTracking, ModelWithNeighborhood
 from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -34,10 +35,8 @@ def fetch_testing_data():
 
 class ModelForTest(MainModelAbstract):
     def __init__(self, experiment_name: str = 'test',
-                 neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
-        super().__init__(experiment_name,
-                         neighborhood_type, neighborhood_radius, log_level)
+        super().__init__(experiment_name, log_level)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, target_streamlines=None):
@@ -57,7 +56,8 @@ class ModelForTest(MainModelAbstract):
         return [regressed_dir for _ in x]
 
 
-class TrackingModelForTestWithPD(MainModelWithPD, MainModelForTracking):
+class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
+                                 ModelWithNeighborhood):
     def __init__(self, experiment_name: str = 'test',
                  neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level,

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import argparse
 import json
 import logging
 import os
@@ -35,19 +36,14 @@ class MainModelAbstract(torch.nn.Module):
     It should also define a forward() method.
     """
     def __init__(self, experiment_name: str,
-                 neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
         """
         Params
         ------
         experiment_name: str
             Name of the experiment
-        neighborhood_type: str
-            For usage explanation, see prepare_neighborhood_information.
-            Default: None.
-        neighborhood_radius: Union[int, float, Iterable[float]]
-            For usage explanation, see prepare_neighborhood_information.
-            Default: None.
+        log_level: str
+            Level of the model logger.
         """
         super().__init__()
 
@@ -56,14 +52,6 @@ class MainModelAbstract(torch.nn.Module):
         # Trainer's logging level can be changed separately from main
         # scripts.
         logger.setLevel(log_level)
-
-        # Possible neighbors for each input.
-        self.neighborhood_radius = neighborhood_radius
-        self.neighborhood_type = neighborhood_type
-        self.neighborhood_points = prepare_neighborhood_vectors(
-            neighborhood_type, neighborhood_radius)
-        self.nb_neighbors = len(self.neighborhood_points) if \
-            self.neighborhood_points is not None else 0
 
         self.device = None
 
@@ -88,8 +76,6 @@ class MainModelAbstract(torch.nn.Module):
         model with those params."""
         return {
             'experiment_name': self.experiment_name,
-            'neighborhood_type': self.neighborhood_type,
-            'neighborhood_radius': self.neighborhood_radius,
         }
 
     @property
@@ -189,7 +175,65 @@ class MainModelAbstract(torch.nn.Module):
         raise NotImplementedError
 
 
-class MainModelWithPD(MainModelAbstract):
+class ModelWithNeighborhood(MainModelAbstract):
+    """
+    Adds tools to work with neighborhoods.
+    """
+    def __init__(self, neighborhood_type: str = None,
+                 neighborhood_radius=None, **kw):
+        """
+        neighborhood_type: str
+            For usage explanation, see prepare_neighborhood_information.
+            Default: None.
+        neighborhood_radius: Union[int, float, Iterable[float]]
+            For usage explanation, see prepare_neighborhood_information.
+            Default: None.
+        """
+        super().__init__(**kw)
+
+        # Possible neighbors for each input.
+        self.neighborhood_radius = neighborhood_radius
+        self.neighborhood_type = neighborhood_type
+        self.neighborhood_points = prepare_neighborhood_vectors(
+            neighborhood_type, neighborhood_radius)
+        self.nb_neighbors = len(self.neighborhood_points) if \
+            self.neighborhood_points is not None else 0
+
+    @staticmethod
+    def add_neighborhood_args_to_parser(p: argparse.ArgumentParser):
+        # The experiment name and log level are dealt with by the
+        # main experiment parameters.
+        p.add_argument(
+            '--neighborhood_type', choices=['axes', 'grid'],
+            help="If set, add neighborhood vectors either with the 'axes' "
+                 "or 'grid' option to the input(s).\n"
+                 "'axes': lies on a sphere. Uses a list of 6 positions (up, "
+                 "down, left, right, behind, in front) at exactly "
+                 "--neighborhood_radius voxels from origin (i.e. current "
+                 "postion).\n"
+                 "'grid': Uses a list of vectors pointing to points "
+                 "surrounding the origin that mimic the original voxel grid, "
+                 "in voxel space.")
+        p.add_argument(
+            '--neighborhood_radius',
+            help="With type 'axes', radius must be a float or a list[float] "
+                 "(it will then be a multi-radius neighborhood (lying on "
+                 "concentring spheres).\n"
+                 "With type 'grid': radius must be a single int value, the "
+                 "radius in number of voxels. Ex: with radius 1, this is "
+                 "26 points. With radius 2, it's 124 points.")
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
+        p.update({
+            'neighborhood_type': self.neighborhood_type,
+            'neighborhood_radius': self.neighborhood_radius,
+        })
+        return p
+
+
+class ModelWithPreviousDirections(MainModelAbstract):
     """
     Adds tools to work with previous directions. Prepares a layer for previous
     directions embedding, and a tool method for direction formatting.
@@ -197,6 +241,7 @@ class MainModelWithPD(MainModelAbstract):
     def __init__(self, nb_previous_dirs: int = 0,
                  prev_dirs_embedding_size: int = None,
                  prev_dirs_embedding_key: str = None,
+                 _keys_to_embeddings: dict = None,
                  normalize_prev_dirs: bool = True, **kw):
         """
         Params
@@ -216,8 +261,6 @@ class MainModelWithPD(MainModelAbstract):
             If true, direction vectors are normalized (norm=1) when computing
             the previous direction.
         """
-        print("ENTERING PD INIT")
-
         super().__init__(**kw)
 
         self.nb_previous_dirs = nb_previous_dirs
@@ -226,6 +269,11 @@ class MainModelWithPD(MainModelAbstract):
         self.normalize_prev_dirs = normalize_prev_dirs
 
         if self.nb_previous_dirs > 0:
+            if (prev_dirs_embedding_key is None or
+                    _keys_to_embeddings is None or
+                    prev_dirs_embedding_size is None):
+                raise ValueError("You have not set all previous dirs "
+                                 "parameters. Cannot prepare them.")
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
                 raise ValueError("Embedding choice for previous dirs not "
                                  "understood: {}. It should be one of {}"
@@ -249,6 +297,34 @@ class MainModelWithPD(MainModelAbstract):
 
         # To tell our trainer what to send to the forward / loss methods.
         self.model_uses_dirs = True
+
+    @staticmethod
+    def add_args_model_with_pd(p, _keys_to_embeddings: dict):
+        """
+        keys to embeddings: one of
+        dwi_ml.models.embeddings_on_packed_sequences.keys_to_embeddings
+        dwi_ml.models.embeddings_on_tensors.keys_to_embeddings
+        """
+        p.add_argument(
+            '--nb_previous_dirs', type=int, default=0, metavar='n',
+            help="Concatenate the n previous streamline directions to the "
+                 "input vector. \nDefault: 0")
+        p.add_argument(
+            '--prev_dirs_embedding_key', choices=_keys_to_embeddings.keys(),
+            default='no_embedding',
+            help="Type of model for the previous directions embedding layer.\n"
+                 "Default: no_embedding (identity model).")
+        p.add_argument(
+            '--prev_dirs_embedding_size', type=int, metavar='s',
+            help="Size of the output after passing the previous dirs through "
+                 "the embedding \nlayer. (Total size. Ex: "
+                 "--nb_previous_dirs 3, --prev_dirs_embedding_size 8 \n"
+                 "would compact 9 features into 8.) "
+                 "Default: nb_previous_dirs*3.")
+        p.add_argument(
+            '--normalize_prev_dirs', action='store_true',
+            help="If true, normalize the previous directions (before the "
+                 "embedding layer,\n if any, and before adding to the input.")
 
     @property
     def params_for_checkpoint(self):
@@ -382,6 +458,7 @@ class MainModelWithPD(MainModelAbstract):
         raise NotImplementedError
 
 
+<<<<<<< HEAD
 class MainModelOneInput(MainModelAbstract):
     def __init__(self, **kw):
         super().__init__(**kw)

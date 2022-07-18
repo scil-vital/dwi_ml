@@ -82,7 +82,7 @@ def init_from_args(args, sub_loggers_level):
     # Preparing the batch loader.
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
         batch_loader = DWIMLBatchLoaderOneInput(
-            dataset, input_group_name=args.input_group_name,
+            dataset=dataset, input_group_name=args.input_group_name,
             streamline_group_name=args.streamline_group_name,
             # STREAMLINES PREPROCESSING
             step_size=args.step_size, compress=args.compress,

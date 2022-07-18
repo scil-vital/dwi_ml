@@ -180,8 +180,8 @@ def create_batch_loader(
         wait_for_gpu=True, log_level=logging.DEBUG):
     logging.debug('    Initializing batch loader...')
     batch_loader = DWIMLBatchLoaderOneInput(
-        subset, TEST_EXPECTED_VOLUME_GROUPS[0],
-        TEST_EXPECTED_STREAMLINE_GROUPS[0], rng=1234,
+        dataset=subset, input_group_name=TEST_EXPECTED_VOLUME_GROUPS[0],
+        streamline_group_name=TEST_EXPECTED_STREAMLINE_GROUPS[0], rng=1234,
         compress=compress, step_size=step_size, split_ratio=split_ratio,
         noise_gaussian_size_training=noise_size,
         noise_gaussian_var_training=noise_variability,

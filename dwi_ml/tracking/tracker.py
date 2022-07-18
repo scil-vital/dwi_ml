@@ -78,10 +78,6 @@ class DWIMLTracker(ScilpyTracker):
         # Increase the printing frequency as compared to super
         self.printing_frequency = 1
 
-        # Contrary to scilpy, everything our in tracker is in 'corner', 'vox'
-        self.origin = 'corner'
-        self.space = 'vox'
-
     def track(self):
         """
         Scilpy's Tracker.track():
@@ -283,7 +279,7 @@ class DWIMLTracker(ScilpyTracker):
                 final_lines[i][-1], final_tracking_info[i])
             if (final_pos is not None and
                 not np.array_equal(final_pos, final_lines[i][-1]) and
-                    self.mask.is_voxmm_in_bound(*final_pos,
-                                                origin=self.origin)):
+                    self.mask.is_coordinate_in_bound(
+                        *final_pos, space=self.space, origin=self.origin)):
                 final_lines[i].append(final_pos)
         return final_lines, final_lines_order

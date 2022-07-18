@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from dipy.io.stateful_tractogram import Space, Origin
 from scilpy.tracking.seed import SeedGenerator
 
 
@@ -8,14 +9,9 @@ class DWIMLSeedGenerator(SeedGenerator):
     at the time, for GPU processing of many streamlines at once.
     """
     def __init__(self, data, voxres):
-        super().__init__(data, voxres)
-
-        # CONTRARY TO SCILPY, WE USE VOX SPACE (we keep corner origin)
-        # (because of torch trilinear interpolation).
-        # Note. The variable self.seeds in always in vox space. But
-        # super().get_next_pos returns values in voxmm, we don't.
-        self.space = 'vox'
-        self.origin = 'corner'
+        # # torch trilinear interpolation uses origin='corner', space=vox.
+        super().__init__(data, voxres,
+                         space=Space.VOX, origin=Origin('corner'))
 
     def get_next_n_pos(self, random_generator, indices, which_seeds):
         """
@@ -60,11 +56,11 @@ class DWIMLSeedGenerator(SeedGenerator):
 
             seed = [x + r_x[i], y + r_y[i], z + r_z[i]]
 
-            if self.space == 'voxmm':
+            if self.space == Space.VOXMM:
                 # Should not happen now. Kept in case we modify something.
                 # Also, this equation is only true in corner.
                 seed *= self.voxres
-            elif self.space != 'vox':
+            elif self.space != Space.VOX:
                 raise NotImplementedError("Not ready for rasmm")
 
             seeds.append(seed)

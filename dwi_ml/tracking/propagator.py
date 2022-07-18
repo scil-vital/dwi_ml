@@ -5,6 +5,7 @@ from typing import Union
 
 import numpy as np
 import torch
+from dipy.io.stateful_tractogram import Space, Origin
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 
@@ -60,8 +61,10 @@ class DWIMLPropagator(AbstractPropagator):
             If true, the current line in kept in memory to be added as
             additional input.
         """
-        # Dataset will be reloaded at sub-processes
-        super().__init__(dataset, step_size, rk_order)
+        # Dataset will be managed differently. Not a DataVolume.
+        # torch trilinear interpolation uses origin='corner', space=vox.
+        super().__init__(dataset, step_size, rk_order,
+                         space=Space.VOX, origin=Origin('corner'))
 
         if rk_order > 1:
             logger.warning("dwi_ml is not ready for runge-kutta integration."

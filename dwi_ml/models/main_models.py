@@ -200,27 +200,26 @@ class ModelWithNeighborhood(MainModelAbstract):
             self.neighborhood_points is not None else 0
 
     @staticmethod
-    def add_neighborhood_args_to_parser(p: argparse.ArgumentParser):
+    def add_neighborhood_args_to_parser(p: argparse.PARSER):
         # The experiment name and log level are dealt with by the
         # main experiment parameters.
         p.add_argument(
             '--neighborhood_type', choices=['axes', 'grid'],
             help="If set, add neighborhood vectors either with the 'axes' "
-                 "or 'grid' option to the input(s).\n"
-                 "'axes': lies on a sphere. Uses a list of 6 positions (up, "
-                 "down, left, right, behind, in front) at exactly "
-                 "--neighborhood_radius voxels from origin (i.e. current "
-                 "postion).\n"
-                 "'grid': Uses a list of vectors pointing to points "
-                 "surrounding the origin that mimic the original voxel grid, "
-                 "in voxel space.")
+                 "or 'grid' option to \nthe input(s).\n"
+                 "- 'axes': lies on a sphere. Uses a list of 6 positions (up, "
+                 "down, left, right, \nbehind, in front) at exactly "
+                 "neighborhood_radius voxels from tracking point.\n"
+                 "- 'grid': Uses a list of vectors pointing to points "
+                 "surrounding the origin \nthat mimic the original voxel "
+                 "grid, in voxel space.")
         p.add_argument(
-            '--neighborhood_radius',
-            help="With type 'axes', radius must be a float or a list[float] "
-                 "(it will then be a multi-radius neighborhood (lying on "
+            '--neighborhood_radius', type=Union[int, float, List[float]],
+            help="- With type 'axes', radius must be a float or a list[float] "
+                 "(it will then be a \nmulti-radius neighborhood (lying on "
                  "concentring spheres).\n"
-                 "With type 'grid': radius must be a single int value, the "
-                 "radius in number of voxels. Ex: with radius 1, this is "
+                 "- With type 'grid': radius must be a single int value, the "
+                 "radius in number of \nvoxels. Ex: with radius 1, this is "
                  "26 points. With radius 2, it's 124 points.")
 
     @property
@@ -269,11 +268,14 @@ class ModelWithPreviousDirections(MainModelAbstract):
         self.normalize_prev_dirs = normalize_prev_dirs
 
         if self.nb_previous_dirs > 0:
-            if (prev_dirs_embedding_key is None or
-                    _keys_to_embeddings is None or
+            if _keys_to_embeddings is None:
+                raise ValueError("Please indicate the dict of possible "
+                                 "embedding keys for the previous direction")
+            if (prev_dirs_embedding_key is not None and
                     prev_dirs_embedding_size is None):
-                raise ValueError("You have not set all previous dirs "
-                                 "parameters. Cannot prepare them.")
+                raise ValueError(
+                    "To use an embedding class, you must provide its output "
+                    "size")
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
                 raise ValueError("Embedding choice for previous dirs not "
                                  "understood: {}. It should be one of {}"

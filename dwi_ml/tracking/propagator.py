@@ -7,10 +7,9 @@ import numpy as np
 import torch
 from dipy.io.stateful_tractogram import Space, Origin
 
-from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
-
 from scilpy.tracking.propagator import AbstractPropagator
 
+from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.main_models import MainModelAbstract, MainModelOneInput
 
 logger = logging.getLogger('tracker_logger')
@@ -457,7 +456,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
         # We're ok.
         lines = [[point] for point in n_pos]
 
-        inputs, _ = MainModelOneInput.prepare_batch_one_input(
+        inputs, _ = self.model.prepare_batch_one_input(
             lines, self.dataset, self.subj_idx, self.volume_group,
             self.neighborhood_points, self.device)
         return inputs

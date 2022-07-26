@@ -14,12 +14,12 @@ import torch
 from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
     unpack_sequence
 
+from dwi_ml.data.processing.volume.interpolation import \
+    interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, normalize_directions
-from dwi_ml.data.processing.volume.interpolation import \
-    interpolate_volume_in_neighborhood
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
@@ -452,26 +452,30 @@ class ModelWithPreviousDirections(MainModelAbstract):
         raise NotImplementedError
 
 
-<<<<<<< HEAD
 class MainModelOneInput(MainModelAbstract):
     def __init__(self, **kw):
         super().__init__(**kw)
 
-    @staticmethod
-    def prepare_batch_one_input(
-            streamlines, subset, subj, input_group_idx,
-            neighborhood_points, device, prepare_mask=False):
+    def prepare_batch_one_input(self, streamlines, subset, subj,
+                                input_group_idx, device,
+                                prepare_mask=False):
         """
+        These params are passed by either the batch loader or the propagator,
+        which manage the data.
+
         Params
         ------
-        streamlines: list, The streamlines, IN VOXEL SPACE, CORNER ORIGIN
-        subjset: MultisubjectSubset, The dataset
-        subj: str, The subject id
-        input_groupd_idx: int, The volume group
-        neighborhood_points: list, The neighborhood coordinates
+        streamlines: list
+            The streamlines, IN VOXEL SPACE, CORNER ORIGIN
+        subjset: MultisubjectSubset
+            The dataset.
+        subj: str
+            The subject id.
+        input_groupd_idx: int
+            The volume group.
         device: Torch device
-        prepare_mask: bool, If true, return a mask of chosen coordinates
-        logger: logging logger.
+        prepare_mask: bool
+            If true, return a mask of chosen coordinates (DEBUGGING MODE).
         """
         start_time = datetime.now()
 
@@ -485,12 +489,17 @@ class MainModelOneInput(MainModelAbstract):
         data_tensor = subset.get_volume_verify_cache(
             subj, input_group_idx, device=device, non_blocking=True)
 
-        # Prepare the volume data, possibly adding neighborhood
-        # (Thus new coords_torch possibly contain the neighborhood points)
-        # Coord_clipped contain the coords after interpolation
-        subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-            data_tensor, flat_subj_x_coords, neighborhood_points,
-            device)
+        # Prepare the volume data
+        # Coord_torch contain the coords after interpolation, possibly clipped
+        # to volume bounds.
+        if isinstance(self, ModelWithNeighborhood):
+            # Adding neighborhood.
+            subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
+                data_tensor, flat_subj_x_coords, self.neighborhood_vectors,
+                device)
+        else:
+            subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
+                data_tensor, flat_subj_x_coords, None, device)
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]

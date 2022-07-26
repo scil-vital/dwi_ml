@@ -352,46 +352,33 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
                 (possibly with its neighborhood)
         target = the whole streamlines as sequences.
     """
-    def __init__(self, input_group_name, wait_for_gpu: bool = False,
-                 neighborhood_points: np.ndarray = None, **kw):
+    def __init__(self, input_group_name, model: MainModelOneInput,
+                 wait_for_gpu: bool = False, **kw):
         """
         Params
         ------
         input_group_name: str
             Name of the input group in the hdf5 dataset.
+        model: ModelOneInput
+            The model.
         wait_for_gpu: bool
             If true, will not compute the inputs directly when using
             load_batch. User can call the compute_inputs method himself later
             on. Typically, Dataloader (who call load_batch) uses CPU.
             Default: False
-        neighborhood_points: np.ndarray
-            The list of neighborhood points (does not contain 0,0,0 point).
-            None or [] mean that no neighborhood is added. Default: None.
         """
         super().__init__(**kw)
 
-        # toDo. Would be more logical to send this as params when using
+        # toDo. GPU: Would be more logical to send this as params when using
         #  load_batch as collate_fn in the Dataloader during training.
         #  Possible?
         self.wait_for_gpu = wait_for_gpu
-
         self.input_group_name = input_group_name
-
-        self.neighborhood_points = neighborhood_points
+        self.model = model
 
         # Find group index in the data_source
         idx = self.dataset.volume_groups.index(input_group_name)
         self.input_group_idx = idx
-
-    @property
-    def params_for_json_prints(self):
-        p = super().params_for_json_prints
-
-        # Neighborhood points is a ndarray. Changing.
-        p['neighborhood_points'] = \
-            np.ndarray.tolist(self.neighborhood_points) if \
-            self.neighborhood_points is not None else None
-        return p
 
     @property
     def params_for_checkpoint(self):
@@ -399,7 +386,6 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         p.update({
             'input_group_name': self.input_group_name,
             # Sending to list to allow json dump
-            'neighborhood_points': self.neighborhood_points,
             'wait_for_gpu': self.wait_for_gpu
         })
         return p
@@ -513,7 +499,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
             subbatch_x_data, input_mask = \
-                MainModelOneInput.prepare_batch_one_input(
+                self.model.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,
                     self.input_group_idx, self.neighborhood_points, device)
 

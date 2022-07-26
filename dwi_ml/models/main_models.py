@@ -53,7 +53,6 @@ class MainModelAbstract(torch.nn.Module):
         super().__init__()
 
         self.experiment_name = experiment_name
-        self.best_model_state = None
 
         # Trainer's logging level can be changed separately from main
         # scripts.
@@ -102,20 +101,14 @@ class MainModelAbstract(torch.nn.Module):
     def params_for_json_prints(self):
         return self.params_for_checkpoint
 
-    def update_best_model(self):
-        # Initialize best model
-        # Uses torch's module state_dict.
-        self.best_model_state = self.state_dict()
-
-    def save(self, saving_dir):
-        # Make model directory
-        model_dir = os.path.join(saving_dir, "model")
+    def save_params_and_state(self, model_dir):
+        model_state = self.state_dict()
 
         # If a model was already saved, back it up and erase it after saving
         # the new.
         to_remove = None
         if os.path.exists(model_dir):
-            to_remove = os.path.join(saving_dir, "model_old")
+            to_remove = os.path.join(model_dir, "..", "model_old")
             shutil.move(model_dir, to_remove)
         os.makedirs(model_dir)
 
@@ -126,35 +119,38 @@ class MainModelAbstract(torch.nn.Module):
                                        separators=(',', ': ')))
 
         # Save model
-        torch.save(self.best_model_state,
-                   os.path.join(model_dir, "best_model_state.pkl"))
+        torch.save(model_state, os.path.join(model_dir, "model_state.pkl"))
 
         if to_remove:
             shutil.rmtree(to_remove)
 
     @classmethod
-    def load(cls, loading_dir, log_level=logging.WARNING):
+    def load_params_and_state(cls, model_dir, log_level=logging.WARNING):
         """
-        loading_dir: path to the trained parameters. Must contain files
+        Params
+        -----
+        loading_dir: path
+            Path to the trained parameters, either from the latest checkpoint
+            or from the best model folder. Must contain files
             - parameters.json
-            - best_model_state.pkl
+            - model_state.pkl
         """
-        # Make model directory
-        model_dir = os.path.join(loading_dir)
-
         # Load attributes and hyperparameters from json file
         params_filename = os.path.join(model_dir, "parameters.json")
         params = json.load(open(params_filename))
 
-        logging.debug("Loading model from saved parameters:" +
-                      format_dict_to_str(params))
+        logger.setLevel(log_level)
+        logger.debug("Loading model from saved parameters:" +
+                     format_dict_to_str(params))
 
-        best_model_filename = os.path.join(model_dir, "best_model_state.pkl")
-        best_model_state = torch.load(best_model_filename)
+        model_state_file = os.path.join(model_dir, "model_state.pkl")
+        model_state = torch.load(model_state_file)
 
         model = cls(log_level=log_level, **params)
-        model.load_state_dict(best_model_state)  # using torch's method
-        model.update_best_model()
+        model.load_state_dict(model_state)  # using torch's method
+
+        # By default, setting to eval state. If this will be used by the
+        # trainer, it will call model.train().
         model.eval()
 
         return model

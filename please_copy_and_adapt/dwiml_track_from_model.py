@@ -109,8 +109,8 @@ def prepare_tracker(parser, args, hdf5_file, device,
         subset, subj_idx = prepare_dataset_for_tracking(hdf5_file, args)
 
         logging.info("Loading model.")
-        model = ModelForTestWithPD.load(args.experiment_path + '/model',
-                                        log_level=sub_logger_level)
+        model = ModelForTestWithPD.load_params_and_state(
+            args.experiment_path + '/best_model', log_level=sub_logger_level)
         logging.info("* Loaded params: " +
                      format_dict_to_str(model.params_for_json_prints) +
                      "\n")

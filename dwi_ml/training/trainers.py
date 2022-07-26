@@ -694,8 +694,8 @@ class DWIMLAbstractTrainer:
         self.logger.info("Best epoch yet! Saving model and loss history.")
 
         # Save model
-        self.model.update_best_model()
-        self.model.save(self.saving_path)
+        self.model.save_params_and_state(
+            os.path.join(self.saving_path, 'best_model'))
 
         best_losses = {
             'train_loss':
@@ -860,7 +860,7 @@ class DWIMLAbstractTrainer:
                    os.path.join(checkpoint_dir, "checkpoint_state.pkl"))
 
         # Save model inside the checkpoint dir
-        self.model.save(checkpoint_dir)
+        self.model.save_params_and_state(os.path.join(checkpoint_dir, 'model'))
 
         if to_remove:
             shutil.rmtree(to_remove)

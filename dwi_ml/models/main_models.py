@@ -44,7 +44,7 @@ class MainModelAbstract(torch.nn.Module):
         experiment_name: str
             Name of the experiment
         log_level: str
-            Level of the model logger.
+            Level of the model logger. Default: root's level.
         """
         super().__init__()
 
@@ -144,15 +144,6 @@ class MainModelAbstract(torch.nn.Module):
     def compute_loss(self, *model_outputs, **kw):
         raise NotImplementedError
 
-    def format_directions(self, streamlines):
-        """
-        Simply calls compute_and_normalize_directions, but with model's device
-        and options.
-        """
-        targets = compute_and_normalize_directions(
-            streamlines, self.device, self.normalize_directions)
-        return targets
-
     def forward(self, *inputs, **kw):
         raise NotImplementedError
 
@@ -162,24 +153,35 @@ class ModelWithNeighborhood(MainModelAbstract):
     Adds tools to work with neighborhoods.
     """
     def __init__(self, neighborhood_type: str = None,
-                 neighborhood_radius=None, **kw):
+                 neighborhood_radius=None, add_vectors_to_data: bool = False,
+                 **kw):
         """
+        Params
+        ------
+        experiment_name: str
+            Name of the experiment
+        log_level: str
+            Level of the model logger.
         neighborhood_type: str
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
         neighborhood_radius: Union[int, float, Iterable[float]]
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
+        add_vectors_to_data: bool
+            If true, neighborhood vectors will be concatenated to data at each
+            point, meaning that the number of features per point will be 3 more.
         """
         super().__init__(**kw)
 
         # Possible neighbors for each input.
         self.neighborhood_radius = neighborhood_radius
         self.neighborhood_type = neighborhood_type
-        self.neighborhood_points = prepare_neighborhood_vectors(
+        self.neighborhood_vectors = prepare_neighborhood_vectors(
             neighborhood_type, neighborhood_radius)
-        self.nb_neighbors = len(self.neighborhood_points) if \
-            self.neighborhood_points is not None else 0
+        self.nb_neighbors = len(self.neighborhood_vectors) if \
+            self.neighborhood_vectors is not None else 0
+        self.add_vectors_to_data = add_vectors_to_data
 
     @staticmethod
     def add_neighborhood_args_to_parser(p: argparse.PARSER):
@@ -226,6 +228,10 @@ class ModelWithPreviousDirections(MainModelAbstract):
         """
         Params
         ------
+        experiment_name: str
+            Name of the experiment
+        log_level: str
+            Level of the model logger.
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received. Default: 0.
@@ -435,6 +441,14 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 class MainModelOneInput(MainModelAbstract):
     def __init__(self, **kw):
+        """
+        Params
+        ------
+        experiment_name: str
+            Name of the experiment
+        log_level: str
+            Level of the model logger.
+        """
         super().__init__(**kw)
 
     def prepare_batch_one_input(self, streamlines, subset, subj,
@@ -477,10 +491,10 @@ class MainModelOneInput(MainModelAbstract):
             # Adding neighborhood.
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, self.neighborhood_vectors,
-                device)
+                self.add_vectors_to_data, device)
         else:
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, None, device)
+                data_tensor, flat_subj_x_coords, None, False, device)
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]
@@ -510,7 +524,7 @@ class MainModelOneInput(MainModelAbstract):
         return subj_x_data, input_mask
 
 
-class MainModelForTracking(MainModelAbstract):
+class ModelForTracking(MainModelAbstract):
     """
     Adding typical options for models intended for learning to track.
     - Last layer should be a direction getter.
@@ -523,6 +537,10 @@ class MainModelForTracking(MainModelAbstract):
         """
         Params
         ------
+        experiment_name: str
+            Name of the experiment
+        log_level: str
+            Level of the model logger.
         dg_key: str
             Key to a direction getter class (one of
             dwi_ml.direction_getter_models.keys_to_direction_getters).
@@ -706,7 +724,6 @@ class MainModelForTracking(MainModelAbstract):
         #        ref, estimated_output_path, space, origin)
         raise NotImplementedError
 
-<<<<<<< HEAD
     def get_tracking_direction_det(self, model_outputs):
         """
         This needs to be implemented in order to use the model for

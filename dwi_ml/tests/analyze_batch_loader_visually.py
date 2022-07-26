@@ -10,6 +10,7 @@ from dipy.io.stateful_tractogram import StatefulTractogram, Space, Origin
 from dipy.io.streamline import save_tractogram
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+from dwi_ml.models.main_models import MainModelOneInput
 from dwi_ml.tests.utils import (create_test_batch_sampler, create_batch_loader,
                                 fetch_testing_data)
 
@@ -61,8 +62,9 @@ def save_loaded_batch_for_visual_assessment():
         logging.info('*** Test with batch size {} + loading with '
                      'resample, noise, split, reverse, with '
                      'wait_for_gpu = {}'.format(batch_size, wait_for_gpu))
+        model = MainModelOneInput(experiment_name='test')
         batch_loader = create_batch_loader(
-            dataset.training_set, step_size=0.5, noise_size=0.2,
+            dataset.training_set, model, step_size=0.5, noise_size=0.2,
             noise_variability=0.1, split_ratio=0.5, reverse_ratio=0.5,
             wait_for_gpu=True)
 
@@ -72,7 +74,8 @@ def save_loaded_batch_for_visual_assessment():
         # 2) With compressing
         logging.info('*** Test with batch size {} + loading with compress'
                      .format(batch_size))
-        batch_loader = create_batch_loader(dataset.training_set, compress=True)
+        batch_loader = create_batch_loader(dataset.training_set, model,
+                                           compress=True)
         _load_directly_and_verify(batch_loader, batch_idx_tuples, ref)
 
 

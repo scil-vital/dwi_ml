@@ -9,7 +9,7 @@ from scilpy.io.fetcher import fetch_data, get_home
 
 from dwi_ml.models.main_models import MainModelAbstract, \
     ModelWithPreviousDirections, \
-    ModelForTracking, ModelWithNeighborhood
+    ModelForTracking, ModelWithNeighborhood, MainModelOneInput
 from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -33,10 +33,11 @@ def fetch_testing_data():
     return testing_data_dir
 
 
-class ModelForTest(MainModelAbstract):
+class ModelForTest(MainModelOneInput):
     def __init__(self, experiment_name: str = 'test',
                  log_level=logging.root.level):
-        super().__init__(experiment_name, log_level)
+        super().__init__(experiment_name=experiment_name,
+                         log_level=log_level)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, target_streamlines=None):
@@ -57,7 +58,7 @@ class ModelForTest(MainModelAbstract):
 
 
 class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
-                                 ModelWithNeighborhood):
+                                 ModelWithNeighborhood, MainModelOneInput):
     def __init__(self, experiment_name: str = 'test',
                  neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level,
@@ -175,7 +176,7 @@ def create_test_batch_sampler(
 
 
 def create_batch_loader(
-        subset, step_size=None, compress=False, noise_size=0.,
+        subset, model, step_size=None, compress=False, noise_size=0.,
         noise_variability=0., split_ratio=0., reverse_ratio=0.,
         wait_for_gpu=True, log_level=logging.DEBUG):
     logging.debug('    Initializing batch loader...')
@@ -188,7 +189,7 @@ def create_batch_loader(
         noise_gaussian_size_validation=0,
         noise_gaussian_var_validation=0,
         reverse_ratio=reverse_ratio,
-        neighborhood_points=None, wait_for_gpu=wait_for_gpu,
-        log_level=log_level)
+        neighborhood_vectors=None, wait_for_gpu=wait_for_gpu,
+        log_level=log_level, model=model)
 
     return batch_loader

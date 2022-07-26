@@ -10,7 +10,7 @@ from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 
 
-def test_neighborhood_points():
+def test_neighborhood_vectors():
     npoints = prepare_neighborhood_vectors('axes', neighborhood_radius=1)
     assert len(npoints) == 6
 
@@ -66,7 +66,7 @@ def test_neighborhood_interpolation():
     # Adding coordinates
     interpolated_data, _ = interpolate_volume_in_neighborhood(
         data, current_coords, neighb_vec,
-        add_coordinates_to_data=True)
+        add_vectors_to_data=True)
 
     assert np.array_equal(interpolated_data.shape,
                           [m_coords, (n_neigh + 1) * (f_features + 3)])
@@ -75,4 +75,4 @@ def test_neighborhood_interpolation():
 if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
     test_neighborhood_interpolation()
-    test_neighborhood_points()
+    test_neighborhood_vectors()

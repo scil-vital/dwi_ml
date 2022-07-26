@@ -126,7 +126,7 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
 
 def interpolate_volume_in_neighborhood(
         volume_as_tensor, coords_vox_corner, neighborhood_vectors_vox=None,
-        add_coordinates_to_data: bool = False, device=torch.device('cpu')):
+        add_vectors_to_data: bool = False, device=torch.device('cpu')):
     """
     Params
     ------
@@ -140,9 +140,9 @@ def interpolate_volume_in_neighborhood(
         The neighboors to add to each coord. Do not include the current point
         ([0,0,0]). Values are considered in the same space as
         coords_vox_corner, and should thus be in voxel space.
-    add_coordinates_to_data: bool
-        If true, coordinates will be concatenated to data at each point,
-        meaning that the number of features per point will be 3 more.
+    add_vectors_to_data: bool
+        If true, neighborhood vectors will be concatenated to data at each
+        point, meaning that the number of features per point will be 3 more.
     device: torch device.
 
     Returns
@@ -173,7 +173,7 @@ def interpolate_volume_in_neighborhood(
         flat_subj_x_data = torch_trilinear_interpolation(volume_as_tensor,
                                                          flat_coords_torch)
 
-        if add_coordinates_to_data:
+        if add_vectors_to_data:
             # Concat (M * (N+1), F) with (M x (N+1), 3)
             flat_subj_x_data = torch.cat(
                 (flat_subj_x_data, torch.tensor(tiled_vectors, device=device)),
@@ -186,7 +186,7 @@ def interpolate_volume_in_neighborhood(
         subj_x_data = flat_subj_x_data.reshape(m_input_points, new_nb_features)
 
     else:  # No neighborhood:
-        if add_coordinates_to_data:
+        if add_vectors_to_data:
             raise ValueError("You should not select 'add_coordinates_to_data' "
                              "if you do not add a neighborhood; you would "
                              "only add a bunch of zeros...")

@@ -10,7 +10,7 @@ from dipy.io.stateful_tractogram import Space, Origin
 from scilpy.tracking.propagator import AbstractPropagator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
-from dwi_ml.models.main_models import MainModelAbstract, MainModelOneInput
+from dwi_ml.models.main_models import MainModelAbstract, ModelWithNeighborhood
 
 logger = logging.getLogger('tracker_logger')
 
@@ -422,10 +422,11 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             input_volume_group)
 
         # To help prepare the inputs
-        if hasattr(self.model, 'neighborhood_points'):
-            self.neighborhood_points = self.model.neighborhood_points
+        if isinstance(self.model, ModelWithNeighborhood):
+            self.neighborhood_vectors = self.model.neighborhood_vectors
+            self.add_vectors_to_data = self.model.add_vectors_to_data
         else:
-            self.neighborhood_points = None
+            self.neighborhood_vectors = None
         self.volume_group_str = input_volume_group
 
         if self.dataset.is_lazy and self.dataset.cache_size == 0:
@@ -451,7 +452,8 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
 
         inputs, _ = self.model.prepare_batch_one_input(
             lines, self.dataset, self.subj_idx, self.volume_group,
-            self.neighborhood_points, self.device)
+            self.neighborhood_vectors, self.device)
+
         return inputs
 
 

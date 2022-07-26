@@ -47,6 +47,7 @@ from typing import Dict, List, Tuple
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
+from dwi_ml.models.main_models import MainModelOneInput
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 import torch
@@ -55,7 +56,6 @@ import torch.multiprocessing
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
-from dwi_ml.models.main_models import MainModelOneInput
 
 logger = logging.getLogger('batch_loader_logger')
 
@@ -353,7 +353,8 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         target = the whole streamlines as sequences.
     """
     def __init__(self, input_group_name, model: MainModelOneInput,
-                 wait_for_gpu: bool = False, **kw):
+                 wait_for_gpu: bool = False,
+                 neighborhood_vectors: np.ndarray = None, **kw):
         """
         Params
         ------
@@ -366,6 +367,9 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             load_batch. User can call the compute_inputs method himself later
             on. Typically, Dataloader (who call load_batch) uses CPU.
             Default: False
+        neighborhood_vectors: np.ndarray
+            The list of neighborhood points (does not contain 0,0,0 point).
+            None or [] mean that no neighborhood is added. Default: None.
         """
         super().__init__(**kw)
 
@@ -375,10 +379,21 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         self.wait_for_gpu = wait_for_gpu
         self.input_group_name = input_group_name
         self.model = model
+        self.neighborhood_vectors = neighborhood_vectors
 
         # Find group index in the data_source
         idx = self.dataset.volume_groups.index(input_group_name)
         self.input_group_idx = idx
+
+    @property
+    def params_for_json_prints(self):
+        p = super().params_for_json_prints
+
+        # Neighborhood points is a ndarray. Changing.
+        p['neighborhood_vectors'] = \
+            np.ndarray.tolist(self.neighborhood_vectors) if \
+            self.neighborhood_vectors is not None else None
+        return p
 
     @property
     def params_for_checkpoint(self):
@@ -386,6 +401,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         p.update({
             'input_group_name': self.input_group_name,
             # Sending to list to allow json dump
+            'neighborhood_vectors': self.neighborhood_vectors,
             'wait_for_gpu': self.wait_for_gpu
         })
         return p
@@ -501,7 +517,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             subbatch_x_data, input_mask = \
                 self.model.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,
-                    self.input_group_idx, self.neighborhood_points, device)
+                    self.input_group_idx, self.neighborhood_vectors, device)
 
             batch_x_data.extend(subbatch_x_data)
 

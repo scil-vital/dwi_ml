@@ -26,12 +26,10 @@ def test_trainer_and_models():
     dataset = MultiSubjectDataset(hdf5_filename, lazy=False)
     dataset.load_data()
 
-    # Initializing batch sampler
-    batch_sampler, batch_loader = _create_sampler_and_loader(dataset)
-
-    # Initializing model 1
+    # Initializing model 1 + associated batch sampler.
     logging.info("\n\n---------------TESTING MODEL # 1 -------------")
     model = ModelForTest()
+    batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
     # Start tests
     trainer = _create_trainer(batch_sampler, batch_loader, model)
@@ -40,13 +38,14 @@ def test_trainer_and_models():
     # Initializing model 2
     logging.info("\n\n---------------TESTING MODEL # 2 -------------")
     model2 = TrackingModelForTestWithPD()
+    batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
     # Start tests
     trainer2 = _create_trainer(batch_sampler, batch_loader, model2)
     trainer2.train_and_validate()
 
 
-def _create_sampler_and_loader(dataset):
+def _create_sampler_and_loader(dataset, model):
 
     # Initialize batch sampler
     logging.debug('\nInitializing sampler...')
@@ -54,7 +53,7 @@ def _create_sampler_and_loader(dataset):
         dataset, batch_size=batch_size,
         batch_size_units='nb_streamlines', log_level=logging.WARNING)
 
-    batch_loader = create_batch_loader(dataset,
+    batch_loader = create_batch_loader(dataset, model,
                                        log_level=logging.WARNING,
                                        wait_for_gpu=False)
 

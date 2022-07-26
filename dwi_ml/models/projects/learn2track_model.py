@@ -5,17 +5,20 @@ from typing import Any, Union, List
 import torch
 from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.main_models import (
-    MainModelWithPD, MainModelOneInput, MainModelForTracking)
+    MainModelOneInput, ModelWithNeighborhood, ModelWithPreviousDirections,
+    ModelForTracking)
 from dwi_ml.models.projects.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
 
-class Learn2TrackModel(MainModelWithPD, MainModelOneInput,
-                       MainModelForTracking):
+class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
+                       ModelWithPreviousDirections, ModelForTracking):
     """
     Recurrent tracking model.
 
@@ -126,18 +129,20 @@ class Learn2TrackModel(MainModelWithPD, MainModelOneInput,
         [2] https://arxiv.org/pdf/1607.06450.pdf
         """
         super().__init__(experiment_name=experiment_name,
+                         log_level=log_level,
+                         # For modelWithNeighborhood
                          neighborhood_type=neighborhood_type,
                          neighborhood_radius=neighborhood_radius,
-                         log_level=log_level,
+                         add_vectors_to_data=False,  # Not Ready. ToDo
                          # For super MainModelWithPD:
                          nb_previous_dirs=nb_previous_dirs,
                          prev_dirs_embedding_size=prev_dirs_embedding_size,
                          prev_dirs_embedding_key=prev_dirs_embedding_key,
                          normalize_prev_dirs=normalize_prev_dirs,
-                         # For super MainModelForTracking:
+                         # For super ModelForTracking:
                          dg_args=dg_args, dg_key=dg_key,
-                         dg_input_size=nb_features * (nb_neighbors + 1),
                          normalize_targets=normalize_targets,
+                         allow_saving_estimated_outputs=False,  # Not Ready, ToDo
                          )
 
         self.input_embedding_key = input_embedding_key
@@ -147,8 +152,6 @@ class Learn2TrackModel(MainModelWithPD, MainModelOneInput,
         self.rnn_key = rnn_key
         self.rnn_layer_sizes = rnn_layer_sizes
         self.dropout = dropout
-        self.dg_key = dg_key
-        self.dg_args = dg_args or {}
 
         # ----------- Checks
         if self.input_embedding_key not in keys_to_embeddings.keys():
@@ -302,29 +305,34 @@ class Learn2TrackModel(MainModelWithPD, MainModelOneInput,
             # Training
             return model_outputs
 
-    def _run_forward(self, inputs: List[torch.tensor],
-                     streamlines: List[torch.tensor],
-                     hidden_reccurent_states, is_tracking):
+    def _run_forward(self, inputs, dirs, hidden_reccurent_states, is_tracking):
 
+        # RUNNING THE MODEL
+        if self.nb_previous_dirs > 0:
+            logger.debug("*** 1. {} previous dirs - Embedding = {}..."
+                         .format(self.nb_previous_dirs,
+                                 self.prev_dirs_embedding_key))
+
+            # During training, we need all the previous n directions, during
+            # tracking, the last one only.
+            point_idx = -1 if is_tracking else None
+
+            # Result will be a packed sequence.
+            n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
+                dirs, unpack_results=False, point_idx=point_idx)
+            logger.debug("Output size: {}"
+                         .format(n_prev_dirs_embedded.data.shape))
+        else:
+            n_prev_dirs_embedded = None
+
+        logger.debug("*** 2. Inputs: Embedding = {}"
+                     .format(self.input_embedding_key))
         # Packing inputs and saving info
         inputs = pack_sequence(inputs, enforce_sorted=False).to(self.device)
         batch_sizes = inputs.batch_sizes
         sorted_indices = inputs.sorted_indices
         unsorted_indices = inputs.unsorted_indices
-
-        # RUNNING THE MODEL
-        logger.debug("*** 1. Previous dir embedding, if any "
-                     "(on packed_sequence's tensor!)...")
-        if is_tracking:
-            point_idx = -1
-        else:
-            # Currently training. We need all the previous directions.
-            point_idx = None
-        n_prev_dirs_embedded = self.compute_and_embed_previous_dirs(
-            streamlines, unpack_results=False, point_idx=point_idx)
-
-        logger.debug("*** 2. Inputs embedding (on packed_sequence's "
-                     "tensor!)...")
+        
         logger.debug("Input size: {}".format(inputs.data.shape[-1]))
         inputs = self.input_embedding(inputs.data)
         logger.debug("Output size: {}".format(inputs.shape[-1]))

@@ -84,7 +84,8 @@ def init_from_args(args, sub_loggers_level):
     # Preparing the batch loader.
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
         batch_loader = DWIMLBatchLoaderOneInput(
-            dataset=dataset, input_group_name=args.input_group_name,
+            dataset=dataset, model=model,
+            input_group_name=args.input_group_name,
             streamline_group_name=args.streamline_group_name,
             # STREAMLINES PREPROCESSING
             step_size=args.step_size, compress=args.compress,
@@ -95,7 +96,7 @@ def init_from_args(args, sub_loggers_level):
             noise_gaussian_var_validation=args.noise_gaussian_variability_validation,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # NEIGHBORHOOD
-            neighborhood_points=model.neighborhood_points,
+            neighborhood_vectors=model.neighborhood_vectors,
             # OTHER
             rng=args.rng, wait_for_gpu=args.use_gpu,
             log_level=sub_loggers_level)

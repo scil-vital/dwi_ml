@@ -409,28 +409,22 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     the data points from the volume (+possibly add a neighborhood) and
     interpolate the data.
     """
-    def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
-                 model: MainModelAbstract, input_volume_group: str,
-                 step_size: float, rk_order: int, algo: str, theta: float,
-                 model_uses_streamlines: bool, device=None):
+    def __init__(self, input_volume_group: str, **kw):
         """
-        Additional params compared to super:
-        ------------------------------------
+        Params
+        ------
         input_volume_group: str
             The volume group to use as input in the model.
-        neighborhood_points: np.ndarray
-            The list of neighborhood points (does not contain 0,0,0 point)
-        step_size: NOW IN VOXEL RESOLUTION.
         """
-        super().__init__(dataset, subj_idx, model, step_size, rk_order, algo,
-                         theta, model_uses_streamlines, device)
+        super().__init__(**kw)
 
         # Find group index in the data
-        self.volume_group = dataset.volume_groups.index(input_volume_group)
+        self.volume_group = self.dataset.volume_groups.index(
+            input_volume_group)
 
         # To help prepare the inputs
-        if hasattr(model, 'neighborhood_points'):
-            self.neighborhood_points = model.neighborhood_points
+        if hasattr(self.model, 'neighborhood_points'):
+            self.neighborhood_points = self.model.neighborhood_points
         else:
             self.neighborhood_points = None
         self.volume_group_str = input_volume_group
@@ -439,6 +433,8 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             logger.warning("With lazy data and multiprocessing, you should "
                            "not keep cache size to zero. Data would be "
                            "loaded again at each propagation step!")
+
+        assert self.space == Space.VOX
 
     def _prepare_inputs_at_pos(self, n_pos):
         """

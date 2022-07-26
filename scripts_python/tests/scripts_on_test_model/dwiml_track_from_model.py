@@ -128,8 +128,11 @@ def prepare_tracker(parser, args, hdf5_file, device,
         model_uses_streamlines = True  # Test model's forward uses previous
         # dirs, which require streamlines
         propagator = DWIMLPropagatorOneInput(
-            subset, subj_idx, model, args.input_group, step_size_vox_space,
-            args.rk_order, args.algo, theta, model_uses_streamlines, device)
+            input_volume_group=args.input_group,
+            dataset=subset, subj_idx=subj_idx, model=model,
+            step_size=step_size_vox_space, rk_order=args.rk_order,
+            algo=args.algo, theta=theta,
+            model_uses_streamlines=model_uses_streamlines, device=device)
 
         logging.debug("Instantiating tracker.")
         tracker = DWIMLTracker(

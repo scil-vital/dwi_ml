@@ -13,22 +13,17 @@ from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.tests.utils import (create_test_batch_sampler, create_batch_loader,
                                 fetch_testing_data)
 
-data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
-
-logging.basicConfig(level=logging.INFO)
-now = datetime.now().time()
-millisecond = round(now.microsecond / 10000)
-now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
-
-# Change to true to allow debug mode: saves the mask for visual assessment.
-# Requires a reference.
-ref = None  # Todo. Load from data fetcher
-batch_size = 500  # Testing only one value here.
-wait_for_gpu = False  # Testing both True and False is heavier...
 
 
 def save_loaded_batch_for_visual_assessment():
+    data_dir = fetch_testing_data()
+    ref = os.path.join(data_dir, 'dwi_ml_ready', 'subjX', 'anat', 'T1.nii.gz')
+    # Change to true to allow debug mode: saves the mask for visual assessment.
+    # Requires a reference.
+    batch_size = 500  # Testing only one value here.
+    wait_for_gpu = False  # Testing both True and False is heavier...
+
     logging.info("Unit test: batch sampler iteration")
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
@@ -72,16 +67,20 @@ def save_loaded_batch_for_visual_assessment():
             wait_for_gpu=True)
 
         # Using last batch from batch sampler
-        _load_directly_and_verify(batch_loader, batch_idx_tuples)
+        _load_directly_and_verify(batch_loader, batch_idx_tuples, ref)
 
         # 2) With compressing
         logging.info('*** Test with batch size {} + loading with compress'
                      .format(batch_size))
         batch_loader = create_batch_loader(dataset.training_set, compress=True)
-        _load_directly_and_verify(batch_loader, batch_idx_tuples)
+        _load_directly_and_verify(batch_loader, batch_idx_tuples, ref)
 
 
-def _load_directly_and_verify(batch_loader, batch_idx_tuples):
+def _load_directly_and_verify(batch_loader, batch_idx_tuples, ref):
+    now = datetime.now().time()
+    millisecond = round(now.microsecond / 10000)
+    now_s = str(now.minute * 10000 + now.second * 100 + millisecond)
+
     expected_nb_streamlines = 0
     for s, idx in batch_idx_tuples:
         expected_nb_streamlines += len(idx)

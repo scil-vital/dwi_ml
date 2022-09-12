@@ -48,8 +48,9 @@ def main():
         raise ValueError("No log folder exists!")
 
     log_files = list(logs_path.glob('*.npy'))
+    log_files_str = [str(f) for f in log_files]
 
-    logging.info("Found files: {}".format(log_files))
+    logging.info("Found files: {}".format(log_files_str))
     logs = {}
     for log_file in log_files:
         log_name = log_file.stem

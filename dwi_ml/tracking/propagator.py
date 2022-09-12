@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 import logging
+from datetime import datetime
 from typing import Union
 
 import numpy as np
 import torch
-from scilpy.image.datasets import DataVolume
+from dipy.io.stateful_tractogram import Space, Origin
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 
 from scilpy.tracking.propagator import AbstractPropagator
 
-from dwi_ml.data.processing.volume.interpolation import \
-    interpolate_volume_in_neighborhood
-from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.models.main_models import MainModelAbstract, MainModelOneInput
 
 logger = logging.getLogger('tracker_logger')
 
@@ -34,14 +33,16 @@ class DWIMLPropagator(AbstractPropagator):
         - theta would be very complex to include here as a cone and will rather
         be used as stopping criteria, later.
     """
-    def __init__(self, subset: MultisubjectSubset, subj_idx: int,
+    dataset: MultisubjectSubset
+
+    def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, step_size: float, rk_order: int,
                  algo: str, theta: float, model_uses_streamlines: bool = False,
-                 device=None):
+                 device=None, normalize_directions: bool = True):
         """
         Parameters
         ----------
-        subset: MultisubjectSubset
+        dataset: MultisubjectSubset
             Loaded testing set. Must be lazy to allow multiprocessing.
             Multi-subject tracking not implemented; it should contain only
             one subject.
@@ -60,16 +61,16 @@ class DWIMLPropagator(AbstractPropagator):
             If true, the current line in kept in memory to be added as
             additional input.
         """
-        # Dataset will be reloaded at sub-processes
-        dataset: Union[DataVolume, None] = None
-        super().__init__(dataset, step_size, rk_order)
+        # Dataset will be managed differently. Not a DataVolume.
+        # torch trilinear interpolation uses origin='corner', space=vox.
+        super().__init__(dataset, step_size, rk_order,
+                         space=Space.VOX, origin=Origin('corner'))
 
         if rk_order > 1:
             logger.warning("dwi_ml is not ready for runge-kutta integration."
                            "Changing to rk_order 1.")
             self.rk_order = 1
 
-        self.subset = subset
         self.subj_idx = subj_idx
         self.model = model
 
@@ -78,17 +79,31 @@ class DWIMLPropagator(AbstractPropagator):
             raise ValueError("Propagator's algo should be 'det' or 'prob'.")
 
         self.theta = theta
+        self.normalize_directions = normalize_directions
+        if not normalize_directions and step_size != 1:
+            logging.warning("Tracker not normalizing directions obtained as "
+                            "output from the model. Using a step size other "
+                            "than 1 does not really make sense. You probably "
+                            "want to advance of exactly 1 * output.")
 
         self.device = device
         if device is not None:
             self.move_to(device)
 
         self.model_uses_streamlines = model_uses_streamlines
-        # The model uses the streamline, so we need to keep track of it as
-        # additional input. List of lines. All lines have the same number of
-        # points, as they are being propagated together.
+
+        # If the model uses the streamline (ex: to compute the list of the n
+        # previous directions), we need to keep track of it as additional
+        # input. List of lines. All lines have the same number of points
+        # as they are being propagated together.
         # List[list[list]]: nb_lines x (nb_points, 3).
-        self.current_lines: Union[list, None] = None
+        self.current_lines = None  # type: Union[list, None]
+
+        # Propagate method call will influence how we get the streamlines
+        self._track_multiple_lines = None  # type: Union[bool, None]
+
+        # Contrary to super: normalize direction is optional
+        self.normalize_directions = normalize_directions
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -103,19 +118,12 @@ class DWIMLPropagator(AbstractPropagator):
             If true, reload data to cache. Else, erase all data and hdf handles
             from memory.
         """
-        if self.subset.is_lazy:
+        if self.dataset.is_lazy:
             # Empty cache
-            self.subset.volume_cache_manager = None
+            self.dataset.volume_cache_manager = None
 
             # Remove all handles
-            self.subset.close_all_handles()
-
-            if reload_data:
-                self._load_subj_data()
-
-    def _load_subj_data(self):
-        # To be implemented in child classes
-        raise NotImplementedError
+            self.dataset.close_all_handles()
 
     def prepare_forward(self, seeding_pos):
         """
@@ -141,7 +149,7 @@ class DWIMLPropagator(AbstractPropagator):
         else:
             return [None for _ in seeding_pos]
 
-    def prepare_backward(self, line, forward_dir):
+    def prepare_backward(self, line, forward_dir, multiple_lines=False):
         """
         Preparing backward.
 
@@ -152,6 +160,8 @@ class DWIMLPropagator(AbstractPropagator):
             coordinates. Simulatenous tracking: list of list of coordinates.
         forward_dir: ndarray (3,) or List[ndarray]
             v_in chosen at the forward step.
+        multiple_lines: bool
+            If true, using version simulteanous tracking.
 
         Returns
         -------
@@ -160,12 +170,15 @@ class DWIMLPropagator(AbstractPropagator):
             only the seeding point (forward tracking failed), simply inverse
             the forward direction.
         """
+        # If forward tracking succeeded, takes the last direction, inverted and
+        # normalized (if self.normalize_directions).
+
         # Note. In our case, compared to scilpy, forward dir is None. So if the
         # forward tracking failed, we will just return None and try the
         # backward again with v_in=None. So basically, we will recompute
         # exactly the same model outputs as for the forward. But maybe the
         # sampling will create a new direction.
-        if isinstance(line[0], np.ndarray):  # List of coords = single tracking
+        if not multiple_lines:
             v_in = super().prepare_backward(line, forward_dir)
 
             # v_in is in double format (np.float64) but it looks like we need
@@ -184,55 +197,68 @@ class DWIMLPropagator(AbstractPropagator):
 
         return v_in
 
-    def propagate(self, line, v_in, multiple_lines=False):
+    def multiple_lines_update(self, lines_that_continue: list):
+        """
+        This is used by the tracker with simulatenous tracking, in case you
+        need to update your model's memory when removing a streamline.
+        """
+        pass
+
+    def propagate(self, line, v_in):
         """
         Params
         ------
-        line: list[ndarrray (3,)] or list[list]
-            Current line, or current lines if multiple_lines.
-        v_in: ndarray (3,) or List[TrackingDirection]
-            Previous tracking direction, (or list of if multiple_lines.)
+        line: list[ndarrray (3,)]
+            Current line
+        v_in: ndarray (3,)
+            Previous tracking direction
 
         Return
         ------
-        new_pos: ndarray (3,) or list
+        new_pos: ndarray (3,)
             The new segment position.
-        new_dir: ndarray (3,) or list
+        new_dir: ndarray (3,)
             The new segment direction.
-        is_direction_valid: bool or list
+        is_direction_valid: bool
             True if new_dir is valid.
         """
         if self.model_uses_streamlines:
             # super() won't use the whole line as argument during the sampling
             # of next direction, but we need it. Add it in memory here.
-            # To use with r_k order > 1, we would need to compute the
-            # intermediate lines at each sub-computation, easier if we actually
-            # send the streamline, we would need to change scilpy.
-            if multiple_lines:
-                self.current_lines = line
-            else:
-                self.current_lines = [line]
+            self.current_lines = [line]
 
-        if multiple_lines:
-            new_pos, new_dir, is_direction_valid = \
-                self._propagate_multiple_lines(line, v_in)
-        else:
-            new_pos, new_dir, is_direction_valid = \
-                super().propagate(line, v_in)
+        return super().propagate(line, v_in)
 
-        # Reset memory
-        self.current_lines = None
-
-        return new_pos, new_dir, is_direction_valid
-
-    def _propagate_multiple_lines(self, lines, n_v_in):
+    def propagate_multiple_lines(self, lines, n_v_in):
         """
         Equivalent of self.propagate() for multiple lines. We do not call
         super's at it does not support multiple lines. Super's method supports
         rk order. We don't. We skip this and directly call
         _sample_next_direction_or_go_straight.
+
+        Params
+        ------
+        line: list[list[ndarrray (3,)]]
+            Current lines.
+        v_in: list[ndarray (3,)]
+            Previous tracking directions.
+
+        Return
+        ------
+        n_new_pos: list[ndarray (3,)]
+            The new segment position.
+        n_new_dir: list[ndarray (3,)]
+            The new segment direction.
+        are_directions_valid: list[bool]
+            True if new_dir is valid.
         """
-        # Finding last coordinate
+        self._track_multiple_lines = True
+
+        if self.model_uses_streamlines:
+            self.current_lines = lines
+
+        # Keeping one coordinate per streamline; the last one.
+        # If model needs the streamlines, use current memory.
         n_pos = [line[-1] for line in lines]
 
         assert self.rk_order == 1
@@ -249,8 +275,8 @@ class DWIMLPropagator(AbstractPropagator):
         """
         Equivalent of super's _sample_next_direction_or_go_straight.
         """
-        n_v_out = self._sample_next_direction(n_pos, n_v_in,
-                                              multiple_lines=True)
+
+        n_v_out = self._sample_next_direction(n_pos, n_v_in)
         are_directions_valid = np.array([False if v_out is None else True
                                          for v_out in n_v_out])
 
@@ -259,7 +285,7 @@ class DWIMLPropagator(AbstractPropagator):
 
         return are_directions_valid, n_v_out
 
-    def _sample_next_direction(self, pos, v_in, multiple_lines=False):
+    def _sample_next_direction(self, pos, v_in):
         """
         Run the model to get the outputs, and sample a direction based on this
         information. None if the direction is more than theta angle
@@ -277,53 +303,46 @@ class DWIMLPropagator(AbstractPropagator):
         Return
         -------
         direction: ndarray (3,) or list of ndarrays
-            Valid normalized tracking direction(s). None if no valid direction
-            is found.
+            Valid tracking direction(s). None if no valid direction
+            is found. If self.normalize_directions, direction must be
+            normalized.
         """
-        single_streamline = False
-        if multiple_lines:
-            n_pos = pos  # Multiple values were sent.
+        if self._track_multiple_lines:
+            n_pos = pos
         else:
-            single_streamline = True
             n_pos = [pos]
+            v_in = [v_in]
 
         # Tracking field returns the model_outputs
         model_outputs = self._get_model_outputs_at_pos(n_pos)
 
-        if single_streamline:
-            # Sampling a direction from this information.
-            if self.algo == 'prob':
-                next_dir = self.model.sample_tracking_direction_prob(
-                    model_outputs)
-            else:
-                next_dir = self.model.get_tracking_direction_det(model_outputs)
+        start_time = datetime.now()
+        if self.algo == 'prob':
+            next_dirs = self.model.sample_tracking_direction_prob(model_outputs)
+        else:
+            next_dirs = self.model.get_tracking_direction_det(model_outputs)
+        duration_direction_getter = datetime.now() - start_time
 
-            # Normalizing
-            next_dir /= np.linalg.norm(next_dir)
-
+        start_time = datetime.now()
+        for i in range(len(n_pos)):
+            if self.normalize_directions:
+                next_dirs[i] /= np.linalg.norm(next_dirs[i])
             # Verify curvature, else return None.
             # toDo could we find a better solution for proba tracking?
             #  Resampling until angle < theta? Easy on the sphere (restrain
             #  probas on the sphere pics inside a cone theta) but what do we do
             #  for other models? Ex: For the Gaussian direction getter?
-            if v_in is not None:
-                next_dir = self._verify_angle(next_dir, v_in)
-            return next_dir
-        else:
-            # Loop on streamlines and do the equivalent.
-            next_dirs = []
-            nb_streamlines = len(n_pos)
-            for i in range(nb_streamlines):
-                if self.algo == 'prob':
-                    next_dir = self.model.sample_tracking_direction_prob(
-                        model_outputs[i])
-                else:
-                    next_dir = self.model.get_tracking_direction_det(
-                        model_outputs[i])
-                next_dir /= np.linalg.norm(next_dir)
-                if v_in[i] is not None:
-                    next_dir = self._verify_angle(next_dir, v_in[i])
-                next_dirs.append(next_dir)
+            if v_in[i] is not None:
+                next_dirs[i] = self._verify_angle(next_dirs[i], v_in[i])
+        duration_norm_angle = datetime.now() - start_time
+
+        logging.debug("Time for direction getter: {}s. Time for normalization "
+                      "+ verifying angle: {}s."
+                      .format(duration_direction_getter.total_seconds(),
+                              duration_norm_angle.total_seconds()))
+
+        if not self._track_multiple_lines:
+            return next_dirs[0]
 
         return next_dirs
 
@@ -350,9 +369,15 @@ class DWIMLPropagator(AbstractPropagator):
                                torch.zeros(1, 3)), dim=0).to(self.device)
                      for line in self.current_lines]
 
+            start_time = datetime.now()
             model_outputs = self.model(inputs, lines)
         else:
+            start_time = datetime.now()
             model_outputs = self.model(inputs)
+        duration_running_model = datetime.now() - start_time
+
+        logger.debug("Time to run the model: {}"
+                     .format(duration_running_model.total_seconds()))
 
         return model_outputs
 
@@ -391,7 +416,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     the data points from the volume (+possibly add a neighborhood) and
     interpolate the data.
     """
-    def __init__(self, subset: MultisubjectSubset, subj_idx: int,
+    def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, input_volume_group: str,
                  step_size: float, rk_order: int, algo: str, theta: float,
                  model_uses_streamlines: bool, device=None):
@@ -402,12 +427,13 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             The volume group to use as input in the model.
         neighborhood_points: np.ndarray
             The list of neighborhood points (does not contain 0,0,0 point)
+        step_size: NOW IN VOXEL RESOLUTION.
         """
-        super().__init__(subset, subj_idx, model, step_size, rk_order, algo,
+        super().__init__(dataset, subj_idx, model, step_size, rk_order, algo,
                          theta, model_uses_streamlines, device)
 
         # Find group index in the data
-        self.volume_group = subset.volume_groups.index(input_volume_group)
+        self.volume_group = dataset.volume_groups.index(input_volume_group)
 
         # To help prepare the inputs
         if hasattr(model, 'neighborhood_points'):
@@ -416,20 +442,10 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             self.neighborhood_points = None
         self.volume_group_str = input_volume_group
 
-    def _load_subj_data(self):
-        # This will open a new handle and get the volume to cache.
-        # If cache is not activated, tracking will load the data at each
-        # propagation step!
-        if self.subset.is_lazy and self.subset.cache_size == 0:
+        if self.dataset.is_lazy and self.dataset.cache_size == 0:
             logger.warning("With lazy data and multiprocessing, you should "
                            "not keep cache size to zero. Data would be "
                            "loaded again at each propagation step!")
-
-        # Load as DataVolume
-        # toDo. Not good for GPU. But allows us access to voxmm_to_vox
-        #  method.
-        self.dataset = self.subset.get_volume_verify_cache(
-            self.subj_idx, self.volume_group, as_tensor=False)
 
     def _prepare_inputs_at_pos(self, n_pos):
         """
@@ -438,35 +454,14 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
 
         Params
         ------
-        pos: list of ndarrrays
-            Current position (or list of positions for multiple tracking).
+        pos: list[n x [[x, y, z]]]
+            List of n "streamlines" composed of one point.
         """
-        # Dataset should already be loaded if multiprocessing. Else, load it
-        # the first time we actually need it.
-        if self.dataset is None:
-            self._load_subj_data()
+        # torch trilinear interpolation uses origin='corner', space=vox.
+        # We're ok.
+        lines = [[point] for point in n_pos]
 
-        all_inputs = []
-        for pos in n_pos:
-            # torch trilinear interpolation uses origin='corner', space=vox.
-            pos_vox = self.dataset.voxmm_to_vox(*pos, self.origin)
-            if self.origin == 'center':
-                pos_vox += 0.5
-
-            # Adding dim. array(3,) should become array (1,3)
-            pos_vox = np.expand_dims(pos_vox, axis=0)
-
-            # Get data as tensor. The MRI data should already be in the cache.
-            dataset_as_tensor = self.subset.get_volume_verify_cache(
-                self.subj_idx, self.volume_group, as_tensor=True,
-                device=self.device)
-
-            # Same as in the batch sampler:
-            # Prepare the volume data, possibly adding neighborhood
-            subj_x_data, _ = interpolate_volume_in_neighborhood(
-                dataset_as_tensor, pos_vox, self.neighborhood_points,
-                self.device)
-
-            all_inputs.append(subj_x_data)
-
-        return all_inputs
+        inputs, _ = MainModelOneInput.prepare_batch_one_input(
+            lines, self.dataset, self.subj_idx, self.volume_group,
+            self.neighborhood_points, self.device)
+        return inputs

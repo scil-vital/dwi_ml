@@ -1,7 +1,7 @@
 {
     "input": {
-	     "type": "volume",
-	     "files": ["anat/t1.nii.gz", "dwi/fa.nii.gz", "dwi/fodf.nii.gz"],
+         "type": "volume",
+         "files": ["anat/t1.nii.gz", "dwi/fa.nii.gz", "dwi/fodf.nii.gz"],
          "standardization": "per_file"
     },
     "wm_mask": {

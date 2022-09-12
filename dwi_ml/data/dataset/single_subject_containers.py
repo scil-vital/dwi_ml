@@ -137,6 +137,7 @@ class LazySubjectData(SubjectDataAbstract):
         super().__init__(volume_groups, nb_features, streamline_groups,
                          subject_id)
         self.hdf_handle = hdf_handle
+        self.is_lazy = True
 
     @classmethod
     def init_from_hdf(cls, subject_id: str, hdf_file, group_info=None):

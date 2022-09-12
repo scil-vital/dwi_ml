@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-import numpy as np
-import torch
-
+from dipy.io.stateful_tractogram import Space, Origin
 from scilpy.tracking.seed import SeedGenerator
 
 
@@ -10,18 +8,10 @@ class DWIMLSeedGenerator(SeedGenerator):
     Seed generator with added methods to generate many seeds instead of one
     at the time, for GPU processing of many streamlines at once.
     """
-
-    def __init__(self, data, voxres, device=None):
-        super().__init__(data, voxres)
-
-        self.data = torch.tensor(self.data)
-        self.device = device
-        if device is not None:
-            self.move_to(device)
-
-    def move_to(self, device):
-        self.data = self.data.to(device=device)
-        self.device = device
+    def __init__(self, data, voxres):
+        # # torch trilinear interpolation uses origin='corner', space=vox.
+        super().__init__(data, voxres,
+                         space=Space.VOX, origin=Origin('corner'))
 
     def get_next_n_pos(self, random_generator, indices, which_seeds):
         """
@@ -40,15 +30,15 @@ class DWIMLSeedGenerator(SeedGenerator):
         Return
         ------
         seed_pos: List[tuple]
-            Positions of next seeds expressed in mm.
+            Positions of next seeds expressed in VOXEL SPACE.
         """
         # todo Bring this to torch and use correct device?
         #   We would need to change the seed generator.
-        len_seeds = len(self.seeds)
+
+        len_seeds = len(self.seeds_vox)
+
         if len_seeds == 0:
             return []
-
-        voxel_dim = np.asarray(self.voxres)
 
         # Voxel selection from the seeding mask
         inds = which_seeds % len_seeds
@@ -56,15 +46,23 @@ class DWIMLSeedGenerator(SeedGenerator):
         # Sub-voxel initial positioning
         # Prepare sub-voxel random movement now (faster out of loop)
         n = len(which_seeds)
-        r_x = random_generator.uniform(0, voxel_dim[0], size=n)
-        r_y = random_generator.uniform(0, voxel_dim[1], size=n)
-        r_z = random_generator.uniform(0, voxel_dim[2], size=n)
+        r_x = random_generator.uniform(0, 1, size=n)
+        r_y = random_generator.uniform(0, 1, size=n)
+        r_z = random_generator.uniform(0, 1, size=n)
 
         seeds = []
         for i in range(len(which_seeds)):
-            x, y, z = self.seeds[indices[inds[i]]]
+            x, y, z = self.seeds_vox[indices[inds[i]]]
 
-            seeds.append((x * self.voxres[0] + r_x[i],
-                          y * self.voxres[1] + r_y[i],
-                          z * self.voxres[2] + r_z[i]))
+            seed = [x + r_x[i], y + r_y[i], z + r_z[i]]
+
+            if self.space == Space.VOXMM:
+                # Should not happen now. Kept in case we modify something.
+                # Also, this equation is only true in corner.
+                seed *= self.voxres
+            elif self.space != Space.VOX:
+                raise NotImplementedError("Not ready for rasmm")
+
+            seeds.append(seed)
+
         return seeds

@@ -3,11 +3,11 @@
 # Run this script to set up local Git hooks for this project.
 
 egrep-q() {
-	egrep "$@" >/dev/null 2>/dev/null
+  egrep "$@" >/dev/null 2>/dev/null
 }
 
 die() {
-	echo 1>&2 "$@" ; exit 1
+  echo 1>&2 "$@" ; exit 1
 }
 
 # Make sure we are inside the repository.
@@ -20,6 +20,6 @@ mkdir -p "$git_dir/hooks" &&
 cd "$git_dir/hooks" &&
 cp -ap "../../utils/hooks/." . &&
 if ! test -e .git; then
-	git init -q || die 'Could not run git init for hooks.'
+  git init -q || die 'Could not run git init for hooks.'
 fi &&
 echo 'Done.'

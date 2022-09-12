@@ -126,8 +126,7 @@ def compute_and_normalize_directions(streamlines, device=torch.device('cpu'),
 
     # Normalization:
     if normalize_directions:
-        batch_directions = [s / torch.sqrt(torch.sum(s ** 2, dim=-1,
-                                                     keepdim=True))
+        batch_directions = [s / torch.linalg.norm(s, dim=-1, keepdim=True)
                             for s in batch_directions]
 
     return batch_directions

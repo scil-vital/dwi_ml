@@ -13,6 +13,7 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 
 from dwi_ml.cache.cache_manager import SingleThreadCacheManager
 from dwi_ml.data.dataset.checks_for_groups import prepare_groups_info
+from dwi_ml.data.dataset.mri_data_containers import MRIDataAbstract
 from dwi_ml.data.dataset.subjectdata_list_containers import (
     LazySubjectsDataList, SubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,
@@ -53,7 +54,10 @@ class MultisubjectSubset(Dataset):
         self.nb_subjects = 0
 
         self.streamline_ids_per_subj = []  # type: List[defaultdict[slice]]
+
+        # One value per streamline group.
         self.total_nb_streamlines = []  # type: List[int]
+        self.total_nb_points = []  # type: List[int]
 
         # Remembering heaviness here to help the batch sampler instead of
         # having to loop on all subjects (again) later.
@@ -134,11 +138,8 @@ class MultisubjectSubset(Dataset):
                                 non_blocking: bool = False,
                                 as_tensor: bool = True):
         """
-        There will be one cache manager per subset. This could be moved to
-        the MultiSubjectDatasetAbstract but easier to deal with here.
-
-        In the case of lazy dataset, checks the cache first. If data was not on
-        the cache, loads it and sends it to the cache before returning.
+        Get a volume from a specific subject. For lazy data, load it (if not
+        already in the cache, or get it from the cache).
 
         Params
         ------
@@ -157,6 +158,11 @@ class MultisubjectSubset(Dataset):
         -------
         mri_data: Union[Tensor, DatasetVolume]
         """
+        # Note. Developer's choice:
+        # There will be one cache manager per subset. This could be moved to
+        # the MultiSubjectDatasetAbstract to have only one cache but easier to
+        # deal with here.
+
         # First verify cache (if lazy)
         cache_key = str(subj_idx) + '.' + str(group_idx)
         was_cached = False
@@ -179,7 +185,7 @@ class MultisubjectSubset(Dataset):
             # Either non-lazy or if lazy, data was not cached.
             # Non-lazy: direct acces. Lazy: this loads the data.
             logger.debug("Getting a new volume from the dataset.")
-            mri_data = self._get_volume(subj_idx, group_idx)
+            mri_data = self.get_volume(subj_idx, group_idx)
 
             # Add to cache
             # Saving the data as a non-lazy data to also have in memory its
@@ -199,16 +205,20 @@ class MultisubjectSubset(Dataset):
         else:
             return mri_data.as_data_volume
 
-    def _get_volume(self, subj_idx: int, group_idx: int):
+    def get_volume(self, subj_idx: int, group_idx: int,
+                   load_it: bool = True) -> MRIDataAbstract:
         """
+        Loads volume as a MRIDataAbstract (lazy or non-lazy class instance).
+
         Contrary to get_volume_verify_cache, this does not send data to
         cache for later use.
-
-        Loads volume as a tensor.
         """
         if self.subjs_data_list.is_lazy:
-            subj_data = self.subjs_data_list.open_handle_and_getitem(
-                subj_idx)
+            if load_it:
+                subj_data = self.subjs_data_list.get_subj_with_handle(
+                    subj_idx)
+            else:
+                subj_data = self.subjs_data_list[subj_idx]
         else:
             subj_data = self.subjs_data_list[subj_idx]
 
@@ -239,6 +249,7 @@ class MultisubjectSubset(Dataset):
         self.streamline_ids_per_subj = \
             [defaultdict(slice) for _ in self.streamline_groups]
         self.total_nb_streamlines = [0 for _ in self.streamline_groups]
+        self.total_nb_points = [0 for _ in self.streamline_groups]
 
         # Remembering heaviness. One np array per subj per group.
         lengths = [[] for _ in self.streamline_groups]
@@ -259,21 +270,17 @@ class MultisubjectSubset(Dataset):
                 # Add subject to the list
                 subj_idx = self.subjs_data_list.add_subject(subj_data)
 
-                if subj_data.is_lazy:
-                    logger.debug("     Temporarily adding hdf handle to "
-                                 "subj to arrange streamlines.")
-                    subj_data = self.subjs_data_list[(subj_idx, hdf_handle)]
-                    logger.debug("--> Handle: {}".format(subj_data.hdf_handle))
-
                 # Arrange streamlines
-                # In the lazy case, we need to load the data first using the
-                # __getitem__ from the datalist, and passing the hdf handle.
-                # For the non-lazy version, this does nothing.
-                subj_data.add_handle(hdf_handle)
+                # In the lazy case, we need to allow loading the data, passing
+                # the hdf handle.
+                if subj_data.is_lazy:
+                    subj_data.add_handle(hdf_handle)
+
                 for i in range(len(self.streamline_groups)):
                     subj_sft_data = subj_data.sft_data_list[i]
                     n_streamlines = len(subj_sft_data.streamlines)
                     self._add_streamlines_ids(n_streamlines, subj_idx, i)
+                    self._count_points(subj_sft_data.streamlines, i)
                     lengths[i].append(subj_sft_data.lengths)
                     lengths_mm[i].append(subj_sft_data.lengths_mm)
 
@@ -305,6 +312,9 @@ class MultisubjectSubset(Dataset):
 
         # Update total nb of streamlines in the dataset for this group
         self.total_nb_streamlines[group_idx] += n_streamlines
+
+    def _count_points(self, streamlines, group_idx):
+        self.total_nb_points[group_idx] += sum([len(s) for s in streamlines])
 
     def _build_empty_data_list(self):
         if self.is_lazy:

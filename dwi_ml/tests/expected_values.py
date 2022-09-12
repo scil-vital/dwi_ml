@@ -1,5 +1,26 @@
 #!/usr/bin/env python
 
+"""
+Organization of the testing data:
+
+├── code_creation
+│    ├── code.sh
+│    ├── config_file.json
+│    ├── empty_subjs_list.txt
+│    └── training_subjs.txt
+├── dwi_ml_ready
+│    └── subjX
+│        ├── anat
+│        │     └── t1.nii.gz
+│        ├── dwi
+│        │     └── fa.nii.gz
+│        ├── example_bundle
+│        │     └── Fornix.trk
+│        └── masks
+│              └── wm.nii.gz
+└── hdf5_file.hdf5
+
+"""
 # Values corresponding to the testing data, as of Apr 27, 2022.
 
 TEST_EXPECTED_VOLUME_GROUPS = ['input', 'wm_mask']

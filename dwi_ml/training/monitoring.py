@@ -1,8 +1,28 @@
 # -*- coding: utf-8 -*-
 from collections import deque
 import timeit
+from datetime import datetime
 
 import numpy as np
+
+
+class TimeMonitor(object):
+    def __init__(self):
+        self.epoch_durations = []
+        self._start_time = None
+
+    def start_new_epoch(self):
+        self._start_time = datetime.now()
+
+    def end_epoch(self):
+        if self._start_time is None:
+            raise ValueError("You should not end the epoch; it has not "
+                             "started (or you haven't told the TimeMonitor).")
+        duration = datetime.now() - self._start_time
+
+        # Saving duration in minutes
+        self.epoch_durations.append(duration.total_seconds() / 60)
+        self._start_time = None
 
 
 class ValueHistoryMonitor(object):
@@ -12,29 +32,22 @@ class ValueHistoryMonitor(object):
     Example of usage: History of the loss during training.
         loss_monitor = ValueHistoryMonitor()
         ...
+        loss_monitor.start_new_epoch()
+
         # Call update at each iteration
         loss_monitor.update(2.3)
-        ...
-        loss_monitor.avg  # returns the average loss
-        ...
+                ...
         loss_monitor.end_epoch()  # call at epoch end
         ...
-        loss_monitor.epochs  # returns the loss curve as a list
+        loss_monitor.epochs_means  # returns the loss curve as a list
     """
 
     def __init__(self, name):
         self.name = name
-        self.all_updates_history = []  # The list of values
-        self.epochs_means_history = []  # The list of averaged values per epoch
-        self.current_epoch_history = []  # The list of values in current epoch
-
-    @property
-    def nb_updates(self):
-        return len(self.all_updates_history)
-
-    @property
-    def nb_epochs(self):
-        return len(self.epochs_means_history)
+        # self.all_updates_history[i] = values of all batches for epoch i.
+        self.all_updates_history = []
+        self.epochs_means = []
+        self.current_epoch = -1
 
     def update(self, value):
         """
@@ -47,28 +60,42 @@ class ValueHistoryMonitor(object):
         if np.isinf(value):
             return
 
-        self.all_updates_history.append(value)
-        self.current_epoch_history.append(value)
+        self.all_updates_history[-1].append(value)
+
+    def start_new_epoch(self):
+        assert len(self.epochs_means) == self.current_epoch + 1, \
+            "Did you forget to end previous epoch? len(epochs_means) is {}" \
+            "but current epoch is {}" \
+            .format(len(self.epochs_means), self.current_epoch)
+        assert len(self.all_updates_history) == self.current_epoch + 1, \
+            "Unexpected error. all_updates_history is of len {} but current " \
+            "epoch is {}" \
+            .format(self.all_updates_history, self.current_epoch)
+
+        self.current_epoch += 1
+        self.all_updates_history.append([])
 
     def end_epoch(self):
         """
-        Reset the current epoch.
-        Append the average of this epoch's losses.
+        Compute mean of current epoch and add it to means values.
         """
-        self.epochs_means_history.append(np.mean(self.current_epoch_history))
-        self.current_epoch_history = []
+        assert len(self.all_updates_history) == self.current_epoch + 1
+        assert len(self.epochs_means) == len(self.all_updates_history) - 1
+
+        self.epochs_means.append(np.mean(self.all_updates_history[-1]))
 
     def get_state(self):
         return {'name': self.name,
                 'all_updates_history': self.all_updates_history,
-                'current_epoch_history': self.current_epoch_history,
-                'epochs_means_history': self.epochs_means_history}
+                'epochs_means': self.epochs_means,
+                'current_epoch': self.current_epoch
+                }
 
     def set_state(self, state):
         self.name = state['name']
         self.all_updates_history = state['all_updates_history']
-        self.current_epoch_history = state['current_epoch_history']
-        self.epochs_means_history = state['epochs_means_history']
+        self.epochs_means = state['epochs_means']
+        self.current_epoch = state['current_epoch']
 
 
 class BestEpochMonitoring(object):

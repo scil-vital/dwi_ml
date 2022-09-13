@@ -68,4 +68,3 @@ if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
     test_stacked_rnn()
     test_learn2track()
-

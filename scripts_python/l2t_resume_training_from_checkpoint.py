@@ -45,9 +45,10 @@ def init_from_checkpoint(args):
         sub_loggers_level = 'INFO'
 
     # Load model from checkpoint directory
-    model = Learn2TrackModel.load_params_and_state(os.path.join(
-        args.experiments_path, args.experiment_name, 'checkpoint/model'),
-                                  sub_loggers_level)
+    model = Learn2TrackModel.load_params_and_state(
+        os.path.join(args.experiments_path, args.experiment_name,
+                     'checkpoint/model'),
+        sub_loggers_level)
 
     # Prepare batch samplers
     _args = checkpoint_state['batch_sampler_params']

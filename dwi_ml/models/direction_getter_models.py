@@ -269,7 +269,7 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
         # mean_loss = torch.sqrt(torch.pow((losses - 1), 2)).mean()
         #      ( cosine - 1: brings it back to range [-2,  0]
         #        pow2: - 2 becomes very important.)
-        # But with Learn2track, exploding gradients.
+        # But with projects, exploding gradients.
 
         return mean_loss
 

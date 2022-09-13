@@ -1,4 +1,7 @@
-# Supported for python > 3.5
+# Supported for python > 3.7
+# Scilpy must be installed manually first.
+# (or run pip install -r requirements_github.txt)
+
 
 torch>=1.11.0
 tqdm>=4.60.0

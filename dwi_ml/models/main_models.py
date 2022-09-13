@@ -170,20 +170,6 @@ class MainModelAbstract(torch.nn.Module):
             streamlines, self.device, self.normalize_directions)
         return targets
 
-    def get_tracking_direction_det(self, model_outputs):
-        """
-        This needs to be implemented in order to use the model for
-        generative tracking, as in dwi_ml.tracking.tracker_abstract.
-
-        Probably calls a directionGetter.get_tracking_directions_det.
-
-        Returns
-        -------
-        next_dir: list[array(3,)]
-            Numpy arrays with x,y,z value, one per streamline data point.
-        """
-        raise NotImplementedError
-
     def sample_tracking_direction_prob(self, model_outputs):
         """
         This needs to be implemented in order to use the model for
@@ -337,14 +323,6 @@ class MainModelWithPD(MainModelAbstract):
                         n_prev_dirs_embedded_packed)
 
                 return n_prev_dirs_embedded
-
-    def get_tracking_direction_det(self, model_outputs,
-                                   streamline_lengths=None):
-        raise NotImplementedError
-
-    def sample_tracking_direction_prob(self, model_outputs,
-                                       streamline_lengths=None):
-        raise NotImplementedError
 
     def format_previous_dirs(self, all_streamline_dirs, point_idx=None):
         """

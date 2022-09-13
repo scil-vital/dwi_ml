@@ -376,13 +376,25 @@ class Learn2TrackModel(MainModelWithPD):
         return mean_loss
 
     def get_tracking_direction_det(self, model_outputs):
-        next_dir = self.direction_getter.get_tracking_direction_det(
+        next_dirs = self.direction_getter.get_tracking_direction_det(
             model_outputs)
 
         # todo. Need to avoid the .cpu() if possible. See propagator's todo.
         # Bring back to cpu and get dir.
-        next_dir = next_dir.cpu().detach().numpy().squeeze()
-        return next_dir
+        next_dirs = next_dirs.cpu().detach().numpy().squeeze()
+
+        if len(next_dirs.shape) == 1:
+            next_dirs = [next_dirs]
+        else:
+            # next_dirs is of size [nb_points, 3]. Considering we are tracking,
+            # nb_points is 1 and we want to separate it into a list of next
+            # directions (3,) for each streamline.
+            # We can use split_array_at_lengths, but it gives a list of (1,3)
+            # and we need to squeeze it.
+            # List comprehension works with np arrays.
+            next_dirs = [x for x in next_dirs]
+
+        return next_dirs
 
     def sample_tracking_direction_prob(self, model_outputs):
         logging.debug("Getting a deterministic direction from {}"

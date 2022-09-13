@@ -167,7 +167,8 @@ class DWIMLTracker(ScilpyTracker):
 
         logger.info("Multiple GPU tracking: Starting forward propagation for "
                     "the next {} streamlines.".format(len(n_seeds)))
-        tracking_info = self.propagator.prepare_forward(n_seeds)
+        tracking_info = self.propagator.prepare_forward(n_seeds,
+                                                        multiple_lines=True)
         lines, order1 = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:

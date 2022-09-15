@@ -517,7 +517,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             subbatch_x_data, input_mask = \
                 self.model.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,
-                    self.input_group_idx, self.neighborhood_vectors, device)
+                    self.input_group_idx, device)
 
             batch_x_data.extend(subbatch_x_data)
 

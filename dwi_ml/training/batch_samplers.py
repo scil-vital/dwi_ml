@@ -96,9 +96,8 @@ class DWIMLBatchIDSampler(Sampler):
                                 "used. Ignored")
         elif batch_size_units == 'length_mm':
             if nb_streamlines_per_chunk is None:
-                logging.debug("Chunk size was not set. Setting to default {}"
+                logging.debug("Chunk size was not set. Using default {}"
                               .format(DEFAULT_CHUNK_SIZE))
-                nb_streamlines_per_chunk = DEFAULT_CHUNK_SIZE
         else:
             raise ValueError("batch_size_unit should either be "
                              "'nb_streamlines' or 'length_mm'")
@@ -115,13 +114,10 @@ class DWIMLBatchIDSampler(Sampler):
         self.streamline_group_name = streamline_group_name
         self.nb_subjects_per_batch = nb_subjects_per_batch
         self.cycles = cycles
-        if batch_size_units == 'nb_streamlines':
-            self.nb_streamlines_per_chunk = None
-        else:
-            self.nb_streamlines_per_chunk = nb_streamlines_per_chunk
         self.batch_size_training = batch_size_training
         self.batch_size_validation = batch_size_validation
         self.batch_size_units = batch_size_units
+        self.nb_streamlines_per_chunk = nb_streamlines_per_chunk
 
         # Find idx of streamline group
         self.streamline_group_idx = self.dataset.streamline_groups.index(
@@ -166,13 +162,9 @@ class DWIMLBatchIDSampler(Sampler):
             if context == 'training':
                 self.context_subset = self.dataset.training_set
                 self.context_batch_size = self.batch_size_training
-                if self.batch_size_units == 'nb_streamlines':
-                    self.nb_streamlines_per_chunk = self.batch_size_training
             elif context == 'validation':
                 self.context_subset = self.dataset.validation_set
                 self.context_batch_size = self.batch_size_validation
-                if self.batch_size_units == 'nb_streamlines':
-                    self.nb_streamlines_per_chunk = self.batch_size_validation
             else:
                 raise ValueError("Context should be either 'training' or "
                                  "'validation'.")
@@ -271,6 +263,10 @@ class DWIMLBatchIDSampler(Sampler):
             # Final subject's batch size could be smaller if no streamlines are
             # left for this subject.
             max_batch_size_per_subj = self.context_batch_size / nb_subjects
+            if self.batch_size_units == 'nb_streamlines':
+                chunk_size = int(max_batch_size_per_subj)
+            else:
+                chunk_size = self.nb_streamlines_per_chunk or DEFAULT_CHUNK_SIZE
 
             # Preparing to iterate on these chosen subjects for a predefined
             # number of cycles
@@ -293,7 +289,7 @@ class DWIMLBatchIDSampler(Sampler):
                     self.logger.debug("    Subj {}".format(subj))
                     sampled_ids = self._sample_streamlines_for_subj(
                         subj, ids_per_subjs, global_unused_streamlines,
-                        max_batch_size_per_subj)
+                        max_batch_size_per_subj, chunk_size)
 
                     # Append tuple (subj, list_sampled_ids) to the batch
                     if len(sampled_ids) > 0:
@@ -317,7 +313,7 @@ class DWIMLBatchIDSampler(Sampler):
 
     def _sample_streamlines_for_subj(self, subj, ids_per_subjs,
                                      global_unused_streamlines,
-                                     max_batch_size_per_subj):
+                                     max_batch_size_per_subj, chunk_size):
         """
         For each subject, randomly choose streamlines that have not been chosen
         yet.
@@ -349,7 +345,8 @@ class DWIMLBatchIDSampler(Sampler):
              no_streamlines_left, reached_max) = \
                 self._get_a_chunk_of_streamlines(
                     subj_slice, global_unused_streamlines,
-                    total_subj_batch_size, max_batch_size_per_subj)
+                    total_subj_batch_size, max_batch_size_per_subj,
+                    chunk_size=chunk_size)
 
             if no_streamlines_left:
                 # No streamlines remaining. Get next subject.
@@ -381,7 +378,8 @@ class DWIMLBatchIDSampler(Sampler):
 
     def _get_a_chunk_of_streamlines(self, subj_slice,
                                     global_unused_streamlines,
-                                    subj_batch_size, max_subj_batch_size):
+                                    subj_batch_size, max_subj_batch_size,
+                                    chunk_size):
         """
         Get a chunk of streamlines (for a given subject) and evaluate their
         size.
@@ -421,8 +419,7 @@ class DWIMLBatchIDSampler(Sampler):
             return [], [], 0, no_streamlines_remaining, reached_max_heaviness
 
         # Sample a chunk of streamlines
-        nb_streamlines_to_sample = min(self.nb_streamlines_per_chunk,
-                                       nb_streamlines_left)
+        nb_streamlines_to_sample = min(chunk_size, nb_streamlines_left)
         chosen_global_ids = self.np_rng.choice(subj_unused_ids_in_global,
                                                nb_streamlines_to_sample,
                                                replace=False)

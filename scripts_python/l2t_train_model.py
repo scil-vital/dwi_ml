@@ -14,9 +14,9 @@ from dwi_ml.data.dataset.utils import (
     add_dataset_args, prepare_multisubjectdataset)
 from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.models.utils.direction_getters import (
-    add_direction_getter_args, check_args_direction_getter)
-from dwi_ml.models.projects.learn2track_utils import add_model_args, prepare_model
+from dwi_ml.models.utils.direction_getters import check_args_direction_getter
+from dwi_ml.models.projects.learn2track_utils import (
+    add_model_args, prepare_model)
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
@@ -37,6 +37,7 @@ def prepare_arg_parser():
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     training_group = add_training_args(p)
+    add_logging_arg(p)
 
     # Additional arg for projects
     training_group.add_argument(
@@ -44,11 +45,7 @@ def prepare_arg_parser():
         help="Value to which the gradient norms to avoid exploding gradients."
              "\nDefault = None (not clipping).")
 
-    # Specific to projects:
     add_model_args(p)
-    add_direction_getter_args(p)
-
-    add_logging_arg(p)
 
     return p
 
@@ -64,22 +61,12 @@ def init_from_args(args, sub_loggers_level):
     # (Direction getter)
     if not args.dg_dropout and args.dropout:
         args.dg_dropout = args.dropout
-    # (Neighborhood)
     dg_args = check_args_direction_getter(args)
-    if args.grid_radius:
-        args.neighborhood_radius = args.grid_radius
-        args.neighborhood_type = 'grid'
-    elif args.sphere_radius:
-        args.neighborhood_radius = args.sphere_radius
-        args.neighborhood_type = 'axes'
-    else:
-        args.neighborhood_radius = None
-        args.neighborhood_type = None
     # (Nb features)
     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     args.nb_features = dataset.nb_features[input_group_idx]
     # Final model
-    model = prepare_model(args, dg_args)
+    model = prepare_model(args, dg_args, log_level=sub_loggers_level)
 
     # Preparing the batch samplers
     with Timer("\nPreparing batch sampler...", newline=True, color='green'):
@@ -99,7 +86,8 @@ def init_from_args(args, sub_loggers_level):
     # Preparing the batch loaders
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
         batch_loader = DWIMLBatchLoaderOneInput(
-            dataset, input_group_name=args.input_group_name,
+            dataset=dataset, model=model,
+            input_group_name=args.input_group_name,
             streamline_group_name=args.streamline_group_name,
             # STREAMLINES PREPROCESSING
             step_size=args.step_size, compress=args.compress,
@@ -110,7 +98,7 @@ def init_from_args(args, sub_loggers_level):
             noise_gaussian_var_validation=args.noise_gaussian_variability_validation,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # NEIGHBORHOOD
-            neighborhood_points=model.neighborhood_points,
+            neighborhood_vectors=model.neighborhood_vectors,
             # OTHER
             rng=args.rng, wait_for_gpu=args.use_gpu,
             log_level=sub_loggers_level)
@@ -124,12 +112,13 @@ def init_from_args(args, sub_loggers_level):
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
             # TRAINING
-            learning_rate=args.learning_rate, max_epochs=args.max_epochs,
+            learning_rate=args.learning_rate, weight_decay=args.weight_decay,
             use_radam=args.use_radam, betas=args.betas,
+            max_epochs=args.max_epochs,
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,
-            weight_decay=args.weight_decay, clip_grad=args.clip_grad,
+            clip_grad=args.clip_grad,
             # MEMORY
             nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
             log_level=args.logging)

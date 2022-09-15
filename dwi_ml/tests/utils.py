@@ -67,8 +67,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
                  prev_dirs_embedding_key=None, normalize_prev_dirs=True,
                  # DIRECTION GETTER
                  dg_key='cosine-regression', dg_args=None,
-                 dg_input_size=4, normalize_targets=True,
-                 allow_saving_estimated_outputs=False):
+                 dg_input_size=4, normalize_targets=True):
 
         super().__init__(
             experiment_name=experiment_name,
@@ -81,8 +80,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
             normalize_prev_dirs=normalize_prev_dirs,
             # For super MainModelForTracking:
             normalize_targets=normalize_targets, dg_key=dg_key,
-            dg_args=dg_args,
-            allow_saving_estimated_outputs=allow_saving_estimated_outputs)
+            dg_args=dg_args)
 
         # If multiple inheritance goes well, these params should be set
         # correctly
@@ -122,10 +120,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
                 target_dirs: List[torch.tensor],
                 hidden_reccurent_states: tuple = None,
                 return_state: bool = False, is_tracking: bool = False,
-                target_streamlines: List[torch.tensor] = None,
-                save_estimated_outputs: bool = False,
-                ref=None, estimated_output_path: str = None,
-                space: str = None, origin: str = None) -> List[torch.tensor]:
+                target_streamlines: List[torch.tensor] = None
+                ) -> List[torch.tensor]:
         assert len(target_dirs) == len(inputs), \
             ("Error. The target directions contain {} streamlines but the "
              "input contains {}").format(len(target_dirs), len(inputs))

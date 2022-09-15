@@ -36,7 +36,7 @@ class DWIMLPropagator(AbstractPropagator):
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, step_size: float, rk_order: int,
-                 algo: str, theta: float, model_uses_streamlines: bool = False,
+                 algo: str, theta: float,
                  device=None, normalize_directions: bool = True):
         """
         Parameters
@@ -56,9 +56,6 @@ class DWIMLPropagator(AbstractPropagator):
         theta: float
             Maximum angle (radians) allowed between two steps during sampling
             of the next direction.
-        model_uses_streamlines: bool
-            If true, the current line in kept in memory to be added as
-            additional input.
         """
         # Dataset will be managed differently. Not a DataVolume.
         # torch trilinear interpolation uses origin='corner', space=vox.
@@ -88,8 +85,6 @@ class DWIMLPropagator(AbstractPropagator):
         self.device = device
         if device is not None:
             self.move_to(device)
-
-        self.model_uses_streamlines = model_uses_streamlines
 
         # If the model uses the streamline (ex: to compute the list of the n
         # previous directions), we need to keep track of it as additional
@@ -220,7 +215,7 @@ class DWIMLPropagator(AbstractPropagator):
         is_direction_valid: bool
             True if new_dir is valid.
         """
-        if self.model_uses_streamlines:
+        if self.model.model_uses_streamlines:
             # super() won't use the whole line as argument during the sampling
             # of next direction, but we need it. Add it in memory here.
             self.current_lines = [line]
@@ -250,7 +245,7 @@ class DWIMLPropagator(AbstractPropagator):
         are_directions_valid: list[bool]
             True if new_dir is valid.
         """
-        if self.model_uses_streamlines:
+        if self.model.model_uses_streamlines:
             self.current_lines = lines
 
         # Keeping one coordinate per streamline; the last one.
@@ -347,7 +342,7 @@ class DWIMLPropagator(AbstractPropagator):
         """
         inputs = self._prepare_inputs_at_pos(n_pos)
 
-        if self.model_uses_streamlines:
+        if self.model.model_uses_streamlines:
             # Verify that we have updated memory correctly.
             # for each line:
             # assert np.array_equal(pos, self.current_lines[-1])
@@ -422,11 +417,6 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             input_volume_group)
 
         # To help prepare the inputs
-        if isinstance(self.model, ModelWithNeighborhood):
-            self.neighborhood_vectors = self.model.neighborhood_vectors
-            self.add_vectors_to_data = self.model.add_vectors_to_data
-        else:
-            self.neighborhood_vectors = None
         self.volume_group_str = input_volume_group
 
         if self.dataset.is_lazy and self.dataset.cache_size == 0:
@@ -452,7 +442,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
 
         inputs, _ = self.model.prepare_batch_one_input(
             lines, self.dataset, self.subj_idx, self.volume_group,
-            self.neighborhood_vectors, self.device)
+            self.device)
 
         return inputs
 
@@ -471,10 +461,11 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
                  model: MainModelAbstract, input_volume_group: str,
                  step_size: float, rk_order: int,
                  algo: str, theta: float, device=None):
-        model_uses_streamlines = True
-        super().__init__(dataset, subj_idx, model, input_volume_group,
-                         step_size, rk_order, algo, theta,
-                         model_uses_streamlines, device)
+        super().__init__(dataset=dataset,
+                         subj_idx=subj_idx, model=model,
+                         input_volume_group=input_volume_group,
+                         step_size=step_size, rk_order=rk_order, algo=algo,
+                         theta=theta, device=device)
 
         # Internal state:
         # - previous_dirs, already dealt with by super.

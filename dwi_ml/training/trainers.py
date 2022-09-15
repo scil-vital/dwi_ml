@@ -16,7 +16,7 @@ from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
-from dwi_ml.models.main_models import MainModelAbstract, ModelForTracking
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -1107,59 +1107,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         """
         By default, during run_one_batch, inputs and streamlines / directions
         are sent to the forward method of the model. Here, you can prepare any
-        additional arguments your model may need.
+        additional arguments your model may need in a child class.
         """
         return {}
-
-
-class DWIMLTrainerForTrackerModel(DWIMLAbstractTrainer):
-    batch_loader: DWIMLBatchLoaderOneInput
-
-    def __init__(self, save_estimated_outputs: bool = False, **kw):
-        """
-        Params
-        ------
-        save_estimated_outputs: bool
-            If true, during validation (or training, if there is no validation
-            set), and if model allows it, we will send additional parameters
-            to the forward method to save outputs to allow visual supervision
-            of the model.
-        """
-        super().__init__(**kw)
-        self.save_estimated_outputs = save_estimated_outputs
-        assert isinstance(self.model, ModelForTracking)
-
-    def _prepare_other_forward_kwargs(self, is_training, final_s_ids_per_subj):
-        """
-        By default, during run_one_batch (or at least during current
-        implementation one the OneInput version), inputs and
-        streamlines / directions are sent to the forward method of the model.
-        Here, we prepare any additional arguments the Tracking model needs.
-        """
-        save_estimated_outputs = self.save_estimated_outputs
-        if is_training and self.use_validation:
-            save_estimated_outputs = False
-
-        if (save_estimated_outputs and
-                self.model.allow_saving_estimated_outputs):
-            logger.debug("Getting reference; we wil save estimated "
-                         "outputs as a sft.")
-            # If we allow it, it means any subject in the batch sampler
-            # can be used as ref.
-            # ids is a Dict[int, slice]
-            ref_subj = final_s_ids_per_subj.keys()[0]
-
-            # Getting the subject (no need to load it here, just
-            # getting its affine, always loaded even with lazy).
-            ref = self.batch_loader.context_subset.get_volume(
-                ref_subj, self.batch_loader.input_group_idx,
-                load_it=False).affine
-            path = os.path.join(self.saving_path,
-                                'latest_batch_outputs')
-
-            return {'ref': ref,
-                    'saving_path': path,
-                    'space': self.space,
-                    'origin': self.origin}
-        else:
-            return {}

@@ -6,19 +6,19 @@ import torch
 from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
+    normalize_directions
+from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
+    keys_to_tensor_embeddings
 from dwi_ml.models.main_models import (
-    MainModelOneInput, ModelWithNeighborhood, ModelWithPreviousDirections,
-    ModelForTracking)
+    ModelWithPreviousDirections, ModelForTracking, ModelWithNeighborhood,
+    MainModelOneInput)
 from dwi_ml.models.projects.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
 
-class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
-                       ModelWithPreviousDirections, ModelForTracking):
+class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
+                       ModelWithNeighborhood, MainModelOneInput):
     """
     Recurrent tracking model.
 
@@ -128,22 +128,27 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
         """
-        super().__init__(experiment_name=experiment_name,
-                         log_level=log_level,
-                         # For modelWithNeighborhood
-                         neighborhood_type=neighborhood_type,
-                         neighborhood_radius=neighborhood_radius,
-                         add_vectors_to_data=False,  # Not Ready. ToDo
-                         # For super MainModelWithPD:
-                         nb_previous_dirs=nb_previous_dirs,
-                         prev_dirs_embedding_size=prev_dirs_embedding_size,
-                         prev_dirs_embedding_key=prev_dirs_embedding_key,
-                         normalize_prev_dirs=normalize_prev_dirs,
-                         # For super ModelForTracking:
-                         dg_args=dg_args, dg_key=dg_key,
-                         normalize_targets=normalize_targets,
-                         allow_saving_estimated_outputs=False,  # Not Ready, ToDo
-                         )
+        if prev_dirs_embedding_key == 'no_embedding':
+            if prev_dirs_embedding_size is None:
+                prev_dirs_embedding_size = 3 * nb_previous_dirs
+            elif prev_dirs_embedding_size != 3 * nb_previous_dirs:
+                raise ValueError("To use identity embedding, the output size "
+                                 "must be the same as the input size!")
+
+        super().__init__(
+            experiment_name=experiment_name, log_level=log_level,
+            # For modelWithNeighborhood
+            neighborhood_type=neighborhood_type,
+            neighborhood_radius=neighborhood_radius,
+            add_vectors_to_data=False,  # Not Ready. ToDo
+            # For super MainModelWithPD:
+            nb_previous_dirs=nb_previous_dirs,
+            prev_dirs_embedding_size=prev_dirs_embedding_size,
+            prev_dirs_embedding_key=prev_dirs_embedding_key,
+            normalize_prev_dirs=normalize_prev_dirs,
+            # For super ModelForTracking:
+            dg_args=dg_args, dg_key=dg_key,
+            normalize_targets=normalize_targets)
 
         self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features
@@ -154,12 +159,9 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
         self.dropout = dropout
 
         # ----------- Checks
-        if self.input_embedding_key not in keys_to_embeddings.keys():
+        if self.input_embedding_key not in keys_to_tensor_embeddings.keys():
             raise ValueError("Embedding choice for x data not understood: {}"
                              .format(self.embedding_key_x))
-        if self.dg_key not in keys_to_direction_getters.keys():
-            raise ValueError("Direction getter choice not understood: {}"
-                             .format(self.positional_encoding_key))
 
         # ---------- Instantiations
         # 1. Previous dirs embedding: prepared by super.
@@ -178,7 +180,7 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
         else:
             self.input_embedding_size = self.input_size
 
-        input_embedding_cls = keys_to_embeddings[input_embedding_key]
+        input_embedding_cls = keys_to_tensor_embeddings[input_embedding_key]
         self.input_embedding = input_embedding_cls(
             input_size=self.input_size,
             output_size=self.input_embedding_size)
@@ -193,21 +195,20 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
             use_layer_normalization=use_layer_normalization,
             dropout=dropout)
 
-        # 4. Direction getter
-        direction_getter_cls = keys_to_direction_getters[dg_key]
-        self.direction_getter = direction_getter_cls(
-            self.rnn_model.output_size, **self.dg_args)
+        # 4. Direction getter:
+        self.instantiate_direction_getter(self.rnn_model.output_size)
+
+        # If multiple inheritance goes well, these params should be set
+        # correctly
+        assert self.model_uses_dirs
+        assert not self.model_uses_streamlines
 
     @property
     def params_for_json_prints(self):
-        params = self.params_for_checkpoint
+        params = super().params_for_json_prints
         params.update({
-            'prev_dirs_embedding':
-                self.prev_dirs_embedding.params if
-                self.prev_dirs_embedding else None,
             'input_embedding': self.input_embedding.params,
             'rnn_model': self.rnn_model.params,
-            'direction_getter': self.direction_getter.params
         })
         return params
 
@@ -215,9 +216,7 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
     def params_for_checkpoint(self):
         # Every parameter necessary to build the different layers again.
         # during checkpoint state saving.
-
         params = super().params_for_checkpoint
-
         params.update({
             'nb_features': int(self.nb_features),
             'input_embedding_key': self.input_embedding_key,
@@ -228,16 +227,17 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
             'use_skip_connection': self.use_skip_connection,
             'use_layer_normalization': self.use_layer_normalization,
             'dropout': self.dropout,
-            'dg_key': self.dg_key,
-            'dg_args': self.dg_args,
         })
 
         return params
 
     def forward(self, inputs: List[torch.tensor],
-                streamlines: List[torch.tensor],
+                target_dirs: List[torch.tensor],
                 hidden_reccurent_states: tuple = None,
-                return_state: bool = False, is_tracking: bool = False):
+                return_state: bool = False, is_tracking: bool = False,
+                target_streamlines: List[torch.tensor] = None,
+                ref=None, estimated_output_path: str = None,
+                space: str = None, origin: str = None):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -246,8 +246,8 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
             Batch of input sequences, i.e. MRI data. Length of the list is the
             number of streamlines in the batch. Each tensor is of size
             [nb_points, nb_features].
-        streamlines: List[torch.tensor],
-            Batch of streamlines.
+        target_dirs: List[torch.tensor]
+            Directions computed from the streamlines. Not normalized yet.
         hidden_reccurent_states : tuple
             The current hidden states of the (stacked) RNN model.
         return_state: bool
@@ -259,6 +259,17 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
             streamlines have the same number of points as inputs (we do not use
             the targets, so it's ok, we only need to compute the previous
             dirs).
+        target_streamlines: List[torch.tensor],
+            Batch of streamlines (only necessary to save estimated outputs,
+            if asked).
+        ref: Any
+            A reference to save the resulting SFT.
+        estimated_output_path: str
+            The saving path for the estimated results.
+        space: str
+            The training space (vox, voxmm, rasmm).
+        origin: str
+            The training origin (corner, center).
 
         Returns
         -------
@@ -273,17 +284,20 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
                                    inputs.batch_sizes,
                                    inputs.sorted_indices,
                                    inputs.unsorted_indices)
-        out_hidden_recurrent_states : tuple
-            The last steps hidden states (h_n, C_n for LSTM) for each layer.
-            Tuple containing nb_layer tuples of 2 tensors (h_n, c_n) with
-            shape(h_n) = shape(c_n) = [1, nb_streamlines, layer_output_size]
+        out_hidden_recurrent_states : list[states]
+            One value per layer.
+            LSTM: States are tuples; (h_t, C_t)
+                Size of tensors are each [1, nb_streamlines, nb_neurons].
+            GRU: States are tensors; h_t.
+                Size of tensors are [1, nb_streamlines, nb_neurons].
         """
         try:
             # Apply model. This calls our model's forward function
             # (the hidden states are not used here, neither as input nor
             # outputs. We need them only during tracking).
             model_outputs, new_states = self._run_forward(
-                inputs, streamlines, hidden_reccurent_states, is_tracking)
+                inputs, target_dirs, hidden_reccurent_states,
+                is_tracking)
         except RuntimeError:
             # Training RNNs with variable-length sequences on the GPU can
             # cause memory fragmentation in the pytorch-managed cache,
@@ -294,9 +308,13 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
             # If it fails again, try closing terminal and opening new one to
             # empty cache better.
             # Todo : ADDED BY PHILIPPE. SEE IF THERE ARE STILL ERRORS?
+            logging.warning("There was a RunTimeError. Emptying cache and "
+                            "trying again!")
+
             torch.cuda.empty_cache()
             model_outputs, new_states = self._run_forward(
-                inputs, streamlines, hidden_reccurent_states, is_tracking)
+                inputs, target_dirs, hidden_reccurent_states,
+                is_tracking)
 
         if return_state:
             # Tracking
@@ -305,9 +323,9 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
             # Training
             return model_outputs
 
-    def _run_forward(self, inputs, dirs, hidden_reccurent_states, is_tracking):
+    def _run_forward(self, inputs, dirs, hidden_reccurent_states,
+                     is_tracking):
 
-        # RUNNING THE MODEL
         if self.nb_previous_dirs > 0:
             logger.debug("*** 1. {} previous dirs - Embedding = {}..."
                          .format(self.nb_previous_dirs,
@@ -332,15 +350,15 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
         batch_sizes = inputs.batch_sizes
         sorted_indices = inputs.sorted_indices
         unsorted_indices = inputs.unsorted_indices
-        
-        logger.debug("Input size: {}".format(inputs.data.shape[-1]))
+
+        logger.debug("Input size: {}".format(inputs.data.shape))
         inputs = self.input_embedding(inputs.data)
-        logger.debug("Output size: {}".format(inputs.shape[-1]))
+        logger.debug("Output size: {}".format(inputs.shape))
 
         logger.debug("*** 3. Concatenating previous dirs and inputs's "
                      "embeddings...")
         if n_prev_dirs_embedded is not None:
-            inputs = torch.cat((inputs, n_prev_dirs_embedded), dim=-1)
+            inputs = torch.cat((inputs, n_prev_dirs_embedded.data), dim=-1)
             logger.debug("Concatenated shape: {}".format(inputs.shape))
         inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
                                 unsorted_indices)
@@ -357,11 +375,18 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
         model_outputs = self.direction_getter(rnn_output)
         logger.debug("Output size: {}".format(model_outputs.shape[-1]))
 
+        # The two sections below should only happen for regression models
+        if self.normalize_outputs:
+            model_outputs = normalize_directions(model_outputs)
+
         # Return the hidden states. Necessary for the generative
         # (tracking) part, done step by step.
+
+        # Not unpacking now; we will compute the loss point by point on this
+        # whole tensor.
         return model_outputs, out_hidden_recurrent_states
 
-    def compute_loss(self, model_outputs: Any, streamlines: list):
+    def compute_loss(self, model_outputs: Any, target_dirs: list, **kw):
         """
         Computes the loss function using the provided outputs and targets.
         Returns the mean loss (loss averaged across timesteps and sequences).
@@ -374,8 +399,8 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
             cosine regression direction getter return a simple Tensor. Please
             make sure that the chosen direction_getter's output size fits with
             the target ou the target's data if it's a PackedSequence.
-        streamlines : List
-            The target values for the batch (the streamlines).
+        target_dirs : List
+            The target values for the batch (the streamline dirs).
 
         Returns
         -------
@@ -383,39 +408,46 @@ class Learn2TrackModel(MainModelOneInput, ModelWithNeighborhood,
             The loss between the outputs and the targets, averaged across
             timesteps and sequences.
         """
-        # Computing directions. Note that if previous dirs are used, this was
-        # already computed when calling the forward method. We could try to
-        # prevent double calculations, but a little complicated in actual class
-        # structure.
-        targets = self.format_directions(streamlines)
+        if self.normalize_targets:
+            target_dirs = normalize_directions(target_dirs)
 
-        # Packing dirs and using the .data
-        targets = pack_sequence(targets, enforce_sorted=False).data
+        # Packing dirs and using the .data instead of looping on streamlines.
+        # Anyway, loss is computed point by point.
+        target_dirs = pack_sequence(target_dirs, enforce_sorted=False).data
 
         # Computing loss
+        # Depends on model. Ex: regression: direct difference.
+        # Classification: log-likelihood.
+        # Gaussian: difference between distribution and target.
         mean_loss = self.direction_getter.compute_loss(
-            model_outputs.to(self.device), targets.to(self.device))
+            model_outputs.to(self.device), target_dirs.to(self.device))
 
         return mean_loss
 
     def get_tracking_direction_det(self, model_outputs):
+        """
+        Params
+        ------
+        model_outputs: Tensor
+            Our model's previous layer's output.
+
+        Returns
+        -------
+        next_dir: list[array(3,)]
+            Numpy arrays with x,y,z value, one per streamline data point.
+        """
         next_dirs = self.direction_getter.get_tracking_direction_det(
             model_outputs)
 
-        # todo. Need to avoid the .cpu() if possible. See propagator's todo.
         # Bring back to cpu and get dir.
-        next_dirs = next_dirs.cpu().detach().numpy().squeeze()
+        next_dirs = next_dirs.cpu().detach().numpy()
 
-        if len(next_dirs.shape) == 1:
-            next_dirs = [next_dirs]
-        else:
-            # next_dirs is of size [nb_points, 3]. Considering we are tracking,
-            # nb_points is 1 and we want to separate it into a list of next
-            # directions (3,) for each streamline.
-            # We can use split_array_at_lengths, but it gives a list of (1,3)
-            # and we need to squeeze it.
-            # List comprehension works with np arrays.
-            next_dirs = [x for x in next_dirs]
+        # next_dirs is of size [nb_points, 3]. Considering we are tracking,
+        # nb_points is 1 and we want to separate it into a list of (3,).
+        # We can use split_array_at_lengths, but it gives a list of (1,3) and
+        # we need to squeeze it.
+        # List comprehension works with np arrays.
+        next_dirs = [x for x in next_dirs]
 
         return next_dirs
 

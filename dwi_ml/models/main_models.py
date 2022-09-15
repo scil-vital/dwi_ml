@@ -7,8 +7,6 @@ import shutil
 from datetime import datetime
 from typing import List, Union
 
-from dipy.io.stateful_tractogram import StatefulTractogram
-from dipy.io.streamline import save_tractogram
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
@@ -533,7 +531,7 @@ class ModelForTracking(MainModelAbstract):
     """
     def __init__(self, dg_key: str = 'cosine-regression',
                  dg_args: dict = None, normalize_targets: bool = True,
-                 allow_saving_estimated_outputs: bool = False, **kw):
+                 **kw):
         """
         Params
         ------
@@ -556,11 +554,6 @@ class ModelForTracking(MainModelAbstract):
             to the algorithm a sense of distance between points.
             If true and the dg_key is a regression model, then, output
             directions are also normalized too. Default: True.
-        allow_saving_estimated_outputs: bool
-            If true, when trainer calls the forward method with
-            save_estimated_outputs = True, we will save the estimated outputs
-            as a SFT along with the targets for that batch to allow comparison.
-            Can only be set to true if the model is a regression model.
         """
         super().__init__(**kw)
 
@@ -581,17 +574,8 @@ class ModelForTracking(MainModelAbstract):
         if normalize_targets and 'regression' in self.dg_key:
             self.normalize_outputs = True
 
-        # Verify if outputs can be saved for visualisation during training
-        self.allow_saving_estimated_outputs = allow_saving_estimated_outputs
-        if 'regression' not in self.dg_key and allow_saving_estimated_outputs:
-            logging.warning(
-                "You wanted to allow your model to save estimated outputs, "
-                "but it is not a regression model. Ignoring.")
-            self.allow_saving_estimated_outputs = False
-
         # To tell our trainer what to send to the forward / loss methods.
-        if self.allow_saving_estimated_outputs:
-            self.model_uses_streamlines = True  # Else, false like in super.
+        # self.model_uses_streamlines = false like in super.
         self.model_uses_dirs = True
 
     def instantiate_direction_getter(self, dg_input_size):
@@ -617,7 +601,6 @@ class ModelForTracking(MainModelAbstract):
             'dg_key': self.dg_key,
             'dg_args': self.dg_args,
             'normalize_targets': self.normalize_targets,
-            'allow_saving_estimated_outputs': self.allow_saving_estimated_outputs
         })
         return p
 
@@ -628,26 +611,6 @@ class ModelForTracking(MainModelAbstract):
             'direction_getter': self.direction_getter.params,
         })
         return params
-
-    def _save_estimated_output(self, target_streamlines, target_dirs,
-                               model_outputs, ref, estimated_output_path,
-                               space, origin):
-        """
-        Converts targets and model outputs to tractograms and saves them.
-        """
-        sft_target = StatefulTractogram(target_streamlines, ref,
-                                        space, origin)
-        save_tractogram(sft_target,
-                        os.path.join(estimated_output_path,
-                                     'last_batch_targets.trk'))
-
-        output_streamlines = self._format_output_to_streamlines(
-            model_outputs, target_streamlines, target_dirs)
-        sft_output = StatefulTractogram(output_streamlines, ref,
-                                        space, origin)
-        save_tractogram(sft_output,
-                        os.path.join(estimated_output_path,
-                                     'last_batch_estimated_outputs.trk'))
 
     def _format_output_to_streamlines(self, output_dirs, ref_streamlines,
                                       ref_dirs):
@@ -688,10 +651,7 @@ class ModelForTracking(MainModelAbstract):
 
         return output_streamlines
 
-    def forward(self, inputs, target_dirs, target_streamlines=None,
-                save_estimated_outputs: bool = False,
-                ref=None, estimated_output_path: str = None,
-                space: str = None, origin: str = None, **kw):
+    def forward(self, inputs, target_dirs, target_streamlines=None, **kw):
         """
         Params
         ------
@@ -701,27 +661,11 @@ class ModelForTracking(MainModelAbstract):
         target_streamlines: List[torch.tensor],
             Batch of streamlines (only necessary to save estimated outputs,
             if asked).
-        save_estimated_outputs: bool
-            Trainer's opinion of if we should save the estimated outputs. Will
-            only be done if self.allow_saving_estimated_outputs.
-        ref: Any
-            A reference to save the resulting SFT.
-        estimated_output_path: str
-            The saving path for the estimated results.
-        space: str
-            The training space (vox, voxmm, rasmm).
-        origin: str
-            The training origin (corner, center).
         """
         # Should end with:
         # model_outputs = self.direction_getter(last_layer_output)
         # if self.normalize_outputs:
         #     model_outputs = normalize_directions(model_outputs)
-        #
-        # if save_estimated_outputs and self.allow_saving_estimated_outputs:
-        #    self._save_estimated_outputs(
-        #        streamlines, dirs, model_outputs,
-        #        ref, estimated_output_path, space, origin)
         raise NotImplementedError
 
     def get_tracking_direction_det(self, model_outputs):

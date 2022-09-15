@@ -8,6 +8,7 @@ from typing import Union, List
 
 import torch
 
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
@@ -45,22 +46,25 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
             The value to which to clip gradients after the backward pass.
             There is no good value here. Default: 1000.
         """
-        model_uses_streamlines = True
-        self.clip_grad = clip_grad
+        super().__init__(
+            model=model, experiments_path=experiments_path,
+            experiment_name=experiment_name, batch_sampler=batch_sampler,
+            batch_loader=batch_loader, learning_rate=learning_rate,
+            weight_decay=weight_decay, use_radam=use_radam, betas=betas,
+            max_epochs=max_epochs,
+            max_batches_per_epoch_training=max_batches_per_epoch_training,
+            max_batches_per_epoch_validation=max_batches_per_epoch_validation,
+            patience=patience, nb_cpu_processes=nb_cpu_processes,
+            use_gpu=use_gpu, comet_workspace=comet_workspace,
+            comet_project=comet_project, from_checkpoint=from_checkpoint,
+            log_level=log_level)
 
-        super().__init__(model, experiments_path, experiment_name,
-                         batch_sampler, batch_loader, model_uses_streamlines,
-                         learning_rate, weight_decay, use_radam, betas,
-                         max_epochs, max_batches_per_epoch_training,
-                         max_batches_per_epoch_validation, patience,
-                         nb_cpu_processes, use_gpu, comet_workspace,
-                         comet_project, from_checkpoint, log_level)
+        self.clip_grad = clip_grad
 
     @property
     def params_for_checkpoint(self):
         # We do not need the model_uses_streamlines params, we know it is true
         params = super().params_for_checkpoint
-        del params['model_uses_streamlines']
         params.update({
             'clip_grad': self.clip_grad
         })
@@ -99,5 +103,7 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
         In our case, clipping gradients to avoid exploding gradients in RNN
         """
         if self.clip_grad is not None:
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(),
-                                           self.clip_grad)
+            total_norm = torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), self.clip_grad)
+            if torch.isnan(total_norm):
+                raise ValueError("Exploding gradients. Experiment failed.")

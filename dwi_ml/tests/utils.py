@@ -7,9 +7,9 @@ from dwi_ml.data.processing.streamlines.post_processing import \
     normalize_directions, compute_directions
 from scilpy.io.fetcher import fetch_data, get_home
 
-from dwi_ml.models.main_models import MainModelAbstract, \
-    ModelWithPreviousDirections, \
-    ModelForTracking, ModelWithNeighborhood, MainModelOneInput
+from dwi_ml.models.main_models import (
+    ModelForTracking, ModelWithNeighborhood, MainModelOneInput,
+    ModelWithPreviousDirections)
 from dwi_ml.tests.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler

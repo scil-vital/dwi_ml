@@ -190,7 +190,7 @@ def interpolate_volume_in_neighborhood(
             raise ValueError("You should not select 'add_coordinates_to_data' "
                              "if you do not add a neighborhood; you would "
                              "only add a bunch of zeros...")
-        
+
         # Interpolate signal for each point
         flat_coords_torch = torch.as_tensor(coords_vox_corner,
                                             dtype=torch.float, device=device)

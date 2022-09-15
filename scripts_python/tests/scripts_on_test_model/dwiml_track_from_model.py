@@ -131,8 +131,7 @@ def prepare_tracker(parser, args, hdf5_file, device,
             input_volume_group=args.input_group,
             dataset=subset, subj_idx=subj_idx, model=model,
             step_size=step_size_vox_space, rk_order=args.rk_order,
-            algo=args.algo, theta=theta,
-            model_uses_streamlines=model_uses_streamlines, device=device)
+            algo=args.algo, theta=theta, device=device)
 
         logging.debug("Instantiating tracker.")
         tracker = DWIMLTracker(

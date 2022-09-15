@@ -1041,31 +1041,25 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 # to-call-zero-grad-in-pytorch
                 self.optimizer.zero_grad()
 
-            forward_kwargs = {}
-            loss_kwargs = {}
+            forward_kwargs = self._prepare_other_forward_kwargs(
+                is_training, final_s_ids_per_subj)
+
+            self.logger.debug('*** Computing forward propagation and loss')
             if self.model.model_uses_streamlines:
-                logger.debug("Sending streamlines to tensor and using in "
-                             "model.")
                 batch_streamlines = [torch.tensor(s).to(self.device) for s in
                                      batch_streamlines]
-                forward_kwargs.update({'target_streamlines': batch_streamlines})
-                loss_kwargs.update({'target_streamlines': batch_streamlines})
-            if self.model.model_uses_dirs:
-                logger.debug("Computing directions and using in model.")
-                dirs = compute_directions(batch_streamlines, self.device)
-                forward_kwargs.update({'target_dirs': dirs})
-                loss_kwargs.update({'target_dirs': dirs})
 
-            forward_kwargs.update(
-                self._prepare_other_forward_kwargs(is_training,
-                                                   final_s_ids_per_subj))
-
-            self.logger.debug('*** Computing forward propagation')
-            model_outputs = self.model(batch_inputs, **forward_kwargs)
-
-            # Compute loss
-            self.logger.debug('*** Computing loss')
-            mean_loss = self.model.compute_loss(model_outputs, **loss_kwargs)
+                # Possibly computing directions twice (during forward and loss)
+                # but ok, shouldn't be too heavy. Easier to deal with multiple
+                # project's requirements by sending whole streamlines rather
+                # than only directions.
+                model_outputs = self.model(batch_inputs, batch_streamlines,
+                                           **forward_kwargs)
+                mean_loss = self.model.compute_loss(model_outputs,
+                                                    batch_streamlines)
+            else:
+                model_outputs = self.model(batch_inputs, **forward_kwargs)
+                mean_loss = self.model.compute_loss(model_outputs)
 
             if is_training:
                 self.logger.debug('*** Computing back propagation')

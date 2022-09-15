@@ -56,7 +56,6 @@ class MainModelAbstract(torch.nn.Module):
 
         # To tell our trainer what to send to the forward / loss methods.
         self.model_uses_streamlines = False
-        self.model_uses_dirs = False
 
     def move_to(self, device):
         """
@@ -280,7 +279,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
             self.prev_dirs_embedding = None
 
         # To tell our trainer what to send to the forward / loss methods.
-        self.model_uses_dirs = True
+        self.model_uses_streamlines = True
 
     @staticmethod
     def add_args_model_with_pd(p):
@@ -417,18 +416,19 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
         return n_previous_dirs
 
-    def forward(self, inputs, target_dirs: List[torch.tensor], **kw):
+    def forward(self, inputs, target_streamlines: List[torch.tensor], **kw):
         """
         Params
         ------
         inputs: Any
             Batch of inputs.
             [nb_points, nb_features].
-        target_dirs: List[torch.tensor]
+        target_streamlines: List[torch.tensor]
             Directions computed from the streamlines. Not normalized yet.
         """
         # Hints : Should start with:
 
+        # target_dirs = compute_directions(target_streamlines, self.device)
         # n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
         #       target_dirs)
 
@@ -469,6 +469,14 @@ class MainModelOneInput(MainModelAbstract):
         device: Torch device
         prepare_mask: bool
             If true, return a mask of chosen coordinates (DEBUGGING MODE).
+
+        Returns
+        -------
+        input_data: tuple
+            One input tensor per streamline. Each input is of shape
+            [nb_point x nb_features].
+        input_mask: tensor or None
+            In debugging mode, returns a mask of all voxels used as input.
         """
         start_time = datetime.now()
 
@@ -519,6 +527,7 @@ class MainModelOneInput(MainModelAbstract):
             for s in range(len(coords_torch)):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
+        logging.warning("?????????? prepared input: {}".format([type(subj_x_data), len(subj_x_data), type(subj_x_data[0]), subj_x_data[0].shape]))
         return subj_x_data, input_mask
 
 
@@ -575,8 +584,7 @@ class ModelForTracking(MainModelAbstract):
             self.normalize_outputs = True
 
         # To tell our trainer what to send to the forward / loss methods.
-        # self.model_uses_streamlines = false like in super.
-        self.model_uses_dirs = True
+        self.model_uses_streamlines = True
 
     def instantiate_direction_getter(self, dg_input_size):
         direction_getter_cls = keys_to_direction_getters[self.dg_key]
@@ -651,13 +659,11 @@ class ModelForTracking(MainModelAbstract):
 
         return output_streamlines
 
-    def forward(self, inputs, target_dirs, target_streamlines=None, **kw):
+    def forward(self, inputs, target_streamlines, **kw):
         """
         Params
         ------
         inputs: Any
-        target_dirs: List[torch.tensor]
-            Unnormalized directions.
         target_streamlines: List[torch.tensor],
             Batch of streamlines (only necessary to save estimated outputs,
             if asked).
@@ -696,9 +702,9 @@ class ModelForTracking(MainModelAbstract):
         """
         raise NotImplementedError
 
-    def compute_loss(self, model_outputs, target_dirs, target_streamlines=None,
-                     **kw):
+    def compute_loss(self, model_outputs, target_streamlines, **kw):
         # Should probably use:
+        # target_dirs = compute_directions(target_streamlines, self.device)
         # if self.normalize_targets:
         #     target_dirs = normalize_directions(target_dirs)
         raise NotImplementedError

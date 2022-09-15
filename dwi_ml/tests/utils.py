@@ -4,7 +4,7 @@ from typing import List
 
 import torch
 from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions
+    normalize_directions, compute_directions
 from scilpy.io.fetcher import fetch_data, get_home
 
 from dwi_ml.models.main_models import MainModelAbstract, \
@@ -84,13 +84,14 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
 
         # If multiple inheritance goes well, these params should be set
         # correctly
-        assert self.model_uses_dirs
-        assert not self.model_uses_streamlines
+        assert self.model_uses_streamlines
 
         self.instantiate_direction_getter(dg_input_size)
 
-    def compute_loss(self, model_outputs: torch.tensor, target_dirs: list,
-                     target_streamlines=None, **kw):
+    def compute_loss(self, model_outputs: torch.tensor,
+                     target_streamlines: list, **kw):
+        target_dirs = compute_directions(target_streamlines, self.device)
+
         if self.normalize_targets:
             target_dirs = normalize_directions(target_dirs)
 
@@ -117,11 +118,12 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
                                   "tracking.")
 
     def forward(self, inputs: List[torch.tensor],
-                target_dirs: List[torch.tensor],
+                target_streamlines: List[torch.tensor],
                 hidden_reccurent_states: tuple = None,
                 return_state: bool = False, is_tracking: bool = False,
-                target_streamlines: List[torch.tensor] = None
                 ) -> List[torch.tensor]:
+        target_dirs = compute_directions(target_streamlines, self.device)
+
         assert len(target_dirs) == len(inputs), \
             ("Error. The target directions contain {} streamlines but the "
              "input contains {}").format(len(target_dirs), len(inputs))

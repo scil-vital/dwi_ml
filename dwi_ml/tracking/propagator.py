@@ -10,7 +10,7 @@ from dipy.io.stateful_tractogram import Space, Origin
 from scilpy.tracking.propagator import AbstractPropagator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
-from dwi_ml.models.main_models import MainModelAbstract, ModelWithNeighborhood
+from dwi_ml.models.main_models import MainModelAbstract, MainModelOneInput
 
 logger = logging.getLogger('tracker_logger')
 
@@ -403,6 +403,8 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     the data points from the volume (+possibly add a neighborhood) and
     interpolate the data.
     """
+    model: MainModelOneInput
+
     def __init__(self, input_volume_group: str, **kw):
         """
         Params
@@ -444,6 +446,7 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             lines, self.dataset, self.subj_idx, self.volume_group,
             self.device)
 
+        logging.warning("???????? PREPARED AN INPUT: {}".format(len(inputs)))
         return inputs
 
 
@@ -457,8 +460,10 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
     for the backward tracking: the hidden recurrent states need to be computed
     from scratch. We will reload them all when starting backward, if necessary.
     """
+    model: MainModelOneInput
+
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
-                 model: MainModelAbstract, input_volume_group: str,
+                 model: MainModelOneInput, input_volume_group: str,
                  step_size: float, rk_order: int,
                  algo: str, theta: float, device=None):
         super().__init__(dataset=dataset,
@@ -527,21 +532,21 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
         # Either load all timepoints in memory and call model once.
         # Or loop.
         if multiple_lines:
-            all_inputs = []
-            for one_line in line:
-                all_inputs.append(self._prepare_inputs_at_pos(one_line))
             lines = line
         else:
             # Using the loop meant for multiple tracking to actually get
             # multiple positions
-            all_inputs = [self._prepare_inputs_at_pos(line)]
+            logging.warning(
+                "?????????? Length of current streamline: {}".format(
+                    len(line)))
             lines = [line]
 
-        # all_inputs is a list of
-        # nb_streamlines x n_points x tensor([1, nb_features])
-        # creating a batch of streamlines as tensor[nb_points, nb_features]
-        all_inputs = [torch.cat(streamline_inputs, dim=0)
-                      for streamline_inputs in all_inputs]
+        all_inputs, _ = self.model.prepare_batch_one_input(
+            lines, self.dataset, self.subj_idx, self.volume_group,
+            self.device)
+
+        # all_inputs is a tuple of
+        # nb_streamlines x tensor[nb_points, nb_features]
 
         # Running model. If we send is_tracking=True, will only compute the
         # previous dirs for the last point. To mimic training, we have to
@@ -569,19 +574,57 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
         # Copying the beginning of super's method
         inputs = self._prepare_inputs_at_pos(n_pos)
 
-        # In super, they add an additional point to mimic training. Here we
-        # have already managed it in the forward by sending is_tracking.
-        # Converting lines to tensors
-
+        # The model's memory of the beginning of the line is managed through
+        # the hidden states. We only need to send the current point(s), which
+        # is why inputs is only computed from n_pos.
+        # However, we do need the whole streamline to compute the n previous
+        # dirs. Computing now.
         # Todo. This is not perfect yet. Sending data to new device at each new
         #  point. Could it already be a tensor in memory?
-        lines = [torch.tensor(np.vstack(line)).to(self.device) for line in
+        start_time = datetime.now()
+        lines = [torch.as_tensor(s).to(self.device) for s in
                  self.current_lines]
+        duration_sending_to_device = datetime.now() - start_time
 
-        # For RNN however, we need to send the hidden state too.
-        model_outputs, hidden_states = self.model(
+        # For RNN, we need to send the hidden state too.
+        start_time = datetime.now()
+        model_outputs, self.hidden_recurrent_states = self.model(
             inputs, lines, self.hidden_recurrent_states,
             return_state=True, is_tracking=True)
+        duration_running_model = datetime.now() - start_time
 
-        self.hidden_recurrent_states = hidden_states
+        logger.debug("Time to send to device: {} s. Time to run the model: "
+                     "{} s."
+                     .format(duration_sending_to_device.total_seconds(),
+                             duration_running_model.total_seconds()))
+
         return model_outputs
+
+    def multiple_lines_update(self, lines_that_continue: list):
+        """
+        Removing rejected lines from hidden states
+
+        Params
+        ------
+        lines_that_continue: list
+            List of indexes of lines that are kept.
+        """
+
+        # Hidden states: list[states] (One value per layer).
+        nb_streamlines = len(self.current_lines)
+        all_idx = np.zeros(nb_streamlines)
+        all_idx[lines_that_continue] = 1
+
+        if self.model.rnn_key == 'lstm':
+            # LSTM: States are tuples; (h_t, C_t)
+            # Size of tensors are each [1, nb_streamlines, nb_neurons]
+            self.hidden_recurrent_states = [
+                (hidden_states[0][:, lines_that_continue, :],
+                 hidden_states[1][:, lines_that_continue, :]) for
+                hidden_states in self.hidden_recurrent_states]
+        else:
+            #   GRU: States are tensors; h_t.
+            #     Size of tensors are [1, nb_streamlines, nb_neurons].
+            self.hidden_recurrent_states = [
+                hidden_states[:, lines_that_continue, :] for
+                hidden_states in self.hidden_recurrent_states]

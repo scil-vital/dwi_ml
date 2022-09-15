@@ -6,7 +6,7 @@ import torch
 from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions
+    normalize_directions, compute_directions
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
     keys_to_tensor_embeddings
 from dwi_ml.models.main_models import (
@@ -200,8 +200,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # If multiple inheritance goes well, these params should be set
         # correctly
-        assert self.model_uses_dirs
-        assert not self.model_uses_streamlines
+        assert self.model_uses_streamlines
 
     @property
     def params_for_json_prints(self):
@@ -232,12 +231,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         return params
 
     def forward(self, inputs: List[torch.tensor],
-                target_dirs: List[torch.tensor],
+                target_streamlines: List[torch.tensor],
                 hidden_reccurent_states: tuple = None,
-                return_state: bool = False, is_tracking: bool = False,
-                target_streamlines: List[torch.tensor] = None,
-                ref=None, estimated_output_path: str = None,
-                space: str = None, origin: str = None):
+                return_state: bool = False, is_tracking: bool = False):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -246,8 +242,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             Batch of input sequences, i.e. MRI data. Length of the list is the
             number of streamlines in the batch. Each tensor is of size
             [nb_points, nb_features].
-        target_dirs: List[torch.tensor]
-            Directions computed from the streamlines. Not normalized yet.
         hidden_reccurent_states : tuple
             The current hidden states of the (stacked) RNN model.
         return_state: bool
@@ -262,14 +256,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         target_streamlines: List[torch.tensor],
             Batch of streamlines (only necessary to save estimated outputs,
             if asked).
-        ref: Any
-            A reference to save the resulting SFT.
-        estimated_output_path: str
-            The saving path for the estimated results.
-        space: str
-            The training space (vox, voxmm, rasmm).
-        origin: str
-            The training origin (corner, center).
 
         Returns
         -------
@@ -291,12 +277,25 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             GRU: States are tensors; h_t.
                 Size of tensors are [1, nb_streamlines, nb_neurons].
         """
+        assert len(target_streamlines) == len(inputs)
+        if is_tracking:
+            for i in range(len(target_streamlines)):
+                assert len(inputs[i]) == 1, \
+                    "During tracking, you should only be sending the input " \
+                    "for the current point (but the whole streamline to " \
+                    "allow computing the n previous dirs)."
+        else:
+            for i in range(len(target_streamlines)):
+                assert len(target_streamlines[i]) == len(inputs[i]) + 1, \
+                    "During training, we expect the streamlines to have the " \
+                    "one more point than the inputs."
+
         try:
             # Apply model. This calls our model's forward function
             # (the hidden states are not used here, neither as input nor
             # outputs. We need them only during tracking).
             model_outputs, new_states = self._run_forward(
-                inputs, target_dirs, hidden_reccurent_states,
+                inputs, target_streamlines, hidden_reccurent_states,
                 is_tracking)
         except RuntimeError:
             # Training RNNs with variable-length sequences on the GPU can
@@ -313,7 +312,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
             torch.cuda.empty_cache()
             model_outputs, new_states = self._run_forward(
-                inputs, target_dirs, hidden_reccurent_states,
+                inputs, target_streamlines, hidden_reccurent_states,
                 is_tracking)
 
         if return_state:
@@ -323,10 +322,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             # Training
             return model_outputs
 
-    def _run_forward(self, inputs, dirs, hidden_reccurent_states,
+    def _run_forward(self, inputs, streamlines, hidden_reccurent_states,
                      is_tracking):
 
         if self.nb_previous_dirs > 0:
+            dirs = compute_directions(streamlines, self.device)
+
             logger.debug("*** 1. {} previous dirs - Embedding = {}..."
                          .format(self.nb_previous_dirs,
                                  self.prev_dirs_embedding_key))
@@ -386,7 +387,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         # whole tensor.
         return model_outputs, out_hidden_recurrent_states
 
-    def compute_loss(self, model_outputs: Any, target_dirs: list, **kw):
+    def compute_loss(self, model_outputs: Any, target_streamlines: list,
+                     **kw):
         """
         Computes the loss function using the provided outputs and targets.
         Returns the mean loss (loss averaged across timesteps and sequences).
@@ -399,8 +401,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             cosine regression direction getter return a simple Tensor. Please
             make sure that the chosen direction_getter's output size fits with
             the target ou the target's data if it's a PackedSequence.
-        target_dirs : List
-            The target values for the batch (the streamline dirs).
+        target_streamlines : List
+            The target streamlines for the batch.
 
         Returns
         -------
@@ -408,6 +410,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             The loss between the outputs and the targets, averaged across
             timesteps and sequences.
         """
+        target_dirs = compute_directions(target_streamlines, self.device)
+
         if self.normalize_targets:
             target_dirs = normalize_directions(target_dirs)
 

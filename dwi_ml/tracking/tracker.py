@@ -167,7 +167,8 @@ class DWIMLTracker(ScilpyTracker):
 
         logger.info("Multiple GPU tracking: Starting forward propagation for "
                     "the next {} streamlines.".format(len(n_seeds)))
-        tracking_info = self.propagator.prepare_forward(n_seeds)
+        tracking_info = self.propagator.prepare_forward(n_seeds,
+                                                        multiple_lines=True)
         lines, order1 = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:
@@ -178,7 +179,7 @@ class DWIMLTracker(ScilpyTracker):
                     lines[i].reverse()
 
             # We could loop to prepare reverse. Basic case not too heavy.
-            # However, in some cases (ex, Learn2track with memory), model
+            # However, in some cases (ex, projects with memory), model
             # needs to be re-run before starting back-propagation. We let
             # the propagator deal with the looping.
             tracking_info = self.propagator.prepare_backward(

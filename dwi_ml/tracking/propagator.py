@@ -99,9 +99,6 @@ class DWIMLPropagator(AbstractPropagator):
         # List[list[list]]: nb_lines x (nb_points, 3).
         self.current_lines = None  # type: Union[list, None]
 
-        # Propagate method call will influence how we get the streamlines
-        self._track_multiple_lines = None  # type: Union[bool, None]
-
         # Contrary to super: normalize direction is optional
         self.normalize_directions = normalize_directions
 
@@ -125,7 +122,7 @@ class DWIMLPropagator(AbstractPropagator):
             # Remove all handles
             self.dataset.close_all_handles()
 
-    def prepare_forward(self, seeding_pos):
+    def prepare_forward(self, seeding_pos, multiple_lines=False):
         """
         Prepare information necessary at the first point of the
         streamline for forward propagation: v_in and any other information
@@ -136,6 +133,8 @@ class DWIMLPropagator(AbstractPropagator):
         seeding_pos: tuple(x,y,z) or List[tuples]
             The 3D coordinates or, for simultaneous tracking, list of 3D
             coordinates.
+        multiple_lines: bool
+            If true, using version simulteanous tracking.
 
         Returns
         -------
@@ -144,10 +143,10 @@ class DWIMLPropagator(AbstractPropagator):
         """
         # Our models should be able to get an initial direction even with no
         # information about previous inputs.
-        if isinstance(seeding_pos, tuple):
-            return None
-        else:
+        if multiple_lines:
             return [None for _ in seeding_pos]
+        else:
+            return None
 
     def prepare_backward(self, line, forward_dir, multiple_lines=False):
         """
@@ -183,7 +182,7 @@ class DWIMLPropagator(AbstractPropagator):
 
             # v_in is in double format (np.float64) but it looks like we need
             # float32.
-            # todo From testing with Learn2track. Always true?
+            # todo From testing with projects. Always true?
             if v_in is not None:
                 v_in = v_in.astype(np.float32)
         else:  # simultaneous tracking.
@@ -252,8 +251,6 @@ class DWIMLPropagator(AbstractPropagator):
         are_directions_valid: list[bool]
             True if new_dir is valid.
         """
-        self._track_multiple_lines = True
-
         if self.model_uses_streamlines:
             self.current_lines = lines
 
@@ -263,29 +260,22 @@ class DWIMLPropagator(AbstractPropagator):
 
         assert self.rk_order == 1
 
-        are_directions_valid, n_new_dir = \
-            self._sample_next_multiple_directions_or_go_straight(n_pos, n_v_in)
+        # Equivalent of sample_next_direction_or_go_straight:
+        n_v_out = self._sample_next_direction(n_pos, n_v_in,
+                                              multiple_lines=True)
+        are_directions_valid = np.array([False if v_out is None else True
+                                         for v_out in n_v_out])
+
+        # toDo. Faster to do one loop?
+        n_new_dir = [n_v_out[i] if are_directions_valid[i] else n_v_in[i]
+                     for i in range(len(n_v_in))]
 
         n_new_pos = [n_pos[i] + self.step_size * np.array(n_new_dir[i])
                      for i in range(len(lines))]
 
         return n_new_pos, n_new_dir, are_directions_valid
 
-    def _sample_next_multiple_directions_or_go_straight(self, n_pos, n_v_in):
-        """
-        Equivalent of super's _sample_next_direction_or_go_straight.
-        """
-
-        n_v_out = self._sample_next_direction(n_pos, n_v_in)
-        are_directions_valid = np.array([False if v_out is None else True
-                                         for v_out in n_v_out])
-
-        n_v_out = [n_v_out[i] if are_directions_valid[i] else n_v_in[i]
-                   for i in range(len(n_v_in))]
-
-        return are_directions_valid, n_v_out
-
-    def _sample_next_direction(self, pos, v_in):
+    def _sample_next_direction(self, pos, v_in, multiple_lines=False):
         """
         Run the model to get the outputs, and sample a direction based on this
         information. None if the direction is more than theta angle
@@ -299,6 +289,8 @@ class DWIMLPropagator(AbstractPropagator):
             Current tracking position(s).
         v_in: ndarray (3,) ir list of ndarrays
             Previous tracking direction(s).
+        multiple_lines: bool
+            If true, using version simulteanous tracking.
 
         Return
         -------
@@ -307,11 +299,12 @@ class DWIMLPropagator(AbstractPropagator):
             is found. If self.normalize_directions, direction must be
             normalized.
         """
-        if self._track_multiple_lines:
+        if multiple_lines:
             n_pos = pos
+            n_v_in = v_in
         else:
             n_pos = [pos]
-            v_in = [v_in]
+            n_v_in = [v_in]
 
         # Tracking field returns the model_outputs
         model_outputs = self._get_model_outputs_at_pos(n_pos)
@@ -324,7 +317,7 @@ class DWIMLPropagator(AbstractPropagator):
         duration_direction_getter = datetime.now() - start_time
 
         start_time = datetime.now()
-        for i in range(len(n_pos)):
+        for i in range(len(next_dirs)):
             if self.normalize_directions:
                 next_dirs[i] /= np.linalg.norm(next_dirs[i])
             # Verify curvature, else return None.
@@ -332,8 +325,8 @@ class DWIMLPropagator(AbstractPropagator):
             #  Resampling until angle < theta? Easy on the sphere (restrain
             #  probas on the sphere pics inside a cone theta) but what do we do
             #  for other models? Ex: For the Gaussian direction getter?
-            if v_in[i] is not None:
-                next_dirs[i] = self._verify_angle(next_dirs[i], v_in[i])
+            if n_v_in[i] is not None:
+                next_dirs[i] = self._verify_angle(next_dirs[i], n_v_in[i])
         duration_norm_angle = datetime.now() - start_time
 
         logging.debug("Time for direction getter: {}s. Time for normalization "
@@ -341,7 +334,7 @@ class DWIMLPropagator(AbstractPropagator):
                       .format(duration_direction_getter.total_seconds(),
                               duration_norm_angle.total_seconds()))
 
-        if not self._track_multiple_lines:
+        if not multiple_lines:
             return next_dirs[0]
 
         return next_dirs
@@ -465,3 +458,142 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             lines, self.dataset, self.subj_idx, self.volume_group,
             self.neighborhood_points, self.device)
         return inputs
+
+
+class RecurrentPropagator(DWIMLPropagatorOneInput):
+    """
+    To use a RNN for a generative process, the hidden recurrent states that
+    would be passed (ex, h_(t-1), C_(t-1) for LSTM) need to be kept in memory
+    as an additional input.
+
+    In theory, the previous timepoints' inputs do not need to be kept, except
+    for the backward tracking: the hidden recurrent states need to be computed
+    from scratch. We will reload them all when starting backward, if necessary.
+    """
+    def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
+                 model: MainModelAbstract, input_volume_group: str,
+                 step_size: float, rk_order: int,
+                 algo: str, theta: float, device=None):
+        model_uses_streamlines = True
+        super().__init__(dataset, subj_idx, model, input_volume_group,
+                         step_size, rk_order, algo, theta,
+                         model_uses_streamlines, device)
+
+        # Internal state:
+        # - previous_dirs, already dealt with by super.
+        # - For RNN: new parameter: The hidden states of the RNN
+        self.hidden_recurrent_states = None
+
+        if rk_order != 1:
+            raise ValueError("projects is not ready for runge-kutta "
+                             "integration of order > 1.")
+
+    def prepare_forward(self, seeding_pos, multiple_lines=False):
+        """
+        Additionnally to usual preparation, we need to reset the recurrent
+        hidden state.
+
+        Parameters
+        ----------
+        seeding_pos: tuple(x,y,z)
+        multiple_lines: bool
+            If true, using version simulteanous tracking.
+
+        Returns
+        -------
+        tracking_info: None
+            No initial tracking information necessary for the propagation.
+        """
+        logger.debug("projects: Resetting propagator for new "
+                     "streamline(s).")
+        self.hidden_recurrent_states = None
+
+        return super().prepare_forward(seeding_pos, multiple_lines)
+
+    def prepare_backward(self, line, forward_dir, multiple_lines=False):
+        """
+        Preparing backward. We need to recompute the hidden recurrent state
+        for this half-streamline.
+
+        Parameters
+        ----------
+        line: List
+            Result from the forward tracking, reversed. Single line: list of
+            coordinates. Simulatenous tracking: list of list of coordinates.
+        forward_dir: ndarray (3,)
+            v_in chosen at the forward step.
+        multiple_lines: bool
+            If true, using version simulteanous tracking.
+
+        Returns
+        -------
+        v_in: ndarray (3,) or list[ndarray]
+            Last direction of the streamline. If the streamline contains
+            only the seeding point (forward tracking failed), simply inverse
+            the forward direction.
+        """
+        logger.info("Computing hidden RNN state at backward: run model on "
+                    "(reversed) first half.")
+
+        # Must re-run the model from scratch to get the hidden states
+        # Either load all timepoints in memory and call model once.
+        # Or loop.
+        if multiple_lines:
+            all_inputs = []
+            for one_line in line:
+                all_inputs.append(self._prepare_inputs_at_pos(one_line))
+            lines = line
+        else:
+            # Using the loop meant for multiple tracking to actually get
+            # multiple positions
+            all_inputs = [self._prepare_inputs_at_pos(line)]
+            lines = [line]
+
+        # all_inputs is a list of
+        # nb_streamlines x n_points x tensor([1, nb_features])
+        # creating a batch of streamlines as tensor[nb_points, nb_features]
+        all_inputs = [torch.cat(streamline_inputs, dim=0)
+                      for streamline_inputs in all_inputs]
+
+        # Running model. If we send is_tracking=True, will only compute the
+        # previous dirs for the last point. To mimic training, we have to
+        # add an additional fake point to the streamline, not used.
+        lines = [torch.cat((torch.tensor(np.vstack(line)),
+                            torch.zeros(1, 3)), dim=0)
+                 for line in lines]
+
+        # Also, warning: creating a tensor from a list of np arrays is low.
+        _, self.hidden_recurrent_states = self.model(
+            all_inputs, lines, is_tracking=False, return_state=True)
+
+        return super().prepare_backward(line, forward_dir, multiple_lines)
+
+    def _get_model_outputs_at_pos(self, n_pos):
+        """
+        Overriding dwi_ml: model needs to use the hidden recurrent states +
+        we need to pack the data.
+
+        Parameters
+        ----------
+        n_pos: list of ndarrays
+            Current position coordinates for each streamline.
+        """
+        # Copying the beginning of super's method
+        inputs = self._prepare_inputs_at_pos(n_pos)
+
+        # In super, they add an additional point to mimic training. Here we
+        # have already managed it in the forward by sending is_tracking.
+        # Converting lines to tensors
+
+        # Todo. This is not perfect yet. Sending data to new device at each new
+        #  point. Could it already be a tensor in memory?
+        lines = [torch.tensor(np.vstack(line)).to(self.device) for line in
+                 self.current_lines]
+
+        # For RNN however, we need to send the hidden state too.
+        model_outputs, hidden_states = self.model(
+            inputs, lines, self.hidden_recurrent_states,
+            return_state=True, is_tracking=True)
+
+        self.hidden_recurrent_states = hidden_states
+        return model_outputs

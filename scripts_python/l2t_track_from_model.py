@@ -10,7 +10,7 @@ import math
 
 import dipy.core.geometry as gm
 from dipy.io.stateful_tractogram import (StatefulTractogram, Space,
-                                         set_sft_logger_level)
+                                         set_sft_logger_level, Origin)
 from dipy.io.streamline import save_tractogram
 import h5py
 import nibabel as nib
@@ -21,6 +21,7 @@ from scilpy.image.datasets import DataVolume
 from scilpy.io.utils import (add_sphere_arg,
                              assert_inputs_exist, assert_outputs_exist,
                              verify_compression_th)
+from scilpy.tracking.seed import SeedGenerator
 from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
@@ -29,7 +30,6 @@ from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.tracking.seed import DWIMLSeedGenerator
 from dwi_ml.tracking.propagator import RecurrentPropagator
 from dwi_ml.tracking.tracker import DWIMLTracker
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
@@ -124,7 +124,8 @@ def _prepare_seed_generator(parser, args, hdf_handle):
     seed_data = np.array(seeding_group['data'], dtype=np.float32)
     seed_res = np.array(seeding_group.attrs['voxres'], dtype=np.float32)
 
-    seed_generator = DWIMLSeedGenerator(seed_data, seed_res)
+    seed_generator = SeedGenerator(seed_data, seed_res, space=Space.VOX,
+                                   origin=Origin('corner'))
 
     if len(seed_generator.seeds_vox) == 0:
         parser.error('Seed mask "{}" does not have any voxel with value > 0.'

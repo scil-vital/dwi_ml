@@ -5,11 +5,12 @@ import os
 
 import numpy as np
 import torch
+from dipy.io.stateful_tractogram import Space, Origin
 from scilpy.image.datasets import DataVolume
 from scilpy.tracking.tracker import Tracker as ScilpyTracker
+from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.tracking.propagator import DWIMLPropagator
-from dwi_ml.tracking.seed import DWIMLSeedGenerator
 
 logger = logging.getLogger('tracker_logger')
 
@@ -17,13 +18,10 @@ logger = logging.getLogger('tracker_logger')
 class DWIMLTracker(ScilpyTracker):
     # Removing a few warning by explicitly telling python that the
     # propagator type is not as in super. Supported in python > 3.5
-    # NOTE: CONTRARY TO SCILPY, WE WORK WITH STREAMLINE COORDINATES IN VOX
-    # SPACE. (We keep corner origin).
     propagator: DWIMLPropagator
-    seed_generator: DWIMLSeedGenerator
 
     def __init__(self, propagator: DWIMLPropagator, mask: DataVolume,
-                 seed_generator: DWIMLSeedGenerator, nbr_seeds, min_nbr_pts,
+                 seed_generator: SeedGenerator, nbr_seeds, min_nbr_pts,
                  max_nbr_pts, max_invalid_dirs, compression_th=0.1,
                  nbr_processes=1, save_seeds=False, rng_seed=1234,
                  track_forward_only=False, simultanenous_tracking: int = 1,
@@ -77,6 +75,10 @@ class DWIMLTracker(ScilpyTracker):
 
         # Increase the printing frequency as compared to super
         self.printing_frequency = 1
+
+        # NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, TO CORNER.
+        assert self.space == Space.VOX
+        assert self.origin == Origin('corner')
 
     def track(self):
         """

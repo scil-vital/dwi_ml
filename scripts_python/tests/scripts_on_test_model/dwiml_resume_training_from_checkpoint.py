@@ -14,7 +14,7 @@ from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
 
 # Please adapt:
-from dwi_ml.tests.utils import ModelForTestWithPD
+from dwi_ml.tests.utils import TrackingModelForTestWithPD
 
 
 def prepare_arg_parser():
@@ -47,7 +47,7 @@ def init_from_checkpoint(args):
         sub_loggers_level = 'INFO'
 
     # Load model from checkpoint directory
-    model = ModelForTestWithPD.load_params_and_state(
+    model = TrackingModelForTestWithPD.load_params_and_state(
         os.path.join(args.experiments_path, args.experiment_name,
                      'checkpoint/model'),
         sub_loggers_level)
@@ -76,7 +76,8 @@ def init_from_checkpoint(args):
         logging.info("Instantiating training set's batch loader...")
 
         batch_loader = DWIMLBatchLoaderOneInput(
-            dataset, input_group_name=_args['input_group_name'],
+            dataset=dataset, model=model,
+            input_group_name=_args['input_group_name'],
             streamline_group_name=_args['streamline_group_name'],
             # STREAMLINES PREPROCESSING
             step_size=_args['step_size'], compress=_args['compress'],
@@ -88,7 +89,7 @@ def init_from_checkpoint(args):
             reverse_ratio=_args['reverse_ratio'],
             split_ratio=_args['split_ratio'],
             # NEIGHBORHOOD
-            neighborhood_points=_args['neighborhood_points'],
+            neighborhood_vectors=_args['neighborhood_vectors'],
             # OTHER
             rng=_args['rng'], wait_for_gpu=_args['wait_for_gpu'],
             log_level=sub_loggers_level)

@@ -7,10 +7,9 @@ import numpy as np
 import torch
 from dipy.io.stateful_tractogram import Space, Origin
 
-from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
-
 from scilpy.tracking.propagator import AbstractPropagator
 
+from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.main_models import MainModelAbstract, MainModelOneInput
 
 logger = logging.getLogger('tracker_logger')
@@ -37,7 +36,7 @@ class DWIMLPropagator(AbstractPropagator):
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, step_size: float, rk_order: int,
-                 algo: str, theta: float, model_uses_streamlines: bool = False,
+                 algo: str, theta: float,
                  device=None, normalize_directions: bool = True):
         """
         Parameters
@@ -57,9 +56,6 @@ class DWIMLPropagator(AbstractPropagator):
         theta: float
             Maximum angle (radians) allowed between two steps during sampling
             of the next direction.
-        model_uses_streamlines: bool
-            If true, the current line in kept in memory to be added as
-            additional input.
         """
         # Dataset will be managed differently. Not a DataVolume.
         # torch trilinear interpolation uses origin='corner', space=vox.
@@ -89,8 +85,6 @@ class DWIMLPropagator(AbstractPropagator):
         self.device = device
         if device is not None:
             self.move_to(device)
-
-        self.model_uses_streamlines = model_uses_streamlines
 
         # If the model uses the streamline (ex: to compute the list of the n
         # previous directions), we need to keep track of it as additional
@@ -221,7 +215,7 @@ class DWIMLPropagator(AbstractPropagator):
         is_direction_valid: bool
             True if new_dir is valid.
         """
-        if self.model_uses_streamlines:
+        if self.model.model_uses_streamlines:
             # super() won't use the whole line as argument during the sampling
             # of next direction, but we need it. Add it in memory here.
             self.current_lines = [line]
@@ -251,7 +245,7 @@ class DWIMLPropagator(AbstractPropagator):
         are_directions_valid: list[bool]
             True if new_dir is valid.
         """
-        if self.model_uses_streamlines:
+        if self.model.model_uses_streamlines:
             self.current_lines = lines
 
         # Keeping one coordinate per streamline; the last one.
@@ -348,7 +342,7 @@ class DWIMLPropagator(AbstractPropagator):
         """
         inputs = self._prepare_inputs_at_pos(n_pos)
 
-        if self.model_uses_streamlines:
+        if self.model.model_uses_streamlines:
             # Verify that we have updated memory correctly.
             # for each line:
             # assert np.array_equal(pos, self.current_lines[-1])
@@ -409,36 +403,30 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
     the data points from the volume (+possibly add a neighborhood) and
     interpolate the data.
     """
-    def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
-                 model: MainModelAbstract, input_volume_group: str,
-                 step_size: float, rk_order: int, algo: str, theta: float,
-                 model_uses_streamlines: bool, device=None):
+    model: MainModelOneInput
+
+    def __init__(self, input_volume_group: str, **kw):
         """
-        Additional params compared to super:
-        ------------------------------------
+        Params
+        ------
         input_volume_group: str
             The volume group to use as input in the model.
-        neighborhood_points: np.ndarray
-            The list of neighborhood points (does not contain 0,0,0 point)
-        step_size: NOW IN VOXEL RESOLUTION.
         """
-        super().__init__(dataset, subj_idx, model, step_size, rk_order, algo,
-                         theta, model_uses_streamlines, device)
+        super().__init__(**kw)
 
         # Find group index in the data
-        self.volume_group = dataset.volume_groups.index(input_volume_group)
+        self.volume_group = self.dataset.volume_groups.index(
+            input_volume_group)
 
         # To help prepare the inputs
-        if hasattr(model, 'neighborhood_points'):
-            self.neighborhood_points = model.neighborhood_points
-        else:
-            self.neighborhood_points = None
         self.volume_group_str = input_volume_group
 
         if self.dataset.is_lazy and self.dataset.cache_size == 0:
             logger.warning("With lazy data and multiprocessing, you should "
                            "not keep cache size to zero. Data would be "
                            "loaded again at each propagation step!")
+
+        assert self.space == Space.VOX
 
     def _prepare_inputs_at_pos(self, n_pos):
         """
@@ -454,9 +442,11 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
         # We're ok.
         lines = [[point] for point in n_pos]
 
-        inputs, _ = MainModelOneInput.prepare_batch_one_input(
+        inputs, _ = self.model.prepare_batch_one_input(
             lines, self.dataset, self.subj_idx, self.volume_group,
-            self.neighborhood_points, self.device)
+            self.device)
+
+        logging.warning("???????? PREPARED AN INPUT: {}".format(len(inputs)))
         return inputs
 
 
@@ -470,14 +460,17 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
     for the backward tracking: the hidden recurrent states need to be computed
     from scratch. We will reload them all when starting backward, if necessary.
     """
+    model: MainModelOneInput
+
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
-                 model: MainModelAbstract, input_volume_group: str,
+                 model: MainModelOneInput, input_volume_group: str,
                  step_size: float, rk_order: int,
                  algo: str, theta: float, device=None):
-        model_uses_streamlines = True
-        super().__init__(dataset, subj_idx, model, input_volume_group,
-                         step_size, rk_order, algo, theta,
-                         model_uses_streamlines, device)
+        super().__init__(dataset=dataset,
+                         subj_idx=subj_idx, model=model,
+                         input_volume_group=input_volume_group,
+                         step_size=step_size, rk_order=rk_order, algo=algo,
+                         theta=theta, device=device)
 
         # Internal state:
         # - previous_dirs, already dealt with by super.
@@ -539,21 +532,21 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
         # Either load all timepoints in memory and call model once.
         # Or loop.
         if multiple_lines:
-            all_inputs = []
-            for one_line in line:
-                all_inputs.append(self._prepare_inputs_at_pos(one_line))
             lines = line
         else:
             # Using the loop meant for multiple tracking to actually get
             # multiple positions
-            all_inputs = [self._prepare_inputs_at_pos(line)]
+            logging.warning(
+                "?????????? Length of current streamline: {}".format(
+                    len(line)))
             lines = [line]
 
-        # all_inputs is a list of
-        # nb_streamlines x n_points x tensor([1, nb_features])
-        # creating a batch of streamlines as tensor[nb_points, nb_features]
-        all_inputs = [torch.cat(streamline_inputs, dim=0)
-                      for streamline_inputs in all_inputs]
+        all_inputs, _ = self.model.prepare_batch_one_input(
+            lines, self.dataset, self.subj_idx, self.volume_group,
+            self.device)
+
+        # all_inputs is a tuple of
+        # nb_streamlines x tensor[nb_points, nb_features]
 
         # Running model. If we send is_tracking=True, will only compute the
         # previous dirs for the last point. To mimic training, we have to
@@ -581,19 +574,57 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
         # Copying the beginning of super's method
         inputs = self._prepare_inputs_at_pos(n_pos)
 
-        # In super, they add an additional point to mimic training. Here we
-        # have already managed it in the forward by sending is_tracking.
-        # Converting lines to tensors
-
+        # The model's memory of the beginning of the line is managed through
+        # the hidden states. We only need to send the current point(s), which
+        # is why inputs is only computed from n_pos.
+        # However, we do need the whole streamline to compute the n previous
+        # dirs. Computing now.
         # Todo. This is not perfect yet. Sending data to new device at each new
         #  point. Could it already be a tensor in memory?
-        lines = [torch.tensor(np.vstack(line)).to(self.device) for line in
+        start_time = datetime.now()
+        lines = [torch.as_tensor(s).to(self.device) for s in
                  self.current_lines]
+        duration_sending_to_device = datetime.now() - start_time
 
-        # For RNN however, we need to send the hidden state too.
-        model_outputs, hidden_states = self.model(
+        # For RNN, we need to send the hidden state too.
+        start_time = datetime.now()
+        model_outputs, self.hidden_recurrent_states = self.model(
             inputs, lines, self.hidden_recurrent_states,
             return_state=True, is_tracking=True)
+        duration_running_model = datetime.now() - start_time
 
-        self.hidden_recurrent_states = hidden_states
+        logger.debug("Time to send to device: {} s. Time to run the model: "
+                     "{} s."
+                     .format(duration_sending_to_device.total_seconds(),
+                             duration_running_model.total_seconds()))
+
         return model_outputs
+
+    def multiple_lines_update(self, lines_that_continue: list):
+        """
+        Removing rejected lines from hidden states
+
+        Params
+        ------
+        lines_that_continue: list
+            List of indexes of lines that are kept.
+        """
+
+        # Hidden states: list[states] (One value per layer).
+        nb_streamlines = len(self.current_lines)
+        all_idx = np.zeros(nb_streamlines)
+        all_idx[lines_that_continue] = 1
+
+        if self.model.rnn_key == 'lstm':
+            # LSTM: States are tuples; (h_t, C_t)
+            # Size of tensors are each [1, nb_streamlines, nb_neurons]
+            self.hidden_recurrent_states = [
+                (hidden_states[0][:, lines_that_continue, :],
+                 hidden_states[1][:, lines_that_continue, :]) for
+                hidden_states in self.hidden_recurrent_states]
+        else:
+            #   GRU: States are tensors; h_t.
+            #     Size of tensors are [1, nb_streamlines, nb_neurons].
+            self.hidden_recurrent_states = [
+                hidden_states[:, lines_that_continue, :] for
+                hidden_states in self.hidden_recurrent_states]

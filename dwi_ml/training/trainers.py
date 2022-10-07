@@ -12,14 +12,16 @@ from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
-from dwi_ml.training.gradient_norm import compute_gradient_norm
-from dwi_ml.training.monitoring import (
+from dwi_ml.training.utils.gradient_norm import compute_gradient_norm
+from dwi_ml.training.utils.monitoring import (
     BestEpochMonitoring, IterTimer, ValueHistoryMonitor, TimeMonitor,
     EarlyStoppingError)
 
@@ -53,7 +55,6 @@ class DWIMLAbstractTrainer:
                  experiment_name: str,
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
-                 model_uses_streamlines: bool = False,
                  learning_rate: float = 0.001, weight_decay: float = 0.01,
                  use_radam: bool = False, betas: List[float] = None,
                  max_epochs: int = 10,
@@ -82,9 +83,6 @@ class DWIMLAbstractTrainer:
             Instantiated class with a load_batch method able to load data
             associated to sampled batch ids. Data in batch_sampler.dataset must
             be already loaded.
-        model_uses_streamlines: bool
-            If true, the batch streamlines will be sent to the model when
-            calling the forward method. Else, only the inputs. Default: False.
         learning_rate: float
             Learning rate. Default: 0.001 (torch's default)
         weight_decay: float
@@ -162,7 +160,6 @@ class DWIMLAbstractTrainer:
             self.use_validation = True
         self.batch_loader = batch_loader
         self.model = model
-        self.model_uses_streamlines = model_uses_streamlines
         self.max_epochs = max_epochs
         self.max_batches_per_epochs_train = max_batches_per_epoch_training
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
@@ -186,6 +183,8 @@ class DWIMLAbstractTrainer:
         # ----------------------
         # Values fixed by us
         # ----------------------
+        self.space = 'vox'
+        self.origin = 'corner'
 
         # Device and rng value. Note that if loading from a checkpoint, the
         # complete state should be updated.
@@ -237,11 +236,6 @@ class DWIMLAbstractTrainer:
         # Comet values will be instantiated in train().
         self.comet_exp = None
         self.comet_key = None
-
-        # Saving all params in a json file to help user remember what he used.
-        if not from_checkpoint:
-            filename = os.path.join(self.saving_path, "parameters.json")
-            self.save_params_to_json(filename)
 
         # ---------------------
         # Dataloader: usage will depend on context
@@ -299,7 +293,6 @@ class DWIMLAbstractTrainer:
     def params_for_checkpoint(self):
         # These are the parameters necessary to use _init_
         params = {
-            'model_uses_streamlines': self.model_uses_streamlines,
             'learning_rate': self.learning_rate,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
@@ -330,7 +323,13 @@ class DWIMLAbstractTrainer:
         })
         return params
 
-    def save_params_to_json(self, json_filename):
+    def save_params_to_json(self):
+        """
+        Utility method to save the parameters to a json file in the same
+        folder as the experiment. Suggestion, call this after instantiating
+        your trainer.
+        """
+        json_filename = os.path.join(self.saving_path, "parameters.json")
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
@@ -743,14 +742,6 @@ class DWIMLAbstractTrainer:
         """
         raise NotImplementedError
 
-    def compute_loss(self, model_outputs, targets):
-        """
-        Calls the compute_loss method of the model. Reimplement in a child
-        class if targets needs to be formatted in any way before the call.
-        """
-        mean_loss = self.model.compute_loss(model_outputs, targets)
-        return mean_loss
-
     def fix_parameters(self):
         """
         This function is called during training, after the forward and
@@ -777,7 +768,10 @@ class DWIMLAbstractTrainer:
         Hint: If you want to use this in your child class, use:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
-        trainer = cls(model, experiments_path, experiment_name,
+        print(cls)
+        trainer = cls(model=model,
+                      experiments_path=experiments_path,
+                      experiment_name=experiment_name,
                       batch_sampler=batch_sampler, batch_loader=batch_loader,
                       from_checkpoint=True, log_level=log_level,
                       **checkpoint_state['params_for_init'])
@@ -965,29 +959,6 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def __init__(self,
-                 model: MainModelAbstract, experiments_path: str,
-                 experiment_name: str,
-                 batch_sampler: DWIMLBatchIDSampler,
-                 batch_loader: DWIMLBatchLoaderOneInput,
-                 model_uses_streamlines: bool = False,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
-                 use_radam: bool = False, betas: List[float] = None,
-                 max_epochs: int = 10,
-                 max_batches_per_epoch_training: int = 1000,
-                 max_batches_per_epoch_validation: Union[int, None] = 1000,
-                 patience: int = None, nb_cpu_processes: int = 0,
-                 use_gpu: bool = False,
-                 comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, log_level=logging.root.level):
-        super().__init__(model, experiments_path, experiment_name,
-                         batch_sampler, batch_loader, model_uses_streamlines,
-                         learning_rate, weight_decay, use_radam, betas,
-                         max_epochs, max_batches_per_epoch_training,
-                         max_batches_per_epoch_validation,
-                         patience, nb_cpu_processes, use_gpu, comet_workspace,
-                         comet_project, from_checkpoint, log_level)
-
     def run_one_batch(self, data, is_training: bool):
         """
         Run a batch of data through the model (calling its forward method)
@@ -1056,11 +1027,13 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
             else:
                 # Data is already ready
-                batch_streamlines, _, batch_inputs = data
+                batch_streamlines, final_s_ids_per_subj, batch_inputs = data
 
             lengths = [len(s) - 1 for s in batch_streamlines]
             logger.debug("Loaded a batch of {} streamlines, {} inputs points"
                          .format(len(batch_streamlines), sum(lengths)))
+            logger.debug("Loaded the associated {} inputs.".
+                         format(len(batch_inputs)))
             if is_training:
                 # Reset parameter gradients
                 # See here for some explanation
@@ -1068,17 +1041,25 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 # to-call-zero-grad-in-pytorch
                 self.optimizer.zero_grad()
 
-            self.logger.debug('*** Computing forward propagation')
-            if self.model_uses_streamlines:
-                streamlines = [torch.tensor(s).to(self.device) for s in
-                               batch_streamlines]
-                model_outputs = self.model(batch_inputs, streamlines)
-            else:
-                model_outputs = self.model(batch_inputs)
+            forward_kwargs = self._prepare_other_forward_kwargs(
+                is_training, final_s_ids_per_subj)
 
-            # Compute loss
-            self.logger.debug('*** Computing loss')
-            mean_loss = self.compute_loss(model_outputs, batch_streamlines)
+            self.logger.debug('*** Computing forward propagation and loss')
+            if self.model.model_uses_streamlines:
+                batch_streamlines = [torch.tensor(s).to(self.device) for s in
+                                     batch_streamlines]
+
+                # Possibly computing directions twice (during forward and loss)
+                # but ok, shouldn't be too heavy. Easier to deal with multiple
+                # project's requirements by sending whole streamlines rather
+                # than only directions.
+                model_outputs = self.model(batch_inputs, batch_streamlines,
+                                           **forward_kwargs)
+                mean_loss = self.model.compute_loss(model_outputs,
+                                                    batch_streamlines)
+            else:
+                model_outputs = self.model(batch_inputs, **forward_kwargs)
+                mean_loss = self.model.compute_loss(model_outputs)
 
             if is_training:
                 self.logger.debug('*** Computing back propagation')
@@ -1114,3 +1095,12 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 log_gpu_memory_usage(self.logger)
 
         return mean_loss.cpu().item(), grad_norm
+
+    def _prepare_other_forward_kwargs(self, is_training: bool,
+                                      final_s_ids_per_subj):
+        """
+        By default, during run_one_batch, inputs and streamlines / directions
+        are sent to the forward method of the model. Here, you can prepare any
+        additional arguments your model may need in a child class.
+        """
+        return {}

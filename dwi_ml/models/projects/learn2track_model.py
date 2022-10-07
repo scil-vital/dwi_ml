@@ -242,6 +242,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             Batch of input sequences, i.e. MRI data. Length of the list is the
             number of streamlines in the batch. Each tensor is of size
             [nb_points, nb_features].
+        target_streamlines: List[torch.tensor],
+            Batch of streamlines (only necessary to save estimated outputs,
+            if asked).
         hidden_reccurent_states : tuple
             The current hidden states of the (stacked) RNN model.
         return_state: bool
@@ -253,9 +256,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             streamlines have the same number of points as inputs (we do not use
             the targets, so it's ok, we only need to compute the previous
             dirs).
-        target_streamlines: List[torch.tensor],
-            Batch of streamlines (only necessary to save estimated outputs,
-            if asked).
 
         Returns
         -------

@@ -166,8 +166,9 @@ class ModelWithNeighborhood(MainModelAbstract):
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
         add_vectors_to_data: bool
-            If true, neighborhood vectors will be concatenated to data at each
-            point, meaning that the number of features per point will be 3 more.
+            If true, neighborhood vectors (the coordinates, not the data) will
+            be concatenated to the data at each point, meaning that the number
+            of features per point will be 3 more.
         """
         super().__init__(**kw)
 

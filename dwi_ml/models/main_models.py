@@ -595,7 +595,7 @@ class ModelForTracking(MainModelAbstract):
     @staticmethod
     def add_args_tracking_model(p):
         p.add_argument(
-            '--normalize_directions', action='store_true',
+            '--normalize_targets', action='store_true',
             help="If true, directions will be normalized, both during "
                  "tracking (usually, we normalize. But by not normalizing and "
                  "working with compressed streamlines, you could hope your "

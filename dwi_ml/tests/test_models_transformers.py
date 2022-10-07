@@ -41,7 +41,23 @@ def test_models():
                   "-----------------------------")
     model = OriginalTransformerModel('test', nb_features=4,
                                      d_model=8, max_len=15,
-                                     log_level='DEBUG')
+                                     log_level='DEBUG',
+                                     # Using defaults from script
+                                     nb_previous_dirs=0,
+                                     prev_dirs_embedding_size=None,
+                                     prev_dirs_embedding_key=None,
+                                     normalize_prev_dirs=True,
+                                     positional_encoding_key='sinusoidal',
+                                     embedding_key_x='nn_embedding',
+                                     embedding_key_t='nn_embedding',
+                                     ffnn_hidden_size=None,
+                                     nheads=8, dropout_rate=0.1,
+                                     activation='relu',
+                                     n_layers_e=6, n_layers_d=6,
+                                     dg_key='cosine-regression', dg_args=None,
+                                     normalize_targets=True,
+                                     neighborhood_type=None,
+                                     neighborhood_radius=None)
 
     # Testing forward.
     output = model(batch_x, batch_streamlines)
@@ -55,7 +71,22 @@ def test_models():
                   "-----------------------------")
     model = TransformerSrcAndTgtModel('test', nb_features=4,
                                       d_model=8, max_len=15,
-                                      log_level='DEBUG')
+                                      log_level='DEBUG',
+                                      # Using defaults from script
+                                      nb_previous_dirs=0,
+                                      prev_dirs_embedding_size=None,
+                                      prev_dirs_embedding_key=None,
+                                      normalize_prev_dirs=True,
+                                      positional_encoding_key='sinusoidal',
+                                      embedding_key_x='nn_embedding',
+                                      embedding_key_t='nn_embedding',
+                                      ffnn_hidden_size=None,
+                                      nheads=8, dropout_rate=0.1,
+                                      activation='relu', n_layers_d=6,
+                                      dg_key='cosine-regression', dg_args=None,
+                                      normalize_targets=True,
+                                      neighborhood_type=None,
+                                      neighborhood_radius=None)
 
     # Testing forward.
     output = model(batch_x, batch_streamlines)

@@ -150,10 +150,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features
-        self.use_skip_connection = use_skip_connection
-        self.use_layer_normalization = use_layer_normalization
-        self.rnn_key = rnn_key
-        self.rnn_layer_sizes = rnn_layer_sizes
         self.dropout = dropout
 
         # ----------- Checks
@@ -189,7 +185,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             rnn_input_size += self.prev_dirs_embedding_size
         self.rnn_model = StackedRNN(
             rnn_key, rnn_input_size, rnn_layer_sizes,
-            use_skip_connections=use_skip_connection,
+            use_skip_connection=use_skip_connection,
             use_layer_normalization=use_layer_normalization,
             dropout=dropout)
 
@@ -206,6 +202,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         params.update({
             'input_embedding': self.input_embedding.params,
             'rnn_model': self.rnn_model.params,
+            'use_skip_connection': self.rnn_model.use_skip_connection,
+            'use_layer_normalization': self.rnn_model.use_layer_normalization,
         })
         return params
 
@@ -219,10 +217,10 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             'input_embedding_key': self.input_embedding_key,
             'input_embedding_size': int(self.input_embedding_size),
             'input_embedding_size_ratio': None,
-            'rnn_key': self.rnn_key,
-            'rnn_layer_sizes': self.rnn_layer_sizes,
-            'use_skip_connection': self.use_skip_connection,
-            'use_layer_normalization': self.use_layer_normalization,
+            'rnn_key': self.rnn_model.rnn_torch_key,
+            'rnn_layer_sizes': self.rnn_model.layer_sizes,
+            'use_skip_connection': self.rnn_model.use_skip_connection,
+            'use_layer_normalization': self.rnn_model.use_layer_normalization,
             'dropout': self.dropout,
         })
 

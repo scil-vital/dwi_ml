@@ -6,7 +6,7 @@ Train a model.
 
 This script uses a fake model to allow testing. Please create your own model
 (possibly with your own trainer, batch sampler, batch loader), copy this script
-to your project and adapt it.
+to your projects and adapt it.
 """
 import argparse
 import logging

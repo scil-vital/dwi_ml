@@ -5,11 +5,11 @@ import logging
 import os
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
-from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
+from dwi_ml.experiment_utils.prints import add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
+from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
+from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
 from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
 
@@ -53,49 +53,13 @@ def init_from_checkpoint(args):
         sub_loggers_level)
 
     # Prepare batch sampler
-    _args = checkpoint_state['batch_sampler_params']
-    with Timer("\nPreparing batch samplers...", newline=True, color='green'):
-        logging.info("Instantiating training set's batch sampler...")
-
-        batch_sampler = DWIMLBatchIDSampler(
-            dataset, streamline_group_name=_args['streamline_group_name'],
-            batch_size_training=_args['batch_size_training'],
-            batch_size_validation=_args['batch_size_validation'],
-            batch_size_units=_args['batch_size_units'],
-            nb_streamlines_per_chunk=_args['nb_streamlines_per_chunk'],
-            nb_subjects_per_batch=_args['nb_subjects_per_batch'],
-            cycles=_args['cycles'],
-            rng=_args['rng'], log_level=sub_loggers_level)
-
-        logging.info("Batch sampler's user-defined parameters: " +
-                     format_dict_to_str(batch_sampler.params))
+    _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
+    logging.warning(_args)
+    batch_sampler = prepare_batch_sampler(dataset, _args, sub_loggers_level)
 
     # Prepare batch loader
-    _args = checkpoint_state['batch_loader_params']
-    with Timer("\nPreparing batch loaders...", newline=True, color='pink'):
-        logging.info("Instantiating training set's batch loader...")
-
-        batch_loader = DWIMLBatchLoaderOneInput(
-            dataset=dataset, model=model,
-            input_group_name=_args['input_group_name'],
-            streamline_group_name=_args['streamline_group_name'],
-            # STREAMLINES PREPROCESSING
-            step_size=_args['step_size'], compress=_args['compress'],
-            # STREAMLINES AUGMENTATION
-            noise_gaussian_size_training=_args['noise_gaussian_size_training'],
-            noise_gaussian_var_training=_args['noise_gaussian_var_training'],
-            noise_gaussian_size_validation=_args['noise_gaussian_size_validation'],
-            noise_gaussian_var_validation=_args['noise_gaussian_var_validation'],
-            reverse_ratio=_args['reverse_ratio'],
-            split_ratio=_args['split_ratio'],
-            # NEIGHBORHOOD
-            neighborhood_vectors=_args['neighborhood_vectors'],
-            # OTHER
-            rng=_args['rng'], wait_for_gpu=_args['wait_for_gpu'],
-            log_level=sub_loggers_level)
-
-        logging.info("Loader user-defined parameters: " +
-                     format_dict_to_str(batch_loader.params_for_json_prints))
+    _args = argparse.Namespace(**checkpoint_state['batch_loader_params'])
+    batch_loader = prepare_batch_loader(dataset, model, _args, sub_loggers_level)
 
     # Instantiate trainer
     with Timer("\nPreparing trainer", newline=True, color='red'):

@@ -250,12 +250,8 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         self.instantiate_direction_getter(d_model)
 
     @property
-    def params(self):
-        """
-        Every parameter necessary to build the different layers again
-        from a checkpoint.
-        """
-        p = super().params
+    def params_for_json_prints(self):
+        p = super().params_for_json_prints
         p.update({
             'nb_features': int(self.nb_features),
             'max_len': self.max_len,
@@ -267,8 +263,27 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             'nheads': self.nheads,
             'd_model': self.d_model,
             'ffnn_hidden_size': self.ffnn_hidden_size,
-            'dg_key': self.dg_key,
-            'dg_args': self.dg_args,
+        })
+        return p
+
+    @property
+    def params_for_checkpoint(self):
+        """
+        Every parameter necessary to build the different layers again
+        from a checkpoint.
+        """
+        p = super().params_for_checkpoint
+        p.update({
+            'nb_features': int(self.nb_features),
+            'max_len': self.max_len,
+            'embedding_key_x': self.embedding_key_x,
+            'positional_encoding_key': self.positional_encoding_key,
+            'embedding_key_t': self.embedding_key_t,
+            'dropout_rate': self.dropout_rate,
+            'activation': self.activation,
+            'nheads': self.nheads,
+            'd_model': self.d_model,
+            'ffnn_hidden_size': self.ffnn_hidden_size,
         })
         return p
 
@@ -642,8 +657,17 @@ class OriginalTransformerModel(AbstractTransformerModel):
             self.layer_norm, batch_first=True, norm_first=False)
 
     @property
-    def params(self):
-        p = super().params
+    def params_for_json_prints(self):
+        p = super().params_for_json_prints
+        p.update({
+            'n_layers_e': self.n_layers_e,
+            'n_layers_d': self.n_layers_d,
+        })
+        return p
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
         p.update({
             'n_layers_e': self.n_layers_e,
             'n_layers_d': self.n_layers_d,
@@ -738,8 +762,16 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                                              norm=None)
 
     @property
-    def params(self):
-        p = super().params
+    def params_for_json_prints(self):
+        p = super().params_for_json_prints
+        p.update({
+            'n_layers_d': self.n_layers_d,
+        })
+        return p
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
         p.update({
             'n_layers_d': self.n_layers_d,
         })

@@ -3,6 +3,7 @@ import logging
 
 import numpy as np
 import torch
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 
 from dwi_ml.models.projects.transformers import (
     OriginalTransformerModel, TransformerSrcAndTgtModel)
@@ -59,6 +60,9 @@ def test_models():
                                      neighborhood_type=None,
                                      neighborhood_radius=None)
 
+    logging.info("Transformer original model final parameters:" +
+                 format_dict_to_str(model.params_for_json_prints))
+
     # Testing forward.
     output = model(batch_x, batch_streamlines)
 
@@ -87,6 +91,10 @@ def test_models():
                                       normalize_targets=True,
                                       neighborhood_type=None,
                                       neighborhood_radius=None)
+
+
+    logging.info("Transformer Src and Tgt model final parameters:" +
+                 format_dict_to_str(model.params_for_json_prints))
 
     # Testing forward.
     output = model(batch_x, batch_streamlines)

@@ -5,7 +5,7 @@ import os
 import tempfile
 
 from dwi_ml.tests.expected_values import TEST_EXPECTED_VOLUME_GROUPS, \
-    TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_SUBJ_NAMES
+    TEST_EXPECTED_STREAMLINE_GROUPS
 from dwi_ml.tests.utils import fetch_testing_data
 
 data_dir = fetch_testing_data()
@@ -16,9 +16,9 @@ def test_help_option(script_runner):
     ret = script_runner.run('ttst_train_model.py', '--help')
     assert ret.success
 
-    # ret = script_runner.run(
-    #     'tt_resume_training_from_checkpoint_src_tgt_model.py', '--help')
-    # assert ret.success
+    ret = script_runner.run(
+        'ttst_resume_training_from_checkpoint.py', '--help')
+    assert ret.success
 
     #ret = script_runner.run('tt_track_from_model.py', '--help')
     #assert ret.success
@@ -33,7 +33,7 @@ def test_execution_bst(script_runner):
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]
     streamline_group_name = TEST_EXPECTED_STREAMLINE_GROUPS[0]
 
-    # Here, testing default values only. See dwi_ml.tests.test_trainer for more
+    # Here, testing default values only. See dwi_ml.unit_tests.test_trainer for more
     # various testing.
     # Max length in current testing dataset is 108. Setting max length to 115
     # for faster testing. Also decreasing other default values.
@@ -50,11 +50,11 @@ def test_execution_bst(script_runner):
                             '--ffnn_hidden_size', '3', '--logging', 'INFO')
     assert ret.success
 
-    # logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
-    # ret = script_runner.run(
-    #     'tt_resume_training_from_checkpoint_src_tgt_model.py',
-    #     experiments_path, 'test_experiment', '--new_max_epochs', '2')
-    # assert ret.success
+    logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
+    ret = script_runner.run(
+        'ttst_resume_training_from_checkpoint.py',
+        experiments_path, 'test_experiment', '--new_max_epochs', '2')
+    assert ret.success
     #
     # logging.info("************ TESTING TRACKING FROM MODEL ************")
     # whole_experiment_path = os.path.join(experiment_path, experiment_name)

@@ -88,8 +88,6 @@ def prepare_model(args, dg_args, log_level):
             neighborhood_radius=args.neighborhood_radius,
             log_level=log_level)
 
-        # logging.info("Learn2track model user-defined parameters: \n" +
-        #              format_dict_to_str(model.params) + '\n')
         logging.info("Learn2track model final parameters:" +
                      format_dict_to_str(model.params_for_json_prints))
     return model

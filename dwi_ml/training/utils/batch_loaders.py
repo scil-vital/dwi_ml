@@ -39,14 +39,14 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
         default=0.,
         help="Idem; noise added during validation.")
     bl_g.add_argument(
-        '--noise_gaussian_variability_training', type=float, metavar='v',
+        '--noise_gaussian_var_training', type=float, metavar='v',
         default=0.,
         help="If set, a variation is applied to the noise_size to have very \n"
              "noisy streamlines and less noisy streamlines. This means that \n"
              "the real gaussian_size will be a random number in the range \n"
              "[size - variability, size + variability]. [0]")
     bl_g.add_argument(
-        '--noise_gaussian_variability_validation', type=float, metavar='v',
+        '--noise_gaussian_var_validation', type=float, metavar='v',
         default=0.,
         help="Idem; will be used during validation.")
     bl_g.add_argument(
@@ -74,9 +74,9 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             step_size=args.step_size, compress=args.compress,
             # STREAMLINES AUGMENTATION
             noise_gaussian_size_training=args.noise_gaussian_size_training,
-            noise_gaussian_var_training=args.noise_gaussian_variability_training,
+            noise_gaussian_var_training=args.noise_gaussian_var_training,
             noise_gaussian_size_validation=args.noise_gaussian_size_validation,
-            noise_gaussian_var_validation=args.noise_gaussian_variability_validation,
+            noise_gaussian_var_validation=args.noise_gaussian_var_validation,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # NEIGHBORHOOD
             neighborhood_vectors=model.neighborhood_vectors,

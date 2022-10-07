@@ -597,10 +597,10 @@ class ModelForTracking(MainModelAbstract):
         p.add_argument(
             '--normalize_targets', action='store_true',
             help="If true, directions will be normalized, both during "
-                 "tracking (usually, we normalize. But by not normalizing and "
-                 "working with compressed streamlines, you could hope your "
-                 "model will gain a sense of distance) and during training "
-                 "(if you train a regression model).")
+                 "tracking (usually, we \nnormalize. But by not normalizing "
+                 "and working with compressed streamlines, \nyou could hope "
+                 "your model will gain a sense of distance) and during "
+                 "training \n(if you train a regression model).")
         add_direction_getter_args(p)
 
     @property

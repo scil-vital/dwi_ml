@@ -402,7 +402,8 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             'input_group_name': self.input_group_name,
             # Sending to list to allow json dump
             'neighborhood_vectors': self.neighborhood_vectors,
-            'wait_for_gpu': self.wait_for_gpu
+            'wait_for_gpu': self.wait_for_gpu,
+            'use_gpu': self.wait_for_gpu  # Name in checkpoint.
         })
         return p
 

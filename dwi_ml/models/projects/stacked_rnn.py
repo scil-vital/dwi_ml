@@ -23,7 +23,7 @@ class StackedRNN(torch.nn.Module):
     """
 
     def __init__(self, rnn_torch_key: str, input_size: int,
-                 layer_sizes: List[int], use_skip_connections: bool,
+                 layer_sizes: List[int], use_skip_connection: bool,
                  use_layer_normalization: bool, dropout: float):
         """
         Parameters
@@ -38,7 +38,7 @@ class StackedRNN(torch.nn.Module):
         layer_sizes : list of int
             Size of each hidden layer. The real size will depend
             on the skip_connection parameter.
-        use_skip_connections : bool, optional
+        use_skip_connection : bool, optional
             If true, concatenate the model input to the input of each hidden
             layer, and concatenate all hidden layers output as the output of
             the model. See [1] (Figure 1) to visualize the architecture.
@@ -67,7 +67,7 @@ class StackedRNN(torch.nn.Module):
         self.rnn_torch_key = rnn_torch_key
         self.input_size = input_size
         self.layer_sizes = layer_sizes
-        self.use_skip_connections = use_skip_connections
+        self.use_skip_connection = use_skip_connection
         self.use_layer_normalization = use_layer_normalization
         self.dropout = dropout
 
@@ -103,7 +103,7 @@ class StackedRNN(torch.nn.Module):
             last_layer_size = layer_size
             # Account for skip connections in layer size. Last layer is
             # different, see self.output_size().
-            if self.use_skip_connections:
+            if self.use_skip_connection:
                 last_layer_size += self.input_size
 
     @property
@@ -118,7 +118,7 @@ class StackedRNN(torch.nn.Module):
             'input_size': self.input_size,
             'output_size': self.output_size,
             'layer_sizes': list(self.layer_sizes),
-            'use_skip_connections': self.use_skip_connections,
+            'use_skip_connections': self.use_skip_connection,
             'use_layer_normalization': self.use_layer_normalization,
             'dropout': self.dropout,
         }
@@ -128,7 +128,7 @@ class StackedRNN(torch.nn.Module):
     def output_size(self):
         """Returns the size of the last layer. If using skip connections, it is
         the sum of all layers' sizes."""
-        if self.use_skip_connections:
+        if self.use_skip_connection:
             return sum(self.layer_sizes)
         else:
             return self.layer_sizes[-1]
@@ -244,7 +244,7 @@ class StackedRNN(torch.nn.Module):
                              .format(last_output.shape))
 
             # Saving layer's last_output and states for later
-            if self.use_skip_connections:
+            if self.use_skip_connection:
                 # Keeping memory for the last layer's concatenation of all
                 # outputs.
                 outputs.append(last_output)
@@ -259,7 +259,7 @@ class StackedRNN(torch.nn.Module):
                                  .format(last_output.shape))
 
         # Final last_output
-        if self.use_skip_connections:
+        if self.use_skip_connection:
             last_output = torch.cat(outputs, dim=-1)
 
             logger.debug(

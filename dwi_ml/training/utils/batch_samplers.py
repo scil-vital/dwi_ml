@@ -45,6 +45,8 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
 
 
 def prepare_batch_sampler(dataset, args, sub_loggers_level):
+    logging.warning("\n\n")
+    logging.warning(args)
     with Timer("\nPreparing batch sampler...", newline=True, color='green'):
         batch_sampler = DWIMLBatchIDSampler(
             dataset=dataset, streamline_group_name=args.streamline_group_name,

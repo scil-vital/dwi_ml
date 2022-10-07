@@ -32,25 +32,23 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
     def __init__(self, experiment_name, nb_features: int,
                  rnn_layer_sizes: List[int],
                  # PREVIOUS DIRS
-                 nb_previous_dirs: int = 0,
-                 prev_dirs_embedding_size: int = None,
-                 prev_dirs_embedding_key: str = None,
-                 normalize_prev_dirs: bool = True,
+                 nb_previous_dirs: Union[int, None],
+                 prev_dirs_embedding_size: Union[int, None],
+                 prev_dirs_embedding_key: Union[str, None],
+                 normalize_prev_dirs: bool,
                  # INPUTS
-                 input_embedding_key: str = 'no_embedding',
-                 input_embedding_size: int = None,
-                 input_embedding_size_ratio: float = None,
+                 input_embedding_key: str,
+                 input_embedding_size: Union[int, None],
+                 input_embedding_size_ratio: Union[float, None],
                  # RNN
-                 rnn_key: str = 'lstm',
-                 use_skip_connection: bool = True,
-                 use_layer_normalization: bool = True,
-                 dropout: float = 0.,
+                 rnn_key: str, use_skip_connection: bool,
+                 use_layer_normalization: bool, dropout: float,
                  # DIRECTION GETTER
-                 dg_key: str = 'cosine-regression', dg_args: dict = None,
-                 normalize_targets: bool = True,
+                 dg_key: str, dg_args: Union[dict, None],
+                 normalize_targets: bool,
                  # Other
-                 neighborhood_type: str = None,
-                 neighborhood_radius: Union[int, float, List[float]] = None,
+                 neighborhood_type: Union[str, None],
+                 neighborhood_radius: Union[int, float, List[float], None],
                  log_level=logging.root.level):
         """
         Params
@@ -219,8 +217,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         params.update({
             'nb_features': int(self.nb_features),
             'input_embedding_key': self.input_embedding_key,
-            'input_embedding_size': int(self.input_embedding_size) if
-            self.input_embedding_size else None,
+            'input_embedding_size': int(self.input_embedding_size),
+            'input_embedding_size_ratio': None,
             'rnn_key': self.rnn_key,
             'rnn_layer_sizes': self.rnn_layer_sizes,
             'use_skip_connection': self.use_skip_connection,

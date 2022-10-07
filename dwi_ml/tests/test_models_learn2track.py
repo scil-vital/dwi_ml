@@ -58,7 +58,19 @@ def test_learn2track():
     fake_x, fake_s = _create_batch()
 
     model = Learn2TrackModel('test', nb_features=4, rnn_layer_sizes=[3, 3],
-                             log_level='DEBUG')
+                             log_level='DEBUG',
+                             # Using default from script:
+                             nb_previous_dirs=0, prev_dirs_embedding_size=None,
+                             prev_dirs_embedding_key=None,
+                             normalize_prev_dirs=True,
+                             input_embedding_key='no_embedding',
+                             input_embedding_size=None,
+                             input_embedding_size_ratio=None,
+                             rnn_key='lstm', use_skip_connection=True,
+                             use_layer_normalization=True, dropout=0.,
+                             dg_key='cosine-regression', dg_args=None,
+                             normalize_targets=True,
+                             neighborhood_type=None, neighborhood_radius=None)
 
     # Testing forward. No previous dirs
     model(fake_x, fake_s)

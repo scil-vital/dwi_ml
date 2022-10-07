@@ -197,6 +197,7 @@ class ModelWithNeighborhood(MainModelAbstract):
                  "grid, in voxel space.")
         p.add_argument(
             '--neighborhood_radius', type=Union[int, float, List[float]],
+            metavar='{r, [r, r]}',
             help="- With type 'axes', radius must be a float or a list[float] "
                  "(it will then be a \nmulti-radius neighborhood (lying on "
                  "concentring spheres).\n"
@@ -528,7 +529,6 @@ class MainModelOneInput(MainModelAbstract):
             for s in range(len(coords_torch)):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
-        logging.warning("?????????? prepared input: {}".format([type(subj_x_data), len(subj_x_data), type(subj_x_data[0]), subj_x_data[0].shape]))
         return subj_x_data, input_mask
 
 

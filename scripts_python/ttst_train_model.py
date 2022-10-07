@@ -2,23 +2,24 @@
 # -*- coding: utf-8 -*-
 
 """
-Train a model.
-
-This script uses a fake model to allow testing. Please create your own model
-(possibly with your own trainer, batch sampler, batch loader), copy this script
-to your project and adapt it.
+Train a Transformer model. In this version, source and target are concatenated
+and attention is on both together.
 """
 import argparse
 import logging
 import os
 
+from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import (add_dataset_args,
                                        prepare_multisubjectdataset)
-from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
+from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.trainers import DWIMLTrainerOneInput
+from dwi_ml.models.projects.transformers_utils import (add_abstract_model_args,
+                                                       add_ttst_model_args,
+                                                       perform_checks,
+                                                       prepare_ttst_model)
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
@@ -28,8 +29,9 @@ from dwi_ml.training.utils.experiment import (
     add_memory_args_training_experiment)
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment
 
-# Please adapt
-from dwi_ml.tests.utils import TrackingModelForTestWithPD
+
+# Currently only accepting NN embedding for target
+T_EMBEDDING_KEY = 'nn_embedding'
 
 
 def prepare_arg_parser():
@@ -43,12 +45,9 @@ def prepare_arg_parser():
     add_args_batch_loader(p)
     add_training_args(p)
 
-    TrackingModelForTestWithPD.add_args_tracking_model(p)
-    TrackingModelForTestWithPD.add_args_model_with_pd(p)
-    # To be defined: add_model_args(p)
-    # Possibly:
-    # models.utils.direction_getters.add_direction_getter_args(p)
-    # data.processing.space.neighborhood.add_args_neighborhood(p)
+    # Specific to Transformers:
+    gt = add_abstract_model_args(p)
+    add_ttst_model_args(gt)
 
     return p
 
@@ -60,40 +59,36 @@ def init_from_args(args, sub_loggers_level):
                                           log_level=sub_loggers_level)
 
     # Preparing the model
-    # Possibly useful:
-    #     input_group_idx = dataset.volume_groups.index(args.input_group_name)
-    #     nb_features = dataset.nb_features[input_group_idx]
-    #     dg_args = check_args_direction_getter(args)
-    model = TrackingModelForTestWithPD()  # To be instantiated correctly.
+    # (general args)
+    args, dg_args = perform_checks(args)
+    # (nb features)
+    input_group_idx = dataset.volume_groups.index(args.input_group_name)
+    args.nb_features = dataset.nb_features[input_group_idx]
+    # Final model
+    model = prepare_ttst_model(args, dg_args, sub_loggers_level)
 
     # Preparing the batch sampler.
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)
     batch_loader = prepare_batch_loader(dataset, model, args, sub_loggers_level)
 
     # Instantiate trainer
-    # streamlines need to be sent to the forward method.
-    with Timer("\nPreparing trainer", newline=True, color='red'):
-        trainer = DWIMLTrainerOneInput(
-            model=model, experiments_path=args.experiments_path,
-            experiment_name=args.experiment_name,
-            batch_sampler=batch_sampler, batch_loader=batch_loader,
+    with Timer("\n\nPreparing trainer", newline=True, color='red'):
+        trainer = TransformerTrainer(
+            model, args.experiments_path, args.experiment_name,
+            batch_sampler, batch_loader,
             # COMET
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
             # TRAINING
-            learning_rate=args.learning_rate, weight_decay=args.weight_decay,
-            use_radam=args.use_radam, betas=args.betas,
-            max_epochs=args.max_epochs,
+            learning_rate=args.learning_rate, max_epochs=args.max_epochs,
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,
+            weight_decay=args.weight_decay,
             # MEMORY
-            nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
-            log_level=args.logging)
+            nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_json_prints))
-        # Saving params to json to help user remember
-        trainer.save_params_to_json()
 
     return trainer
 
@@ -115,9 +110,8 @@ def main():
     # Verify if a checkpoint has been saved. Else create an experiment.
     if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
                                    "checkpoint")):
-        raise FileExistsError(
-            "This experiment already exists. Delete or use script "
-            "dwiml_resume_training_from_checkpoint.py.")
+        raise FileExistsError("This experiment already exists. Delete or use "
+                              "script resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

@@ -77,7 +77,7 @@ def add_abstract_model_args(p):
     return gt
 
 
-def add_original_model_args(gt):
+def add_tto_model_args(gt):
     gt.add_argument(
         '--n_layers_e', type=int, default=6,
         help="Number of encoding layers. [%(default)s]")
@@ -86,7 +86,7 @@ def add_original_model_args(gt):
         help="Number of decoding layers. [%(default)s]")
 
 
-def add_src_tgt_attention_args(gt):
+def add_ttst_model_args(gt):
     gt.add_argument(
         '--n_layers_d', type=int, default=14,
         help="Number of 'decoding' layers. Value in [3]; 14. "
@@ -110,7 +110,7 @@ def perform_checks(args):
     return args, dg_args
 
 
-def prepare_original_model(args, dg_args, sub_loggers_level):
+def prepare_tto_model(args, dg_args, sub_loggers_level):
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = OriginalTransformerModel(
             experiment_name=args.experiment_name, nb_features=args.nb_features,
@@ -143,7 +143,7 @@ def prepare_original_model(args, dg_args, sub_loggers_level):
     return model
 
 
-def prepare_src_tgt_model(args, dg_args, sub_loggers_level):
+def prepare_ttst_model(args, dg_args, sub_loggers_level):
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = TransformerSrcAndTgtModel(
             experiment_name=args.experiment_name, nb_features=args.nb_features,
@@ -171,6 +171,6 @@ def prepare_src_tgt_model(args, dg_args, sub_loggers_level):
 
         logging.info("Transformer (src-tgt attention) model final "
                      "parameters:" +
-                     format_dict_to_str(model.params))
+                     format_dict_to_str(model.params_for_json_prints))
 
     return model

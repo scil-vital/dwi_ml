@@ -55,16 +55,16 @@ def test_execution_bst(script_runner):
         'ttst_resume_training_from_checkpoint.py',
         experiments_path, 'test_experiment', '--new_max_epochs', '2')
     assert ret.success
-    #
-    # logging.info("************ TESTING TRACKING FROM MODEL ************")
-    # whole_experiment_path = os.path.join(experiment_path, experiment_name)
-    # out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
-    # ret = script_runner.run(
-    #     'tt_track_from_model.py', whole_experiment_path, out_tractogram,
-    #     'det', '--nt', '2', '--logging', 'debug',
-    #     '--sm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
-    #     '--tm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
-    #     '--input_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[0],
-    #     '--hdf5_file', hdf5_file, '--subj_id', TEST_EXPECTED_SUBJ_NAMES[0])
-    #
-    # assert ret.success
+
+    logging.info("************ TESTING TRACKING FROM MODEL ************")
+    whole_experiment_path = os.path.join(experiment_path, experiment_name)
+    out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
+    ret = script_runner.run(
+        'tt_track_from_model.py', whole_experiment_path, out_tractogram,
+        'det', '--nt', '2', '--logging', 'debug',
+        '--sm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
+        '--tm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
+        '--input_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[0],
+        '--hdf5_file', hdf5_file, '--subj_id', TEST_EXPECTED_SUBJ_NAMES[0])
+
+    assert ret.success

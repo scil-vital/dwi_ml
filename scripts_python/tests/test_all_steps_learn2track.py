@@ -33,8 +33,8 @@ def test_execution_training_tracking(script_runner):
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]
     streamline_group_name = TEST_EXPECTED_STREAMLINE_GROUPS[0]
 
-    # Here, testing default values only. See dwi_ml.unit_tests.test_trainer for more
-    # various testing.
+    # Here, testing default values only.
+    # See dwi_ml.unit_tests.test_models_and_trainer for more various testing.
     logging.info("************ TESTING TRAINING ************")
     ret = script_runner.run('l2t_train_model.py',
                             experiment_path, experiment_name, hdf5_file,
@@ -62,6 +62,7 @@ def test_execution_training_tracking(script_runner):
     tracking_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
     input_group = TEST_EXPECTED_VOLUME_GROUPS[0]
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
+
     # Testing HDF5 data does not contain a testing set to keep it light. Using
     # subjectX from training set.
     ret = script_runner.run(

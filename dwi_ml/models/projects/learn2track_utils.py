@@ -69,7 +69,7 @@ def prepare_model(args, dg_args, log_level):
             prev_dirs_embedding_key=args.prev_dirs_embedding_key,
             prev_dirs_embedding_size=args.prev_dirs_embedding_size,
             nb_previous_dirs=args.nb_previous_dirs,
-            normalize_prev_dirs=args.normalize_directions,
+            normalize_prev_dirs=args.normalize_prev_dirs,
             # INPUTS
             input_embedding_key=args.input_embedding_key,
             input_embedding_size=args.input_embedding_size,
@@ -82,14 +82,12 @@ def prepare_model(args, dg_args, log_level):
             use_skip_connection=args.use_skip_connection,
             # TRACKING MODEL
             dg_key=args.dg_key, dg_args=dg_args,
-            normalize_targets=args.normalize_directions,
+            normalize_targets=args.normalize_targets,
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
             log_level=log_level)
 
-        # logging.info("Learn2track model user-defined parameters: \n" +
-        #              format_dict_to_str(model.params) + '\n')
         logging.info("Learn2track model final parameters:" +
                      format_dict_to_str(model.params_for_json_prints))
     return model

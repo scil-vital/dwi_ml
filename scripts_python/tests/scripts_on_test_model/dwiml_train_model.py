@@ -6,7 +6,7 @@ Train a model.
 
 This script uses a fake model to allow testing. Please create your own model
 (possibly with your own trainer, batch sampler, batch loader), copy this script
-to your project and adapt it.
+to your projects and adapt it.
 """
 import argparse
 import logging
@@ -14,15 +14,15 @@ import os
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.data.dataset.utils import (
-    add_dataset_args, prepare_multisubjectdataset)
+from dwi_ml.data.dataset.utils import (add_dataset_args,
+                                       prepare_multisubjectdataset)
 from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
-from dwi_ml.training.utils.batch_samplers import add_args_batch_sampler
-from dwi_ml.training.utils.batch_loaders import add_args_batch_loader
+from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
+                                                  prepare_batch_sampler)
+from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
+                                                 prepare_batch_loader)
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_training_experiment,
     add_memory_args_training_experiment)
@@ -67,42 +67,8 @@ def init_from_args(args, sub_loggers_level):
     model = TrackingModelForTestWithPD()  # To be instantiated correctly.
 
     # Preparing the batch sampler.
-    with Timer("\nPreparing batch sampler...", newline=True, color='green'):
-        batch_sampler = DWIMLBatchIDSampler(
-            dataset, streamline_group_name=args.streamline_group_name,
-            batch_size_training=args.batch_size_training,
-            batch_size_validation=args.batch_size_validation,
-            batch_size_units=args.batch_size_units,
-            nb_streamlines_per_chunk=args.nb_streamlines_per_chunk,
-            nb_subjects_per_batch=args.nb_subjects_per_batch,
-            cycles=args.cycles,
-            rng=args.rng, log_level=sub_loggers_level)
-
-        logging.info("Batch sampler's user-defined parameters: " +
-                     format_dict_to_str(batch_sampler.params))
-
-    # Preparing the batch loader.
-    with Timer("\nPreparing batch loader...", newline=True, color='pink'):
-        batch_loader = DWIMLBatchLoaderOneInput(
-            dataset=dataset, model=model,
-            input_group_name=args.input_group_name,
-            streamline_group_name=args.streamline_group_name,
-            # STREAMLINES PREPROCESSING
-            step_size=args.step_size, compress=args.compress,
-            # STREAMLINES AUGMENTATION
-            noise_gaussian_size_training=args.noise_gaussian_size_training,
-            noise_gaussian_var_training=args.noise_gaussian_variability_training,
-            noise_gaussian_size_validation=args.noise_gaussian_size_validation,
-            noise_gaussian_var_validation=args.noise_gaussian_variability_validation,
-            reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
-            # NEIGHBORHOOD
-            neighborhood_vectors=model.neighborhood_vectors,
-            # OTHER
-            rng=args.rng, wait_for_gpu=args.use_gpu,
-            log_level=sub_loggers_level)
-
-        logging.info("Loader user-defined parameters: " +
-                     format_dict_to_str(batch_loader.params_for_json_prints))
+    batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)
+    batch_loader = prepare_batch_loader(dataset, model, args, sub_loggers_level)
 
     # Instantiate trainer
     # streamlines need to be sent to the forward method.

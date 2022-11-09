@@ -32,25 +32,23 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
     def __init__(self, experiment_name, nb_features: int,
                  rnn_layer_sizes: List[int],
                  # PREVIOUS DIRS
-                 nb_previous_dirs: int = 0,
-                 prev_dirs_embedding_size: int = None,
-                 prev_dirs_embedding_key: str = None,
-                 normalize_prev_dirs: bool = True,
+                 nb_previous_dirs: Union[int, None],
+                 prev_dirs_embedding_size: Union[int, None],
+                 prev_dirs_embedding_key: Union[str, None],
+                 normalize_prev_dirs: bool,
                  # INPUTS
-                 input_embedding_key: str = 'no_embedding',
-                 input_embedding_size: int = None,
-                 input_embedding_size_ratio: float = None,
+                 input_embedding_key: str,
+                 input_embedding_size: Union[int, None],
+                 input_embedding_size_ratio: Union[float, None],
                  # RNN
-                 rnn_key: str = 'lstm',
-                 use_skip_connection: bool = True,
-                 use_layer_normalization: bool = True,
-                 dropout: float = 0.,
+                 rnn_key: str, use_skip_connection: bool,
+                 use_layer_normalization: bool, dropout: float,
                  # DIRECTION GETTER
-                 dg_key: str = 'cosine-regression', dg_args: dict = None,
-                 normalize_targets: bool = True,
+                 dg_key: str, dg_args: Union[dict, None],
+                 normalize_targets: bool,
                  # Other
-                 neighborhood_type: str = None,
-                 neighborhood_radius: Union[int, float, List[float]] = None,
+                 neighborhood_type: Union[str, None],
+                 neighborhood_radius: Union[int, float, List[float], None],
                  log_level=logging.root.level):
         """
         Params
@@ -152,10 +150,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features
-        self.use_skip_connection = use_skip_connection
-        self.use_layer_normalization = use_layer_normalization
-        self.rnn_key = rnn_key
-        self.rnn_layer_sizes = rnn_layer_sizes
         self.dropout = dropout
 
         # ----------- Checks
@@ -191,7 +185,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             rnn_input_size += self.prev_dirs_embedding_size
         self.rnn_model = StackedRNN(
             rnn_key, rnn_input_size, rnn_layer_sizes,
-            use_skip_connections=use_skip_connection,
+            use_skip_connection=use_skip_connection,
             use_layer_normalization=use_layer_normalization,
             dropout=dropout)
 
@@ -208,6 +202,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         params.update({
             'input_embedding': self.input_embedding.params,
             'rnn_model': self.rnn_model.params,
+            'use_skip_connection': self.rnn_model.use_skip_connection,
+            'use_layer_normalization': self.rnn_model.use_layer_normalization,
         })
         return params
 
@@ -219,12 +215,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         params.update({
             'nb_features': int(self.nb_features),
             'input_embedding_key': self.input_embedding_key,
-            'input_embedding_size': int(self.input_embedding_size) if
-            self.input_embedding_size else None,
-            'rnn_key': self.rnn_key,
-            'rnn_layer_sizes': self.rnn_layer_sizes,
-            'use_skip_connection': self.use_skip_connection,
-            'use_layer_normalization': self.use_layer_normalization,
+            'input_embedding_size': int(self.input_embedding_size),
+            'input_embedding_size_ratio': None,
+            'rnn_key': self.rnn_model.rnn_torch_key,
+            'rnn_layer_sizes': self.rnn_model.layer_sizes,
+            'use_skip_connection': self.rnn_model.use_skip_connection,
+            'use_layer_normalization': self.rnn_model.use_layer_normalization,
             'dropout': self.dropout,
         })
 
@@ -242,6 +238,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             Batch of input sequences, i.e. MRI data. Length of the list is the
             number of streamlines in the batch. Each tensor is of size
             [nb_points, nb_features].
+        target_streamlines: List[torch.tensor],
+            Batch of streamlines (only necessary to save estimated outputs,
+            if asked).
         hidden_reccurent_states : tuple
             The current hidden states of the (stacked) RNN model.
         return_state: bool
@@ -253,9 +252,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             streamlines have the same number of points as inputs (we do not use
             the targets, so it's ok, we only need to compute the previous
             dirs).
-        target_streamlines: List[torch.tensor],
-            Batch of streamlines (only necessary to save estimated outputs,
-            if asked).
 
         Returns
         -------

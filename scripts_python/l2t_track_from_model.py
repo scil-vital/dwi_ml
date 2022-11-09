@@ -30,7 +30,7 @@ from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.tracking.propagator import RecurrentPropagator
+from dwi_ml.tracking.projects.learn2track_propagator import RecurrentPropagator
 from dwi_ml.tracking.tracker import DWIMLTracker
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,

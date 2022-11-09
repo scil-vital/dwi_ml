@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 import argparse
+import logging
+
+from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 
 
 def add_args_batch_loader(p: argparse.ArgumentParser):
@@ -34,14 +39,14 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
         default=0.,
         help="Idem; noise added during validation.")
     bl_g.add_argument(
-        '--noise_gaussian_variability_training', type=float, metavar='v',
+        '--noise_gaussian_var_training', type=float, metavar='v',
         default=0.,
         help="If set, a variation is applied to the noise_size to have very \n"
              "noisy streamlines and less noisy streamlines. This means that \n"
              "the real gaussian_size will be a random number in the range \n"
              "[size - variability, size + variability]. [0]")
     bl_g.add_argument(
-        '--noise_gaussian_variability_validation', type=float, metavar='v',
+        '--noise_gaussian_var_validation', type=float, metavar='v',
         default=0.,
         help="Idem; will be used during validation.")
     bl_g.add_argument(
@@ -56,3 +61,30 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
         '--reverse_ratio', type=float, metavar='r', default=0.,
         help="Percentage of streamlines to randomly reverse in each batch. "
              "[0]")
+
+
+def prepare_batch_loader(dataset, model, args, sub_loggers_level):
+    # Preparing the batch loader.
+    with Timer("\nPreparing batch loader...", newline=True, color='pink'):
+        batch_loader = DWIMLBatchLoaderOneInput(
+            dataset=dataset, model=model,
+            input_group_name=args.input_group_name,
+            streamline_group_name=args.streamline_group_name,
+            # STREAMLINES PREPROCESSING
+            step_size=args.step_size, compress=args.compress,
+            # STREAMLINES AUGMENTATION
+            noise_gaussian_size_training=args.noise_gaussian_size_training,
+            noise_gaussian_var_training=args.noise_gaussian_var_training,
+            noise_gaussian_size_validation=args.noise_gaussian_size_validation,
+            noise_gaussian_var_validation=args.noise_gaussian_var_validation,
+            reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
+            # NEIGHBORHOOD
+            neighborhood_vectors=model.neighborhood_vectors,
+            # OTHER
+            rng=args.rng, wait_for_gpu=args.use_gpu,
+            log_level=sub_loggers_level)
+
+        logging.info("Loader user-defined parameters: " +
+                     format_dict_to_str(batch_loader.params_for_json_prints))
+
+    return batch_loader

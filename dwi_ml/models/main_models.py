@@ -166,8 +166,9 @@ class ModelWithNeighborhood(MainModelAbstract):
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
         add_vectors_to_data: bool
-            If true, neighborhood vectors will be concatenated to data at each
-            point, meaning that the number of features per point will be 3 more.
+            If true, neighborhood vectors (the coordinates, not the data) will
+            be concatenated to the data at each point, meaning that the number
+            of features per point will be 3 more.
         """
         super().__init__(**kw)
 
@@ -196,6 +197,7 @@ class ModelWithNeighborhood(MainModelAbstract):
                  "grid, in voxel space.")
         p.add_argument(
             '--neighborhood_radius', type=Union[int, float, List[float]],
+            metavar='{r, [r, r]}',
             help="- With type 'axes', radius must be a float or a list[float] "
                  "(it will then be a \nmulti-radius neighborhood (lying on "
                  "concentring spheres).\n"
@@ -527,7 +529,6 @@ class MainModelOneInput(MainModelAbstract):
             for s in range(len(coords_torch)):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
-        logging.warning("?????????? prepared input: {}".format([type(subj_x_data), len(subj_x_data), type(subj_x_data[0]), subj_x_data[0].shape]))
         return subj_x_data, input_mask
 
 
@@ -594,12 +595,12 @@ class ModelForTracking(MainModelAbstract):
     @staticmethod
     def add_args_tracking_model(p):
         p.add_argument(
-            '--normalize_directions', action='store_true',
+            '--normalize_targets', action='store_true',
             help="If true, directions will be normalized, both during "
-                 "tracking (usually, we normalize. But by not normalizing and "
-                 "working with compressed streamlines, you could hope your "
-                 "model will gain a sense of distance) and during training "
-                 "(if you train a regression model).")
+                 "tracking (usually, we \nnormalize. But by not normalizing "
+                 "and working with compressed streamlines, \nyou could hope "
+                 "your model will gain a sense of distance) and during "
+                 "training \n(if you train a regression model).")
         add_direction_getter_args(p)
 
     @property

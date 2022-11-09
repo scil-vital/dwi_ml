@@ -3,6 +3,7 @@ import logging
 
 import numpy as np
 import torch
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 from torch.nn.utils.rnn import pack_sequence
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
@@ -40,7 +41,7 @@ def test_stacked_rnn():
     batch_x_packed = pack_sequence(batch_x, enforce_sorted=False)
 
     model = StackedRNN('gru', input_size=4, layer_sizes=[3, 3],
-                       use_skip_connections=True,
+                       use_skip_connection=True,
                        use_layer_normalization=True, dropout=0.4)
 
     # Model's logger level can be set by using the logger's name.
@@ -58,7 +59,22 @@ def test_learn2track():
     fake_x, fake_s = _create_batch()
 
     model = Learn2TrackModel('test', nb_features=4, rnn_layer_sizes=[3, 3],
-                             log_level='DEBUG')
+                             log_level='DEBUG',
+                             # Using default from script:
+                             nb_previous_dirs=0, prev_dirs_embedding_size=None,
+                             prev_dirs_embedding_key=None,
+                             normalize_prev_dirs=True,
+                             input_embedding_key='no_embedding',
+                             input_embedding_size=None,
+                             input_embedding_size_ratio=None,
+                             rnn_key='lstm', use_skip_connection=True,
+                             use_layer_normalization=True, dropout=0.,
+                             dg_key='cosine-regression', dg_args=None,
+                             normalize_targets=True,
+                             neighborhood_type=None, neighborhood_radius=None)
+
+    logging.info("Transformer original model final parameters:" +
+                 format_dict_to_str(model.params_for_json_prints))
 
     # Testing forward. No previous dirs
     model(fake_x, fake_s)

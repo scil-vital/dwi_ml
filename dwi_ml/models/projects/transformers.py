@@ -556,7 +556,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         return mean_loss
 
     def get_tracking_direction_det(self, model_outputs):
-        self.direction_getter.get_tracking_direction_get(model_outputs)
+        self.direction_getter.get_tracking_direction_det(model_outputs)
 
     def sample_tracking_direction_prob(self, model_outputs):
         self.direction_getter.sample_tracking_direction_prob(

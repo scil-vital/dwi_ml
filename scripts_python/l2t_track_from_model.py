@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This script allows tracking from a trained projects model.
+This script allows tracking from a trained Learn2track model.
 """
 import argparse
 import logging
@@ -10,18 +10,16 @@ import math
 
 import dipy.core.geometry as gm
 from dipy.io.stateful_tractogram import (StatefulTractogram, Space,
-                                         set_sft_logger_level, Origin)
+                                         set_sft_logger_level)
 from dipy.io.streamline import save_tractogram
 import h5py
 import nibabel as nib
-import numpy as np
 import torch
+from dipy.io.utils import is_header_compatible
 
-from scilpy.image.datasets import DataVolume
 from scilpy.io.utils import (add_sphere_arg,
                              assert_inputs_exist, assert_outputs_exist,
                              verify_compression_th)
-from scilpy.tracking.seed import SeedGenerator
 from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
@@ -34,7 +32,9 @@ from dwi_ml.tracking.projects.learn2track_propagator import RecurrentPropagator
 from dwi_ml.tracking.tracker import DWIMLTracker
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,
-                                   prepare_dataset_for_tracking)
+                                   prepare_dataset_for_tracking,
+                                   prepare_seed_generator,
+                                   prepare_tracking_mask)
 
 
 def build_argparser():
@@ -59,9 +59,9 @@ def build_argparser():
     return p
 
 
-def prepare_tracker(parser, args, hdf5_file, device,
+def prepare_tracker(parser, args, device,
                     min_nbr_pts, max_nbr_pts, max_invalid_dirs):
-    hdf_handle = h5py.File(hdf5_file, 'r')
+    hdf_handle = h5py.File(args.hdf5_file, 'r')
 
     sub_logger_level = args.logging.upper()
     if sub_logger_level == 'DEBUG':
@@ -71,29 +71,18 @@ def prepare_tracker(parser, args, hdf5_file, device,
     with Timer("\nLoading data and preparing tracker...",
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
-        seed_generator, nbr_seeds, seed_res, seed_data = \
-            _prepare_seed_generator(parser, args, hdf_handle)
+        seed_generator, nbr_seeds, seeding_mask_img = \
+            prepare_seed_generator(parser, args, hdf_handle)
 
         logging.info("Loading tracking mask.")
-        mask, ref, mask_res, mask_data = \
-            _prepare_tracking_mask(args, hdf_handle)
+        tracking_mask, tracking_mask_img = \
+            prepare_tracking_mask(args, hdf_handle)
 
         # Comparing tracking and seeding masks
-        if not mask_res[0] == mask_res[1] == mask_res[2]:
-            raise NotImplementedError("This is not ready for anisotropic "
-                                      "resolution.")
-
-        if not np.array_equal(mask_res, seed_res):
-            parser.error("Not the same resolution for the tracking and "
-                         "seeding masks! ({} vs {})".format(mask_res,
-                                                            seed_res))
-        if not np.array_equal(mask_data.shape, seed_data.shape):
-            parser.error("Not the same data size for the tracking and "
-                         "seeding masks! ({} vs {})"
-                         .format(mask_data.shape, seed_data.shape))
+        is_header_compatible(tracking_mask_img, seeding_mask_img)
 
         logging.info("Loading subject's data.")
-        subset, subj_idx = prepare_dataset_for_tracking(hdf5_file, args)
+        subset, subj_idx = prepare_dataset_for_tracking(args.hdf5_file, args)
 
         logging.info("Loading model.")
         model = Learn2TrackModel.load_params_and_state(
@@ -109,50 +98,14 @@ def prepare_tracker(parser, args, hdf5_file, device,
 
         logging.debug("Instantiating tracker.")
         tracker = DWIMLTracker(
-            propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,
+            propagator, tracking_mask, seed_generator, nbr_seeds, min_nbr_pts,
             max_nbr_pts, max_invalid_dirs, args.compress, args.nbr_processes,
             args.save_seeds, args.rng_seed, args.track_forward_only,
             use_gpu=args.use_gpu,
             simultanenous_tracking=args.simultaneous_tracking,
             log_level=args.logging)
 
-    return tracker, ref
-
-
-def _prepare_seed_generator(parser, args, hdf_handle):
-    seeding_group = hdf_handle[args.subj_id][args.seeding_mask_group]
-    seed_data = np.array(seeding_group['data'], dtype=np.float32)
-    seed_res = np.array(seeding_group.attrs['voxres'], dtype=np.float32)
-
-    seed_generator = SeedGenerator(seed_data, seed_res, space=Space.VOX,
-                                   origin=Origin('corner'))
-
-    if len(seed_generator.seeds_vox) == 0:
-        parser.error('Seed mask "{}" does not have any voxel with value > 0.'
-                     .format(args.in_seed))
-
-    if args.npv:
-        # toDo. Not really nb seed per voxel, just in average. Waiting for this
-        #  to be modified in scilpy, and we will adapt here.
-        nbr_seeds = len(seed_generator.seeds_vox) * args.npv
-    elif args.nt:
-        nbr_seeds = args.nt
-    else:
-        # Setting npv = 1.
-        nbr_seeds = len(seed_generator.seeds_vox)
-
-    return seed_generator, nbr_seeds, seed_res, seed_data
-
-
-def _prepare_tracking_mask(args, hdf_handle):
-    tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
-    mask_data = np.array(tm_group['data'], dtype=np.float64)
-    mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
-    affine = np.array(tm_group.attrs['affine'], dtype=np.float32)
-    ref = nib.Nifti1Image(mask_data, affine)
-
-    mask = DataVolume(mask_data, mask_res, args.mask_interp)
-    return mask, ref, mask_res, mask_data
+    return tracker, tracking_mask_img
 
 
 def main():
@@ -192,7 +145,7 @@ def main():
         if torch.cuda.is_available():
             device = torch.device('cuda')
 
-    tracker, ref = prepare_tracker(parser, args, args.hdf5_file, device,
+    tracker, ref = prepare_tracker(parser, args, device,
                                    min_nbr_pts, max_nbr_pts, max_invalid_dirs)
 
     # ----- Track

@@ -66,7 +66,7 @@ def test_execution_bst(script_runner):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     ret = script_runner.run(
-        'tt_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+        'tto_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
         '--algo', 'det', '--nt', '2', '--rk_order', '1', '--logging', 'DEBUG',
         '--rng_seed', '0', '--min_length', '0', '--subset', 'training')

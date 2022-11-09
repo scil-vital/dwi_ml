@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+import nibabel as nib
+import numpy as np
+from dipy.io.stateful_tractogram import Space, Origin
+
+from scilpy.image.datasets import DataVolume
 from scilpy.io.utils import add_processes_arg
+from scilpy.tracking.seed import SeedGenerator
+
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 
 
 def add_mandatory_options_tracking(p):
@@ -147,3 +154,45 @@ def prepare_dataset_for_tracking(hdf5_file, args):
     subj_idx = subset.subjects.index(args.subj_id)
 
     return subset, subj_idx
+
+
+def prepare_seed_generator(parser, args, hdf_handle):
+    sm_group = hdf_handle[args.subj_id][args.seeding_mask_group]
+    data = np.array(sm_group['data'], dtype=np.float32)
+    res = np.array(sm_group.attrs['voxres'], dtype=np.float32)
+    affine = np.array(sm_group.attrs['affine'], dtype=np.float32)
+
+    seed_generator = SeedGenerator(data, res, space=Space.VOX,
+                                   origin=Origin('corner'))
+
+    if len(seed_generator.seeds_vox) == 0:
+        parser.error('Seed mask "{}" does not have any voxel with value > 0.'
+                     .format(args.in_seed))
+
+    if args.npv:
+        # toDo. Not really nb seed per voxel, just in average. Waiting for this
+        #  to be modified in scilpy, and we will adapt here.
+        nbr_seeds = len(seed_generator.seeds_vox) * args.npv
+    elif args.nt:
+        nbr_seeds = args.nt
+    else:
+        # Setting npv = 1.
+        nbr_seeds = len(seed_generator.seeds_vox)
+
+    # Preparing seed img for faster header comparison
+    seed_img = nib.Nifti1Image(data, affine)
+
+    return seed_generator, nbr_seeds, seed_img
+
+
+def prepare_tracking_mask(args, hdf_handle):
+    tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
+    data = np.array(tm_group['data'], dtype=np.float64)
+    res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
+    affine = np.array(tm_group.attrs['affine'], dtype=np.float32)
+
+    mask = DataVolume(data, res, args.mask_interp)
+    img = nib.Nifti1Image(data, affine)
+
+    return mask, img
+

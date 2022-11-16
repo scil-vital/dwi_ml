@@ -114,5 +114,5 @@ def _load_directly_and_verify(batch_loader, batch_idx_tuples, ref):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='DEBUG')
+    logging.getLogger().setLevel(level='DEBUG')
     save_loaded_batch_for_visual_assessment()

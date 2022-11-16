@@ -195,7 +195,7 @@ def main():
     root_level = args.logging
     if root_level == logging.DEBUG:
         root_level = logging.INFO
-    logging.basicConfig(level=root_level)
+    logging.getLogger().setLevel(level=root_level)
 
     # ----- Checks
     if not nib.streamlines.is_supported(args.out_tractogram):

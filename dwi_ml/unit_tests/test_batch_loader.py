@@ -18,7 +18,7 @@ SPLIT_RATIO = 0.5
 def test_batch_loader():
     data_dir = fetch_testing_data()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.getLogger().setLevel(level=logging.INFO)
 
     # Change to true to allow debug mode: saves the mask for visual assessment.
     # Requires a reference.
@@ -158,7 +158,7 @@ def _verify_loaded_batch(batch, expected_nb_streamlines, split_ratio):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='INFO')
+    logging.getLogger().setLevel(level='INFO')
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!
     set_sft_logger_level('WARNING')

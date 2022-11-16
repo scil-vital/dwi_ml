@@ -52,7 +52,7 @@ def main():
     args = p.parse_args()
 
     # Initialize logger
-    logging.basicConfig(level=str(args.logging).upper())
+    logging.getLogger().setLevel(level=str(args.logging).upper())
 
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!

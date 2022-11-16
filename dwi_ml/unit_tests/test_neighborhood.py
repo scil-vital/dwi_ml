@@ -73,6 +73,6 @@ def test_neighborhood_interpolation():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='DEBUG')
+    logging.getLogger().setLevel(level='DEBUG')
     test_neighborhood_interpolation()
     test_neighborhood_vectors()

@@ -75,7 +75,7 @@ def main():
 
     # Setting root logger with high level but we will set trainer to
     # user-defined level.
-    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger().setLevel(level=logging.WARNING)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
     if not os.path.exists(os.path.join(

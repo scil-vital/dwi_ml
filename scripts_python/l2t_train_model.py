@@ -107,7 +107,7 @@ def main():
     if args.logging == 'DEBUG':
         sub_loggers_level = 'INFO'
 
-    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger().setLevel(level=logging.WARNING)
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])

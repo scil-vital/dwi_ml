@@ -36,7 +36,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    logging.basicConfig(level=logging.INFO)
+    logging.getLogger().setLevel(level=logging.INFO)
 
     path = args.path
 

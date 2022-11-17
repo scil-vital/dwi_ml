@@ -39,7 +39,7 @@ Included tests are:
 tol = 1e-5
 d = 3
 
-logging.basicConfig(level='DEBUG')
+logging.getLogger().setLevel(level='DEBUG')
 
 
 def _independent_gaussian_log_prob_vector(x, mus, sigmas):

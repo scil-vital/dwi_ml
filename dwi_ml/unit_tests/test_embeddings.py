@@ -37,7 +37,7 @@ def _verify_all_outputs(input_data, keys_to_embeddings, nb_features):
 
 
 def test_embeddings():
-    logging.basicConfig(level='DEBUG')
+    logging.getLogger().setLevel(level='DEBUG')
 
     logging.debug("Unit test: embeddings on tensors")
 

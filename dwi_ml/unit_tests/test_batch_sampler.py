@@ -106,5 +106,5 @@ def iterate_on_sampler_and_verify(
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='DEBUG')
+    logging.getLogger().setLevel(level='DEBUG')
     test_batch_sampler()

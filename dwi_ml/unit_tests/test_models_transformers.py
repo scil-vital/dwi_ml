@@ -104,5 +104,5 @@ def test_models():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='DEBUG')
+    logging.getLogger().setLevel(level='DEBUG')
     test_models()

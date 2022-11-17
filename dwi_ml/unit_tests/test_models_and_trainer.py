@@ -16,8 +16,6 @@ batch_size_units = 'nb_streamlines'
 
 
 def test_trainer_and_models():
-    # logging.basicConfig(level='DEBUG')
-
     data_dir = fetch_testing_data()
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
@@ -77,5 +75,5 @@ def _create_trainer(batch_sampler, batch_loader, model):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='INFO')
+    logging.getLogger().setLevel(level='INFO')
     test_trainer_and_models()

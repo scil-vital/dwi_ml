@@ -86,7 +86,7 @@ def logging_redirect_tqdm(
     LOG = logging.getLogger(__name__)
 
     if __name__ == '__main__':
-        logging.basicConfig(level=logging.INFO)
+        logging.getLogger().setLevel(level=logging.INFO)
         with logging_redirect_tqdm():
             for i in trange(9):
                 if i == 4:

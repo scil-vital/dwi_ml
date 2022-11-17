@@ -169,5 +169,5 @@ def _lazy_version(hdf5_filename):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='DEBUG')
+    logging.getLogger().setLevel(level='DEBUG')
     test_multisubjectdataset()

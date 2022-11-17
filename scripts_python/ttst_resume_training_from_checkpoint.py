@@ -96,7 +96,7 @@ def main():
     logging_level = args.logging_choice.upper()
     if args.logging_choice == 'as_much_as_possible':
         logging_level = 'DEBUG'
-    logging.basicConfig(level=logging_level)
+    logging.getLogger().setLevel(level=logging_level)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
     if not os.path.exists(os.path.join(

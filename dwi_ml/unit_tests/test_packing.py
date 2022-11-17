@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 
-logging.basicConfig(level='INFO')
+logging.getLogger().setLevel(level='INFO')
 
 
 def test_packing_unpacking():

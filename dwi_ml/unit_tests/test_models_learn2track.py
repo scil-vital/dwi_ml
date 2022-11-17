@@ -81,6 +81,6 @@ def test_learn2track():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level='DEBUG')
+    logging.getLogger().setLevel(level='DEBUG')
     test_stacked_rnn()
     test_learn2track()

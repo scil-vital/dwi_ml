@@ -52,7 +52,6 @@ def init_from_checkpoint(args):
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
-    logging.warning(_args)
     batch_sampler = prepare_batch_sampler(dataset, _args, sub_loggers_level)
 
     # Prepare batch loader
@@ -75,7 +74,7 @@ def main():
 
     # Setting root logger with high level but we will set trainer to
     # user-defined level.
-    logging.getLogger().setLevel(level=logging.WARNING)
+    logging.getLogger().setLevel(level=logging.INFO)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
     if not os.path.exists(os.path.join(

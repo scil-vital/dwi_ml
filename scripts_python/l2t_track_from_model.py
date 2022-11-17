@@ -214,6 +214,8 @@ def main():
     # typically produces a lot of outputs!
     set_sft_logger_level('WARNING')
 
+    logging.info("Saving resulting tractogram to {}"
+                 .format(args.out_tractogram))
     sft = StatefulTractogram(streamlines, ref, Space.VOXMM,
                              data_per_streamline=data_per_streamline)
     save_tractogram(sft, args.out_tractogram,

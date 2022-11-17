@@ -196,8 +196,8 @@ class ModelWithNeighborhood(MainModelAbstract):
                  "surrounding the origin \nthat mimic the original voxel "
                  "grid, in voxel space.")
         p.add_argument(
-            '--neighborhood_radius', type=Union[int, float, List[float]],
-            metavar='{r, [r, r]}',
+            '--neighborhood_radius', type=float,
+            metavar='r', nargs='+',
             help="- With type 'axes', radius must be a float or a list[float] "
                  "(it will then be a \nmulti-radius neighborhood (lying on "
                  "concentring spheres).\n"

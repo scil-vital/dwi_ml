@@ -9,18 +9,28 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import numpy as np
 
+MAX_PLOT = 3
+
 
 def visualize_logs(logs: Dict[str, np.ndarray]):
-    if len(logs) > 1:
-        fig, ax = plt.subplots(nrows=len(logs))
+    nb_plots_left = len(logs)
+    all_keys = list(logs.keys())
+    key_idx = 0
+    while nb_plots_left > 0:
+        next_nb_plots = min(nb_plots_left, MAX_PLOT)
+        fig, axs = plt.subplots(nrows=next_nb_plots)
+        if next_nb_plots == 1:
+            axs = [axs]
 
-        for i, (log_name, data) in enumerate(logs.items()):
-            ax[i].set_title(log_name)
-            ax[i].plot(data)
-    else:
-        key, data = logs.popitem()
-        plt.title(key)
-        plt.plot(data)
+        for i in range(0, next_nb_plots):
+            key = all_keys[key_idx]
+            print("{}".format(key))
+            axs[i].set_title(key)
+            axs[i].plot(logs[key])
+            key_idx += 1
+
+        nb_plots_left -= next_nb_plots
+
 
     plt.tight_layout()
     plt.show()
@@ -50,7 +60,6 @@ def main():
     log_files = list(logs_path.glob('*.npy'))
     log_files_str = [str(f) for f in log_files]
 
-    logging.info("Found files: {}".format(log_files_str))
     logs = {}
     for log_file in log_files:
         log_name = log_file.stem

@@ -36,7 +36,7 @@
 # =====================================#
 #  VARIABLES TO BE DEFINED BY THE USER #
 # =====================================#
-tractoflow_folder=$1   # Path to the working folder that contains the date
+tractoflow_folder=$1   # Path to the working folder that contains the data
 #                     (ex: database/derivatives/tractoflow).
 dwi_ml_folder=$2     # Path where to save the output.
 #                     (ex: database/derivatives/dwi_ml_ready)
@@ -93,38 +93,51 @@ do
 
     # dwi/dwi:
     echo "  File: dwi_resampled"
-    if [ ! -f $tractoflow_folder/$subjid/Resample_DWI/${subjid}__dwi_resampled.nii.gz ]; then echo "Subject's DWI not found"; exit 1; fi
-    ln -s $tractoflow_folder/$subjid/Resample_DWI/${subjid}__dwi_resampled.nii.gz $dwi_ml_folder/$subjid/dwi/dwi.nii.gz
+    dwi=$tractoflow_folder/$subjid/Resample_DWI/${subjid}__dwi_resampled.nii.gz
+    if [ ! -f $dwi ]; then echo "Subject's DWI not found: $dwi"; exit 1; fi
+    ln -s $dwi $dwi_ml_folder/$subjid/dwi/dwi.nii.gz
 
     # dwi/fodf:
     echo "  File: fodf"
-    if [ ! -f $tractoflow_folder/$subjid/FODF_Metrics/${subjid}__fodf.nii.gz ]; then echo "Subject's FODF not found"; exit 1; fi
-    ln -s $tractoflow_folder/$subjid/FODF_Metrics/${subjid}__fodf.nii.gz $dwi_ml_folder/$subjid/dwi/fodf.nii.gz
+    fODF=$tractoflow_folder/$subjid/FODF_Metrics/${subjid}__fodf.nii.gz
+    if [ ! -f $fODF ]; then echo "Subject's fODF not found: $fODF"; exit 1; fi
+    ln -s $fODF $dwi_ml_folder/$subjid/dwi/fodf.nii.gz
 
     # dwi/bval
     echo "  File: bval"
-    if [ ! -f $tractoflow_folder/$subjid/Eddy/${subjid}__bval_eddy ]; then echo "Subject's bval not found"; exit 1; fi
-    ln -s $tractoflow_folder/$subjid/Eddy/${subjid}__bval_eddy $dwi_ml_folder/$subjid/dwi/bval
+    bval=$tractoflow_folder/$subjid/Eddy/${subjid}__bval_eddy
+    if [ ! -f $bval ]; then
+        bval=$tractoflow_folder/$subjid/Eddy_Topup/${subjid}__bval_eddy
+        if [ ! -f $bval ]; then echo "Subject's bval not found: $bval"; exit 1; fi
+    fi
+    ln -s $bval $dwi_ml_folder/$subjid/dwi/bval
 
     # dwi/bvec
     echo "  File: bvec"
-    if [ ! -f $tractoflow_folder/$subjid/Eddy/${subjid}__dwi_eddy_corrected.bvec ]; then echo "Subject's bvec not found"; exit 1; fi
-    ln -s $tractoflow_folder/$subjid/Eddy/${subjid}__dwi_eddy_corrected.bvec $dwi_ml_folder/$subjid/dwi/bvec.bvec
+    bvec=$tractoflow_folder/$subjid/Eddy/${subjid}__dwi_eddy_corrected.bvec
+    if [ ! -f $bvec ]; then
+        bvec=$tractoflow_folder/$subjid/Eddy_Topup/${subjid}__dwi_eddy_corrected.bvec
+        if [ ! -f $bvec ]; then echo "Subject's bvec not found: $bvec"; exit 1; fi
+    fi
+    ln -s $bvec $dwi_ml_folder/$subjid/dwi/bvec.bvec
 
     # dwi/FA
     echo "  File: fa"
-    if [ ! -f $tractoflow_folder/$subjid/DTI_Metrics/${subjid}__fa.nii.gz ]; then echo "Subject's FA not found"; exit 1; fi
-    ln -s $tractoflow_folder/$subjid/DTI_Metrics/${subjid}__fa.nii.gz $dwi_ml_folder/$subjid/dwi/fa.nii.gz
+    fa=$tractoflow_folder/$subjid/DTI_Metrics/${subjid}__fa.nii.gz
+    if [ ! -f $fa ]; then echo "Subject's FA not found: $fa"; exit 1; fi
+    ln -s $fa $dwi_ml_folder/$subjid/dwi/fa.nii.gz
 
     # anat/T1:
     echo "  File: t1"
-    if [ ! -f $tractoflow_folder/$subjid/Register_T1/${subjid}__t1_warped.nii.gz ]; then echo "Subject's T1 not found"; exit 1; fi
-    ln -s $tractoflow_folder/$subjid/Register_T1/${subjid}__t1_warped.nii.gz $dwi_ml_folder/$subjid/anat/t1.nii.gz
+    t1=$tractoflow_folder/$subjid/Register_T1/${subjid}__t1_warped.nii.gz
+    if [ ! -f $t1 ]; then echo "Subject's T1 not found: $t1"; exit 1; fi
+    ln -s $t1 $dwi_ml_folder/$subjid/anat/t1.nii.gz
 
     # mask/wm
     echo "  File: wm"
-    if [ ! -f $tractoflow_folder/$subjid/Segment_Tissues/${subjid}__map_wm.nii.gz ]; then echo "Subject's WM map not found"; exit 1; fi
-    ln -s $tractoflow_folder/$subjid/Segment_Tissues/${subjid}__map_wm.nii.gz $dwi_ml_folder/$subjid/masks/wm.nii.gz
+    wm=$tractoflow_folder/$subjid/Segment_Tissues/${subjid}__map_wm.nii.gz
+    if [ ! -f $wm ]; then echo "Subject's WM map not found: $wm"; exit 1; fi
+    ln -s $wm $dwi_ml_folder/$subjid/masks/wm.nii.gz
 
     # tractograms:
     echo "  Tractograms:"
@@ -132,10 +145,11 @@ do
     other_files=$(ls $tractoflow_folder/$subjid/Tracking*/*/*.trk 2>/dev/null)
     for tracking_file in $tracking_files $other_files
     do
-      echo "    File: $tracking_file"  # File contains the whole path.
-      filename=$(echo ${tracking_file#$tractoflow_folder/$subjid/} | tr / _)
-      echo "       New filename: $filename"
-      ln -s $tracking_file $dwi_ml_folder/$subjid/tractograms/$filename
+        filename=${tracking_file#$tractoflow_folder/$subjid/}
+        echo "    Found: $filename"  # File contains the whole path.
+        linkname=$(echo $filename | tr / _)
+        echo "       Link name: $linkname"
+        ln -s $tracking_file $dwi_ml_folder/$subjid/tractograms/$linkname
     done
 
 done

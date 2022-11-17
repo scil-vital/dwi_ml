@@ -145,6 +145,10 @@ def _prepare_seed_generator(parser, args, hdf_handle):
 
 
 def _prepare_tracking_mask(args, hdf_handle):
+    if args.tracking_mask_group not in hdf_handle[args.subj_id]:
+        raise KeyError("HDF group '{}' not found for subject {} in hdf file {}"
+                       .format(args.tracking_mask_group, args.subj_id,
+                               hdf_handle))
     tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
     mask_data = np.array(tm_group['data'], dtype=np.float64)
     mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
@@ -204,6 +208,8 @@ def main():
                       .format(len(streamlines), tracker.nbr_seeds))
 
     # save seeds if args.save_seeds is given
+    print(type(seeds))
+    print(seeds)
     data_per_streamline = {'seed': lambda: seeds} if args.save_seeds else {}
 
     # Silencing SFT's logger if our logging is in DEBUG mode, because it

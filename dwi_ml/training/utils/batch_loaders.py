@@ -9,8 +9,7 @@ from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 
 def add_args_batch_loader(p: argparse.ArgumentParser):
     # STREAMLINES PREPROCESSING
-    bl_g = p.add_argument_group(
-        "Batch loader")
+    bl_g = p.add_argument_group("Batch loader")
     sub = bl_g.add_mutually_exclusive_group()
     sub.add_argument(
         '--step_size', type=float, metavar='s',

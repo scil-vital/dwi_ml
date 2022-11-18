@@ -17,7 +17,7 @@ from dwi_ml.models.utils.fisher_von_mises import (
     fisher_von_mises_log_prob_vector)
 
 """
-Included tests are:
+Included utils are:
     test_cosine_regression_loss()
         - identical vectors
         - vectors with same angles

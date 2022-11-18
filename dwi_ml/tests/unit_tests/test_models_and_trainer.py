@@ -5,9 +5,9 @@ import tempfile
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
-from dwi_ml.tests.utils import (ModelForTest, create_test_batch_sampler,
-                                create_batch_loader, fetch_testing_data,
-                                TrackingModelForTestWithPD)
+from dwi_ml.tests.utils.data_and_models_for_tests import (
+    create_test_batch_sampler, create_batch_loader, fetch_testing_data,
+    ModelForTest, TrackingModelForTestWithPD)
 
 SAVE_RESULT_SFT_NII = False
 ref = None
@@ -29,7 +29,7 @@ def test_trainer_and_models():
     model = ModelForTest()
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
-    # Start tests
+    # Start utils
     trainer = _create_trainer(batch_sampler, batch_loader, model)
     trainer.train_and_validate()
 
@@ -38,7 +38,7 @@ def test_trainer_and_models():
     model2 = TrackingModelForTestWithPD()
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
-    # Start tests
+    # Start utils
     trainer2 = _create_trainer(batch_sampler, batch_loader, model2)
     trainer2.train_and_validate()
 

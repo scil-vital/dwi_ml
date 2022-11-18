@@ -119,7 +119,8 @@ class MainModelAbstract(torch.nn.Module):
         """
         # Load attributes and hyperparameters from json file
         params_filename = os.path.join(model_dir, "parameters.json")
-        params = json.load(open(params_filename))
+        with open(params_filename, 'r') as json_file:
+            params = json.load(json_file)
 
         logger.setLevel(log_level)
         logger.debug("Loading model from saved parameters:" +

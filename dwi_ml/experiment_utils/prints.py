@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import collections
+from collections.abc import Mapping
 
 
 def format_dict_to_str(d, indent=1):
@@ -10,7 +10,7 @@ def format_dict_to_str(d, indent=1):
 
 
 def _format_val_to_str(v, indent):
-    if isinstance(v, collections.Mapping):
+    if isinstance(v, Mapping):
         return format_dict_to_str(v, indent)
     else:
         return v

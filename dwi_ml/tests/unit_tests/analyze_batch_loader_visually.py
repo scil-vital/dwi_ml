@@ -11,8 +11,8 @@ from dipy.io.streamline import save_tractogram
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.models.main_models import MainModelOneInput
-from dwi_ml.tests.utils import (create_test_batch_sampler, create_batch_loader,
-                                fetch_testing_data)
+from dwi_ml.tests.utils.data_and_models_for_tests import (create_test_batch_sampler, create_batch_loader,
+                                                          fetch_testing_data)
 
 tmp_dir = tempfile.TemporaryDirectory()
 

@@ -12,7 +12,7 @@ B1 = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
                [1, 0, -1, 0, -1, 0, 1, 0],
                [1, -1, -1, 1, 0, 0, 0, 0],
                [1, -1, 0, 0, -1, 1, 0, 0],
-               [-1, 1, 1, -1, 1, -1, -1, 1]], dtype=np.float)
+               [-1, 1, 1, -1, 1, -1, -1, 1]], dtype=float)
 
 # We will use the 8 voxels surrounding current position to interpolate a
 # value. See ref https://spie.org/samples/PM159.pdf. The point p000 = [0, 0, 0]
@@ -24,7 +24,7 @@ idx_box = np.array([[0, 0, 0],
                     [1, 0, 0],
                     [1, 0, 1],
                     [1, 1, 0],
-                    [1, 1, 1]], dtype=np.float)
+                    [1, 1, 1]], dtype=float)
 
 
 def torch_trilinear_interpolation(volume: torch.Tensor,

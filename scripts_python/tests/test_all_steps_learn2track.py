@@ -5,9 +5,10 @@ import os
 import tempfile
 
 import torch
-from dwi_ml.tests.expected_values import TEST_EXPECTED_VOLUME_GROUPS, \
-    TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_SUBJ_NAMES
-from dwi_ml.tests.utils import fetch_testing_data
+from dwi_ml.tests.utils.expected_values import (
+    TEST_EXPECTED_VOLUME_GROUPS,
+    TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_SUBJ_NAMES)
+from dwi_ml.tests.utils.data_and_models_for_tests import fetch_testing_data
 
 data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
@@ -33,7 +34,7 @@ def test_execution_training_tracking(script_runner):
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]
     streamline_group_name = TEST_EXPECTED_STREAMLINE_GROUPS[0]
 
-    # Here, testing default values only. See dwi_ml.unit_tests.test_trainer for more
+    # Here, testing default values only. See dwi_ml.tests.test_trainer for more
     # various testing.
     logging.info("************ TESTING TRAINING ************")
     ret = script_runner.run('l2t_train_model.py',

@@ -40,7 +40,7 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
 # PLEASE COPY AND ADAPT:
 ##################
 # Use your own model.
-from dwi_ml.tests.utils import TrackingModelForTestWithPD
+from dwi_ml.tests.utils.data_and_models_for_tests import TrackingModelForTestWithPD
 
 # Choose appropriate classes or implement your own child classes.
 # Example:

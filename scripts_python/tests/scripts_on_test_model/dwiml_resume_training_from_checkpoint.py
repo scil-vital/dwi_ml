@@ -14,7 +14,7 @@ from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
 
 # Please adapt:
-from dwi_ml.tests.utils import TrackingModelForTestWithPD
+from dwi_ml.tests.utils.data_and_models_for_tests import TrackingModelForTestWithPD
 
 
 def prepare_arg_parser():

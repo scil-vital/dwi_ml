@@ -16,12 +16,12 @@ from dwi_ml.data.dataset.subjectdata_list_containers import \
     SubjectsDataList, LazySubjectsDataList
 from dwi_ml.data.dataset.streamline_containers import \
     SFTData, LazySFTData, _LazyStreamlinesGetter
-from dwi_ml.tests.expected_values import (
+from dwi_ml.tests.utils.expected_values import (
     TEST_EXPECTED_SUBJ_NAMES, TEST_EXPECTED_STREAMLINE_GROUPS,
     TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_NB_STREAMLINES,
     TEST_EXPECTED_MRI_SHAPE, TEST_EXPECTED_NB_SUBJECTS,
     TEST_EXPECTED_NB_FEATURES)
-from dwi_ml.tests.utils import fetch_testing_data
+from dwi_ml.tests.utils.data_and_models_for_tests import fetch_testing_data
 
 
 def test_multisubjectdataset():

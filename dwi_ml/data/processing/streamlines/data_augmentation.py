@@ -171,7 +171,7 @@ def _extend_dict(main_dict: Union[PerArraySequenceDict, PerArrayDict],
                  added_dict: Union[PerArraySequenceDict, PerArrayDict]):
     """
     We can't do anything like main_dpp.extend(added_dpp).
-    Doing as in nibabel.streamlines.tests.test_tractogram.
+    Doing as in nibabel.streamlines.utils.test_tractogram.
     """
     for k, v in added_dict.items():
         main_dict[k].append(v)

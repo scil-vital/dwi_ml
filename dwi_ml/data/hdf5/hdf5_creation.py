@@ -7,6 +7,7 @@ from typing import List
 
 from dipy.io.stateful_tractogram import set_sft_logger_level, Space
 from dipy.io.streamline import load_tractogram, save_tractogram
+from dipy.io.utils import is_header_compatible
 from dipy.tracking.utils import length
 import h5py
 from nested_lookup import nested_lookup
@@ -387,13 +388,20 @@ class HDF5Creator:
         'nb_feature' (the size of last dimension) for each.
         (+ 'type' = 'volume')
         """
-        group_header = None
+        ref_header = None
         for group in self.volume_groups:
             logging.info("    - Processing volume group '{}'...".format(group))
 
             (group_data, group_affine,
              group_header, group_res) = self._process_one_volume_group(
                 group, subj_id, subj_input_dir, subj_std_mask_data)
+            if ref_header is None:
+                ref_header = group_header
+            else:
+                if not is_header_compatible(ref_header, group_header):
+                    logging.warning("MAJOR WARNING. Some volume groups have "
+                                    "incompatible headers for subh {}."
+                                    .format(subj_id))
             logging.debug('      *Done. Now creating dataset from group.')
             hdf_group = subj_hdf_group.create_group(group)
             hdf_group.create_dataset('data', data=group_data)
@@ -408,7 +416,7 @@ class HDF5Creator:
             # Adding the shape info separately to access it without loading
             # the data (useful for lazy data!).
             subj_hdf_group[group].attrs['nb_features'] = group_data.shape[-1]
-        return group_header
+        return ref_header
 
     def _process_one_volume_group(self, group: str, subj_id: str,
                                   subj_input_path: Path,
@@ -681,6 +689,13 @@ class HDF5Creator:
                 "We do not support file's type: {}. We only support .trk "
                 "and .tck files.".format(tractogram_file))
         if file_extension == '.trk':
+            logging.warning("TRACTOGRAM VS HEADER:")
+            logging.warning(tractogram_file)
+            logging.warning(header)
+            if not is_header_compatible(str(tractogram_file), header):
+                logging.warning("MAJOR WARNING. Streamlines group is not "
+                                "compatible with volume groups\n"
+                                "({})".format(tractogram_file))
             # overriding given header.
             header = 'same'
 

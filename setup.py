@@ -36,7 +36,7 @@ setup(
     keywords=info.KEYWORDS,
     maintainer=info.MAINTAINER,
     provides=info.PROVIDES,
-    packages=find_packages(exclude=['contrib', 'doc', 'unit_tests']),
+    packages=find_packages(exclude=['contrib', 'doc', 'tests']),
     install_requires=[],
     requires=info.REQUIRES,
     package_data={},

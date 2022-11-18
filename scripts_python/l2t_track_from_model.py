@@ -145,6 +145,10 @@ def _prepare_seed_generator(parser, args, hdf_handle):
 
 
 def _prepare_tracking_mask(args, hdf_handle):
+    if args.tracking_mask_group not in hdf_handle[args.subj_id]:
+        raise KeyError("HDF group '{}' not found for subject {} in hdf file {}"
+                       .format(args.tracking_mask_group, args.subj_id,
+                               hdf_handle))
     tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
     mask_data = np.array(tm_group['data'], dtype=np.float64)
     mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
@@ -204,12 +208,14 @@ def main():
                       .format(len(streamlines), tracker.nbr_seeds))
 
     # save seeds if args.save_seeds is given
-    data_per_streamline = {'seed': lambda: seeds} if args.save_seeds else {}
+    data_per_streamline = {'seed': seeds} if args.save_seeds else {}
 
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!
     set_sft_logger_level('WARNING')
 
+    logging.info("Saving resulting tractogram to {}"
+                 .format(args.out_tractogram))
     sft = StatefulTractogram(streamlines, ref, Space.VOXMM,
                              data_per_streamline=data_per_streamline)
     save_tractogram(sft, args.out_tractogram,

@@ -141,7 +141,7 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
         # Todo. This is not perfect yet. Sending data to new device at each new
         #  point. Could it already be a tensor in memory?
         start_time = datetime.now()
-        lines = [torch.as_tensor(s).to(self.device) for s in
+        lines = [torch.as_tensor(np.vstack(s)).to(self.device) for s in
                  self.current_lines]
         duration_sending_to_device = datetime.now() - start_time
 

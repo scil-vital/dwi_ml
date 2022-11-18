@@ -14,7 +14,7 @@ from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
 
 # Please adapt:
-from dwi_ml.tests.utils import TrackingModelForTestWithPD
+from dwi_ml.tests.utils.data_and_models_for_tests import TrackingModelForTestWithPD
 
 
 def prepare_arg_parser():
@@ -54,7 +54,6 @@ def init_from_checkpoint(args):
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
-    logging.warning(_args)
     batch_sampler = prepare_batch_sampler(dataset, _args, sub_loggers_level)
 
     # Prepare batch loader

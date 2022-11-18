@@ -173,7 +173,6 @@ class DWIMLAbstractTrainer:
             self.betas = None
         if self.betas is None and self.use_radam:
             self.betas = (0.9, 0.99)
-        self.patience = patience
         self.nb_cpu_processes = nb_cpu_processes
         self.use_gpu = use_gpu
 
@@ -208,8 +207,7 @@ class DWIMLAbstractTrainer:
         # initialization.
         # ----------------------
         if patience:
-            self.best_epoch_monitoring = BestEpochMonitoring(
-                patience=self.patience)
+            self.best_epoch_monitoring = BestEpochMonitoring(patience)
         else:
             # We won't use early stopping to stop the epoch, but we will use
             # it as monitor of the best epochs.
@@ -298,7 +296,6 @@ class DWIMLAbstractTrainer:
             'max_epochs': self.max_epochs,
             'max_batches_per_epoch_training': self.max_batches_per_epochs_train,
             'max_batches_per_epoch_validation': self.max_batches_per_epochs_valid,
-            'patience': self.patience,
             'nb_cpu_processes': self.nb_cpu_processes,
             'use_gpu': self.use_gpu,
             'comet_workspace': self.comet_workspace,
@@ -312,6 +309,7 @@ class DWIMLAbstractTrainer:
         params.update({
             'experiments_path': self.experiments_path,
             'experiment_name': self.experiment_name,
+            'patience': self.best_epoch_monitoring.patience,
             'type': str(type(self)),
             'comet_key': self.comet_key,
             'computed_values': {
@@ -463,10 +461,15 @@ class DWIMLAbstractTrainer:
                 mean_epoch_loss = self.train_loss_monitor.epochs_means[epoch]
 
             # Updating info
-            self.best_epoch_monitoring.update(mean_epoch_loss, epoch)
+            is_bad = self.best_epoch_monitoring.update(mean_epoch_loss, epoch)
 
             # Check if current best has been reached
-            if self.best_epoch_monitoring.best_epoch == epoch:
+            if is_bad:
+                self.logger.info(
+                    "** This is the {}th bad epoch (patience = {})"
+                    .format(self.best_epoch_monitoring.n_bad_epochs,
+                            self.best_epoch_monitoring.patience))
+            elif self.best_epoch_monitoring.best_epoch == epoch:
                 self._save_info_best_epoch()
 
             # End of epoch, save checkpoint for resuming later
@@ -477,7 +480,7 @@ class DWIMLAbstractTrainer:
                 logger.warning(
                     "Early stopping! Loss has not improved after {} epochs!\n"
                     "Best result: {}; At epoch #{}"
-                    .format(self.patience,
+                    .format(self.best_epoch_monitoring.patience,
                             self.best_epoch_monitoring.best_value,
                             self.best_epoch_monitoring.best_epoch))
                 break
@@ -768,7 +771,6 @@ class DWIMLAbstractTrainer:
         Hint: If you want to use this in your child class, use:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
-        print(cls)
         trainer = cls(model=model,
                       experiments_path=experiments_path,
                       experiment_name=experiment_name,
@@ -777,10 +779,6 @@ class DWIMLAbstractTrainer:
                       **checkpoint_state['params_for_init'])
 
         current_states = checkpoint_state['current_states']
-
-        # Overriding values
-        if new_patience:
-            trainer.patience = new_patience
         if new_max_epochs:
             trainer.max_epochs = new_max_epochs
 
@@ -826,6 +824,15 @@ class DWIMLAbstractTrainer:
         trainer.grad_norm_monitor.set_state(
             current_states['grad_norm_monitor_state'])
         trainer.optimizer.load_state_dict(current_states['optimizer_state'])
+        if new_patience:
+            trainer.best_epoch_monitoring.patience = new_patience
+        logging.info("Starting from checkpoint! Starting from epoch #{}.\n"
+                     "Previous best model was discovered at epoch #{}.\n"
+                     "When finishing previously, we were counting {} epochs "
+                     "with no improvement."
+                     .format(trainer.current_epoch,
+                             trainer.best_epoch_monitoring.best_epoch,
+                             trainer.best_epoch_monitoring.n_bad_epochs))
 
         return trainer
 
@@ -917,6 +924,8 @@ class DWIMLAbstractTrainer:
     def check_stopping_cause(checkpoint_state, new_patience=None,
                              new_max_epochs=None):
 
+        current_epoch = checkpoint_state['current_states']['current_epoch']
+
         # 1. Check if early stopping had been triggered.
         best_monitoring_state = \
             checkpoint_state['current_states']['best_epoch_monitoring_state']
@@ -926,7 +935,10 @@ class DWIMLAbstractTrainer:
             if bad_epochs >= best_monitoring_state['patience']:
                 raise EarlyStoppingError(
                     "Resumed experiment was stopped because of early "
-                    "stopping, increase patience in order to resume training!")
+                    "stopping (patience {} reached at epcoh {}).\n"
+                    "Increase patience in order to resume training!"
+                    .format(best_monitoring_state['patience'],
+                            current_epoch))
         elif bad_epochs >= new_patience:
             # New patience: checking if will be able to continue
             raise EarlyStoppingError(
@@ -937,7 +949,6 @@ class DWIMLAbstractTrainer:
                 .format(best_monitoring_state['n_bad_epochs'], new_patience))
 
         # 2. Checking that max_epochs had not been reached.
-        current_epoch = checkpoint_state['current_states']['current_epoch']
         if new_max_epochs is None:
             if current_epoch == \
                     checkpoint_state['params_for_init']['max_epochs'] - 1:

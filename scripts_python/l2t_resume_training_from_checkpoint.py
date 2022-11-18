@@ -25,7 +25,7 @@ def prepare_arg_parser():
     return p
 
 
-def init_from_checkpoint(args):
+def init_from_checkpoint(args, experiment_path):
 
     # Loading checkpoint
     checkpoint_state = Learn2TrackTrainer.load_params_from_checkpoint(
@@ -46,13 +46,10 @@ def init_from_checkpoint(args):
 
     # Load model from checkpoint directory
     model = Learn2TrackModel.load_params_and_state(
-        os.path.join(args.experiments_path, args.experiment_name,
-                     'checkpoint/model'),
-        sub_loggers_level)
+        os.path.join(experiment_path, 'model'), sub_loggers_level)
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
-    logging.warning(_args)
     batch_sampler = prepare_batch_sampler(dataset, _args, sub_loggers_level)
 
     # Prepare batch loader
@@ -75,14 +72,16 @@ def main():
 
     # Setting root logger with high level but we will set trainer to
     # user-defined level.
-    logging.getLogger().setLevel(level=logging.WARNING)
+    logging.getLogger().setLevel(level=logging.INFO)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
-    if not os.path.exists(os.path.join(
-            args.experiments_path, args.experiment_name, "checkpoint")):
-        raise FileNotFoundError("Experiment not found.")
+    experiment_path = os.path.join(
+            args.experiments_path, args.experiment_name, "checkpoint")
+    if not os.path.exists(experiment_path):
+        raise FileNotFoundError("Experiment not found ({})."
+                                .format(experiment_path))
 
-    trainer = init_from_checkpoint(args)
+    trainer = init_from_checkpoint(args, experiment_path)
 
     run_experiment(trainer)
 

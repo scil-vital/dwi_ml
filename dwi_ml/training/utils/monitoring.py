@@ -129,20 +129,28 @@ class BestEpochMonitoring(object):
             Loss value for a new training epoch
         epoch : int
             Current epoch
+
+        Returns
+        -------
+        is_bad: bool
+            True if this epoch was a bad epoch.
         """
         if self.best_value is None:
             # First epoch. Setting values.
             self.best_value = loss
             self.best_epoch = epoch
             self.n_bad_epochs = 0
+            return False
         elif loss < self.best_value - self.min_eps:
             # Improving from at least eps.
             self.best_value = loss
             self.best_epoch = epoch
             self.n_bad_epochs = 0
+            return False
         else:
             # Not improving enough
             self.n_bad_epochs += 1
+            return True
 
     @property
     def is_patience_reached(self):

@@ -352,7 +352,7 @@ class DWIMLPropagator(AbstractPropagator):
             # Adding a fake last point.
             # Todo. This is not perfect yet. Sending data to new device at each
             #  new point. Could it already be a tensor in memory?
-            lines = [torch.cat((torch.tensor(line),
+            lines = [torch.cat((torch.tensor(np.vstack(line)),
                                torch.zeros(1, 3)), dim=0).to(self.device)
                      for line in self.current_lines]
 

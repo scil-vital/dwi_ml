@@ -69,7 +69,6 @@ def init_from_checkpoint(args):
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
-    logging.warning(_args)
     batch_sampler = prepare_batch_sampler(dataset, _args, sub_loggers_level)
 
     # Prepare batch loader

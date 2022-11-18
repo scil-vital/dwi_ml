@@ -29,7 +29,7 @@ from dwi_ml.training.utils.experiment import (
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment
 
 # Please adapt
-from dwi_ml.tests.utils import TrackingModelForTestWithPD
+from dwi_ml.tests.utils.data_and_models_for_tests import TrackingModelForTestWithPD
 
 
 def prepare_arg_parser():

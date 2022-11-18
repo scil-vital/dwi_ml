@@ -118,8 +118,8 @@ def prepare_hdf5_creator(args):
         logging.debug('   Testing subjs: {}'.format(testing_subjs))
 
     # Read group information from the json file (config file)
-    json_file = open(args.config_file, 'r')
-    groups_config = json.load(json_file)
+    with open(args.config_file, 'r') as json_file:
+        groups_config = json.load(json_file)
 
     # Delete existing hdf5, if -f
     if args.overwrite and os.path.exists(args.out_hdf5_file):

@@ -924,6 +924,8 @@ class DWIMLAbstractTrainer:
     def check_stopping_cause(checkpoint_state, new_patience=None,
                              new_max_epochs=None):
 
+        current_epoch = checkpoint_state['current_states']['current_epoch']
+
         # 1. Check if early stopping had been triggered.
         best_monitoring_state = \
             checkpoint_state['current_states']['best_epoch_monitoring_state']
@@ -933,7 +935,10 @@ class DWIMLAbstractTrainer:
             if bad_epochs >= best_monitoring_state['patience']:
                 raise EarlyStoppingError(
                     "Resumed experiment was stopped because of early "
-                    "stopping, increase patience in order to resume training!")
+                    "stopping (patience {} reached at epcoh {}).\n"
+                    "Increase patience in order to resume training!"
+                    .format(best_monitoring_state['patience'],
+                            current_epoch))
         elif bad_epochs >= new_patience:
             # New patience: checking if will be able to continue
             raise EarlyStoppingError(
@@ -944,7 +949,6 @@ class DWIMLAbstractTrainer:
                 .format(best_monitoring_state['n_bad_epochs'], new_patience))
 
         # 2. Checking that max_epochs had not been reached.
-        current_epoch = checkpoint_state['current_states']['current_epoch']
         if new_max_epochs is None:
             if current_epoch == \
                     checkpoint_state['params_for_init']['max_epochs'] - 1:

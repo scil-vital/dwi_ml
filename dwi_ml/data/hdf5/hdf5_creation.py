@@ -689,7 +689,10 @@ class HDF5Creator:
                 "We do not support file's type: {}. We only support .trk "
                 "and .tck files.".format(tractogram_file))
         if file_extension == '.trk':
-            if not is_header_compatible(tractogram_file, header):
+            logging.warning("TRACTOGRAM VS HEADER:")
+            logging.warning(tractogram_file)
+            logging.warning(header)
+            if not is_header_compatible(str(tractogram_file), header):
                 logging.warning("MAJOR WARNING. Streamlines group is not "
                                 "compatible with volume groups\n"
                                 "({})".format(tractogram_file))

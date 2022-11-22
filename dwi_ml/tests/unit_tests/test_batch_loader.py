@@ -20,9 +20,8 @@ def test_batch_loader():
 
     logging.getLogger().setLevel(level=logging.INFO)
 
-    # Change to true to allow debug mode: saves the mask for visual assessment.
-    # Requires a reference.
-    batch_size = 500  # Testing only one value here.
+    batch_size = min(500, TEST_EXPECTED_NB_STREAMLINES[0])
+
     wait_for_gpu = False  # Testing both True and False is heavier...
 
     logging.info("Unit test: batch sampler iteration")

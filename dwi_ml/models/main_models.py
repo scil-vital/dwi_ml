@@ -515,8 +515,8 @@ class MainModelOneInput(MainModelAbstract):
 
         input_mask = None
         if prepare_mask:
-            print("DEBUGGING MODE. Returning batch_streamlines "
-                  "and mask together with inputs.")
+            print("Model OneInput: DEBUGGING MODE. Returning "
+                  "batch_streamlines and mask together with inputs.")
 
             # Clipping used coords (i.e. possibly with neighborhood)
             # outside volume

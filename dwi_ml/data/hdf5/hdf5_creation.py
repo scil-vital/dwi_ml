@@ -556,11 +556,11 @@ class HDF5Creator:
                 streamlines_group.attrs['voxel_order'] = vo
 
                 if len(sft.data_per_point) > 0:
-                    logging.warning('sft contained data_per_point. Data '
-                                    'not kept.')
+                    logging.debug('sft contained data_per_point. Data not '
+                                  'kept.')
                 if len(sft.data_per_streamline) > 0:
-                    logging.warning('sft contained data_per_streamlines. '
-                                    'Data not kept.')
+                    logging.debug('sft contained data_per_streamlines. Data '
+                                  'not kept.')
 
                 # Accessing private Dipy values, but necessary.
                 # We need to deconstruct the streamlines into arrays with

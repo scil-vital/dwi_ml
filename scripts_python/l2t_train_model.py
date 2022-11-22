@@ -57,7 +57,6 @@ def init_from_args(args, sub_loggers_level):
                                           log_level=sub_loggers_level)
 
     # Preparing the model
-
     # (Direction getter)
     if not args.dg_dropout and args.dropout:
         args.dg_dropout = args.dropout
@@ -107,7 +106,7 @@ def main():
     if args.logging == 'DEBUG':
         sub_loggers_level = 'INFO'
 
-    logging.getLogger().setLevel(level=logging.WARNING)
+    logging.getLogger().setLevel(level=logging.INFO)
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])

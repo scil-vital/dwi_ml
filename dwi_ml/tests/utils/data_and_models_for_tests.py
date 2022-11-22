@@ -26,10 +26,12 @@ def fetch_testing_data():
     testing_data_dir = os.path.join(home, 'data_for_tests_dwi_ml')
 
     if not os.path.exists(testing_data_dir):
+        # Access to the file dwi_ml.zip:
+        # https://drive.google.com/uc?id=1beRWAorhaINCncttgwqVAP2rNOfx842Q
         name_as_dict = {
             'data_for_tests_dwi_ml.zip':
                 ['1beRWAorhaINCncttgwqVAP2rNOfx842Q',
-                 '593f0a7dd5bc0007360eb971e456ccbc']}
+                 '8bdbf051877ec5c70aace21c9dab9bb7']}
         fetch_data(name_as_dict)
 
     return testing_data_dir

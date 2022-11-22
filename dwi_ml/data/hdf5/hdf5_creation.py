@@ -399,9 +399,8 @@ class HDF5Creator:
                 ref_header = group_header
             else:
                 if not is_header_compatible(ref_header, group_header):
-                    logging.warning("MAJOR WARNING. Some volume groups have "
-                                    "incompatible headers for subh {}."
-                                    .format(subj_id))
+                    raise ValueError("Some volume groups have incompatible "
+                                     "headers for subj {}.".format(subj_id))
             logging.debug('      *Done. Now creating dataset from group.')
             hdf_group = subj_hdf_group.create_group(group)
             hdf_group.create_dataset('data', data=group_data)

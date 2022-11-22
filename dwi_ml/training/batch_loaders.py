@@ -316,11 +316,6 @@ class DWIMLAbstractBatchLoader:
                 self.np_rng.shuffle(ids)
                 reverse_ids = ids[:int(len(ids) * self.reverse_ratio)]
                 sft = reverse_streamlines(sft, reverse_ids)
-            print("?????????LOAD BATCH: {}".format(type(sft)))
-            print("First streamline: {}".format(sft.streamlines[0][0:4]))
-            print("INFO spatiale: {}".format(sft.space_attributes))
-            from dipy.io.streamline import save_tractogram
-            save_tractogram(sft, './TEST_SFT.trk')
 
             # In case user wants to do more with its data.
             sft = self.project_specific_data_augmentation(sft)

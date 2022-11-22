@@ -87,16 +87,8 @@ def _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, suffix):
 
     # Save the last batch's SFT.
     logging.info("Saving subj's tractogram {}".format('test_batch1_' + suffix))
-    print("!!!!!!!!!!")
-    print(batch_streamlines[0][0:4])
     sft = StatefulTractogram(batch_streamlines, reference=ref, space=Space.VOX,
                              origin=Origin('corner'))
-
-    print("?????????TEST: {}".format(type(sft)))
-    print("First streamline: {}".format(sft.streamlines[0][0:4]))
-    print("INFO spatiale: {}".format(sft.space_attributes))
-    save_tractogram(sft, './TEST_SFT.trk')
-    exit(1)
 
     sft.data_per_streamline = {"seeds": [s[0] for s in batch_streamlines]}
     filename = os.path.join(results_folder, 'test_batch_' + suffix + '.trk')

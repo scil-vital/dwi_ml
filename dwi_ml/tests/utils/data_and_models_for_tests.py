@@ -178,6 +178,7 @@ def create_test_batch_sampler(
 def create_batch_loader(
         subset, model, step_size=None, compress=False, noise_size=0.,
         noise_variability=0., split_ratio=0., reverse_ratio=0.,
+        neighborhood_vectors=None,
         wait_for_gpu=True, log_level=logging.DEBUG):
     logging.debug('    Initializing batch loader...')
     batch_loader = DWIMLBatchLoaderOneInput(
@@ -189,7 +190,7 @@ def create_batch_loader(
         noise_gaussian_size_validation=0,
         noise_gaussian_var_validation=0,
         reverse_ratio=reverse_ratio,
-        neighborhood_vectors=None, wait_for_gpu=wait_for_gpu,
+        neighborhood_vectors=neighborhood_vectors, wait_for_gpu=wait_for_gpu,
         log_level=log_level, model=model)
 
     return batch_loader

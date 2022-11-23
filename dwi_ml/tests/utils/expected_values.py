@@ -21,12 +21,13 @@ Organization of the testing data:
 └── hdf5_file.hdf5
 
 """
-# Values corresponding to the testing data, as of Apr 27, 2022.
+# Values corresponding to the testing data, as of Nov 22, 22.
+# Created from Emmanuelle's preprocessed WithReversed data.
 
 TEST_EXPECTED_VOLUME_GROUPS = ['input', 'wm_mask']
 TEST_EXPECTED_STREAMLINE_GROUPS = ['streamlines']
 TEST_EXPECTED_NB_FEATURES = [2, 1]  # input = t1 + fa. wm_mask = wm.
-TEST_EXPECTED_NB_STREAMLINES = [3827]  # from the Fornix.trk file
+TEST_EXPECTED_NB_STREAMLINES = [236]  # from the Fornix.trk file
 TEST_EXPECTED_NB_SUBJECTS = 1
 TEST_EXPECTED_SUBJ_NAMES = ['subjX']
-TEST_EXPECTED_MRI_SHAPE = [[138, 168, 134, 2], [138, 168, 134, 1]]
+TEST_EXPECTED_MRI_SHAPE = [[138, 166, 134, 2], [138, 166, 134, 1]]

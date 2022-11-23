@@ -6,14 +6,12 @@ import os
 import shutil
 from typing import Union, List
 
+from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import numpy as np
 import torch
-from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract
@@ -396,10 +394,12 @@ class DWIMLAbstractTrainer:
 
         nb_train /= self.batch_sampler.batch_size_training
         final_nb_train = min(nb_train, self.max_batches_per_epochs_train)
+        final_nb_train = max(final_nb_train, 1)  # Minimum 1 batch.
 
         if self.use_validation:  # Verifying or else, could divide by 0.
             nb_valid /= self.batch_sampler.batch_size_validation
             final_nb_valid = min(nb_valid, self.max_batches_per_epochs_valid)
+            final_nb_valid = max(final_nb_valid, 1)
         else:
             final_nb_valid = 0
 
@@ -668,7 +668,7 @@ class DWIMLAbstractTrainer:
         local_context: prefix when saving log. Training_ or Validate_ for
         instance.
         """
-        self.logger.info("Mean loss for this epoch: {}".format(loss))
+        self.logger.info("   Mean loss for this epoch: {}".format(loss))
 
         if self.comet_exp:
             with comet_context():
@@ -682,7 +682,7 @@ class DWIMLAbstractTrainer:
 
     def _update_gradnorm_logs_after_epoch(self, comet_context, epoch: int):
         self.logger.info(
-            "Mean gradient norm : {}"
+            "   Mean gradient norm : {}"
             .format(self.grad_norm_monitor.epochs_means[epoch]))
 
         if self.comet_exp:
@@ -693,7 +693,7 @@ class DWIMLAbstractTrainer:
                     epoch=epoch, step=None)
 
     def _save_info_best_epoch(self):
-        self.logger.info("Best epoch yet! Saving model and loss history.")
+        self.logger.info("   Best epoch yet! Saving model and loss history.")
 
         # Save model
         self.model.save_params_and_state(
@@ -840,7 +840,7 @@ class DWIMLAbstractTrainer:
         """
         Save an experiment checkpoint that can be resumed from.
         """
-        self.logger.info("Saving checkpoint...")
+        self.logger.debug("Saving checkpoint...")
 
         # Make checkpoint directory
         checkpoint_dir = os.path.join(self.saving_path, "checkpoint")

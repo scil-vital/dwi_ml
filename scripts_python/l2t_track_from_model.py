@@ -208,7 +208,7 @@ def main():
                       .format(len(streamlines), tracker.nbr_seeds))
 
     # save seeds if args.save_seeds is given
-    data_per_streamline = {'seed': seeds} if args.save_seeds else {}
+    data_per_streamline = {'seeds': seeds} if args.save_seeds else {}
 
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!

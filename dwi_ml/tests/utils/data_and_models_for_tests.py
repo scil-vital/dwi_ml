@@ -3,10 +3,12 @@ import os
 from typing import List
 
 import torch
-from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions, compute_directions
+from torch.nn.utils.rnn import pack_sequence
+
 from scilpy.io.fetcher import fetch_data, get_home
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    normalize_directions, compute_directions
 from dwi_ml.models.main_models import (
     ModelForTracking, ModelWithNeighborhood, MainModelOneInput,
     ModelWithPreviousDirections)
@@ -14,7 +16,6 @@ from dwi_ml.tests.utils.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from torch.nn.utils.rnn import pack_sequence
 
 
 def fetch_testing_data():
@@ -26,31 +27,29 @@ def fetch_testing_data():
     testing_data_dir = os.path.join(home, 'data_for_tests_dwi_ml')
 
     if not os.path.exists(testing_data_dir):
+        # Access to the file dwi_ml.zip:
+        # https://drive.google.com/uc?id=1beRWAorhaINCncttgwqVAP2rNOfx842Q
         name_as_dict = {
             'data_for_tests_dwi_ml.zip':
                 ['1beRWAorhaINCncttgwqVAP2rNOfx842Q',
-                 '593f0a7dd5bc0007360eb971e456ccbc']}
+                 '8bdbf051877ec5c70aace21c9dab9bb7']}
         fetch_data(name_as_dict)
 
     return testing_data_dir
 
 
-class ModelForTest(MainModelOneInput):
+class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
     def __init__(self, experiment_name: str = 'test',
+                 neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
         super().__init__(experiment_name=experiment_name,
+                         neighborhood_type=neighborhood_type,
+                         neighborhood_radius=neighborhood_radius,
                          log_level=log_level)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, target_streamlines=None):
         return self.fake_parameter
-
-    def get_tracking_direction_det(self, regressed_dirs: torch.Tensor):
-        return regressed_dirs
-
-    def sample_tracking_direction_prob(self, regressed_dir):
-        raise NotImplementedError("(Fake) Regression does not allow prob "
-                                  "tracking.")
 
     def forward(self, x: list):
         _ = self.fake_parameter
@@ -188,8 +187,7 @@ def create_batch_loader(
         noise_gaussian_var_training=noise_variability,
         noise_gaussian_size_validation=0,
         noise_gaussian_var_validation=0,
-        reverse_ratio=reverse_ratio,
-        neighborhood_vectors=None, wait_for_gpu=wait_for_gpu,
+        reverse_ratio=reverse_ratio, wait_for_gpu=wait_for_gpu,
         log_level=log_level, model=model)
 
     return batch_loader

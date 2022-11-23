@@ -4,10 +4,10 @@ import os
 
 import numpy as np
 from dipy.io.stateful_tractogram import set_sft_logger_level
-from dwi_ml.models.main_models import MainModelOneInput
 from torch.utils.data.dataloader import DataLoader
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+from dwi_ml.models.main_models import MainModelOneInput
 from dwi_ml.tests.utils.expected_values import TEST_EXPECTED_NB_STREAMLINES
 from dwi_ml.tests.utils.data_and_models_for_tests import (
     create_test_batch_sampler, create_batch_loader, fetch_testing_data)
@@ -20,9 +20,8 @@ def test_batch_loader():
 
     logging.getLogger().setLevel(level=logging.INFO)
 
-    # Change to true to allow debug mode: saves the mask for visual assessment.
-    # Requires a reference.
-    batch_size = 500  # Testing only one value here.
+    batch_size = min(500, TEST_EXPECTED_NB_STREAMLINES[0])
+
     wait_for_gpu = False  # Testing both True and False is heavier...
 
     logging.info("Unit test: batch sampler iteration")

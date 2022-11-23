@@ -13,6 +13,7 @@ import h5py
 from nested_lookup import nested_lookup
 import nibabel as nib
 import numpy as np
+
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft, concatenate_sft
 
@@ -399,9 +400,8 @@ class HDF5Creator:
                 ref_header = group_header
             else:
                 if not is_header_compatible(ref_header, group_header):
-                    logging.warning("MAJOR WARNING. Some volume groups have "
-                                    "incompatible headers for subh {}."
-                                    .format(subj_id))
+                    raise ValueError("Some volume groups have incompatible "
+                                     "headers for subj {}.".format(subj_id))
             logging.debug('      *Done. Now creating dataset from group.')
             hdf_group = subj_hdf_group.create_group(group)
             hdf_group.create_dataset('data', data=group_data)
@@ -556,11 +556,11 @@ class HDF5Creator:
                 streamlines_group.attrs['voxel_order'] = vo
 
                 if len(sft.data_per_point) > 0:
-                    logging.warning('sft contained data_per_point. Data '
-                                    'not kept.')
+                    logging.debug('sft contained data_per_point. Data not '
+                                  'kept.')
                 if len(sft.data_per_streamline) > 0:
-                    logging.warning('sft contained data_per_streamlines. '
-                                    'Data not kept.')
+                    logging.debug('sft contained data_per_streamlines. Data '
+                                  'not kept.')
 
                 # Accessing private Dipy values, but necessary.
                 # We need to deconstruct the streamlines into arrays with
@@ -689,13 +689,10 @@ class HDF5Creator:
                 "We do not support file's type: {}. We only support .trk "
                 "and .tck files.".format(tractogram_file))
         if file_extension == '.trk':
-            logging.warning("TRACTOGRAM VS HEADER:")
-            logging.warning(tractogram_file)
-            logging.warning(header)
             if not is_header_compatible(str(tractogram_file), header):
-                logging.warning("MAJOR WARNING. Streamlines group is not "
-                                "compatible with volume groups\n"
-                                "({})".format(tractogram_file))
+                raise ValueError("Streamlines group is not compatible with "
+                                 "volume groups\n ({})"
+                                 .format(tractogram_file))
             # overriding given header.
             header = 'same'
 

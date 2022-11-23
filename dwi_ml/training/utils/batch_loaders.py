@@ -77,8 +77,6 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             noise_gaussian_size_validation=args.noise_gaussian_size_validation,
             noise_gaussian_var_validation=args.noise_gaussian_var_validation,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
-            # NEIGHBORHOOD
-            neighborhood_vectors=model.neighborhood_vectors,
             # OTHER
             rng=args.rng, wait_for_gpu=args.use_gpu,
             log_level=sub_loggers_level)

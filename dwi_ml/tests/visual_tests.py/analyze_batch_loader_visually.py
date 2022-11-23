@@ -12,7 +12,8 @@ from dipy.io.streamline import save_tractogram
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.models.main_models import MainModelOneInput
 from dwi_ml.tests.utils.data_and_models_for_tests import (
-    create_test_batch_sampler, create_batch_loader, fetch_testing_data)
+    create_test_batch_sampler, create_batch_loader, fetch_testing_data,
+    ModelForTest)
 from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 
@@ -39,14 +40,16 @@ def save_loaded_batch_for_visual_assessment(dataset, ref):
 
     # Now testing.
     # 1) With resampling + split + reverse
+    logging.info("*********")
     logging.info("Split + reverse:")
     batch_loader = create_batch_loader(
         dataset, model, step_size=0.5, noise_size=0.2, noise_variability=0.1,
-        split_ratio=0.5, reverse_ratio=0.5, wait_for_gpu=wait_for_gpu)
+        split_ratio=1, reverse_ratio=0.5, wait_for_gpu=wait_for_gpu)
     batch_loader.set_context('training')
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'split')
 
     # 2) With compressing
+    logging.info("*********")
     logging.info("Compressed:")
     batch_loader = create_batch_loader(dataset, model, compress=True,
                                        wait_for_gpu=wait_for_gpu)
@@ -54,10 +57,13 @@ def save_loaded_batch_for_visual_assessment(dataset, ref):
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'compress')
 
     # 3) With neighborhood
+    logging.info("*********")
     logging.info("Neighborhood:")
-    nb_vectors = prepare_neighborhood_vectors('axes', [1, 2])
+    # Using ModelForTest with both parents OneInput and Neighborhood.
+    model = ModelForTest(experiment_name='test',
+                         neighborhood_type='axes',
+                         neighborhood_radius=[1, 2])
     batch_loader = create_batch_loader(dataset, model,
-                                       neighborhood_vectors=nb_vectors,
                                        wait_for_gpu=wait_for_gpu)
     batch_loader.set_context('training')
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'neighb')

@@ -37,22 +37,18 @@ def fetch_testing_data():
     return testing_data_dir
 
 
-class ModelForTest(MainModelOneInput):
+class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
     def __init__(self, experiment_name: str = 'test',
+                 neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
         super().__init__(experiment_name=experiment_name,
+                         neighborhood_type=neighborhood_type,
+                         neighborhood_radius=neighborhood_radius,
                          log_level=log_level)
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, target_streamlines=None):
         return self.fake_parameter
-
-    def get_tracking_direction_det(self, regressed_dirs: torch.Tensor):
-        return regressed_dirs
-
-    def sample_tracking_direction_prob(self, regressed_dir):
-        raise NotImplementedError("(Fake) Regression does not allow prob "
-                                  "tracking.")
 
     def forward(self, x: list):
         _ = self.fake_parameter
@@ -180,7 +176,6 @@ def create_test_batch_sampler(
 def create_batch_loader(
         subset, model, step_size=None, compress=False, noise_size=0.,
         noise_variability=0., split_ratio=0., reverse_ratio=0.,
-        neighborhood_vectors=None,
         wait_for_gpu=True, log_level=logging.DEBUG):
     logging.debug('    Initializing batch loader...')
     batch_loader = DWIMLBatchLoaderOneInput(
@@ -191,8 +186,7 @@ def create_batch_loader(
         noise_gaussian_var_training=noise_variability,
         noise_gaussian_size_validation=0,
         noise_gaussian_var_validation=0,
-        reverse_ratio=reverse_ratio,
-        neighborhood_vectors=neighborhood_vectors, wait_for_gpu=wait_for_gpu,
+        reverse_ratio=reverse_ratio, wait_for_gpu=wait_for_gpu,
         log_level=log_level, model=model)
 
     return batch_loader

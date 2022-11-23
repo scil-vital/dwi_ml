@@ -173,6 +173,8 @@ class ModelWithNeighborhood(MainModelAbstract):
         self.neighborhood_type = neighborhood_type
         self.neighborhood_vectors = prepare_neighborhood_vectors(
             neighborhood_type, neighborhood_radius)
+
+        # Reminder. nb neighbors does not include origin.
         self.nb_neighbors = len(self.neighborhood_vectors) if \
             self.neighborhood_vectors is not None else 0
 
@@ -334,7 +336,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         Params
         ------
         dirs: list or tensor
-            Batch all streamline directions If it is a tensor, it should be of
+            Batch all streamline directions. If it is a tensor, it should be of
             size [nb_points, 3].
             If it is a list, length of the list is the number of streamlines in
             the batch. Each tensor is as described above. The batch will be

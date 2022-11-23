@@ -42,7 +42,7 @@ def prepare_arg_parser():
     return p
 
 
-def init_from_checkpoint(args):
+def init_from_checkpoint(args, checkpoint_path):
 
     # Loading checkpoint
     checkpoint_state = TransformerTrainer.load_params_from_checkpoint(
@@ -63,9 +63,7 @@ def init_from_checkpoint(args):
 
     # Prepare model
     model = OriginalTransformerModel.load_params_and_state(
-        os.path.join(args.experiments_path, args.experiment_name,
-                     'checkpoint/model'),
-        sub_loggers_level)
+        os.path.join(checkpoint_path, 'model'), sub_loggers_level)
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
@@ -89,22 +87,21 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Initialize logger for preparation (loading data, model, experiment)
-    # If 'as_much_as_possible', we will modify the logging level when starting
-    # the training, else very ugly
-    logging_level = args.logging_choice.upper()
-    if args.logging_choice == 'as_much_as_possible':
-        logging_level = 'DEBUG'
-    logging.getLogger().setLevel(level=logging_level)
+    # Setting root logger with high level but we will set trainer to
+    # user-defined level.
+    logging.getLogger().setLevel(level=logging.INFO)
 
-    # Verify if a checkpoint has been saved. Else create an experiment.
-    if not os.path.exists(os.path.join(
-            args.experiments_path, args.experiment_name, "checkpoint")):
-        raise FileNotFoundError("Experiment not found.")
+    # Verify if a checkpoint has been saved.
+    checkpoint_path = os.path.join(
+            args.experiments_path, args.experiment_name, "checkpoint")
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError("Experiment's checkpoint not found ({})."
+                                .format(checkpoint_path))
 
-    trainer = init_from_checkpoint(args)
+    trainer = init_from_checkpoint(args, checkpoint_path)
 
     run_experiment(trainer)
+
 
 
 if __name__ == '__main__':

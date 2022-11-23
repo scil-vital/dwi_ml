@@ -87,8 +87,8 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
             only the seeding point (forward tracking failed), simply inverse
             the forward direction.
         """
-        logger.info("Computing hidden RNN state at backward: run model on "
-                    "(reversed) first half.")
+        logger.debug("Computing hidden RNN state at backward: run model on "
+                     "(reversed) first half.")
 
         # Must re-run the model from scratch to get the hidden states
         # Either load all timepoints in memory and call model once.

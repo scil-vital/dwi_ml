@@ -137,18 +137,18 @@ class LazyMRIData(MRIDataAbstract):
 
     @property
     def as_data_volume(self) -> DataVolume:
-        logger.info("LOADING FROM HDF5 NOW {}".format(self._data))
+        logger.debug("Loading from hdf5 now: {}".format(self._data))
         return DataVolume(np.array(self._data, dtype=np.float32),
                           self.voxres, self.interpolation)
 
     @property
     def as_tensor(self):
-        logger.info("LOADING FROM HDF5 NOW {}".format(self._data))
+        logger.debug("Loading from hdf5 now: {}".format(self._data))
         return torch.as_tensor(np.array(self._data, dtype=np.float32),
                                dtype=torch.float)
 
     @property
     def as_non_lazy(self):
-        logger.info("LOADING FROM HDF5 NOW {}".format(self._data))
+        logger.debug("Loading from hdf5 now: {}".format(self._data))
         return MRIData(np.array(self._data), self.voxres, self.affine,
                        self.interpolation)

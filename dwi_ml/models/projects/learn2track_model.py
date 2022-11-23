@@ -175,8 +175,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         input_embedding_cls = keys_to_tensor_embeddings[input_embedding_key]
         self.input_embedding = input_embedding_cls(
-            input_size=self.input_size,
-            output_size=self.input_embedding_size)
+            input_size=self.input_size, output_size=self.input_embedding_size)
 
         # 3. Stacked RNN
         rnn_input_size = self.input_embedding_size

@@ -496,7 +496,6 @@ class MainModelOneInput(MainModelAbstract):
         # Prepare the volume data
         # Coord_torch contain the coords after interpolation, possibly clipped
         # to volume bounds.
-        print("                              {}".format(isinstance(self, ModelWithNeighborhood)))
         if isinstance(self, ModelWithNeighborhood):
             # Adding neighborhood.
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(

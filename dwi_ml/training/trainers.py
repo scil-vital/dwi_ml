@@ -6,14 +6,12 @@ import os
 import shutil
 from typing import Union, List
 
+from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import numpy as np
 import torch
-from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract

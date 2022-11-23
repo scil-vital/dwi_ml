@@ -47,15 +47,15 @@ from typing import Dict, List, Tuple
 
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
-from dwi_ml.models.main_models import MainModelOneInput, ModelWithNeighborhood
+import torch
+
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
-import torch
-import torch.multiprocessing
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
+from dwi_ml.models.main_models import MainModelOneInput, ModelWithNeighborhood
 
 logger = logging.getLogger('batch_loader_logger')
 

@@ -13,6 +13,7 @@ import h5py
 from nested_lookup import nested_lookup
 import nibabel as nib
 import numpy as np
+
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft, concatenate_sft
 

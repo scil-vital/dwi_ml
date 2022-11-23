@@ -14,8 +14,6 @@ from dwi_ml.models.main_models import MainModelOneInput
 from dwi_ml.tests.utils.data_and_models_for_tests import (
     create_test_batch_sampler, create_batch_loader, fetch_testing_data,
     ModelForTest)
-from dwi_ml.data.processing.space.neighborhood import \
-    prepare_neighborhood_vectors
 
 tmp_dir = tempfile.TemporaryDirectory()
 batch_size = 500  # Testing only one value here.

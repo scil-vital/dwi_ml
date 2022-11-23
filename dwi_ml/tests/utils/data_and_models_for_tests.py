@@ -3,10 +3,12 @@ import os
 from typing import List
 
 import torch
-from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions, compute_directions
+from torch.nn.utils.rnn import pack_sequence
+
 from scilpy.io.fetcher import fetch_data, get_home
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    normalize_directions, compute_directions
 from dwi_ml.models.main_models import (
     ModelForTracking, ModelWithNeighborhood, MainModelOneInput,
     ModelWithPreviousDirections)
@@ -14,7 +16,6 @@ from dwi_ml.tests.utils.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from torch.nn.utils.rnn import pack_sequence
 
 
 def fetch_testing_data():

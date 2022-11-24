@@ -63,14 +63,6 @@ def test_neighborhood_interpolation():
     assert 29 < np.mean(interpolated_data[0, :].numpy()) < 31
     assert 8 < np.mean(interpolated_data[1, :].numpy()) < 10
 
-    # Adding coordinates
-    interpolated_data, _ = interpolate_volume_in_neighborhood(
-        data, current_coords, neighb_vec,
-        add_vectors_to_data=True)
-
-    assert np.array_equal(interpolated_data.shape,
-                          [m_coords, (n_neigh + 1) * (f_features + 3)])
-
 
 if __name__ == '__main__':
     logging.getLogger().setLevel(level='DEBUG')

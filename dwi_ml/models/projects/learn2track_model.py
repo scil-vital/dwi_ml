@@ -138,7 +138,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             # For modelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
-            add_vectors_to_data=False,  # Not Ready. ToDo
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
             prev_dirs_embedding_size=prev_dirs_embedding_size,

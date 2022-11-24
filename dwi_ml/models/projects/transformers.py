@@ -174,7 +174,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             # Neighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
-            add_vectors_to_data=False,
             # Tracking
             dg_key=dg_key, dg_args=dg_args,
             normalize_targets=normalize_targets)

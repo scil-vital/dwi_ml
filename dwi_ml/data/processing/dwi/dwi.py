@@ -56,6 +56,7 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
     # that this data is meaningless for your model. Here, we won't divide the
     # data, just move its mean = value in all voxels will now be 0.
     if independent:
+        # data[mask] becomes a 2D array. Taking axis 0 = the voxels.
         mean = np.mean(data[mask], axis=0)
         std = np.std(data[mask], axis=0)
     else:
@@ -64,9 +65,6 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
 
     # If std ~ 0, replace by eps.
     std = np.maximum(std, eps)
-
-    logging.debug("          => Mean and std were: {:.2f} and {:.2f}"
-                  .format(mean, std))
 
     standardized_data = (data - mean) / std
     # standardized_data[~mask] = np.nan

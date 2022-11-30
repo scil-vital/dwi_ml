@@ -11,12 +11,12 @@ logger = logging.getLogger('train_logger')
 def add_training_args(p: argparse.ArgumentParser):
     training_group = p.add_argument_group("Training")
     training_group.add_argument(
-        '--learning_rate', type=int, default=0.001, metavar='r',
+        '--learning_rate', type=float, default=0.001, metavar='r',
         help="Learning rate. [0.001] (torch's default)")
     training_group.add_argument(
         '--weight_decay', type=float, default=0.01, metavar='v',
-        help="Add a weight decay penalty on the parameters. [0.01] "
-             "(torch's default).")
+        help="Add a weight decay penalty on the parameters (regularization "
+             "parameter) [0.01] (torch's default).")
     training_group.add_argument(
         '--use_radam', action='store_true',
         help='If set, use RAdam instead of Adam optimizer; adaptative '

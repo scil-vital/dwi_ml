@@ -540,20 +540,11 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # structure.
         targets = compute_directions(streamlines)
 
-        # Packing values and using the .data, or looping on streamlines?
-        # On testing data: packing = 0.012, looping = 0.002
-        # toDo verify this on larger data? Also, it changes the computation
-        #  of the backward, so maybe verify the whole execution's time?
-        nb_streamlines = len(streamlines)
-        mean_loss = torch.tensor(0.)
-        for i in range(nb_streamlines):
-            # Computing loss
-            mean_loss += self.direction_getter.compute_loss(
-                model_outputs[i].to(self.device), targets[i].to(self.device))
+        # Concatenating all points together to compute loss.
+        outputs = torch.cat(model_outputs).to(self.device)
+        targets = torch.cat(targets).to(self.device)
 
-        mean_loss /= nb_streamlines
-
-        return mean_loss
+        return self.direction_getter.compute_loss(outputs, targets)
 
     def get_tracking_direction_det(self, model_outputs):
         self.direction_getter.get_tracking_direction_get(model_outputs)

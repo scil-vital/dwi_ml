@@ -20,7 +20,7 @@ from dwi_ml.training.batch_loaders import (
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.utils.gradient_norm import compute_gradient_norm
 from dwi_ml.training.utils.monitoring import (
-    BestEpochMonitoring, IterTimer, ValueHistoryMonitor, TimeMonitor,
+    BestEpochMonitoring, IterTimer, BatchHistoryMonitor, TimeMonitor,
     EarlyStoppingError)
 
 logger = logging.getLogger('train_logger')
@@ -223,9 +223,9 @@ class DWIMLAbstractTrainer:
         # Nothing to do here.
 
         # Setup monitors
-        self.train_loss_monitor = ValueHistoryMonitor("Training loss")
-        self.valid_loss_monitor = ValueHistoryMonitor("Validation loss")
-        self.grad_norm_monitor = ValueHistoryMonitor("Grad Norm")
+        self.train_loss_monitor = BatchHistoryMonitor(weighted=True)
+        self.valid_loss_monitor = BatchHistoryMonitor(weighted=True)
+        self.grad_norm_monitor = BatchHistoryMonitor(weighted=False)
         self.training_time_monitor = TimeMonitor()
         self.validation_time_monitor = TimeMonitor()
 
@@ -445,20 +445,21 @@ class DWIMLAbstractTrainer:
             if self.comet_exp:
                 self.comet_exp.set_epoch(epoch)
 
+            self.logger.info("******* STARTING : Epoch {} (i.e. #{}) *******"
+                             .format(epoch, epoch + 1))
+
             # Training
-            self.logger.info("**********TRAINING: Epoch #{}*************"
-                             .format(epoch + 1))
+            self.logger.info("*** TRAINING")
             self.train_one_epoch(epoch)
 
             # Validation
             if self.use_validation:
-                self.logger.info("**********VALIDATION: Epoch #{}*************"
-                                 .format(epoch + 1))
+                self.logger.info("*** VALIDATION")
                 self.validate_one_epoch(epoch)
 
-                mean_epoch_loss = self.valid_loss_monitor.epochs_means[epoch]
+                mean_epoch_loss = self.valid_loss_monitor.average_per_epoch[-1]
             else:
-                mean_epoch_loss = self.train_loss_monitor.epochs_means[epoch]
+                mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
 
             # Updating info
             is_bad = self.best_epoch_monitoring.update(mean_epoch_loss, epoch)
@@ -485,11 +486,11 @@ class DWIMLAbstractTrainer:
                             self.best_epoch_monitoring.best_epoch))
                 break
 
-        self._save_log_from_array(self.train_loss_monitor.epochs_means,
+        self._save_log_from_array(self.train_loss_monitor.average_per_epoch,
                                   "training_loss_per_epoch.npy")
-        self._save_log_from_array(self.valid_loss_monitor.epochs_means,
+        self._save_log_from_array(self.valid_loss_monitor.average_per_epoch,
                                   "validation_loss_per_epoch.npy")
-        self._save_log_from_array(self.grad_norm_monitor.epochs_means,
+        self._save_log_from_array(self.grad_norm_monitor.average_per_epoch,
                                   "gradient_norm.npy")
         self._save_log_from_array(self.training_time_monitor.epoch_durations,
                                   "training_epochs_duration")
@@ -543,15 +544,15 @@ class DWIMLAbstractTrainer:
                     pbar.close()
                     break
 
-                batch_mean_loss, grad_norm = self.run_one_batch(
-                    data, is_training=True)
+                mean_loss, n, grad_norm = self.run_one_batch(data,
+                                                             is_training=True)
 
                 # Update information and logs
-                self.train_loss_monitor.update(batch_mean_loss)
+                self.train_loss_monitor.update(mean_loss, weight=n)
                 self.grad_norm_monitor.update(grad_norm)
                 if self.save_logs_per_batch:
-                    self._update_loss_logs_after_batch(
-                        comet_context, epoch, batch_id, batch_mean_loss)
+                    self._update_loss_logs_after_batch(comet_context, epoch,
+                                                       batch_id, mean_loss)
                     self._update_gradnorm_logs_after_batch(epoch, batch_id,
                                                            grad_norm)
 
@@ -565,7 +566,8 @@ class DWIMLAbstractTrainer:
         self.grad_norm_monitor.end_epoch()
         self.training_time_monitor.end_epoch()
         self._update_loss_logs_after_epoch(
-            comet_context, epoch, self.train_loss_monitor.epochs_means[epoch])
+            comet_context, epoch,
+            self.train_loss_monitor.average_per_epoch[-1])
         self._update_gradnorm_logs_after_epoch(comet_context, epoch)
 
     def validate_one_epoch(self, epoch):
@@ -604,13 +606,13 @@ class DWIMLAbstractTrainer:
                     break
 
                 # Validate this batch: forward propagation + loss
-                batch_mean_loss, _ = self.run_one_batch(
-                    data, is_training=False)
+                # Not measuring gradients
+                mean_loss, n, _ = self.run_one_batch(data, is_training=False)
 
-                self.valid_loss_monitor.update(batch_mean_loss)
+                self.valid_loss_monitor.update(mean_loss, weight=n)
                 if self.save_logs_per_batch:
-                    self._update_loss_logs_after_batch(
-                        comet_context, epoch, batch_id, batch_mean_loss)
+                    self._update_loss_logs_after_batch(comet_context, epoch,
+                                                       batch_id, mean_loss)
 
             # Explicitly delete iterator to kill threads and free memory before
             # running training again
@@ -620,19 +622,19 @@ class DWIMLAbstractTrainer:
         self.valid_loss_monitor.end_epoch()
         self.validation_time_monitor.end_epoch()
         self._update_loss_logs_after_epoch(
-            comet_context, epoch, self.valid_loss_monitor.epochs_means[epoch])
+            comet_context, epoch,
+            self.valid_loss_monitor.average_per_epoch[-1])
 
-    def _update_loss_logs_after_batch(
-            self, comet_context, epoch: int, batch_id: int,
-            batch_mean_loss: float):
+    def _update_loss_logs_after_batch(self, comet_context, epoch: int,
+                                      batch_id: int, mean_loss: float):
         """
         Update logs:
             - logging to user
             - save values to monitors
             - send data to comet
         """
-        self.logger.info("Epoch {}: Batch loss = {}"
-                         .format(epoch + 1, batch_mean_loss))
+        self.logger.info("Epoch {} (i.e. #{}): Batch loss = {}"
+                         .format(epoch, epoch + 1, mean_loss))
 
         if self.comet_exp and batch_id % COMET_UPDATE_FREQUENCY == 0:
             with comet_context():
@@ -640,7 +642,7 @@ class DWIMLAbstractTrainer:
                 # saves the current epoch. Cheating and changing the metric
                 # name at each epoch.
                 self.comet_exp.log_metric(
-                    "loss_per_batch_epoch" + str(epoch), batch_mean_loss,
+                    "loss_per_batch_epoch" + str(epoch), mean_loss,
                     step=batch_id, epoch=0)
 
     def _update_gradnorm_logs_after_batch(self, epoch: int, batch_id: int,
@@ -683,13 +685,13 @@ class DWIMLAbstractTrainer:
     def _update_gradnorm_logs_after_epoch(self, comet_context, epoch: int):
         self.logger.info(
             "   Mean gradient norm : {}"
-            .format(self.grad_norm_monitor.epochs_means[epoch]))
+            .format(self.grad_norm_monitor.average_per_epoch[epoch]))
 
         if self.comet_exp:
             with comet_context():
                 self.comet_exp.log_metric(
                     "mean_gradient_norm_per_epoch",
-                    self.grad_norm_monitor.epochs_means[epoch],
+                    self.grad_norm_monitor.average_per_epoch[epoch],
                     epoch=epoch, step=None)
 
     def _save_info_best_epoch(self):
@@ -701,7 +703,7 @@ class DWIMLAbstractTrainer:
 
         best_losses = {
             'train_loss':
-                self.train_loss_monitor.epochs_means[
+                self.train_loss_monitor.average_per_epoch[
                     self.best_epoch_monitoring.best_epoch],
             'valid_loss':
                 self.best_epoch_monitoring.best_value if
@@ -738,7 +740,9 @@ class DWIMLAbstractTrainer:
         Returns
         -------
         mean_loss : float
-            The mean loss of the provided batch
+            The mean loss of the provided batch.
+        n: int
+            Total number of points for this batch.
         grad_norm: float
             The total norm (sqrt(sum(params**2))) of parameters before gradient
             clipping, if any.
@@ -992,7 +996,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         Returns
         -------
         mean_loss : float
-            The mean loss of the provided batch
+            The mean loss of the provided batch.
+        n: int
+            Total number of points for this batch.
         grad_norm: float
             The total norm (sqrt(sum(params**2))) of parameters before gradient
             clipping, if any.
@@ -1066,11 +1072,11 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 # than only directions.
                 model_outputs = self.model(batch_inputs, batch_streamlines,
                                            **forward_kwargs)
-                mean_loss = self.model.compute_loss(model_outputs,
-                                                    batch_streamlines)
+                mean_loss, n = self.model.compute_loss(model_outputs,
+                                                       batch_streamlines)
             else:
                 model_outputs = self.model(batch_inputs, **forward_kwargs)
-                mean_loss = self.model.compute_loss(model_outputs)
+                mean_loss, n = self.model.compute_loss(model_outputs)
 
             if is_training:
                 self.logger.debug('*** Computing back propagation')
@@ -1105,7 +1111,8 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             if self.use_gpu:
                 log_gpu_memory_usage(self.logger)
 
-        return mean_loss.cpu().item(), grad_norm
+        # The mean tensor is a single value. Converting to float using item().
+        return mean_loss.cpu().item(), n, grad_norm
 
     def _prepare_other_forward_kwargs(self, is_training: bool,
                                       final_s_ids_per_subj):

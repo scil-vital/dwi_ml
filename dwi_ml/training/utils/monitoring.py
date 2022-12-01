@@ -2,6 +2,7 @@
 from collections import deque
 import timeit
 from datetime import datetime
+from typing import List, Tuple
 
 import numpy as np
 
@@ -25,7 +26,7 @@ class TimeMonitor(object):
         self._start_time = None
 
 
-class ValueHistoryMonitor(object):
+class BatchHistoryMonitor(object):
     """ History of some value for each iteration during training, and mean
     value for each epoch.
 
@@ -42,59 +43,66 @@ class ValueHistoryMonitor(object):
         loss_monitor.epochs_means  # returns the loss curve as a list
     """
 
-    def __init__(self, name):
-        self.name = name
-        # self.all_updates_history[i] = values of all batches for epoch i.
-        self.all_updates_history = []
-        self.epochs_means = []
+    def __init__(self, weighted: bool = False):
+        self.is_weighted = weighted
+
+        # State:
+        self.current_batch_values = []
+        self.current_batch_weights = []
+        self.average_per_epoch = []
         self.current_epoch = -1
 
-    def update(self, value):
+    def update(self, value, weight=None):
         """
         Note. Does not save the update if value is inf.
 
         Parameters
         ----------
-        value: The value of the loss
+        value: The value to be monitored.
+        weight: The weight in the average. For instance, for a loss monitor,
+            you should measure the loss average.
         """
         if np.isinf(value):
             return
 
-        self.all_updates_history[-1].append(value)
+        self.current_batch_values.append(value)
+
+        if self.is_weighted:
+            self.current_batch_weights.append(weight)
 
     def start_new_epoch(self):
-        assert len(self.epochs_means) == self.current_epoch + 1, \
-            "Did you forget to end previous epoch? len(epochs_means) is {}" \
-            "but current epoch is {}" \
-            .format(len(self.epochs_means), self.current_epoch)
-        assert len(self.all_updates_history) == self.current_epoch + 1, \
-            "Unexpected error. all_updates_history is of len {} but current " \
-            "epoch is {}" \
-            .format(self.all_updates_history, self.current_epoch)
+        assert len(self.average_per_epoch) == self.current_epoch + 1, \
+            "Did you forget to end previous epoch? Number of epoch values " \
+            "is {} but monitor's current epoch is {}" \
+            .format(len(self.average_per_epoch), self.current_epoch)
 
         self.current_epoch += 1
-        self.all_updates_history.append([])
+        self.current_batch_values = []
+        self.current_batch_weights = []
 
     def end_epoch(self):
         """
         Compute mean of current epoch and add it to means values.
         """
-        assert len(self.all_updates_history) == self.current_epoch + 1
-        assert len(self.epochs_means) == len(self.all_updates_history) - 1
+        if not self.is_weighted:
+            mean_value = np.mean(self.current_batch_values)
+        else:
+            mean_value = sum(np.multiply(self.current_batch_values,
+                                         self.current_batch_weights))
+            mean_value /= sum(self.current_batch_weights)
 
-        self.epochs_means.append(np.mean(self.all_updates_history[-1]))
+        self.average_per_epoch.append(mean_value)
 
     def get_state(self):
-        return {'name': self.name,
-                'all_updates_history': self.all_updates_history,
-                'epochs_means': self.epochs_means,
-                'current_epoch': self.current_epoch
+        # Not saving current batch values. Checkpoints should be saved only at
+        # the end of epochs.
+        return {'average_per_epoch': self.average_per_epoch,
+                'current_epoch': self.current_epoch,
+                'is_weighted': self.is_weighted,
                 }
 
     def set_state(self, state):
-        self.name = state['name']
-        self.all_updates_history = state['all_updates_history']
-        self.epochs_means = state['epochs_means']
+        self.average_per_epoch = state['average_per_epoch']
         self.current_epoch = state['current_epoch']
 
 

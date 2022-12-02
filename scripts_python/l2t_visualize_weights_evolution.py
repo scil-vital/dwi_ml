@@ -173,12 +173,12 @@ def main():
                     "Feature importance at current position.")
 
     # Fig 2: weights averaged in neighbohood
-    if len(weights_fn) > 0:
+    if weights_fn is not None:
         _prepare_figure(weights_fn, weights_pd, best_epoch, f_names, f_starts,
                         "Feature importance, averaged in neighborhood.")
 
     # Fig 3: Importance of neighborhood points.
-    if len(weights_n) > 0:
+    if weights_fn is not None:
         f_names = ['Neighb. points']
         f_starts = [0, weights_fn.shape[1]]
         _prepare_figure(weights_n, None, best_epoch, f_names, f_starts,

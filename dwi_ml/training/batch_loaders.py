@@ -48,6 +48,7 @@ from typing import Dict, List, Tuple
 from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
 import torch
+from dipy.tracking.metrics import length
 
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
@@ -216,6 +217,57 @@ class DWIMLAbstractBatchLoader:
             self.context = context
         self.dataset.context = context
 
+    def data_augmentation_sft(self, sft):
+        if self.step_size:
+            # Resampling streamlines to a fixed step size, if any
+            logger.debug("            Resampling: {}".format(self.step_size))
+            if self.context_subset.step_size == self.step_size:
+                logger.debug("Step size is the same as when creating "
+                             "the hdf5 dataset. Not resampling again.")
+            else:
+                sft = resample_streamlines_step_size(sft,
+                                                     step_size=self.step_size)
+
+        # Compressing, if wanted.
+        if self.compress:
+            logger.debug("            Compressing: {}".format(self.compress))
+            sft = compress_sft(sft)
+
+        # Adding noise to coordinates
+        # Noise is considered in mm so we need to make sure the sft is in
+        # rasmm space
+        if self.context_noise_size and self.context_noise_size > 0:
+            logger.debug("            Adding noise {} +- {}"
+                         .format(self.context_noise_size,
+                                 self.context_noise_var))
+            sft.to_rasmm()
+            sft = add_noise_to_streamlines(sft, self.context_noise_size,
+                                           self.context_noise_var,
+                                           self.np_rng, self.step_size)
+            sft.to_vox()
+
+        # Splitting streamlines
+        # This increases the batch size, but does not change the total
+        # length
+        if self.split_ratio and self.split_ratio > 0:
+            logger.debug("            Splitting: {}".format(self.split_ratio))
+            all_ids = np.arange(len(sft))
+            n_to_split = int(np.floor(len(sft) * self.split_ratio))
+            split_ids = self.np_rng.choice(all_ids, size=n_to_split,
+                                           replace=False)
+            sft = split_streamlines(sft, self.np_rng, split_ids)
+
+        # Reversing streamlines
+        if self.reverse_ratio and self.reverse_ratio > 0:
+            logger.debug("            Reversing: {}"
+                         .format(self.reverse_ratio))
+            ids = np.arange(len(sft))
+            self.np_rng.shuffle(ids)
+            reverse_ids = ids[:int(len(ids) * self.reverse_ratio)]
+            sft = reverse_streamlines(sft, reverse_ids)
+
+        return sft
+
     def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]):
         """
         Fetches the chosen streamlines for all subjects in batch.
@@ -265,60 +317,7 @@ class DWIMLAbstractBatchLoader:
             # Get streamlines as sft
             logger.debug("            Loading sampled streamlines...")
             sft = subj_sft_data.as_sft(s_ids)
-
-            # Resampling streamlines to a fixed step size, if any
-            if self.step_size:
-                logger.debug("            Resampling: {}"
-                             .format(self.step_size))
-                if self.context_subset.step_size == self.step_size:
-                    logger.debug("Step size is the same as when creating "
-                                 "the hdf5 dataset. Not resampling again.")
-                else:
-                    sft = resample_streamlines_step_size(
-                        sft, step_size=self.step_size)
-
-            # Compressing, if wanted.
-            if self.compress:
-                logger.debug("            Compressing: {}"
-                             .format(self.compress))
-                sft = compress_sft(sft)
-
-            # Adding noise to coordinates
-            # Noise is considered in mm so we need to make sure the sft is in
-            # rasmm space
-            if self.context_noise_size and self.context_noise_size > 0:
-                logger.debug("            Adding noise {} +- {}"
-                             .format(self.context_noise_size,
-                                     self.context_noise_var))
-                sft.to_rasmm()
-                sft = add_noise_to_streamlines(sft, self.context_noise_size,
-                                               self.context_noise_var,
-                                               self.np_rng, self.step_size)
-                sft.to_vox()
-
-            # Splitting streamlines
-            # This increases the batch size, but does not change the total
-            # length
-            if self.split_ratio and self.split_ratio > 0:
-                logger.debug("            Splitting: {}"
-                             .format(self.split_ratio))
-                all_ids = np.arange(len(sft))
-                n_to_split = int(np.floor(len(sft) * self.split_ratio))
-                split_ids = self.np_rng.choice(all_ids, size=n_to_split,
-                                               replace=False)
-                sft = split_streamlines(sft, self.np_rng, split_ids)
-
-            # Reversing streamlines
-            if self.reverse_ratio and self.reverse_ratio > 0:
-                logger.debug("            Reversing: {}"
-                             .format(self.reverse_ratio))
-                ids = np.arange(len(sft))
-                self.np_rng.shuffle(ids)
-                reverse_ids = ids[:int(len(ids) * self.reverse_ratio)]
-                sft = reverse_streamlines(sft, reverse_ids)
-
-            # In case user wants to do more with its data.
-            sft = self.project_specific_data_augmentation(sft)
+            sft = self.data_augmentation_sft(sft)
 
             # Remember the indices of this subject's (augmented) streamlines
             ids_start = len(batch_streamlines)
@@ -334,16 +333,6 @@ class DWIMLAbstractBatchLoader:
             batch_streamlines.extend(sft.streamlines)
 
         return batch_streamlines, final_s_ids_per_subj
-
-    def project_specific_data_augmentation(self, sft: StatefulTractogram):
-        """Please override in your child class if you want to do more than
-        - reversing
-        - adding noise
-        - splitting."""
-        logger.debug("            Project-specific data augmentation, if "
-                     "any.")
-
-        return sft
 
 
 class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):

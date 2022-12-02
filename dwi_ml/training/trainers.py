@@ -405,6 +405,21 @@ class DWIMLAbstractTrainer:
 
         return int(final_nb_train), int(final_nb_valid)
 
+    def _save_params_to_json(self):
+        trainer_params = os.path.join(self.saving_path, "trainer_params.json")
+        sampler_params = os.path.join(self.saving_path, "batch_sampler_params.json")
+        loader_params = os.path.join(self.saving_path, "batch_loader_params.json")
+        with open(trainer_params, 'w') as json_file:
+            json_file.write(json.dumps(
+                self.params_for_json_prints, indent=4, separators=(',', ': ')))
+        with open(sampler_params, 'w') as json_file:
+            json_file.write(json.dumps(
+                self.batch_sampler.params, indent=4, separators=(',', ': ')))
+        with open(loader_params, 'w') as json_file:
+            json_file.write(json.dumps(
+                self.batch_loader.params_for_json_prints, indent=4,
+                separators=(',', ': ')))
+
     def train_and_validate(self):
         """
         Train + validates the model (+ computes loss)
@@ -421,6 +436,7 @@ class DWIMLAbstractTrainer:
         self.logger.debug("Trainer {}: \n"
                           "Running the model {}.\n\n"
                           .format(type(self), type(self.model)))
+        self._save_params_to_json()
 
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:
@@ -465,6 +481,11 @@ class DWIMLAbstractTrainer:
             is_bad = self.best_epoch_monitoring.update(mean_epoch_loss, epoch)
 
             # Check if current best has been reached
+            if self.comet_exp:
+                # Saving this no matter what; we will see the stairs.
+                self.comet_exp.log_metric(
+                    "best_epoch",
+                    self.best_epoch_monitoring.best_epoch)
             if is_bad:
                 self.logger.info(
                     "** This is the {}th bad epoch (patience = {})"
@@ -519,9 +540,6 @@ class DWIMLAbstractTrainer:
             self.batch_sampler.context_subset.close_all_handles()
             self.batch_sampler.context_subset.volume_cache_manager = None
 
-        if self.comet_exp:
-            self.comet_exp.log_metric("current_epoch", self.current_epoch)
-
         # Training all batches
         self.logger.debug("Training one epoch: iterating on batches using "
                           "tqdm on the dataloader...")
@@ -561,7 +579,10 @@ class DWIMLAbstractTrainer:
             del train_iterator
 
         # Saving epoch's information
-        self.logger.info("Finishing epoch...")
+        all_n = self.train_loss_monitor.current_batch_weights
+        self.logger.info(
+            "Number of data points per batch: {}\u00B1{}"
+            .format(int(np.mean(all_n)), int(np.std(all_n))))
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
         self.training_time_monitor.end_epoch()
@@ -717,9 +738,6 @@ class DWIMLAbstractTrainer:
             self.comet_exp.log_metric(
                 "best_loss",
                 self.best_epoch_monitoring.best_value)
-            self.comet_exp.log_metric(
-                "best_epoch",
-                self.best_epoch_monitoring.best_epoch)
 
     def run_one_batch(self, data, is_training: bool):
         """

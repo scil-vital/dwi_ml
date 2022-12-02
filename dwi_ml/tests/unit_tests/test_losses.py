@@ -88,7 +88,7 @@ def _compute_loss_tensor(outputs, targets, model):
     outputs = _prepare_tensor(outputs)
     targets = _prepare_tensor(targets)
 
-    mean_loss = model.compute_loss(outputs, targets)
+    mean_loss, _ = model.compute_loss(outputs, targets)
     # logging.debug("Means loss: {}.".format(mean_loss))
 
     return np.asarray(mean_loss)

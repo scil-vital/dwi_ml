@@ -416,13 +416,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         target_dirs = pack_sequence(target_dirs, enforce_sorted=False).data
 
         # Computing loss
-        # Depends on model. Ex: regression: direct difference.
-        # Classification: log-likelihood.
-        # Gaussian: difference between distribution and target.
-        mean_loss = self.direction_getter.compute_loss(
+        return self.direction_getter.compute_loss(
             model_outputs.to(self.device), target_dirs.to(self.device))
-
-        return mean_loss
 
     def get_tracking_direction_det(self, model_outputs):
         """

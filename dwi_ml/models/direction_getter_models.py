@@ -60,6 +60,23 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
     return layers
 
 
+def _mean_and_weight(losses):
+    # Mean:
+    # Average on all timesteps (all sequences) in batch
+    # Keeping the gradients attached to allow backward propagation.
+    mean = losses.mean()
+
+    # STD: we would love to measure this to. But we can't average std values
+    # of batches, even knowing n. Depends on the covariance between samples.
+    # So this would not be useful for final epoch monitoring.
+
+    # Also returning n. When running on batches, we want to compute the
+    # mean of means of samples with different size, we need n.
+    n = len(losses)
+
+    return mean, n
+
+
 class AbstractDirectionGetterModel(torch.nn.Module):
     """
     Default static class attribute, to be redefined by sub-classes.
@@ -258,9 +275,7 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
         # Thus we aim for a big cosine (maximize)! We minimize -cosine.
 
         # losses is of shape [nb_points,]
-        losses = self.loss(learned_directions, target_directions)
-
-        mean_loss = -losses.mean()
+        losses = -self.loss(learned_directions, target_directions)
 
         # Note. Using the mean of all points of all streamlines has the
         # potential of learning only to go straight, which would be fine in
@@ -271,7 +286,7 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
         #        pow2: - 2 becomes very important.)
         # But with projects, exploding gradients.
 
-        return mean_loss
+        return _mean_and_weight(losses)
 
 
 class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
@@ -301,8 +316,7 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
         # If outputs and targets are of shape (N, D), losses is of shape N
         losses = self.loss(learned_directions, target_directions)
 
-        mean_loss = losses.mean()
-        return mean_loss
+        return _mean_and_weight(losses)
 
 
 class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
@@ -374,10 +388,7 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         # Compute loss between distribution and target vertex
         nll_losses = -distribution.log_prob(target_idx_tensor)
 
-        # Average on timesteps and sequences in batch
-        mean_loss = nll_losses.mean()
-
-        return mean_loss
+        return _mean_and_weight(nll_losses)
 
     def sample_tracking_direction_prob(self, logits_per_class: Tensor):
         """
@@ -456,8 +467,8 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         # Compute the negative log-likelihood from the difference between the
         # distribution and each target.
         nll_losses = -distribution.log_prob(target_directions)
-        mean_loss = nll_losses.mean()
-        return mean_loss
+
+        return _mean_and_weight(nll_losses)
 
     def sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor]):
@@ -568,9 +579,8 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         nll_losses = -torch.logsumexp(mixture_probs.log() + gaussians_log_prob,
                                       dim=-1)
-        mean_loss = nll_losses.mean()
 
-        return mean_loss
+        return _mean_and_weight(nll_losses)
 
     def sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor]):
@@ -696,9 +706,7 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         log_prob = fisher_von_mises_log_prob(mu, kappa, target_directions, eps)
         nll_losses = -log_prob
 
-        mean_loss = nll_losses.mean()
-
-        return mean_loss
+        return _mean_and_weight(nll_losses)
 
     def sample_tracking_direction_prob(
             self, learned_fisher_params: Tuple[Tensor, Tensor]):

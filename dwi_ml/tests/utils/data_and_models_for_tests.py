@@ -49,7 +49,9 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
         self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
 
     def compute_loss(self, model_outputs, target_streamlines=None):
-        return self.fake_parameter
+        mean = self.fake_parameter
+        n = 30
+        return mean, n
 
     def forward(self, x: list):
         _ = self.fake_parameter
@@ -104,10 +106,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
         # Depends on model. Ex: regression: direct difference.
         # Classification: log-likelihood.
         # Gaussian: difference between distribution and target.
-        mean_loss = self.direction_getter.compute_loss(
+        return self.direction_getter.compute_loss(
             model_outputs.to(self.device), target_dirs.to(self.device))
-
-        return mean_loss
 
     def get_tracking_direction_det(self, regressed_dirs,
                                    streamline_lengths=None):

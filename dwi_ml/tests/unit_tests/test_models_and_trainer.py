@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import logging
 import os
-import tempfile
+import pytest
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
@@ -15,7 +15,13 @@ batch_size = 50
 batch_size_units = 'nb_streamlines'
 
 
-def test_trainer_and_models():
+@pytest.fixture(scope="session")
+def experiments_path(tmp_path_factory):
+    experiments_path = tmp_path_factory.mktemp("unit_tests")
+    return str(experiments_path)
+
+
+def test_trainer_and_models(experiments_path):
     data_dir = fetch_testing_data()
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
@@ -30,7 +36,8 @@ def test_trainer_and_models():
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
     # Start utils
-    trainer = _create_trainer(batch_sampler, batch_loader, model)
+    trainer = _create_trainer(batch_sampler, batch_loader, model,
+                              experiments_path, 'test1')
     trainer.train_and_validate()
 
     # Initializing model 2
@@ -39,7 +46,8 @@ def test_trainer_and_models():
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
     # Start utils
-    trainer2 = _create_trainer(batch_sampler, batch_loader, model2)
+    trainer2 = _create_trainer(batch_sampler, batch_loader, model2,
+                               experiments_path, 'test2')
     trainer2.train_and_validate()
 
 
@@ -58,14 +66,14 @@ def _create_sampler_and_loader(dataset, model):
     return batch_sampler, batch_loader
 
 
-def _create_trainer(batch_sampler, batch_loader, model):
-    tmp_dir = tempfile.TemporaryDirectory()
+def _create_trainer(batch_sampler, batch_loader, model, experiments_path,
+                    experiment_name):
 
     trainer = DWIMLTrainerOneInput(
         batch_sampler=batch_sampler,
         batch_loader=batch_loader,
-        model=model, experiments_path=tmp_dir.name, experiment_name='test',
-        log_level='DEBUG',
+        model=model, experiments_path=str(experiments_path),
+        experiment_name=experiment_name, log_level='DEBUG',
         max_batches_per_epoch_training=2,
         max_batches_per_epoch_validation=None, max_epochs=2, patience=None,
         use_gpu=False)

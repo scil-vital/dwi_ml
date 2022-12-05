@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import os
+import pytest
 import tempfile
 
 from dwi_ml.tests.utils.expected_values import \
@@ -24,10 +25,13 @@ def test_help_option(script_runner):
     #assert ret.success
 
 
-def test_execution_bst(script_runner):
-    os.chdir(os.path.expanduser(tmp_dir.name))
+@pytest.fixture(scope="session")
+def experiments_path(tmp_path_factory):
+    experiments_path = tmp_path_factory.mktemp("experiments_ttst")
+    return str(experiments_path)
 
-    experiments_path = tmp_dir.name
+
+def test_execution_bst(script_runner, experiments_path):
     experiment_name = 'test_experiment'
     hdf5_file = os.path.join(data_dir, 'hdf5_file.hdf5')
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]

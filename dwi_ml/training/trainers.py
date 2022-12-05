@@ -133,17 +133,21 @@ class DWIMLAbstractTrainer:
         self.logger.setLevel(log_level)
 
         # Experiment
-        if not os.path.isdir(experiments_path):
-            raise NotADirectoryError("The experiments path does not exist! "
-                                     "({})".format(experiments_path))
-
         self.experiments_path = experiments_path
         self.experiment_name = experiment_name
-        self.saving_path = os.path.join(experiments_path,
-                                        experiment_name)
-        if not from_checkpoint and not os.path.isdir(self.saving_path):
-            logging.info('Creating directory {}'.format(self.saving_path))
-            os.mkdir(self.saving_path)
+        self.saving_path = os.path.join(experiments_path, experiment_name)
+        if not os.path.isdir(experiments_path):
+            raise NotADirectoryError(
+                "The experiments path does not exist! ({}). Can't create this "
+                "experiment sub-folder!".format(experiments_path))
+        if not from_checkpoint:
+            if os.path.isdir(self.saving_path):
+                raise FileExistsError("Current experiment seems to already "
+                                      "exist... Use run from checkpoint to "
+                                      "continue training.")
+            else:
+                logging.info('Creating directory {}'.format(self.saving_path))
+                os.mkdir(self.saving_path)
 
         # Note that the training/validation sets are also contained in the
         # data_loaders.dataset
@@ -325,6 +329,7 @@ class DWIMLAbstractTrainer:
         folder as the experiment. Suggestion, call this after instantiating
         your trainer.
         """
+        os.listdir(self.saving_path)
         json_filename = os.path.join(self.saving_path, "parameters.json")
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
@@ -421,6 +426,7 @@ class DWIMLAbstractTrainer:
         self.logger.debug("Trainer {}: \n"
                           "Running the model {}.\n\n"
                           .format(type(self), type(self.model)))
+        self.save_params_to_json()
 
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:
@@ -465,6 +471,11 @@ class DWIMLAbstractTrainer:
             is_bad = self.best_epoch_monitoring.update(mean_epoch_loss, epoch)
 
             # Check if current best has been reached
+            if self.comet_exp:
+                # Saving this no matter what; we will see the stairs.
+                self.comet_exp.log_metric(
+                    "best_epoch",
+                    self.best_epoch_monitoring.best_epoch)
             if is_bad:
                 self.logger.info(
                     "** This is the {}th bad epoch (patience = {})"
@@ -519,9 +530,6 @@ class DWIMLAbstractTrainer:
             self.batch_sampler.context_subset.close_all_handles()
             self.batch_sampler.context_subset.volume_cache_manager = None
 
-        if self.comet_exp:
-            self.comet_exp.log_metric("current_epoch", self.current_epoch)
-
         # Training all batches
         self.logger.debug("Training one epoch: iterating on batches using "
                           "tqdm on the dataloader...")
@@ -561,7 +569,10 @@ class DWIMLAbstractTrainer:
             del train_iterator
 
         # Saving epoch's information
-        self.logger.info("Finishing epoch...")
+        all_n = self.train_loss_monitor.current_batch_weights
+        self.logger.info(
+            "Number of data points per batch: {}\u00B1{}"
+            .format(int(np.mean(all_n)), int(np.std(all_n))))
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
         self.training_time_monitor.end_epoch()
@@ -717,9 +728,6 @@ class DWIMLAbstractTrainer:
             self.comet_exp.log_metric(
                 "best_loss",
                 self.best_epoch_monitoring.best_value)
-            self.comet_exp.log_metric(
-                "best_epoch",
-                self.best_epoch_monitoring.best_epoch)
 
     def run_one_batch(self, data, is_training: bool):
         """

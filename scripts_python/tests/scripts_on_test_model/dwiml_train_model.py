@@ -92,8 +92,6 @@ def init_from_args(args, sub_loggers_level):
             log_level=args.logging)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_json_prints))
-        # Saving params to json to help user remember
-        trainer.save_params_to_json()
 
     return trainer
 

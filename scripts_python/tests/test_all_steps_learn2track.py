@@ -2,16 +2,17 @@
 # -*- coding: utf-8 -*-
 import logging
 import os
+import pytest
 import tempfile
 
 import torch
+
 from dwi_ml.tests.utils.expected_values import (
     TEST_EXPECTED_VOLUME_GROUPS,
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_SUBJ_NAMES)
 from dwi_ml.tests.utils.data_and_models_for_tests import fetch_testing_data
 
 data_dir = fetch_testing_data()
-tmp_dir = tempfile.TemporaryDirectory()
 
 
 def test_help_option(script_runner):
@@ -25,10 +26,13 @@ def test_help_option(script_runner):
     assert ret.success
 
 
-def test_execution_training_tracking(script_runner):
-    os.chdir(os.path.expanduser(tmp_dir.name))
+@pytest.fixture(scope="session")
+def experiments_path(tmp_path_factory):
+    experiments_path = tmp_path_factory.mktemp("experiments_l2t")
+    return str(experiments_path)
 
-    experiment_path = tmp_dir.name
+
+def test_execution_training_tracking(script_runner, experiments_path):
     experiment_name = 'test_experiment'
     hdf5_file = os.path.join(data_dir, 'hdf5_file.hdf5')
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]
@@ -37,8 +41,10 @@ def test_execution_training_tracking(script_runner):
     # Here, testing default values only. See dwi_ml.tests.test_trainer for more
     # various testing.
     logging.info("************ TESTING TRAINING ************")
+    logging.warning("DID WE CREATE A TEMPORARY DIRECTORY?")
+    logging.warning(os.path.isdir(experiments_path))
     ret = script_runner.run('l2t_train_model.py',
-                            experiment_path, experiment_name, hdf5_file,
+                            experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
                             '--max_epochs', '1', '--batch_size_training', '5',
                             '--batch_size_validation', '5',
@@ -51,13 +57,13 @@ def test_execution_training_tracking(script_runner):
 
     logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
     ret = script_runner.run('l2t_resume_training_from_checkpoint.py',
-                            experiment_path, 'test_experiment',
+                            experiments_path, 'test_experiment',
                             '--new_max_epochs', '2')
     assert ret.success
 
     logging.info("************ TESTING TRACKING FROM MODEL ************")
-    whole_experiment_path = os.path.join(experiment_path, experiment_name)
-    out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
+    whole_experiment_path = os.path.join(experiments_path, experiment_name)
+    out_tractogram = os.path.join(experiments_path, 'test_tractogram.trk')
 
     seeding_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
     tracking_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
@@ -76,7 +82,7 @@ def test_execution_training_tracking(script_runner):
     # Testing multiple tracking
     if torch.cuda.is_available():
         logging.info("********** TESTING GPU TRACKING FROM MODEL ************")
-        out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram2.trk')
+        out_tractogram = os.path.join(experiments_path, 'test_tractogram2.trk')
         ret = script_runner.run(
             'l2t_track_from_model.py', whole_experiment_path, hdf5_file,
             subj_id, out_tractogram, seeding_mask_group, tracking_mask_group,

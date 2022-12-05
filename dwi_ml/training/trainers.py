@@ -133,17 +133,21 @@ class DWIMLAbstractTrainer:
         self.logger.setLevel(log_level)
 
         # Experiment
-        if not os.path.isdir(experiments_path):
-            raise NotADirectoryError("The experiments path does not exist! "
-                                     "({})".format(experiments_path))
-
         self.experiments_path = experiments_path
         self.experiment_name = experiment_name
-        self.saving_path = os.path.join(experiments_path,
-                                        experiment_name)
-        if not from_checkpoint and not os.path.isdir(self.saving_path):
-            logging.info('Creating directory {}'.format(self.saving_path))
-            os.mkdir(self.saving_path)
+        self.saving_path = os.path.join(experiments_path, experiment_name)
+        if not os.path.isdir(experiments_path):
+            raise NotADirectoryError(
+                "The experiments path does not exist! ({}). Can't create this "
+                "experiment sub-folder!".format(experiments_path))
+        if not from_checkpoint:
+            if os.path.isdir(self.saving_path):
+                raise FileExistsError("Current experiment seems to already "
+                                      "exist... Use run from checkpoint to "
+                                      "continue training.")
+            else:
+                logging.info('Creating directory {}'.format(self.saving_path))
+                os.mkdir(self.saving_path)
 
         # Note that the training/validation sets are also contained in the
         # data_loaders.dataset
@@ -325,6 +329,7 @@ class DWIMLAbstractTrainer:
         folder as the experiment. Suggestion, call this after instantiating
         your trainer.
         """
+        os.listdir(self.saving_path)
         json_filename = os.path.join(self.saving_path, "parameters.json")
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
@@ -405,21 +410,6 @@ class DWIMLAbstractTrainer:
 
         return int(final_nb_train), int(final_nb_valid)
 
-    def _save_params_to_json(self):
-        trainer_params = os.path.join(self.saving_path, "trainer_params.json")
-        sampler_params = os.path.join(self.saving_path, "batch_sampler_params.json")
-        loader_params = os.path.join(self.saving_path, "batch_loader_params.json")
-        with open(trainer_params, 'w') as json_file:
-            json_file.write(json.dumps(
-                self.params_for_json_prints, indent=4, separators=(',', ': ')))
-        with open(sampler_params, 'w') as json_file:
-            json_file.write(json.dumps(
-                self.batch_sampler.params, indent=4, separators=(',', ': ')))
-        with open(loader_params, 'w') as json_file:
-            json_file.write(json.dumps(
-                self.batch_loader.params_for_json_prints, indent=4,
-                separators=(',', ': ')))
-
     def train_and_validate(self):
         """
         Train + validates the model (+ computes loss)
@@ -436,7 +426,7 @@ class DWIMLAbstractTrainer:
         self.logger.debug("Trainer {}: \n"
                           "Running the model {}.\n\n"
                           .format(type(self), type(self.model)))
-        self._save_params_to_json()
+        self.save_params_to_json()
 
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:

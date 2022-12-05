@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from math import ceil
 from typing import Any, Tuple
 
@@ -247,7 +248,7 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
                          loss_description='negative cosine similarity')
 
         # Loss will be applied on the last dimension.
-        self.loss = CosineSimilarity(dim=-1)
+        self.cos_loss = CosineSimilarity(dim=-1)
 
     def compute_loss(self, learned_directions: Tensor,
                      target_directions: Tensor):
@@ -275,16 +276,20 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
         # Thus we aim for a big cosine (maximize)! We minimize -cosine.
 
         # losses is of shape [nb_points,]
-        losses = -self.loss(learned_directions, target_directions)
+        losses = -self.cos_loss(learned_directions, target_directions)
 
-        # Note. Using the mean of all points of all streamlines has the
-        # potential of learning only to go straight, which would be fine in
-        # most cases.
-        # Could we increase the weight of wrong results? Tried
-        # mean_loss = torch.sqrt(torch.pow((losses - 1), 2)).mean()
-        #      ( cosine - 1: brings it back to range [-2,  0]
-        #        pow2: - 2 becomes very important.)
-        # But with projects, exploding gradients.
+        if logging.getLogger().level == logging.DEBUG:
+            # Comparing with l2-norm:
+            l2_losses = PairwiseDistance()(learned_directions,
+                                           target_directions)
+            mean, _ = _mean_and_weight(l2_losses)
+            logging.debug("           -  Current l2-loss: {}".format(mean))
+
+            # Verifying range of outputs
+            learned = learned_directions.cpu().detach().numpy()
+            np.set_printoptions(suppress=True)
+            logging.debug("Norm of learned directions: {}"
+                          .format(np.sqrt(np.sum(learned ** 2, axis=-1))))
 
         return _mean_and_weight(losses)
 
@@ -305,7 +310,7 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
 
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
-        self.loss = PairwiseDistance()
+        self.l2_loss = PairwiseDistance()
 
     def compute_loss(self, learned_directions: Tensor,
                      target_directions: Tensor):
@@ -314,7 +319,45 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
         and the target directions.
         """
         # If outputs and targets are of shape (N, D), losses is of shape N
-        losses = self.loss(learned_directions, target_directions)
+        losses = self.l2_loss(learned_directions, target_directions)
+
+        if logging.getLogger().level == logging.DEBUG:
+            # Comparing with cosine-norm:
+            cos_losses = CosineSimilarity(dim=-1)(learned_directions,
+                                                  target_directions)
+            mean, _ = _mean_and_weight(cos_losses)
+            logging.debug("           -  Current cos-loss: {}".format(-mean))
+
+        return _mean_and_weight(losses)
+
+
+class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
+    def __init__(self, input_size: int, dropout: float = None):
+        super().__init__(input_size, dropout,
+                         key='cos-plus-l2-regression',
+                         supports_compressed_streamlines=False,
+                         loss_description='l2 + negative cosine similarity')
+
+        # Loss will be applied on the last dimension.
+        self.cos_loss = CosineSimilarity(dim=-1)
+        self.l2_loss = PairwiseDistance()
+
+    def compute_loss(self, learned_directions: Tensor,
+                     target_directions: Tensor):
+        """
+        Compute the average pairwise distance between the computed directions
+        and the target directions.
+        """
+        # If outputs and targets are of shape (N, D), losses is of shape N
+        l2_losses = self.l2_loss(learned_directions, target_directions)
+        cos_losses = -self.cos_loss(learned_directions, target_directions)
+        losses = l2_losses + cos_losses
+
+        if logging.getLogger().level == logging.DEBUG:
+            mean, _ = _mean_and_weight(cos_losses)
+            logging.debug("           -  Current cos-loss: {}".format(mean))
+            mean, _ = _mean_and_weight(l2_losses)
+            logging.debug("           -  Current l2-loss: {}".format(mean))
 
         return _mean_and_weight(losses)
 
@@ -806,6 +849,7 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
 keys_to_direction_getters = \
     {'cosine-regression': CosineRegressionDirectionGetter,
      'l2-regression': L2RegressionDirectionGetter,
+     'cosine-plus-l2-regression': CosPlusL2RegressionDirectionGetter,
      'sphere-classification': SphereClassificationDirectionGetter,
      'gaussian': SingleGaussianDirectionGetter,
      'gaussian-mixture': GaussianMixtureDirectionGetter,

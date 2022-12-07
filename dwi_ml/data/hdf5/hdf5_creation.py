@@ -171,8 +171,7 @@ class HDF5Creator:
                       "  validation subjs {},\n"
                       "  testing subjs {}"
                       .format(training_subjs, validation_subjs, testing_subjs))
-        self.all_subjs = training_subjs + validation_subjs + testing_subjs
-        self._verify_subjects_list()
+        self.all_subjs = self._verify_subjects_list()
 
         # Check that all files exist
         if enforce_files_presence:
@@ -248,13 +247,23 @@ class HDF5Creator:
                              '{}'.format(self.root_folder))
 
         # Check that no subject was added twice. We do not support it.
-        unique_subjs = list(set(self.all_subjs))
-        if len(unique_subjs) != len(self.all_subjs):
-            raise ValueError("Some subjects were added twice! We do not "
-                             "support this. {}".format(self.all_subjs))
+        if len(np.unique(self.training_subjs)) != len(self.training_subjs):
+            raise ValueError("Some training subjects are written twice!")
+        if len(np.unique(self.validation_subjs)) != len(self.validation_subjs):
+            raise ValueError("Some validation subjects are written twice!")
+        if len(np.unique(self.testing_subjs)) != len(self.testing_subjs):
+            raise ValueError("Some testing subjects are written twice!")
+        all_subjs = self.training_subjs + self.validation_subjs + \
+            self.testing_subjs
+        unique_subjs = list(set(all_subjs))
+        if len(unique_subjs) != len(all_subjs):
+            logging.warning(
+                "      CAREFUL! Some subjects were added in two different "
+                "lists. It it a better practice to have separate datasets for "
+                "training/validation/testing.")
 
         # Checking that chosen subjects exist.
-        non_existing_subjs = [s for s in self.all_subjs if s not in
+        non_existing_subjs = [s for s in unique_subjs if s not in
                               possible_subjs]
         if len(non_existing_subjs) > 0:
             raise ValueError(
@@ -263,12 +272,13 @@ class HDF5Creator:
                 .format(self.root_folder, non_existing_subjs))
 
         # Checking if some existing subjects were not chosen.
-        ignored_subj = [s for s in possible_subjs if s not in self.all_subjs]
+        ignored_subj = [s for s in possible_subjs if s not in unique_subjs]
         if len(ignored_subj) > 0:
-            logging.info("    Careful! NOT processing subjects {} from folder "
-                         "because they were not included in training set, "
-                         "validation set nor testing set!"
-                         .format(ignored_subj))
+            logging.warning(
+                "    Careful! NOT processing subjects {} from folder because "
+                "they were not included in training set, validation set nor "
+                "testing set!".format(ignored_subj))
+        return unique_subjs
 
     def _check_files_presence(self):
         """

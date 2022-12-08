@@ -44,6 +44,9 @@ def prepare_neighborhood_vectors(neighborhood_type: str, neighborhood_radius):
             neighborhood_vectors = get_neighborhood_vectors_axes(
                 neighborhood_radius)
         else:
+            if isinstance(neighborhood_radius, list):
+                assert len(neighborhood_radius) == 1
+                neighborhood_radius = neighborhood_radius[0]
             neighborhood_vectors = get_neighborhood_vectors_grid(
                 neighborhood_radius)
 
@@ -122,7 +125,11 @@ def get_neighborhood_vectors_grid(radius_vox_space: int):
         neighbour per respect to the origin). The current point (0,0,0) is NOT
         included.
     """
-    assert type(radius_vox_space) == int
+    if isinstance(radius_vox_space, float) and radius_vox_space.is_integer():
+        radius_vox_space = int(radius_vox_space)
+    assert type(radius_vox_space) == int, "For the 'grid' neighborhood, " \
+                                          "radius must be an int. Rrecieved " \
+                                          "{}".format(radius_vox_space)
 
     neighborhood_vectors = []
     the_range = range(-radius_vox_space, radius_vox_space + 1)

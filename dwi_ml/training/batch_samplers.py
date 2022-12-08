@@ -237,8 +237,8 @@ class DWIMLBatchIDSampler(Sampler):
 
             # Stopping if all streamlines have been used
             if np.sum(streamlines_per_subj) == 0:
-                self.logger.info("No streamlines remain for this epoch, "
-                                 "stopping.")
+                self.logger.debug("No streamlines remain for this epoch, "
+                                  "stopping.")
                 break
 
             # Choose subjects from which to sample streamlines for the next

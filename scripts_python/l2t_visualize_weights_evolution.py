@@ -95,13 +95,14 @@ def _prepare_figure(weights, weights_pd, best_epoch, f_names, f_starts,
     fig.colorbar(im1, cax=cax, orientation='vertical')
 
     # Suplot 2: normalized per epoch.
-    row_max = weights.max(axis=1)  # ignore pycharm warning. numpy's fault.
-    row_min = np.zeros(row_max.shape)  # or weights.min(axis=1)
-    row_range = row_max - row_min
-    norm_weights = (weights - row_min[:, np.newaxis]) / row_range[:, np.newaxis]
+    nb_weights = weights.shape[1]
+    norm_weights = weights / np.sum(weights, axis=1)[:, np.newaxis]
+    norm_weights *= nb_weights
     im2 = ax[1].imshow(norm_weights, aspect='auto', interpolation='none',
                        vmin=0)
-    ax[1].set_title("Normalized weights per epoch.")
+    ax[1].set_title("Percentage of the weights (per epoch).")
+    ax[1].set_title("Part associated to each weight (per epoch).\n"
+                    "1 everywhere = All features have the same importance.")
 
     # Add colorbar
     divider = make_axes_locatable(ax[1])

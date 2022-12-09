@@ -191,8 +191,8 @@ class MultisubjectSubset(Dataset):
             # Saving the data as a non-lazy data to also have in memory its
             # other attributes.
             if self.subjs_data_list.is_lazy and self.cache_size > 0:
-                logger.info("PROCESS ID {}. Adding volume to cache"
-                            .format(os.getpid()))
+                logger.debug("PROCESS ID {}. Adding volume to cache"
+                             .format(os.getpid()))
                 # Send volume_data on cache
                 mri_data = mri_data.as_non_lazy
                 self.volume_cache_manager[cache_key] = mri_data

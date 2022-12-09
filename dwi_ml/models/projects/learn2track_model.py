@@ -138,7 +138,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             # For modelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
-            add_vectors_to_data=False,  # Not Ready. ToDo
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
             prev_dirs_embedding_size=prev_dirs_embedding_size,
@@ -176,8 +175,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         input_embedding_cls = keys_to_tensor_embeddings[input_embedding_key]
         self.input_embedding = input_embedding_cls(
-            input_size=self.input_size,
-            output_size=self.input_embedding_size)
+            input_size=self.input_size, output_size=self.input_embedding_size)
 
         # 3. Stacked RNN
         rnn_input_size = self.input_embedding_size

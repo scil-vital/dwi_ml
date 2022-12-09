@@ -151,8 +151,7 @@ class ModelWithNeighborhood(MainModelAbstract):
     Adds tools to work with neighborhoods.
     """
     def __init__(self, neighborhood_type: str = None,
-                 neighborhood_radius=None, add_vectors_to_data: bool = False,
-                 **kw):
+                 neighborhood_radius=None, **kw):
         """
         Params
         ------
@@ -166,10 +165,6 @@ class ModelWithNeighborhood(MainModelAbstract):
         neighborhood_radius: Union[int, float, Iterable[float]]
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
-        add_vectors_to_data: bool
-            If true, neighborhood vectors (the coordinates, not the data) will
-            be concatenated to the data at each point, meaning that the number
-            of features per point will be 3 more.
         """
         super().__init__(**kw)
 
@@ -178,9 +173,10 @@ class ModelWithNeighborhood(MainModelAbstract):
         self.neighborhood_type = neighborhood_type
         self.neighborhood_vectors = prepare_neighborhood_vectors(
             neighborhood_type, neighborhood_radius)
+
+        # Reminder. nb neighbors does not include origin.
         self.nb_neighbors = len(self.neighborhood_vectors) if \
             self.neighborhood_vectors is not None else 0
-        self.add_vectors_to_data = add_vectors_to_data
 
     @staticmethod
     def add_neighborhood_args_to_parser(p: argparse.PARSER):
@@ -340,7 +336,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         Params
         ------
         dirs: list or tensor
-            Batch all streamline directions If it is a tensor, it should be of
+            Batch all streamline directions. If it is a tensor, it should be of
             size [nb_points, 3].
             If it is a list, length of the list is the number of streamlines in
             the batch. Each tensor is as described above. The batch will be
@@ -500,10 +496,10 @@ class MainModelOneInput(MainModelAbstract):
             # Adding neighborhood.
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, self.neighborhood_vectors,
-                self.add_vectors_to_data, device)
+                device)
         else:
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, None, False, device)
+                data_tensor, flat_subj_x_coords, None, device)
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]

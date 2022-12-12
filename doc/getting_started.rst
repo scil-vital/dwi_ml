@@ -12,7 +12,9 @@ required dependencies::
 Installing dependencies
 ***********************
 
-The toolkit relies on `Scilpy`_ and on a number of other packages available through the `Python Package Index (PyPI)`_.
+We support python 3.7.  (python3.7-distutils and python3.7-dev must also be installed).
+
+The toolkit relies on `Scilpy`_ and on a number of other packages available through the `Python Package Index (PyPI)`_ (i.e. you can use pip).
 
 We strongly recommend working in a virtual environment to install all
 dependencies related to DWI_ML.

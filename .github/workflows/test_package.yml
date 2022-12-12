@@ -11,7 +11,7 @@ jobs:
       # max-parallel: 6
       matrix:
         os: [ubuntu-18.04]  # or ubuntu-latest
-        python-version: [3.7, 3.8]
+        python-version: [3.7] # , 3.8
         requires: ['latest']
 
     steps:
@@ -27,6 +27,7 @@ jobs:
       run: |
         # python -m pip install --upgrade --user pip
         # pip install pytest
+        pip install --upgrade pip
         pip install -r requirements.txt
         pip install .
 

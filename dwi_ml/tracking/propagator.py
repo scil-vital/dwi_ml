@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
 from datetime import datetime
-from typing import Union
+from typing import Union, List
 
+from dipy.io.stateful_tractogram import Space, Origin
 import numpy as np
 import torch
-from dipy.io.stateful_tractogram import Space, Origin
 
 from scilpy.tracking.propagator import AbstractPropagator
 
@@ -370,11 +370,11 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
 
         self.use_input_memory = input_memory
 
-        self.current_lines = None  # type: Union[list, None]
+        self.current_lines = None  # type: Union[List, None]
         # List of lines. All lines have the same number of points
         #         # as they are being propagated together.
         #         # List[list[list]]: nb_lines x (nb_points, 3).
-        self.input_memory = None  # type: Union[list, None]
+        self.input_memory = None  # type: Union[List, None]
         # List of inputs, as formatted by the model.
 
     def prepare_forward(self, seeding_pos, multiple_lines=False):
@@ -409,6 +409,7 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         """
         inputs = self._prepare_inputs_at_pos(n_pos)
 
+        logging.warning("                                           P: Current inputs: {}".format(inputs))
         if self.use_input_memory:
             if self.input_memory is None:
                 self.input_memory = inputs

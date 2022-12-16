@@ -6,7 +6,8 @@ import pytest
 import tempfile
 
 from dwi_ml.tests.utils.expected_values import \
-    (TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_STREAMLINE_GROUPS)
+    (TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_STREAMLINE_GROUPS,
+     TEST_EXPECTED_SUBJ_NAMES)
 from dwi_ml.tests.utils.data_and_models_for_tests import fetch_testing_data
 
 data_dir = fetch_testing_data()
@@ -21,8 +22,8 @@ def test_help_option(script_runner):
         'ttst_resume_training_from_checkpoint.py', '--help')
     assert ret.success
 
-    #ret = script_runner.run('tt_track_from_model.py', '--help')
-    #assert ret.success
+    ret = script_runner.run('ttst_track_from_model.py', '--help')
+    assert ret.success
 
 
 @pytest.fixture(scope="session")
@@ -59,16 +60,19 @@ def test_execution_bst(script_runner, experiments_path):
         'ttst_resume_training_from_checkpoint.py',
         experiments_path, 'test_experiment', '--new_max_epochs', '2')
     assert ret.success
-    #
-    # logging.info("************ TESTING TRACKING FROM MODEL ************")
-    # whole_experiment_path = os.path.join(experiment_path, experiment_name)
-    # out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
-    # ret = script_runner.run(
-    #     'tt_track_from_model.py', whole_experiment_path, out_tractogram,
-    #     'det', '--nt', '2', '--logging', 'debug',
-    #     '--sm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
-    #     '--tm_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[1],
-    #     '--input_from_hdf5', TEST_EXPECTED_VOLUME_GROUPS[0],
-    #     '--hdf5_file', hdf5_file, '--subj_id', TEST_EXPECTED_SUBJ_NAMES[0])
-    #
-    # assert ret.success
+
+    logging.info("************ TESTING TRACKING FROM MODEL ************")
+    whole_experiment_path = os.path.join(experiments_path, experiment_name)
+    out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
+
+    seeding_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
+    tracking_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
+    input_group = TEST_EXPECTED_VOLUME_GROUPS[0]
+    subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
+
+    ret = script_runner.run(
+        'ttst_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+        out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
+        '--algo', 'det', '--nt', '2', '--rk_order', '1', '--rng_seed', '0',
+        '--min_length', '0', '--subset', 'training')
+    assert ret.success

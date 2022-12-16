@@ -366,6 +366,12 @@ class DWIMLAbstractTrainer:
                 self.comet_exp.set_name(self.experiment_name)
                 self.comet_exp.log_parameters(self.params_for_json_prints)
                 self.comet_key = self.comet_exp.get_key()
+                # Couldn't find how to set log level. Getting it directly.
+                comet_log = logging.getLogger("comet_ml")
+                comet_log.setLevel(logging.WARNING)
+                comet_log = logging.getLogger("comet_ml.system.gpu.devices")
+                comet_log.setLevel(logging.WARNING)
+
             elif self.comet_project:
                 raise ValueError("You have provided a comet project, "
                                  "but no comet workspace!")

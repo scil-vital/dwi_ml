@@ -123,8 +123,6 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
         """
         subj_data = self.__getitem__(subject_idx)
 
-        logger.debug("Giving handle information to subject.")
-
         # Verify current handle.
         if not self.hdf_handle or not self.hdf_handle.id.valid:
             if self.hdf_handle:

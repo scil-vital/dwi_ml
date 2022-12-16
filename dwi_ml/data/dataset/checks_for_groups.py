@@ -2,8 +2,6 @@
 import logging
 from typing import Tuple
 
-logger = logging.getLogger('dataset_logger')
-
 
 def _find_groups_info_for_subj(hdf_file, subj_id: str):
     """
@@ -17,9 +15,6 @@ def _find_groups_info_for_subj(hdf_file, subj_id: str):
         Opened hdf handle to the hdf5 file.
     subj_id: str
         The subject name in the hdf5 file.
-    log: logger
-        A logger. This gives the opportunity to send a logger adapted for use
-        with tqdm.
 
     Returns
     -------
@@ -50,11 +45,6 @@ def _find_groups_info_for_subj(hdf_file, subj_id: str):
                 "the groups_config.json. Please see the doc for a json file "
                 "example. Your hdf5 contained group of type {} for subj {}"
                 .format(group_type, subj_id))
-
-    logger.debug("        Volume groups are: {}".format(volume_groups))
-    logger.debug("        Number of features in each of these groups: {}"
-                 .format(nb_features))
-    logger.debug("        Streamline groups are: {}".format(streamline_groups))
 
     return volume_groups, nb_features, streamline_groups
 

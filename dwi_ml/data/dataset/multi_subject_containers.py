@@ -256,18 +256,18 @@ class MultisubjectSubset(Dataset):
         lengths_mm = [[] for _ in self.streamline_groups]
 
         # Using tqdm progress bar, load all subjects from hdf_file
-        with logging_redirect_tqdm(loggers=[logger, logging.root],
-                                   tqdm_class=tqdm):
+        with logging_redirect_tqdm(loggers=[logging.root], tqdm_class=tqdm):
             for subj_id in tqdm(subject_keys, ncols=100):
                 # Create subject's container
                 # Uses SubjectData or LazySubjectData based on the class
                 # calling this method.
-                logger.debug("     Creating subject '{}':".format(subj_id))
+                logger.debug("     Creating subject '{}'.".format(subj_id))
                 subj_data = self._init_subj_from_hdf(
                     hdf_handle, subj_id, self.volume_groups, self.nb_features,
                     self.streamline_groups)
 
                 # Add subject to the list
+                logger.debug("     Adding it to the list of subjects.")
                 subj_idx = self.subjs_data_list.add_subject(subj_data)
 
                 # Arrange streamlines
@@ -276,24 +276,27 @@ class MultisubjectSubset(Dataset):
                 if subj_data.is_lazy:
                     subj_data.add_handle(hdf_handle)
 
-                for i in range(len(self.streamline_groups)):
-                    subj_sft_data = subj_data.sft_data_list[i]
+                logger.debug("     Counting streamlines")
+                for group in range(len(self.streamline_groups)):
+                    subj_sft_data = subj_data.sft_data_list[group]
                     n_streamlines = len(subj_sft_data.streamlines)
-                    self._add_streamlines_ids(n_streamlines, subj_idx, i)
-                    self._count_points(subj_sft_data.streamlines, i)
-                    lengths[i].append(subj_sft_data.lengths)
-                    lengths_mm[i].append(subj_sft_data.lengths_mm)
+                    self._add_streamlines_ids(n_streamlines, subj_idx, group)
+                    lengths[group].append(subj_sft_data.lengths)
+                    lengths_mm[group].append(subj_sft_data.lengths_mm)
 
-                # Remove hdf handle
+                    # Remove hdf handle
                 subj_data.hdf_handle = None
 
-            # Arrange final data properties
+            # Arrange final data properties: Concatenate all subjects
             self.streamline_lengths_mm = \
-                [np.concatenate(lengths_mm[i], axis=0)
-                 for i in range(len(self.streamline_groups))]
+                [np.concatenate(lengths_mm[group], axis=0)
+                 for group in range(len(self.streamline_groups))]
             self.streamline_lengths = \
                 [np.concatenate(lengths[i], axis=0)
                  for i in range(len(self.streamline_groups))]
+            self.total_nb_points = \
+                [sum(self.streamline_lengths[group])
+                 for group in range(len(self.streamline_groups))]
 
     def _add_streamlines_ids(self, n_streamlines: int, subj_idx: int,
                              group_idx: int):
@@ -312,9 +315,6 @@ class MultisubjectSubset(Dataset):
 
         # Update total nb of streamlines in the dataset for this group
         self.total_nb_streamlines[group_idx] += n_streamlines
-
-    def _count_points(self, streamlines, group_idx):
-        self.total_nb_points[group_idx] += sum([len(s) for s in streamlines])
 
     def _build_empty_data_list(self):
         if self.is_lazy:
@@ -420,15 +420,20 @@ class MultiSubjectDataset:
 
             step_size = hdf_handle.attrs['step_size']
 
-            # Basing group names on the first training subject
-            logger.debug("Loading the first training subject's group "
-                         "information. Others should fit")
+            # Loading the first training subject's group information.
+            # Others should fit.
             subject_keys = sorted(hdf_handle.attrs['training_subjs'])
             group_info = \
                 prepare_groups_info(subject_keys[0], hdf_handle,
                                     group_info=None)
             (self.volume_groups, self.nb_features,
              self.streamline_groups) = group_info
+            logger.debug("        Volume groups are: {}"
+                         .format(self.volume_groups))
+            logger.debug("        Number of features in each of these groups: "
+                         "{}".format(self.nb_features))
+            logger.debug("        Streamline groups are: {}"
+                         .format(self.streamline_groups))
 
             self.training_set.set_subset_info(*group_info, step_size)
             self.validation_set.set_subset_info(*group_info, step_size)

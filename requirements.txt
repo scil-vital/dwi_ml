@@ -1,5 +1,9 @@
-# Supported for python > 3.7
-git+https://github.com/scilus/scilpy.git@1.4.0#egg=scilpy
+# Supported for python 3.10
+# Should work for python > 3.8.
+
+
+# Scilpy must be installed manually first.
+# (or run pip install -r requirements_github.txt)
 
 torch>=1.11.0
 tqdm>=4.60.0
@@ -11,15 +15,18 @@ sphinx_rtd_theme # no longer a hard dependency since version 1.4.0
 
 
 ## Necessary but should be installed with scilpy (Last check: 03/2022, version 1.2.2):
-matplotlib==2.2.*
-numpy==1.21.*
-scipy==1.4.*
-# h5py must absolutely be >2.4: that's when it became thread-safe
-h5py==2.10.*
+future==0.18.*
+h5py==3.7.*   # h5py must absolutely be >2.4: that's when it became thread-safe
+matplotlib==3.6.*   # Hint: If matplotlib fails, you may try to install pyQt5.
+nibabel==4.0.*
+numpy==1.23.*
+scipy==1.9.*
+
+
+
 dipy==1.5.*   # This is scilpy's current version. However, it breaks the
               # loggings. Waiting anxiously for version 1.6. Meanwhile, you can
               # manually use 1.4 instead if you want.
-nibabel==3.0.*
 
 
 

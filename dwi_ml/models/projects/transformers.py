@@ -4,16 +4,17 @@ from typing import Union, List
 
 import numpy as np
 import torch
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
 from torch.nn import Dropout
 from torch.nn.functional import pad
 from torch.nn.modules.transformer import (
     Transformer,
     TransformerEncoder, TransformerDecoder,
     TransformerEncoderLayer, TransformerDecoderLayer)
-from torch.nn.utils.rnn import pack_sequence, PackedSequence, unpack_sequence
+from torch.nn.utils.rnn import pack_sequence, PackedSequence
+from tmp_torch.rnn import unpack_sequence
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelForTracking,
                                        ModelWithPreviousDirections,

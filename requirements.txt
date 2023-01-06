@@ -1,7 +1,10 @@
 # Supported for python > 3.7
 git+https://github.com/scilus/scilpy.git@1.4.0#egg=scilpy
 
-torch>=1.11.0
+# A note about torch: We would prefer >=1.11. But for our users installing dwi_ml on ComputeCanada, as
+# is often the case in our lab, torch 1.10 is available only.
+# Note to developers: See tmp_torch. Remove these when torch 1.11 will be available.
+torch==1.10.0
 tqdm>=4.60.0
 comet-ml>=3.0.2
 contextlib2
@@ -10,7 +13,7 @@ nose
 sphinx_rtd_theme # no longer a hard dependency since version 1.4.0
 
 
-## Necessary but should be installed with scilpy (Last check: 03/2022, version 1.2.2):
+## Necessary but should be installed with scilpy (Last check: 01/2023, version 1.4.0):
 matplotlib==2.2.*
 future==0.17.*
 numpy==1.21.*

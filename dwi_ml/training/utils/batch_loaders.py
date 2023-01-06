@@ -64,7 +64,7 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
 
 def prepare_batch_loader(dataset, model, args, sub_loggers_level):
     # Preparing the batch loader.
-    with Timer("\nPreparing batch loader...", newline=True, color='pink'):
+    with Timer("\nPreparing batch loader...", newline=True, color='magenta'):
         batch_loader = DWIMLBatchLoaderOneInput(
             dataset=dataset, model=model,
             input_group_name=args.input_group_name,

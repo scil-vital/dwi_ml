@@ -9,8 +9,8 @@ from typing import List, Union
 
 import numpy as np
 import torch
-from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
-    unpack_sequence
+from torch.nn.utils.rnn import pack_sequence, PackedSequence
+from tmp_torch.rnn import unpack_sequence
 
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
@@ -379,8 +379,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
             # We could loop on all lists and embed each.
             # Probably faster to pack result, run model once on all points
             # and unpack later.
-            n_prev_dirs_packed = pack_sequence(n_prev_dirs,
-                                               enforce_sorted=False)
+            n_prev_dirs_packed = pack_sequence(
+                [torch.tensor(p) for p in n_prev_dirs], enforce_sorted=False)
 
             n_prev_dirs = n_prev_dirs_packed.data
             n_prev_dirs.to(self.device)

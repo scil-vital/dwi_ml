@@ -14,6 +14,8 @@ from dwi_ml.models.main_models import (
     ModelWithPreviousDirections)
 from dwi_ml.tests.utils.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
+from dwi_ml.tracking.propagator import DWIMLPropagatorwithStreamlineMemory, \
+    DWIMLPropagatorOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 
@@ -192,3 +194,9 @@ def create_batch_loader(
         log_level=log_level, model=model)
 
     return batch_loader
+
+
+class TestPropagator(DWIMLPropagatorwithStreamlineMemory,
+                     DWIMLPropagatorOneInput):
+    def __init__(self, **kw):
+        super().__init__(**kw)

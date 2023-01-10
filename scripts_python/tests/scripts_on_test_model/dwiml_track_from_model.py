@@ -40,12 +40,12 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
 # PLEASE COPY AND ADAPT:
 ##################
 # Use your own model.
-from dwi_ml.tests.utils.data_and_models_for_tests import TrackingModelForTestWithPD
+from dwi_ml.tests.utils.data_and_models_for_tests import (
+    TrackingModelForTestWithPD, TestPropagator)
 
 # Choose appropriate classes or implement your own child classes.
 # Example:
 from dwi_ml.tracking.tracker import DWIMLTracker
-from dwi_ml.tracking.propagator import DWIMLPropagatorOneInput
 
 
 def build_argparser():
@@ -127,7 +127,7 @@ def prepare_tracker(parser, args, hdf5_file, device,
         theta = gm.math.radians(args.theta)
         model_uses_streamlines = True  # Test model's forward uses previous
         # dirs, which require streamlines
-        propagator = DWIMLPropagatorOneInput(
+        propagator = TestPropagator(
             input_volume_group=args.input_group,
             dataset=subset, subj_idx=subj_idx, model=model,
             step_size=step_size_vox_space, rk_order=args.rk_order,

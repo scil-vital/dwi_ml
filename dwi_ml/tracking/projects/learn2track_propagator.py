@@ -7,12 +7,14 @@ import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.tracking.propagator import DWIMLPropagatorOneInput
+from dwi_ml.tracking.propagator import (DWIMLPropagatorOneInput,
+                                        DWIMLPropagatorwithStreamlineMemory)
 
 logger = logging.getLogger('tracker_logger')
 
 
-class RecurrentPropagator(DWIMLPropagatorOneInput):
+class RecurrentPropagator(DWIMLPropagatorOneInput,
+                          DWIMLPropagatorwithStreamlineMemory):
     """
     To use a RNN for a generative process, the hidden recurrent states that
     would be passed (ex, h_(t-1), C_(t-1) for LSTM) need to be kept in memory
@@ -120,42 +122,11 @@ class RecurrentPropagator(DWIMLPropagatorOneInput):
 
         return super().prepare_backward(line, forward_dir, multiple_lines)
 
-    def _get_model_outputs_at_pos(self, n_pos):
-        """
-        Overriding dwi_ml: model needs to use the hidden recurrent states +
-        we need to pack the data.
-
-        Parameters
-        ----------
-        n_pos: list of ndarrays
-            Current position coordinates for each streamline.
-        """
-        # Copying the beginning of super's method
-        inputs = self._prepare_inputs_at_pos(n_pos)
-
-        # The model's memory of the beginning of the line is managed through
-        # the hidden states. We only need to send the current point(s), which
-        # is why inputs is only computed from n_pos.
-        # However, we do need the whole streamline to compute the n previous
-        # dirs. Computing now.
-        # Todo. This is not perfect yet. Sending data to new device at each new
-        #  point. Could it already be a tensor in memory?
-        start_time = datetime.now()
-        lines = [torch.as_tensor(np.vstack(s)).to(self.device) for s in
-                 self.current_lines]
-        duration_sending_to_device = datetime.now() - start_time
-
+    def _call_model_forward(self, inputs, lines):
         # For RNN, we need to send the hidden state too.
-        start_time = datetime.now()
         model_outputs, self.hidden_recurrent_states = self.model(
             inputs, lines, self.hidden_recurrent_states,
             return_state=True, is_tracking=True)
-        duration_running_model = datetime.now() - start_time
-
-        logger.debug("Time to send to device: {} s. Time to run the model: "
-                     "{} s."
-                     .format(duration_sending_to_device.total_seconds(),
-                             duration_running_model.total_seconds()))
 
         return model_outputs
 

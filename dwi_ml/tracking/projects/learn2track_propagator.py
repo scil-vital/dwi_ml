@@ -34,7 +34,8 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
                          subj_idx=subj_idx, model=model,
                          input_volume_group=input_volume_group,
                          step_size=step_size, rk_order=rk_order, algo=algo,
-                         theta=theta, device=device)
+                         theta=theta, device=device,
+                         verify_opposite_direction=False)
 
         # Internal state:
         # - previous_dirs, already dealt with by super.

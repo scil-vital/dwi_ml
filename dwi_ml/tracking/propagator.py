@@ -36,7 +36,7 @@ class DWIMLPropagator(AbstractPropagator):
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: MainModelAbstract, step_size: float, rk_order: int,
-                 algo: str, theta: float,
+                 algo: str, theta: float, verify_opposite_direction: bool,
                  device=None, normalize_directions: bool = True):
         """
         Parameters
@@ -47,8 +47,10 @@ class DWIMLPropagator(AbstractPropagator):
             one subject.
         subj_idx: int
             Subject used for tracking.
+        model: MainModelAbstract
+            Your torch model.
         step_size: float
-            The step size for tracking.
+            The step size for tracking, in voxel space.
         rk_order: int
             Order for the Runge Kutta integration.
         algo: str
@@ -56,6 +58,15 @@ class DWIMLPropagator(AbstractPropagator):
         theta: float
             Maximum angle (radians) allowed between two steps during sampling
             of the next direction.
+        verify_opposite_direction: bool
+            If true, during propagation, inverse the direction if opposite
+            direction is better aligned (i.e. data model is symmetrical).
+            If false, your model should learn to guess the correct direction
+            as output.
+        device: torch device
+            CPU or GPU
+        normalize_directions: bool
+            If true, normalize directions.
         """
         # Dataset will be managed differently. Not a DataVolume.
         # torch trilinear interpolation uses origin='corner', space=vox.
@@ -83,6 +94,7 @@ class DWIMLPropagator(AbstractPropagator):
 
         # Contrary to super: normalize direction is optional
         self.normalize_directions = normalize_directions
+        self.verify_opposite_direction = verify_opposite_direction
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -312,20 +324,20 @@ class DWIMLPropagator(AbstractPropagator):
         raise NotImplementedError
 
     def _verify_angle(self, next_dir, v_in):
-        """
-        Note. With deterministic tracking on peaks, we would have to implement
-        verification of the direction closest to v_in and possibly flip
-        next_dir. Not done here, as next_dir comes from a machine learning
-        algorithm which should already learn to output something in the right
-        direction.
-        """
-        cos_angle = np.dot(next_dir / np.linalg.norm(next_dir),
-                           v_in.T / np.linalg.norm(v_in))
+        if self.normalize_directions:
+            cos_angle = np.dot(next_dir, v_in.T)
+        else:
+            cos_angle = np.dot(next_dir / np.linalg.norm(next_dir),
+                               v_in.T / np.linalg.norm(v_in))
 
         # Resolving numerical instabilities:
         cos_angle = min(max(-1.0, float(cos_angle)), 1.0)
-
         angle = np.arccos(cos_angle)
+
+        if self.verify_opposite_direction and angle > np.pi / 2:  # 90 degres
+            angle = np.mod(angle + np.pi, 2*np.pi)
+            next_dir = - next_dir
+
         if angle > self.theta:
             return None
         return next_dir

@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+from dipy.io.stateful_tractogram import (Space, Origin)
+import nibabel as nib
+import numpy as np
+
 from scilpy.io.utils import add_processes_arg
+from scilpy.image.datasets import DataVolume
+from scilpy.tracking.seed import SeedGenerator
+
+from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 
 
 def add_mandatory_options_tracking(p):
@@ -119,11 +126,11 @@ def add_tracking_options(p):
     return track_g
 
 
-def prepare_dataset_for_tracking(hdf5_file, args):
+def prepare_dataset_for_tracking(args):
     # Right now, we con only track on one subject at the time. We could
     # instantiate a LazySubjectData directly but we want to use the cache
     # manager (suited better for multiprocessing)
-    dataset = MultiSubjectDataset(hdf5_file, lazy=args.lazy,
+    dataset = MultiSubjectDataset(args.hdf5_file, lazy=args.lazy,
                                   cache_size=args.cache_size,
                                   log_level=logging.WARNING)
 
@@ -147,3 +154,73 @@ def prepare_dataset_for_tracking(hdf5_file, args):
     subj_idx = subset.subjects.index(args.subj_id)
 
     return subset, subj_idx
+
+
+def prepare_seed_generator(parser, args, hdf_handle):
+    """
+    Prepares a SeedGenerator from scilpy's library. Returns also some header
+    information to allow verifications.
+    """
+    seeding_group = hdf_handle[args.subj_id][args.seeding_mask_group]
+    seed_data = np.array(seeding_group['data'], dtype=np.float32)
+    seed_res = np.array(seeding_group.attrs['voxres'], dtype=np.float32)
+    affine = np.array(seeding_group.attrs['affine'], dtype=np.float32)
+
+    seed_generator = SeedGenerator(seed_data, seed_res, space=Space.VOX,
+                                   origin=Origin('corner'))
+
+    if len(seed_generator.seeds_vox) == 0:
+        parser.error('Seed mask "{}" does not have any voxel with value > 0.'
+                     .format(args.in_seed))
+
+    if args.npv:
+        # Note. Not really nb seed per voxel, just in average.
+        nbr_seeds = len(seed_generator.seeds_vox) * args.npv
+    elif args.nt:
+        nbr_seeds = args.nt
+    else:
+        # Setting npv = 1.
+        nbr_seeds = len(seed_generator.seeds_vox)
+
+    seed_header = nib.Nifti1Image(seed_data, affine).header
+
+    return seed_generator, nbr_seeds, seed_header
+
+
+def prepare_tracking_mask(args, hdf_handle):
+    """
+    Prepare the tracking mask as a DataVolume from scilpy's library. Returns
+    also some header information to allow verifications.
+    """
+    if args.tracking_mask_group not in hdf_handle[args.subj_id]:
+        raise KeyError("HDF group '{}' not found for subject {} in hdf file {}"
+                       .format(args.tracking_mask_group, args.subj_id,
+                               hdf_handle))
+    tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
+    mask_data = np.array(tm_group['data'], dtype=np.float64)
+    mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
+    affine = np.array(tm_group.attrs['affine'], dtype=np.float32)
+    ref = nib.Nifti1Image(mask_data, affine)
+
+    mask = DataVolume(mask_data, mask_res, args.mask_interp)
+
+    return mask, ref
+
+
+def prepare_step_size_vox(step_size, res):
+    if step_size:
+        # Our step size is in voxel space = we require isometric voxels.
+        if not res[0] == res[1] == res[2]:
+            raise ValueError("We are expecting isometric voxels.")
+
+        step_size_vox_space = step_size / res[0]
+        normalize_directions = True
+        logging.info("Step size in voxel space will be {}"
+                     .format(step_size_vox_space))
+    else:
+        # Step size 0 is understood here as 'keep model output as is', i.e.
+        # multiplying by 1 works.
+        step_size_vox_space = 1
+        normalize_directions = False
+
+    return step_size_vox_space, normalize_directions

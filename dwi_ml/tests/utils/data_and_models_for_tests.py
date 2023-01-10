@@ -14,6 +14,8 @@ from dwi_ml.models.main_models import (
     ModelWithPreviousDirections)
 from dwi_ml.tests.utils.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
+from dwi_ml.tracking.propagator import DWIMLPropagatorwithStreamlineMemory, \
+    DWIMLPropagatorOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 
@@ -109,14 +111,15 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
         return self.direction_getter.compute_loss(
             model_outputs.to(self.device), target_dirs.to(self.device))
 
-    def get_tracking_direction_det(self, regressed_dirs,
-                                   streamline_lengths=None):
-        return regressed_dirs.cpu().detach().numpy()
-
-    def sample_tracking_direction_prob(self, regressed_dir,
-                                       streamline_lengths=None):
-        raise NotImplementedError("(Fake) Regression does not allow prob "
-                                  "tracking.")
+    def get_tracking_directions(self, regressed_dirs, algo):
+        if algo == 'det':
+            return regressed_dirs.cpu().detach().numpy()
+        elif algo == 'prob':
+            raise NotImplementedError(
+                "Our test model uses (fake) regression and does not allow "
+                "prob tracking.")
+        else:
+            raise ValueError("'algo' should be 'det' or 'prob'.")
 
     def forward(self, inputs: List[torch.tensor],
                 target_streamlines: List[torch.tensor],
@@ -191,3 +194,9 @@ def create_batch_loader(
         log_level=log_level, model=model)
 
     return batch_loader
+
+
+class TestPropagator(DWIMLPropagatorwithStreamlineMemory,
+                     DWIMLPropagatorOneInput):
+    def __init__(self, **kw):
+        super().__init__(**kw)

@@ -171,7 +171,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Will be implemented by each class
         raise NotImplementedError
 
-    def sample_tracking_direction_prob(self, outputs: Tensor) -> Tensor:
+    def _sample_tracking_direction_prob(self, outputs: Tensor) -> Tensor:
         """
         Params:
         -------
@@ -183,7 +183,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Will be implemented by each class
         raise NotImplementedError
 
-    def get_tracking_direction_det(self, outputs: Tensor) -> Tensor:
+    def _get_tracking_direction_det(self, outputs: Tensor) -> Tensor:
         """
         Params:
         -------
@@ -194,6 +194,40 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         """
         # Will be implemented by each class
         raise NotImplementedError
+
+    def get_tracking_directions(self, outputs: Tensor, algo: str):
+        """
+        Parameters
+        ----------
+        outputs: Tensor
+            The model's outputs
+        algo: str
+            Either 'det' or 'prob'
+
+        Returns
+        -------
+        next_dirs: list
+            A list of numpy arrays (one per streamline), each of size (1, 3):
+            the three coordinates of the next direction's vector.
+        """
+        logging.warning("                ??????????????????????????????? type: {}".format(type(self)))
+        logging.warning("                                            model outputs: {}".format(outputs))
+        if algo == 'det':
+            next_dirs = self._get_tracking_direction_det(outputs)
+        else:
+            next_dirs = self._sample_tracking_direction_prob(outputs)
+        return self._format_dirs(next_dirs)
+
+    @staticmethod
+    def _format_dirs(next_dirs):
+        # Bring back to cpu and get dir.
+        next_dirs = next_dirs.cpu().detach().numpy()
+
+        # next_dirs is of size [nb_points, 3]. Considering we are tracking,
+        # nb_points is 1 and we want to separate it into a list of (3,).
+        next_dirs = [x for x in next_dirs]
+
+        return next_dirs
 
 
 class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
@@ -222,16 +256,16 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         output = self.loop_on_layers(inputs, self.layers)
         return output
 
-    def sample_tracking_direction_prob(self, learned_directions: Tensor):
+    def _sample_tracking_direction_prob(self, model_outputs: Tensor):
         raise ValueError("Regression models do not support probabilistic "
                          "tractography.")
 
-    def get_tracking_direction_det(self, learned_directions: Tensor):
+    def _get_tracking_direction_det(self, model_outputs: Tensor):
         """
         In this case, the output is directly a 3D direction, so we can use it
         as is for the tracking.
         """
-        return learned_directions
+        return model_outputs
 
 
 class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
@@ -433,7 +467,7 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
 
         return _mean_and_weight(nll_losses)
 
-    def sample_tracking_direction_prob(self, logits_per_class: Tensor):
+    def _sample_tracking_direction_prob(self, logits_per_class: Tensor):
         """
         Sample a tracking direction on the sphere from the predicted class
         logits (=probabilities).
@@ -447,7 +481,7 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
 
         return direction
 
-    def get_tracking_direction_det(self, logits_per_class: Tensor):
+    def _get_tracking_direction_det(self, logits_per_class: Tensor):
         """
         Get the predicted class with highest logits (=probabilities).
         """
@@ -513,7 +547,7 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
         return _mean_and_weight(nll_losses)
 
-    def sample_tracking_direction_prob(
+    def _sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor]):
         """
         From the gaussian parameters, sample a direction.
@@ -528,7 +562,7 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
         return direction
 
-    def get_tracking_direction_det(self, learned_gaussian_params: Tensor):
+    def _get_tracking_direction_det(self, learned_gaussian_params: Tensor):
         """
         Get the predicted class with highest logits (=probabilities).
         """
@@ -625,7 +659,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         return _mean_and_weight(nll_losses)
 
-    def sample_tracking_direction_prob(
+    def _sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor]):
         """
         From the gaussian mixture parameters, sample one of the gaussians
@@ -655,7 +689,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         return direction
 
-    def get_tracking_direction_det(
+    def _get_tracking_direction_det(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor]):
         mixture_logits, means, sigmas = \
             self._get_gaussian_parameters(learned_gaussian_params)
@@ -751,7 +785,7 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
 
         return _mean_and_weight(nll_losses)
 
-    def sample_tracking_direction_prob(
+    def _sample_tracking_direction_prob(
             self, learned_fisher_params: Tuple[Tensor, Tensor]):
         """Sample directions from a fisher von mises distribution.
         """
@@ -779,7 +813,7 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
 
         return direction
 
-    def get_tracking_direction_det(self, learned_fisher_params: Tensor):
+    def _get_tracking_direction_det(self, learned_fisher_params: Tensor):
         # toDo. ?
         raise NotImplementedError
 
@@ -839,10 +873,10 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
                      target_directions: Tensor):
         raise NotImplementedError
 
-    def sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor]):
+    def _sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor]):
         raise NotImplementedError
 
-    def get_tracking_direction_det(self, learned_fisher_params: Tensor):
+    def _get_tracking_direction_det(self, learned_fisher_params: Tensor):
         raise NotImplementedError
 
 

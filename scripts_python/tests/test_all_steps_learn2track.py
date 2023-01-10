@@ -41,8 +41,6 @@ def test_execution_training_tracking(script_runner, experiments_path):
     # Here, testing default values only. See dwi_ml.tests.test_trainer for more
     # various testing.
     logging.info("************ TESTING TRAINING ************")
-    logging.warning("DID WE CREATE A TEMPORARY DIRECTORY?")
-    logging.warning(os.path.isdir(experiments_path))
     ret = script_runner.run('l2t_train_model.py',
                             experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
@@ -74,12 +72,12 @@ def test_execution_training_tracking(script_runner, experiments_path):
     ret = script_runner.run(
         'l2t_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
-        '--algo', 'det', '--nt', '2', '--rk_order', '1', '--logging', 'DEBUG',
-        '--rng_seed', '0', '--min_length', '0', '--subset', 'training')
+        '--algo', 'det', '--nt', '2', '--rk_order', '1', '--rng_seed', '0',
+        '--min_length', '0', '--subset', 'training')
 
     assert ret.success
 
-    # Testing multiple tracking
+    # Testing multiple GPU tracking
     if torch.cuda.is_available():
         logging.info("********** TESTING GPU TRACKING FROM MODEL ************")
         out_tractogram = os.path.join(experiments_path, 'test_tractogram2.trk')
@@ -87,8 +85,7 @@ def test_execution_training_tracking(script_runner, experiments_path):
             'l2t_track_from_model.py', whole_experiment_path, hdf5_file,
             subj_id, out_tractogram, seeding_mask_group, tracking_mask_group,
             input_group, '--algo', 'det', '--nt', '2', '--rk_order', '1',
-            '--logging', 'DEBUG', '--rng_seed', '0', '--min_length', '0',
-            '--subset', 'training',
+            '--rng_seed', '0', '--min_length', '0', '--subset', 'training',
             # Additional params compared to CPU:
             '--use_gpu', '--simultaneous_tracking', '3')
 

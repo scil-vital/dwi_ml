@@ -109,14 +109,15 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
         return self.direction_getter.compute_loss(
             model_outputs.to(self.device), target_dirs.to(self.device))
 
-    def get_tracking_direction_det(self, regressed_dirs,
-                                   streamline_lengths=None):
-        return regressed_dirs.cpu().detach().numpy()
-
-    def sample_tracking_direction_prob(self, regressed_dir,
-                                       streamline_lengths=None):
-        raise NotImplementedError("(Fake) Regression does not allow prob "
-                                  "tracking.")
+    def get_tracking_directions(self, regressed_dirs, algo):
+        if algo == 'det':
+            return regressed_dirs.cpu().detach().numpy()
+        elif algo == 'prob':
+            raise NotImplementedError(
+                "Our test model uses (fake) regression and does not allow "
+                "prob tracking.")
+        else:
+            raise ValueError("'algo' should be 'det' or 'prob'.")
 
     def forward(self, inputs: List[torch.tensor],
                 target_streamlines: List[torch.tensor],

@@ -235,10 +235,13 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         inputs: List[torch.tensor]
             Batch of input sequences, i.e. MRI data. Length of the list is the
             number of streamlines in the batch. Each tensor is of size
-            [nb_points, nb_features].
+            [nb_points, nb_features]. During training, should be the length of
+            the streamlines minus one (last point is not used). During
+            tracking, nb_points should be one; the current point.
         target_streamlines: List[torch.tensor],
-            Batch of streamlines (only necessary to save estimated outputs,
-            if asked).
+            Batch of streamlines. Only used if previous directions are added to
+            the model. Used to compute directions; its last point will not be
+            used.
         hidden_reccurent_states : tuple
             The current hidden states of the (stacked) RNN model.
         return_state: bool
@@ -282,7 +285,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             for i in range(len(target_streamlines)):
                 assert len(target_streamlines[i]) == len(inputs[i]) + 1, \
                     "During training, we expect the streamlines to have the " \
-                    "one more point than the inputs."
+                    "one more point than the inputs. No need to compute the " \
+                    "input of the last point; we don't have a target " \
+                    "direction there."
 
         try:
             # Apply model. This calls our model's forward function
@@ -417,35 +422,19 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         return self.direction_getter.compute_loss(
             model_outputs.to(self.device), target_dirs.to(self.device))
 
-    def get_tracking_direction_det(self, model_outputs):
+    def get_tracking_directions(self, model_outputs, algo):
         """
         Params
         ------
         model_outputs: Tensor
             Our model's previous layer's output.
+        algo: str
+            'det' or 'prob'.
 
         Returns
         -------
         next_dir: list[array(3,)]
             Numpy arrays with x,y,z value, one per streamline data point.
         """
-        next_dirs = self.direction_getter.get_tracking_direction_det(
-            model_outputs)
-
-        # Bring back to cpu and get dir.
-        next_dirs = next_dirs.cpu().detach().numpy()
-
-        # next_dirs is of size [nb_points, 3]. Considering we are tracking,
-        # nb_points is 1 and we want to separate it into a list of (3,).
-        # We can use split_array_at_lengths, but it gives a list of (1,3) and
-        # we need to squeeze it.
-        # List comprehension works with np arrays.
-        next_dirs = [x for x in next_dirs]
-
-        return next_dirs
-
-    def sample_tracking_direction_prob(self, model_outputs):
-        logging.debug("Getting a deterministic direction from {}"
-                      .format(type(self.direction_getter)))
-        return self.direction_getter.sample_tracking_direction_prob(
-            model_outputs)
+        return self.direction_getter.get_tracking_directions(
+            model_outputs, algo)

@@ -300,14 +300,12 @@ class DWIMLPropagator(AbstractPropagator):
             n_pos = [pos]
             n_v_in = [v_in]
 
-        # Tracking field returns the model_outputs
+        # Using the forward method to get the outputs.
         model_outputs = self._get_model_outputs_at_pos(n_pos)
 
         start_time = datetime.now()
-        if self.algo == 'prob':
-            next_dirs = self.model.sample_tracking_direction_prob(model_outputs)
-        else:
-            next_dirs = self.model.get_tracking_direction_det(model_outputs)
+        next_dirs = self.model.get_tracking_directions(model_outputs,
+                                                       self.algo)
         duration_direction_getter = datetime.now() - start_time
 
         start_time = datetime.now()

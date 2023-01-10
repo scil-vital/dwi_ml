@@ -41,7 +41,7 @@ class DWIMLTracker(ScilpyTracker):
 
         # Warning about the mask being an MRIData instead of DataVolume but
         # ok! Modified to be able to use as tensor more easily for torch.
-        mmap_mode = ''  # Not used here, we deal with hdf5.
+        mmap_mode = None  # Not used here, we deal with hdf5.
         super().__init__(propagator, mask, seed_generator, nbr_seeds,
                          min_nbr_pts, max_nbr_pts, max_invalid_dirs,
                          compression_th, nbr_processes, save_seeds, mmap_mode,
@@ -175,10 +175,9 @@ class DWIMLTracker(ScilpyTracker):
 
         if not self.track_forward_only:
 
-            # Reversing in place
-            for i in range(len(lines)):
-                if len(lines[i]) > 1:
-                    lines[i].reverse()
+            # Reversing: **in place**
+            for line in lines:
+                line.reverse()
 
             # We could loop to prepare reverse. Basic case not too heavy.
             # However, in some cases (ex, projects with memory), model

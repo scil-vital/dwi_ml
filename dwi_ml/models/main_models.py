@@ -9,6 +9,7 @@ from typing import List, Union
 
 import numpy as np
 import torch
+from torch import Tensor
 from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
     unpack_sequence
 
@@ -449,8 +450,7 @@ class MainModelOneInput(MainModelAbstract):
         super().__init__(**kw)
 
     def prepare_batch_one_input(self, streamlines, subset, subj,
-                                input_group_idx, device,
-                                prepare_mask=False):
+                                input_group_idx, device, prepare_mask=False):
         """
         These params are passed by either the batch loader or the propagator,
         which manage the data.
@@ -503,7 +503,7 @@ class MainModelOneInput(MainModelAbstract):
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]
-        subj_x_data = subj_x_data.split(lengths)
+        subj_x_data = list(subj_x_data.split(lengths))
         duration_inputs = datetime.now() - start_time
         logger.debug("Time to prepare the inputs ({} streamlines, total {} "
                      "points): {} s".format(len(streamlines), sum(lengths),
@@ -672,31 +672,17 @@ class ModelForTracking(MainModelAbstract):
         #     model_outputs = normalize_directions(model_outputs)
         raise NotImplementedError
 
-    def get_tracking_direction_det(self, model_outputs):
+    def get_tracking_directions(self, model_outputs: Tensor, algo: str):
         """
         This needs to be implemented in order to use the model for
         generative tracking, as in dwi_ml.tracking.tracker_abstract.
 
-        Probably calls a directionGetter.get_tracking_directions_det.
+        Probably calls a directionGetter.get_tracking_directions
 
         Returns
         -------
         next_dir: list[array(3,)]
             Numpy arrays with x,y,z value, one per streamline data point.
-        """
-        raise NotImplementedError
-
-    def sample_tracking_direction_prob(self, model_outputs):
-        """
-        This needs to be implemented in order to use the model for
-        generative tracking, as in dwi_ml.tracking.tracker_abstract.
-
-        Probably calls a directionGetter.sample_tracking_directions_prob.
-
-        Returns
-        -------
-        next_dir: list[array(3,)]
-            Numpy array with x,y,z value.
         """
         raise NotImplementedError
 

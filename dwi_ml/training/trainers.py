@@ -139,6 +139,7 @@ class DWIMLAbstractTrainer:
         self.experiments_path = experiments_path
         self.experiment_name = experiment_name
         self.saving_path = os.path.join(experiments_path, experiment_name)
+        self.log_dir = os.path.join(self.saving_path, "logs")
         if not os.path.isdir(experiments_path):
             raise NotADirectoryError(
                 "The experiments path does not exist! ({}). Can't create this "
@@ -151,6 +152,7 @@ class DWIMLAbstractTrainer:
             else:
                 logging.info('Creating directory {}'.format(self.saving_path))
                 os.mkdir(self.saving_path)
+                os.mkdir(self.log_dir)
 
         # Note that the training/validation sets are also contained in the
         # data_loaders.dataset
@@ -965,11 +967,7 @@ class DWIMLAbstractTrainer:
         return checkpoint_info
 
     def _save_log_locally(self, array: np.ndarray, fname: str):
-        log_dir = os.path.join(self.saving_path, "logs")
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        fpath = os.path.join(log_dir, fname)
-        np.save(fpath, array)
+        np.save(os.path.join(self.log_dir, fname), array)
 
     @staticmethod
     def load_params_from_checkpoint(experiments_path: str,

@@ -29,6 +29,7 @@ jobs:
         pip install pytest
         pip install --upgrade pip
         pip install -r requirements.txt
+        pip install -r requirements_github.txt
         pip install .
 
     - name: Tests

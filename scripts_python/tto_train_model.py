@@ -8,6 +8,10 @@ import argparse
 import logging
 import os
 
+# comet_ml not used, but comet_ml requires to be imported before torch.
+# See bug report here https://github.com/Lightning-AI/lightning/issues/5829
+# Importing now to solve issues later.
+import comet_ml
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import (add_dataset_args,

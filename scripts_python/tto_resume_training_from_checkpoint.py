@@ -4,6 +4,11 @@ import argparse
 import logging
 import os
 
+# comet_ml not used, but comet_ml requires to be imported before torch.
+# See bug report here https://github.com/Lightning-AI/lightning/issues/5829
+# Importing now to solve issues later.
+import comet_ml
+
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.projects.transforming_tractography import OriginalTransformerModel

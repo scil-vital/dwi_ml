@@ -12,7 +12,8 @@ required dependencies::
 Installing dependencies
 ***********************
 
-We support python 3.7.  (python3.7-distutils and python3.7-dev must also be installed).
+We support python 3.10.  (python3.10-distutils and python3.10-dev must also be installed).
+Code seems to work on python 3.8, but we do not support it.
 
 The toolkit relies on `Scilpy`_ and on a number of other packages available through the `Python Package Index (PyPI)`_ (i.e. you can use pip).
 

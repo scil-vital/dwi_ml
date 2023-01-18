@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
+from argparse import RawTextHelpFormatter
 import itertools
 import logging
 import os
 import pathlib
-from argparse import RawTextHelpFormatter
 from typing import Dict, List
 
 import matplotlib.pyplot as plt

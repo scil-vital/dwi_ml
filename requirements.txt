@@ -12,7 +12,7 @@ contextlib2
 nested_lookup
 nose==1.3.*
 sphinx_rtd_theme==0.4.* # no longer a hard dependency since version 1.4.0
-
+pyQt5
 
 ## Necessary but should be installed with scilpy (Last check: 03/2022, version 1.2.2):
 future==0.18.*

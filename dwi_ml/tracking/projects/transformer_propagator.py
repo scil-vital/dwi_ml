@@ -2,7 +2,7 @@
 import logging
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
-from dwi_ml.models.projects.transformers import AbstractTransformerModel
+from dwi_ml.models.projects.streamline_transformers import AbstractTransformerModel
 from dwi_ml.tracking.propagator import (DWIMLPropagatorOneInput,
                                         DWIMLPropagatorwithStreamlineMemory)
 

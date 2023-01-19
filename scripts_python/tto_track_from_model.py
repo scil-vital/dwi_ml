@@ -28,7 +28,7 @@ from scilpy.tracking.utils import (add_seeding_options,
 from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.models.projects.transformers import OriginalTransformerModel
+from dwi_ml.models.projects.streamline_transformers import OriginalTransformerModel
 from dwi_ml.tracking.projects.transformer_propagator import \
     TransformerPropagator
 from dwi_ml.tracking.tracker import DWIMLTracker

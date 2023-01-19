@@ -4,22 +4,23 @@ from typing import Union, List
 
 import numpy as np
 import torch
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
 from torch.nn import Dropout
 from torch.nn.functional import pad
-from torch.nn.modules.transformer import (
-    Transformer, TransformerEncoder, TransformerDecoder,
-    TransformerEncoderLayer, TransformerDecoderLayer)
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
+from dwi_ml.models.direction_getter_models import keys_to_direction_getters
+from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelForTracking,
                                        ModelWithPreviousDirections,
                                        ModelWithNeighborhood)
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.projects.positional_encoding import \
     keys_to_positional_encodings
+from dwi_ml.models.projects.transformers_from_torch import (
+    TransformerGetWeights,
+    TransformerEncoderGetWeights, TransformerEncoderLayerGetWeights,
+    TransformerDecoderGetWeights, TransformerDecoderLayerGetWeightsNoSOS)
 
 # About the masks
 # https://stackoverflow.com/questions/68205894/how-to-prepare-data-for-tpytorchs-3d-attn-mask-argument-in-multiheadattention
@@ -40,9 +41,6 @@ from dwi_ml.models.projects.positional_encoding import \
 # -inf at positions that should be masked. There is a bug in torch's code
 # (see my PR https://github.com/pytorch/pytorch/issues/92554)
 # Meanwhile, let's use the bool equivalent, with True = -inf.
-from dwi_ml.models.projects.transformers_modified_decoder import \
-    TransformerDecoderLayerNoSOS
-
 USE_BOOL_MASKS = True
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
@@ -67,15 +65,12 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         formatted_outputs = self.direction_getter(outputs)
 
     About data embedding:
-    We could even use the raw data, technically. But when adding the positional
+    We could use the raw data, technically. But when adding the positional
     embedding, the reason it works is that the learning of the embedding
     happens while knowing that some positional vector will be added to it.
     As stated in the blog
     https://kazemnejad.com/blog/transformer_architecture_positional_encoding/
     the embedding probably adapts to leave place for the positional embedding.
-
-    All this to say we can't use raw data, and the minimum is to learn to adapt
-    with a neural network.
     """
     layer_norm = 1e-5  # epsilon value for the normalization sub-layers
     norm_first = False  # If True, encoder and decoder layers will perform
@@ -368,7 +363,8 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
     def forward(self, batch_x: List[torch.tensor],
                 batch_streamlines: List[torch.tensor],
-                is_tracking=False, **kw):
+                is_tracking=False, return_weights=False,
+                average_heads=False, **kw):
         """
         Params
         ------
@@ -386,17 +382,23 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             adequately masked to hide future positions. The last direction is
             not used.
             - As target during training. The whole sequence is used.
-        is_tracking: Bool
+        is_tracking: bool
             During tracking, the input sequences contain one more point than
             the directions sequences.
+        return_weights: bool
+            If true, returns the weights of the attention layers.
+        average_heads: bool
+            If return_weights, you may choose to average the weights from
+            different heads together.
         """
+        nb_streamlines = len(batch_streamlines)
         if is_tracking:
-            for i in range(len(batch_streamlines)):
+            for i in range(nb_streamlines):
                 assert len(batch_streamlines[i]) == len(batch_x[i]), \
                     "During tracking, we should have one more input than " \
                     "the current streamline length."
         else:
-            for i in range(len(batch_streamlines)):
+            for i in range(nb_streamlines):
                 assert len(batch_streamlines[i]) == len(batch_x[i]) + 1, \
                     "We expect the streamlines to have one more point " \
                     "than the inputs. Directions will be  used. No need " \
@@ -408,10 +410,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         batch_t = compute_directions(batch_streamlines, self.device)
 
         # Remember lengths to unpad outputs later. During tracking, the
-        # targets contain one less point, but the output will contain the
-        # correct length, with the additional generated point.
+        # targets contain one less point.
         unpadded_lengths = np.asarray([len(i) for i in batch_x])
-        logging.warning("                                                      Unpadded lengths: {}".format(unpadded_lengths))
+        logging.warning("                                                      Unpadded lengths: {} = {}".format(unpadded_lengths, sum(unpadded_lengths)))
         if np.any(unpadded_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
@@ -429,24 +430,34 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         embed_x, embed_t = self.run_embedding(batch_x, batch_t, use_padding)
         embed_x = self.dropout(embed_x)
         embed_t = self.dropout(embed_t)
-        logging.warning("                                                              Batch shape: {}".format(embed_x.shape))
 
         # Now run main transformer (see child classes)
         logger.debug("*** 2. Transformer....")
         outputs = self._run_main_layer_forward(
-            embed_x, embed_t, unpadded_lengths, is_tracking)
+            embed_x, embed_t, unpadded_lengths, is_tracking, return_weights,
+            average_heads)
 
         # Unpad now and combine everything for the direction getter.
         if use_padding:
-            outputs = [outputs[i][0:unpadded_lengths[i]]
-                       for i in range(len(outputs))]
+            # outputs size = [nb streamlines, max_len, d_model].
+            if is_tracking:
+                # We take the last (unpadded) point, newly created.
+                outputs = [outputs[i, unpadded_lengths[i], :]
+                           for i in range(nb_streamlines)]
+            else:
+                # We take all points.
+                outputs = [outputs[i, 0:unpadded_lengths[i], :]
+                           for i in range(nb_streamlines)]
 
         # Direction getter
         # Outputs will be all streamlines merged.
         # To compute loss = ok. During tracking, we will need to split back.
         logger.debug("*** 3. Direction getter (on unpadded data)....")
         outputs = self.direction_getter(torch.cat(outputs, dim=0))
-
+        if is_tracking and nb_streamlines == 1:
+            # Add back one more dimension.
+            outputs = outputs[None, :]
+            logging.warning("                      OUTPUT of direction getter: {}".format(outputs))
         return outputs
 
     def run_embedding(self, batch_x, batch_t, padding_necessary=True):
@@ -480,7 +491,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         return inputs, targets
 
     def _run_main_layer_forward(self, embed_x, embed_t, unpadded_lengths,
-                                is_tracking):
+                                is_tracking, return_weights, average_heads):
         raise NotImplementedError
 
     def compute_loss(self, model_outputs, streamlines, **kw):
@@ -595,20 +606,22 @@ class OriginalTransformerModel(AbstractTransformerModel):
         logger.info("Instantiating torch transformer, may take a few "
                     "seconds...")
         # Encoder:
-        encoder_layer = TransformerEncoderLayer(
+        encoder_layer = TransformerEncoderLayerGetWeights(
             self.d_model, self.nheads, self.ffnn_hidden_size,
             self.dropout_rate, self.activation, batch_first=self.batch_first,
             norm_first=self.norm_first)
-        encoder = TransformerEncoder(encoder_layer, n_layers_e, norm=None)
+        encoder = TransformerEncoderGetWeights(encoder_layer, n_layers_e,
+                                               norm=None)
 
         # Decoder
-        decoder_layer = TransformerDecoderLayerNoSOS(
+        decoder_layer = TransformerDecoderLayerGetWeightsNoSOS(
             self.d_model, self.nheads, self.ffnn_hidden_size,
             self.dropout_rate, self.activation, batch_first=self.batch_first,
             norm_first=self.norm_first)
-        decoder = TransformerDecoder(decoder_layer, n_layers_d, norm=None)
+        decoder = TransformerDecoderGetWeights(decoder_layer, n_layers_d,
+                                               norm=None)
 
-        self.transformer_layer = Transformer(
+        self.transformer_layer = TransformerGetWeights(
             d_model, nheads, n_layers_e, n_layers_d, ffnn_hidden_size,
             dropout_rate, activation, encoder, decoder,
             self.layer_norm, batch_first=self.batch_first,
@@ -676,52 +689,28 @@ class OriginalTransformerModel(AbstractTransformerModel):
         return mask_future_x, mask_future_t, mask_padding_x, mask_padding_t
 
     def _run_main_layer_forward(self, embed_x, embed_t, unpadded_lengths,
-                                is_tracking):
+                                is_tracking, return_weights, average_heads):
         """Original Main transformer"""
 
         # Prepare masks
         mask_future_x, mask_future_t, mask_padding_x, mask_padding_t = \
             self._prepare_masks(unpadded_lengths, is_tracking)
 
-        # See masks descriptions here
-        # https://stackoverflow.com/questions/62170439/difference-between-src-mask-and-src-key-padding-mask
-        # We can also apply masks to the memory (between encoder and decoder).
-        # My understanding is that if mask is applied to input, if should
-        # already be ok for encoder output, no?
-
-        # Shapes:
-        #  input: [nb_streamlines, max_len, d_model]
-        #  target: [nb_streamlines, max_len, d_model]
-        #  - Encoder:
-        #  --- Attention: (torch.nn.functionnal.multi_head_attention_forward):
-        #  ------ Combined masks future + padding:
-        #      [nb streamlines, max_len, max_len]. Contains -inf.
-        #  ------ After (Q*K), scaled, masked, softmax:
-        #      [nb streamlines, max_len, max_len]. Contains zeros where masked.
-        #  ------ After * V:
-        #      [nb streamlines, max_len, d_model]. Does not contain zeros
-        #      anymore, that's ok.
-        #  ------ Output (called 'memory'):
-        #      [nb streamlines, max_len, d_model].
-        #  - Decoder: Similarly, output:
-        #      [nb streamlines, max_len, d_model]
-        #      Important. During softmax, during the self-attention, for the
-        #      first position, we get
-        #      softmax(-inf, -inf, -inf) = [nan, nan, nan].
-        #      Which are replaced by 0 in our modified Decoder.
-        outputs = self.transformer_layer(
-            src=embed_x, tgt=embed_t,
-            src_mask=mask_future_x, tgt_mask=mask_future_t,
-            src_key_padding_mask=mask_padding_x,
-            tgt_key_padding_mask=mask_padding_t)
+        # If return_weights is False, the weights below are None
+        outputs, sa_weights_encoder, sa_weights_decoder, mha_weights = \
+            self.transformer_layer(
+                src=embed_x, tgt=embed_t,
+                src_mask=mask_future_x, tgt_mask=mask_future_t,
+                src_key_padding_mask=mask_padding_x,
+                tgt_key_padding_mask=mask_padding_t,
+                return_weights=return_weights, average_heads=average_heads)
 
         if is_tracking:
-            logging.warning("                                                       OUTPUT = {}".format(outputs))
+            logging.warning("                                                       OUTPUT = {}".format(outputs[0, 0:unpadded_lengths[0],:]))
             logging.warning("                                                       shape: {}".format(outputs.shape))
-            exit(1)
 
-        logging.warning("                                                      FINISHED TTO FORWARD ")
-
+        if return_weights:
+            return outputs, sa_weights_encoder, sa_weights_decoder, mha_weights
         return outputs
 
 
@@ -792,12 +781,12 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         # it is actually "encoder only". A decoder would need output from the
         # encoder.
         logger.debug("Instantiating Transformer...")
-        double_layer = TransformerEncoderLayer(
+        double_layer = TransformerEncoderLayerGetWeights(
             self.d_model * 2, self.nheads, self.ffnn_hidden_size,
             self.dropout_rate, self.activation, batch_first=True,
             norm_first=self.norm_first)
-        self.main_layer = TransformerEncoder(double_layer, n_layers_d,
-                                             norm=None)
+        self.main_layer = TransformerEncoderGetWeights(
+            double_layer, n_layers_d, norm=None)
 
     @property
     def params_for_json_prints(self):
@@ -855,7 +844,7 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         return mask_future, mask_padding
 
     def _run_main_layer_forward(self, embed_x, embed_t, unpadded_lengths,
-                                is_tracking):
+                                is_tracking, return_weights, average_heads):
         if is_tracking:
             # We need to add a fake last direction. Using -inf.
             embed_t = [torch.cat((t, torch.full([1, self.d_model],

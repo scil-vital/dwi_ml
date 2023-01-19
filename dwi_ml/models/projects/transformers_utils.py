@@ -6,9 +6,9 @@ from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.projects.positional_encoding import (
     keys_to_positional_encodings)
-from dwi_ml.models.projects.transformers import (AbstractTransformerModel,
-                                                 OriginalTransformerModel,
-                                                 TransformerSrcAndTgtModel)
+from dwi_ml.models.projects.streamline_transformers import (AbstractTransformerModel,
+                                                            OriginalTransformerModel,
+                                                            TransformerSrcAndTgtModel)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 
 

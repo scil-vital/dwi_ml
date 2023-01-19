@@ -49,7 +49,7 @@ def test_execution_bst(script_runner, experiments_path):
                             '--max_epochs', '1', '--batch_size_training', '5',
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '5',
-                            '--nheads', '1', '--max_len', '115',
+                            '--nheads', '2', '--max_len', '115',
                             '--d_model', '6', '--n_layers_e', '1',
                             '--n_layers_d', '1', '--ffnn_hidden_size', '3',
                             '--logging', 'INFO')

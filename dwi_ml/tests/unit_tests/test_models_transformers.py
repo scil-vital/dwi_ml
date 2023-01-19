@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 
-from dwi_ml.models.projects.transformers import (
+from dwi_ml.models.projects.streamline_transformers import (
     OriginalTransformerModel, TransformerSrcAndTgtModel)
 
 

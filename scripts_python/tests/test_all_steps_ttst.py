@@ -46,11 +46,10 @@ def test_execution_bst(script_runner, experiments_path):
     ret = script_runner.run('ttst_train_model.py',
                             experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
-                            '--max_epochs', '1',
-                            '--batch_size_training', '5',
+                            '--max_epochs', '1', '--batch_size_training', '5',
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '5',
-                            '--nheads', '1', '--max_len', '115',
+                            '--nheads', '2', '--max_len', '115',
                             '--d_model', '6', '--n_layers_d', '1',
                             '--ffnn_hidden_size', '3', '--logging', 'INFO')
     assert ret.success

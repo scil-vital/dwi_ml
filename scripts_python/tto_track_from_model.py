@@ -13,10 +13,10 @@ import dipy.core.geometry as gm
 from dipy.io.stateful_tractogram import (StatefulTractogram, Space,
                                          set_sft_logger_level)
 from dipy.io.streamline import save_tractogram
+from dipy.io.utils import is_header_compatible
 import h5py
 import nibabel as nib
 import torch
-from dipy.io.utils import is_header_compatible
 
 from scilpy.io.utils import (add_sphere_arg,
                              assert_inputs_exist, assert_outputs_exist,

@@ -133,7 +133,7 @@ class TransformerDecoderGetWeights(TransformerDecoder):
         return output, sa_weights, mha_weights
 
 
-class TransformerEncoderLayerGetWeights(TransformerEncoderLayer):
+class TransformerEncoderLayerGetWeightsNoNaN(TransformerEncoderLayer):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
 
@@ -147,10 +147,12 @@ class TransformerEncoderLayerGetWeights(TransformerEncoderLayer):
         x = src
         if self.norm_first:
             sa, sa_weights = self._sa_block(self.norm1(x), src_mask, src_key_padding_mask)
+            sa = nan_to_num(sa)
             x = x + sa
             x = x + self._ff_block(self.norm2(x))
         else:
             sa, sa_weights = self._sa_block(x, src_mask, src_key_padding_mask)
+            sa = nan_to_num(sa)
             x = self.norm1(x + sa)
             x = self.norm2(x + self._ff_block(x))
 
@@ -173,7 +175,7 @@ class TransformerEncoderLayerGetWeights(TransformerEncoderLayer):
         return self.dropout1(x[0]), weights
 
 
-class TransformerDecoderLayerGetWeightsNoSOS(TransformerDecoderLayer):
+class TransformerDecoderLayerGetWeightsNoNaN(TransformerDecoderLayer):
     """
     Decoder Layer, in the case where we do not have a start of sequence (SOS)
     token, and our mask contains only -inf for the first position. Output of
@@ -197,15 +199,15 @@ class TransformerDecoderLayerGetWeightsNoSOS(TransformerDecoderLayer):
         x = tgt
         if self.norm_first:
             sa, sa_weights = self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask)
+            sa = nan_to_num(sa)
             x = x + sa
-            x = nan_to_num(x)
             mha, mha_weights = self._mha_block(self.norm2(x), memory, memory_mask, memory_key_padding_mask)
             x = x + mha
             x = x + self._ff_block(self.norm3(x))
         else:
             sa, sa_weights = self._sa_block(x, tgt_mask, tgt_key_padding_mask)
+            sa = nan_to_num(sa)
             x = self.norm1(x + sa)
-            x = nan_to_num(x)
             mha, mha_weights = self._mha_block(x, memory, memory_mask, memory_key_padding_mask)
             x = self.norm2(x + mha)
             x = self.norm3(x + self._ff_block(x))

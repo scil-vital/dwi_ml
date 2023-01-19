@@ -210,8 +210,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             A list of numpy arrays (one per streamline), each of size (1, 3):
             the three coordinates of the next direction's vector.
         """
-        logging.warning("                ??????????????????????????????? type: {}".format(type(self)))
-        logging.warning("                                            model outputs: {}".format(outputs))
         if algo == 'det':
             next_dirs = self._get_tracking_direction_det(outputs)
         else:

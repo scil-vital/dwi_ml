@@ -412,7 +412,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
         unpadded_lengths = np.asarray([len(i) for i in batch_x])
-        logging.warning("                                                      Unpadded lengths: {} = {}".format(unpadded_lengths, sum(unpadded_lengths)))
         if np.any(unpadded_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
@@ -457,7 +456,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         if is_tracking and nb_streamlines == 1:
             # Add back one more dimension.
             outputs = outputs[None, :]
-            logging.warning("                      OUTPUT of direction getter: {}".format(outputs))
         return outputs
 
     def run_embedding(self, batch_x, batch_t, padding_necessary=True):
@@ -704,10 +702,6 @@ class OriginalTransformerModel(AbstractTransformerModel):
                 src_key_padding_mask=mask_padding_x,
                 tgt_key_padding_mask=mask_padding_t,
                 return_weights=return_weights, average_heads=average_heads)
-
-        if is_tracking:
-            logging.warning("                                                       OUTPUT = {}".format(outputs[0, 0:unpadded_lengths[0],:]))
-            logging.warning("                                                       shape: {}".format(outputs.shape))
 
         if return_weights:
             return outputs, sa_weights_encoder, sa_weights_decoder, mha_weights

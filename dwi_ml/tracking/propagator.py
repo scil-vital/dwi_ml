@@ -388,11 +388,12 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         # We need to manage the input.
         if self.use_input_memory:
             self.input_memory = \
-                [line_input.reverse() if len(line_input) > 1 else line_input
+                [torch.flip(line_input, dims=[0])
                  for line_input in self.input_memory]
         return super().prepare_backward(line, forward_dir, multiple_lines)
 
     def propagate(self, line, v_in):
+        # Saving the streamline now. We will save the input after computing it.
         self.current_lines = [line]
         return super().propagate(line, v_in)
 
@@ -409,13 +410,12 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         """
         inputs = self._prepare_inputs_at_pos(n_pos)
 
-        logging.warning("                                           P: Current inputs: {}".format(inputs))
         if self.use_input_memory:
             if self.input_memory is None:
                 self.input_memory = inputs
             else:
                 self.input_memory = \
-                    [torch.cat((self.input_memory[i], inputs[i]), dim=-1)
+                    [torch.cat((self.input_memory[i], inputs[i]), dim=0)
                      for i in range(len(self.current_lines))]
 
         # Todo. This is not perfect yet. Sending data to new device at each

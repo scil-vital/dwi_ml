@@ -32,7 +32,7 @@ def experiments_path(tmp_path_factory):
     return str(experiments_path)
 
 
-def test_execution_bst(script_runner, experiments_path):
+def test_execution(script_runner, experiments_path):
     experiment_name = 'test_experiment'
     hdf5_file = os.path.join(data_dir, 'hdf5_file.hdf5')
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]

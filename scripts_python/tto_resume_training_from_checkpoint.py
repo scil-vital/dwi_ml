@@ -6,7 +6,7 @@ import os
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.models.projects.streamline_transformers import OriginalTransformerModel
+from dwi_ml.models.projects.transforming_tractography import OriginalTransformerModel
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
 from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
@@ -101,7 +101,6 @@ def main():
     trainer = init_from_checkpoint(args, checkpoint_path)
 
     run_experiment(trainer)
-
 
 
 if __name__ == '__main__':

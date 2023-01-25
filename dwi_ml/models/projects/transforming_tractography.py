@@ -4,7 +4,7 @@ from typing import Union, List
 
 import numpy as np
 import torch
-from torch.nn import Dropout
+from torch.nn import Dropout, Transformer
 from torch.nn.functional import pad
 
 from dwi_ml.data.processing.streamlines.post_processing import \
@@ -17,26 +17,29 @@ from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithNeighborhood)
 from dwi_ml.models.projects.positional_encoding import \
     keys_to_positional_encodings
-from dwi_ml.models.projects.transformers_from_torch import (
-    TransformerGetWeights,
-    TransformerEncoderGetWeights, TransformerEncoderLayerGetWeightsNoNaN,
-    TransformerDecoderGetWeights, TransformerDecoderLayerGetWeightsNoNaN)
+from dwi_ml.models.utils.transformers_from_torch import (
+    ModifiedTransformer,
+    ModifiedTransformerEncoder, ModifiedTransformerEncoderLayer,
+    ModifiedTransformerDecoder, ModifiedTransformerDecoderLayer)
 
-# About the masks
-# https://stackoverflow.com/questions/68205894/how-to-prepare-data-for-tpytorchs-3d-attn-mask-argument-in-multiheadattention
-# https://pytorch.org/tutorials/beginner/transformer_tutorial.html
-# Our model seeds to be auto-regressive, to allow inference / generation at
+# Our model needs to be auto-regressive, to allow inference / generation at
 # tracking time.
 # => During training, we hide the future; both in the input and in the target
-# sequences, with one more input known than target. (The current dwi data is
-# known, not the output direction).
-# (During tracking too, but all the future values would be 0 anyway)
+# sequences.
 
 # About the tracking process
 # At each new step, the whole sequence is processed again (ran in the model).
 # We only keep the last output. This is not very efficient... Is there a way
 # to keep the hidden state in-between?
 logger = logging.getLogger('model_logger')  # Same logger as Super.
+
+# Data dimensions:
+# If batch_first=True, then the input and output tensors are provided as
+# (batch, seq, feature). If False, (seq, batch, feature).
+# Here prepared code with dim (nb streamlines, max_len, d_model), which
+# corresponds to True.
+BATCH_FIRST = True
+SOS_TOKEN = 0.0
 
 
 def forward_padding(data: torch.tensor, expected_length):
@@ -52,33 +55,25 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
     Encoder and decoder will be prepared in child classes.
 
-    Child forward methods should look like:
-        x, t = self._run_embeddings(x, t)
-        outputs = (run main transformer)
-        formatted_outputs = self.direction_getter(outputs)
-
     About data embedding:
     We could use the raw data, technically. But when adding the positional
     embedding, the reason it works is that the learning of the embedding
     happens while knowing that some positional vector will be added to it.
     As stated in the blog
     https://kazemnejad.com/blog/transformer_architecture_positional_encoding/
-    the embedding probably adapts to leave place for the positional embedding.
+    the embedding probably adapts to leave place for the positional encoding.
     """
-    layer_norm = 1e-5  # epsilon value for the normalization sub-layers
-    norm_first = False  # If True, encoder and decoder layers will perform
-    # LayerNorms before other attention and feedforward operations, otherwise
-    # after. Torch default + in original paper: False. In the tensor2tensor
-    # code they suggest that learning is more robust when preprocessing each
-    # layer with layernorm.
-    batch_first = True  # If True, then the input and output tensors are
-    # provided as (batch, seq, feature). If False, (seq, batch, feature).#
-    # After embedding, we use torch.stack and we get
-    # (nb streamlines, max_len, d_model), which corresponds to True.
-    use_bool_masks = True  # By default, they use 0 at valid positions and
-    # -inf at positions that should be masked. There is a bug in torch's code
-    # (see my PR https://github.com/pytorch/pytorch/issues/92554)
-    # Meanwhile, let's use the bool equivalent, with True = -inf.
+    # mask_sos: bool
+    #       The input to the decoder is the shifted target sequence with an
+    #       additional Start Of Sequence (SOS) token in the first position.
+    #       Considering as we do not work with a dictionary of token, this is
+    #       not straightforward here. We use (0,0,..., 0) as SOS value. We can
+    #       hope that the model will learn its signification, or hide it in the
+    #       attention.
+    # Option mask_sos does not work yet. Creates some nan in the attention.
+    # We can solve the forward propagation with nantonum (setting to 0)
+    # but the backward propagation fails.
+    mask_sos = False
 
     def __init__(self,
                  experiment_name: str, nb_features: int,
@@ -93,6 +88,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
                  # TRANSFORMER
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
+                 norm_first: bool,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  normalize_targets: bool,
@@ -151,6 +147,12 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         activation: str
             Choice of activation function in the FFNN. 'relu' or 'gelu'.
             Default: 'relu'.
+        norm_first: bool
+            If True, encoder and decoder layers will perform LayerNorms before
+            other attention and feedforward operations, otherwise after.
+            Torch default + in original paper: False. In the tensor2tensor code
+            they suggest that learning is more robust when preprocessing each
+            layer with the norm.
         dg_key: str
             Key to the chosen direction getter class. Choices:
             keys_to_direction_getters.keys(). Default: 'cosine-regression'.
@@ -202,6 +204,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         self.d_model = d_model
         self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size \
             else d_model // 2
+        self.norm_first = norm_first
 
         # ----------- Checks
         if self.embedding_key_x not in keys_to_embeddings.keys():
@@ -223,9 +226,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
         # ----------- Input size:
         # (neighborhood prepared by super)
-        nb_neighbors = len(self.neighborhood_vectors) if \
-            self.neighborhood_vectors else 0
-        self.input_size = nb_features * (nb_neighbors + 1)
+        self.input_size = nb_features * (self.nb_neighbors + 1)
 
         # ----------- Instantiations
         # 1. Previous dirs embedding: prepared by super.
@@ -264,18 +265,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
     @property
     def params_for_json_prints(self):
         p = super().params_for_json_prints
-        p.update({
-            'nb_features': int(self.nb_features),
-            'max_len': self.max_len,
-            'embedding_key_x': self.embedding_key_x,
-            'positional_encoding_key': self.positional_encoding_key,
-            'embedding_key_t': self.embedding_key_t,
-            'dropout_rate': self.dropout_rate,
-            'activation': self.activation,
-            'nheads': self.nheads,
-            'd_model': self.d_model,
-            'ffnn_hidden_size': self.ffnn_hidden_size,
-        })
+        p.update(self.params_for_checkpoint)
         return p
 
     @property
@@ -296,10 +286,11 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             'nheads': self.nheads,
             'd_model': self.d_model,
             'ffnn_hidden_size': self.ffnn_hidden_size,
+            'norm_first': self.norm_first,
         })
         return p
 
-    def _pad_and_stack_batch(self, unpadded_data, padding_necessary=True):
+    def _stack_batch(self, unpadded_data, pad_first: bool, pad_length: int):
         """
         Pad the batch inputs and targets so that all streamlines have lenth
         max_len. Then concatenate all streamlines.
@@ -308,6 +299,11 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         ------
         batch_x: list[Tensor]
             Len: nb streamlines. Shape of each tensor: nb points x nb features.
+        pad_first: bool
+            If false, padding is skipped. (Ex: If all streamlines already
+            contain the right number of points.
+        pad_length: int
+            Expected final lengths of streamlines.
 
         Returns
         -------
@@ -316,51 +312,37 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             the size of the batch input at this point (ex, initial number of
             features or d_model if embedding is already done).
         """
-        if padding_necessary:
-            padded_data = [forward_padding(unpadded_data[i], self.max_len)
+        if pad_first:
+            padded_data = [forward_padding(unpadded_data[i], pad_length)
                            for i in range(len(unpadded_data))]
         else:
             padded_data = unpadded_data
 
         return torch.stack(padded_data).to(self.device)
 
-    def _generate_future_mask(self, sz, first_pos_masked=False):
-        """Copy-pasting Transformer.generate_square_subsequent_mask to have
-        more control on the 'diagonal' parameter, which they always set to 1.
+    @staticmethod
+    def _generate_future_mask(sz):
+        """DO NOT USE FLOAT, their code had a bug (see issue #92554. Fixed in
+        latest github branch. Waiting for release.)
+
+        Float is deprecated but their method has not been changed yet.
+        Should be boolean. I warned them, not changed yet.
         """
-        # In torch, -inf = True = where masked = where data is ignored.
-        diagonal = 0 if first_pos_masked else 1
-        mask = torch.triu(torch.full((sz, sz), -torch.inf,
-                                     device=self.device),
-                          diagonal=diagonal)
+        mask = Transformer.generate_square_subsequent_mask(sz)
+        return mask < 0
 
-        if self.use_bool_masks:
-            mask = mask < 0
-
-        return mask
-
-    def _generate_padding_mask(self, unpadded_lengths, is_tracking):
+    @staticmethod
+    def _generate_padding_mask(unpadded_lengths, batch_max_len):
         nb_streamlines = len(unpadded_lengths)
-        fill_value = -torch.inf
 
-        mask_padding_x = torch.zeros(nb_streamlines, self.max_len)
+        mask_padding = torch.full((nb_streamlines, batch_max_len),
+                                  fill_value=False)
         for i in range(nb_streamlines):
-            mask_padding_x[i, unpadded_lengths[i]:] = fill_value
+            mask_padding[i, unpadded_lengths[i]:] = True
 
-        if is_tracking:
-            mask_padding_t = torch.zeros(nb_streamlines, self.max_len)
-            for i in range(nb_streamlines):
-                mask_padding_t[i, unpadded_lengths[i] - 1:] = fill_value
-        else:
-            mask_padding_t = mask_padding_x
+        return mask_padding
 
-        if self.use_bool_masks:
-            mask_padding_x = mask_padding_x < 0
-            mask_padding_t = mask_padding_t < 0
-
-        return mask_padding_x, mask_padding_t
-
-    def _prepare_masks(self, unpadded_lengths, is_tracking):
+    def _prepare_masks(self, unpadded_lengths, use_padding, batch_max_len):
         """
         Prepare masks for the transformer.
 
@@ -370,40 +352,44 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             Length of each streamline's target sequence.
             During tracking unpadded lenghts is considered the same for x and
             t. If is_training, input is one point longer.
+        use_padding: bool,
+            If false, skip padding (all streamlines must have the same length).
+        batch_max_len: int
+            Batch's maximum length. It it not useful to pad more than that.
+            (During tracking, particularly interesting!). Should be equal or
+            smaller to self.max_len.
 
         Returns
         -------
         mask_future_x: Tensor
-            Shape: [max_len, max_len]
+            Shape: [batch_max_len, batch_max_len]
             Masks the inputs that do not exist (useful for data generation, but
             also used during training on padded points because, why not), at
             each position.
-            = [[0, -inf, -inf],
-               [0,  0,  -inf],
-               [0,  0,   0]]
+            = [[False, True,  True],
+               [False, False, True],
+               [False, False, False]]
         mask_future_t: Tensor
-            As input for the decoder, one less target is known. The mask is
-            = [[-inf, -inf, -inf],
-               [0,    -inf, -inf],
-               [0,    -inf, -inf]]
-            (Usually, the mask is the same as mask_future_x and the first input
-            to the decoder is a start of sequence token. Here, we don't have
-            token, so our decoder input is not shifted).
-        mask_padding_x: Tensor
-            Shape [nb_streamlines, max_len]. Masks positions that do not
-            exist in the x sequence.
-        masd_padding_y: Tensor
-            Similar. During tracking, one more position is padded than during
-            training.
+            Idem, but we can choose to hide the fake SOS token. If so, the
+            first column is set to True.
+        mask_padding: Tensor
+            Shape [nb_streamlines, batch_max_len]. Masks positions that do not
+            exist in the sequence.
         """
-        mask_future_x = self._generate_future_mask(self.max_len,
-                                                   first_pos_masked=False)
-        mask_future_t = self._generate_future_mask(self.max_len,
-                                                   first_pos_masked=True)
-        mask_padding_x, mask_padding_t = \
-            self._generate_padding_mask(unpadded_lengths, is_tracking)
+        mask_future_x = self._generate_future_mask(batch_max_len)
+        if self.mask_sos:
+            mask_future_t = self._generate_future_mask(batch_max_len)
+            mask_future_t[:, 0] = True
+        else:
+            mask_future_t = mask_future_x
 
-        return mask_future_x, mask_future_t, mask_padding_x, mask_padding_t
+        if use_padding:
+            mask_padding = self._generate_padding_mask(unpadded_lengths,
+                                                       batch_max_len)
+        else:
+            mask_padding = None
+
+        return mask_future_x, mask_future_t, mask_padding
 
     def forward(self, batch_x: List[torch.tensor],
                 batch_streamlines: List[torch.tensor],
@@ -434,108 +420,121 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         average_heads: bool
             If return_weights, you may choose to average the weights from
             different heads together.
+
+        Returns
+        -------
+        output: Tensor,
+            Batch output, of shape:
+                - During training: [total nb points all streamlines, out size]
+                - During tracking: [nb streamlines * 1, out size]
+        weights: Tuple
+            If return weigts: The weights (depending on the child model)
         """
+        # Remember lengths to unpad outputs later. During tracking, the
+        # targets contain one less point.
+        unpadded_lengths = np.asarray([len(i) for i in batch_x])
         nb_streamlines = len(batch_streamlines)
+
+        # ----------- Checks
+        if np.any(unpadded_lengths > self.max_len):
+            raise ValueError("Some streamlines were longer than accepted max "
+                             "length for sequences ({})".format(self.max_len))
         if is_tracking:
             for i in range(nb_streamlines):
                 assert len(batch_streamlines[i]) == len(batch_x[i]), \
-                    "During tracking, we should have one more input than " \
-                    "the current streamline length."
+                    "During tracking, we expect the streamlines to have the " \
+                    "same number of points as the input."
         else:
             for i in range(nb_streamlines):
                 assert len(batch_streamlines[i]) == len(batch_x[i]) + 1, \
                     "We expect the streamlines to have one more point " \
-                    "than the inputs. Directions will be  used. No need " \
+                    "than the inputs. Directions will be used. No need " \
                     "to compute the last input. (During training)."
+
+        # ----------- Ok. Prepare masks and parameters
+
+        # (Skip padding if all streamlines have the same length)
+        use_padding = not np.all(unpadded_lengths == unpadded_lengths[0])
+        batch_max_len = np.max(unpadded_lengths)
+        mask_future_x, mask_future_t, mask_padding = \
+            self._prepare_masks(unpadded_lengths, use_padding, batch_max_len)
 
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
         batch_t = compute_directions(batch_streamlines, self.device)
 
-        # Remember lengths to unpad outputs later. During tracking, the
-        # targets contain one less point.
-        unpadded_lengths = np.asarray([len(i) for i in batch_x])
-        if np.any(unpadded_lengths > self.max_len):
-            raise ValueError("Some streamlines were longer than accepted max "
-                             "length for sequences ({})".format(self.max_len))
-        elif np.any(unpadded_lengths < self.max_len):
-            use_padding = True
-        else:
-            use_padding = False
-            logger.debug("Good news. All streamlines already had expected "
-                         "length. No padding added.")
+        # ----------- Ok. Start processing
 
-        # Embedding + position encoding.
-        logger.debug("*** 1. Embedding and position encoding.")
+        # 1. Embedding + position encoding.
         # Run embedding on padded data. Necessary to make the model
         # adapt for the positional encoding.
-        embed_x, embed_t = self.run_embedding(batch_x, batch_t, use_padding)
-        embed_x = self.dropout(embed_x)
-        embed_t = self.dropout(embed_t)
+        embed_x, embed_t = self.run_embedding(batch_x, batch_t, use_padding,
+                                              batch_max_len)
+        embed_x, embed_t = self.dropout(embed_x), self.dropout(embed_t)
 
-        # Now run main transformer (see child classes)
-        logger.debug("*** 2. Transformer....")
-        outputs = self._run_main_layer_forward(
-            embed_x, embed_t, unpadded_lengths, is_tracking, return_weights,
-            average_heads)
-        if return_weights:
-            outputs, weights = outputs
+        # 2. Main transformer
+        outputs, weights = self._run_main_layer_forward(
+            embed_x, embed_t, mask_future_x, mask_future_t, mask_padding,
+            return_weights, average_heads)
 
         # Unpad now and combine everything for the direction getter.
-        if use_padding:
-            # outputs size = [nb streamlines, max_len, d_model].
-            if is_tracking:
-                # We take the last (unpadded) point, newly created.
-                outputs = [outputs[i, unpadded_lengths[i], :]
-                           for i in range(nb_streamlines)]
-            else:
-                # We take all points.
+        if is_tracking:
+            outputs = outputs.detach()
+            # No need to actually unpad, we only take the last (unpadded)
+            # point, newly created.
+            # (len = len(x) so that's the new point. -1 for python indexing)
+            outputs = [outputs[i, unpadded_lengths[i] - 1, :]
+                       for i in range(nb_streamlines)]
+            outputs = torch.vstack(outputs)
+        else:
+            if use_padding:
+                # outputs size = [nb streamlines, max_len, d_model].
+                # We take all (unpadded) points.
                 outputs = [outputs[i, 0:unpadded_lengths[i], :]
                            for i in range(nb_streamlines)]
+            outputs = torch.cat(outputs, dim=0)
 
-        # Direction getter
+        # 3. Direction getter
         # Outputs will be all streamlines merged.
         # To compute loss = ok. During tracking, we will need to split back.
-        logger.debug("*** 3. Direction getter (on unpadded data)....")
-        outputs = self.direction_getter(torch.cat(outputs, dim=0))
-        if is_tracking and nb_streamlines == 1:
-            # Add back one more dimension.
-            outputs = outputs[None, :]
+        outputs = self.direction_getter(outputs)
+
+        if return_weights:
+            return outputs, weights
         return outputs
 
-    def run_embedding(self, batch_x, batch_t, padding_necessary=True):
+    def run_embedding(self, batch_x, batch_t, use_padding, batch_max_len):
         """
-        1. Pad + embedding.
-        2. Positional encoding.
-        3. Combine with prev dirs, if any.
+        Pad + concatenate.
+        Embedding. (Add SOS token to target.)
+        Positional encoding.
         """
-        logger.debug("    1.A. Padding and concatenating streamlines.")
-        inputs = self._pad_and_stack_batch(batch_x, padding_necessary)
-        targets = self._pad_and_stack_batch(batch_t, padding_necessary)
-
-        logger.debug("    1.B. Run embedding (on padded sequences)...")
+        # Inputs
+        inputs = self._stack_batch(batch_x, use_padding, batch_max_len)
         inputs = self.embedding_layer_x(inputs)
-        targets = self.embedding_layer_t(targets)
-
-        logger.debug("    1.C. Embed previous dirs and combine with inputs...")
         if self.nb_previous_dirs > 0:
-            raise NotImplementedError
-            # Todo. Test. Do we need to add a fake last point during tracking?
             n_prev_dirs = self.normalize_and_embed_previous_dirs(
-                batch_t, unpack_results=True)  # Compute from raw dirs.
-            n_prev_dirs = self._pad_and_stack_batch(n_prev_dirs,
-                                                    padding_necessary)
+                batch_t, unpack_results=True)
+            n_prev_dirs = \
+                self._stack_batch(n_prev_dirs, use_padding, batch_max_len)
+            # Total input must still be of size d_model.
             inputs = torch.cat((inputs, n_prev_dirs), dim=-1)
-
-        logger.debug("    1.D. positional encoding.")
         inputs = self.position_encoding_layer(inputs)
+
+        # Targets
+        targets = self._stack_batch(batch_t, use_padding, batch_max_len - 1)
+        targets = self.embedding_layer_t(targets)
+        targets = torch.cat((torch.full((len(batch_t), 1, self.d_model),
+                                        fill_value=SOS_TOKEN),
+                             targets), dim=1)
         targets = self.position_encoding_layer(targets)
 
         return inputs, targets
 
-    def _run_main_layer_forward(self, embed_x, embed_t, unpadded_lengths,
-                                is_tracking, return_weights, average_heads):
+    def _run_main_layer_forward(self, embed_x, embed_t, mask_future_x,
+                                mask_future_t, mask_padding,
+                                return_weights, average_heads):
         raise NotImplementedError
 
     def compute_loss(self, model_outputs, streamlines, **kw):
@@ -617,7 +616,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
                  # TRANSFORMER
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
-                 n_layers_e: int, n_layers_d: int,
+                 norm_first: bool, n_layers_e: int, n_layers_d: int,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  normalize_targets: bool,
@@ -638,8 +637,8 @@ class OriginalTransformerModel(AbstractTransformerModel):
                          normalize_prev_dirs,
                          max_len, positional_encoding_key, embedding_key_x,
                          embedding_key_t, d_model, ffnn_hidden_size, nheads,
-                         dropout_rate, activation, dg_key, dg_args,
-                         normalize_targets, neighborhood_type,
+                         dropout_rate, activation, norm_first,
+                         dg_key, dg_args, normalize_targets, neighborhood_type,
                          neighborhood_radius, log_level)
 
         # ----------- Additional params
@@ -650,25 +649,27 @@ class OriginalTransformerModel(AbstractTransformerModel):
         logger.info("Instantiating torch transformer, may take a few "
                     "seconds...")
         # Encoder:
-        encoder_layer = TransformerEncoderLayerGetWeightsNoNaN(
-            self.d_model, self.nheads, self.ffnn_hidden_size,
-            self.dropout_rate, self.activation, batch_first=self.batch_first,
+        encoder_layer = ModifiedTransformerEncoderLayer(
+            self.d_model, self.nheads,
+            dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
+            activation=self.activation, batch_first=BATCH_FIRST,
             norm_first=self.norm_first)
-        encoder = TransformerEncoderGetWeights(encoder_layer, n_layers_e,
-                                               norm=None)
+        encoder = ModifiedTransformerEncoder(encoder_layer, n_layers_e,
+                                             norm=None)
 
         # Decoder
-        decoder_layer = TransformerDecoderLayerGetWeightsNoNaN(
-            self.d_model, self.nheads, self.ffnn_hidden_size,
-            self.dropout_rate, self.activation, batch_first=self.batch_first,
+        decoder_layer = ModifiedTransformerDecoderLayer(
+            self.d_model, self.nheads,
+            dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
+            activation=self.activation, batch_first=BATCH_FIRST,
             norm_first=self.norm_first)
-        decoder = TransformerDecoderGetWeights(decoder_layer, n_layers_d,
-                                               norm=None)
+        decoder = ModifiedTransformerDecoder(decoder_layer, n_layers_d,
+                                             norm=None)
 
-        self.transformer_layer = TransformerGetWeights(
+        self.modified_torch_transformer = ModifiedTransformer(
             d_model, nheads, n_layers_e, n_layers_d, ffnn_hidden_size,
             dropout_rate, activation, encoder, decoder,
-            self.layer_norm, batch_first=self.batch_first,
+            batch_first=BATCH_FIRST,
             norm_first=self.norm_first)
 
     @property
@@ -689,27 +690,20 @@ class OriginalTransformerModel(AbstractTransformerModel):
         })
         return p
 
-    def _run_main_layer_forward(self, embed_x, embed_t, unpadded_lengths,
-                                is_tracking, return_weights, average_heads):
+    def _run_main_layer_forward(self, embed_x, embed_t, mask_future_x,
+                                mask_future_t, mask_padding,
+                                return_weights, average_heads):
         """Original Main transformer"""
-
-        # Prepare masks
-        mask_future_x, mask_future_t, mask_padding_x, mask_padding_t = \
-            self._prepare_masks(unpadded_lengths, is_tracking)
-
-        # If return_weights is False, the weights below are None
         outputs, sa_weights_encoder, sa_weights_decoder, mha_weights = \
-            self.transformer_layer(
+            self.modified_torch_transformer(
                 src=embed_x, tgt=embed_t,
                 src_mask=mask_future_x, tgt_mask=mask_future_t,
-                src_key_padding_mask=mask_padding_x,
-                tgt_key_padding_mask=mask_padding_t,
+                memory_mask=mask_future_x,
+                src_key_padding_mask=mask_padding,
+                tgt_key_padding_mask=mask_padding,
+                memory_key_padding_mask=mask_padding,
                 return_weights=return_weights, average_heads=average_heads)
-
-        if return_weights:
-            return (outputs,
-                    (sa_weights_encoder, sa_weights_decoder, mha_weights))
-        return outputs
+        return outputs, (sa_weights_encoder, sa_weights_decoder, mha_weights)
 
 
 class TransformerSrcAndTgtModel(AbstractTransformerModel):
@@ -749,7 +743,7 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                  # TRANSFORMER
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
-                 n_layers_d: int,
+                 norm_first: bool, n_layers_d: int,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  normalize_targets: bool,
@@ -768,8 +762,8 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                          normalize_prev_dirs,
                          max_len, positional_encoding_key, embedding_key_x,
                          embedding_key_t, d_model, ffnn_hidden_size, nheads,
-                         dropout_rate, activation, dg_key, dg_args,
-                         normalize_targets, neighborhood_type,
+                         dropout_rate, activation, norm_first,
+                         dg_key, dg_args, normalize_targets, neighborhood_type,
                          neighborhood_radius, log_level)
 
         # ----------- Additional params
@@ -783,11 +777,12 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         # The d_model is the same; points are not concatenated together.
         # It is the max_len that is modified: The sequences are concatenated
         # one beside the other.
-        double_layer = TransformerEncoderLayerGetWeightsNoNaN(
-            self.d_model, self.nheads, self.ffnn_hidden_size,
-            self.dropout_rate, self.activation, batch_first=True,
+        double_layer = ModifiedTransformerEncoderLayer(
+            self.d_model, self.nheads,
+            dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
+            activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
-        self.main_layer = TransformerEncoderGetWeights(
+        self.modified_torch_transformer = ModifiedTransformerEncoder(
             double_layer, n_layers_d, norm=None)
 
     @property
@@ -806,19 +801,16 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         })
         return p
 
-    def _run_main_layer_forward(self, embed_x, embed_t, unpadded_lengths,
-                                is_tracking, return_weights, average_heads):
-        # Prepare masks
-        mask_future_x, mask_future_t, mask_padding_x, mask_padding_t = \
-            self._prepare_masks(unpadded_lengths, is_tracking)
+    def _run_main_layer_forward(self, embed_x, embed_t, mask_future_x,
+                                mask_future_t, mask_padding,
+                                return_weights, average_heads):
 
         # Concatenating x and t
         inputs = torch.cat((embed_x, embed_t), dim=1)
 
         # Concatenating mask future:
         #  - For the input: self-attention.
-        fill_value = True if self.use_bool_masks else -torch.inf
-        all_masked = torch.full((self.max_len, self.max_len), fill_value)
+        all_masked = torch.full((self.max_len, self.max_len), True)
         mask_future_x_padded = torch.cat((mask_future_x, all_masked), dim=-1)
         #  - For the target: mixed attention.
         mask_future_t_total = torch.cat((mask_future_x, mask_future_t), dim=-1)
@@ -827,11 +819,12 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                                 dim=0)
 
         # Concatenating mask padding:
-        mask_padding = torch.cat((mask_padding_x, mask_padding_t), dim=-1)
+        total_mask_padding = torch.cat((mask_padding, mask_padding), dim=-1)
 
         # Main transformer
-        outputs, sa_weights = self.main_layer(
-            src=inputs, mask=mask_future, src_key_padding_mask=mask_padding,
+        outputs, sa_weights = self.modified_torch_transformer(
+            src=inputs, mask=mask_future,
+            src_key_padding_mask=total_mask_padding,
             return_weights=return_weights, average_heads=average_heads)
 
         # Take the second half of model outputs to direction getter
@@ -839,6 +832,4 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         # more a "decoder" than an "encoder" in logical meaning.
         kept_outputs = outputs[:, -self.max_len:, :]
 
-        if return_weights:
-            return kept_outputs, (sa_weights,)
-        return kept_outputs
+        return kept_outputs, (sa_weights,)

@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
-import logging
-
-from dwi_ml.experiment_utils.prints import format_dict_to_str
-from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.projects.positional_encoding import (
     keys_to_positional_encodings)
-from dwi_ml.models.projects.streamline_transformers import (AbstractTransformerModel,
-                                                            OriginalTransformerModel,
-                                                            TransformerSrcAndTgtModel)
+from dwi_ml.models.projects.transforming_tractography import (
+    AbstractTransformerModel)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 
 
@@ -64,6 +59,14 @@ def add_abstract_model_args(p):
         metavar='key',
         help="Choice of activation function in the FFNN. One of 'relu' or \n"
              "'gelu'. [%(default)s]")
+    gt.add_argument(
+        '--norm_first', type=bool, default=False, metavar='True/False',
+        help="If True, encoder and decoder layers will perform LayerNorm "
+             "before \nother attention and feedforward operations, otherwise "
+             "after.\n Torch default + in original paper: False. \nIn the "
+             "tensor2tensor code, they suggest that learning is more robust "
+             "when preprocessing each layer with the norm.\n"
+             "Default: False.")
 
     g = p.add_argument_group("Previous directions")
     AbstractTransformerModel.add_args_model_with_pd(g)
@@ -108,69 +111,3 @@ def perform_checks(args):
     dg_args = check_args_direction_getter(args)
 
     return args, dg_args
-
-
-def prepare_tto_model(args, dg_args, sub_loggers_level):
-    with Timer("\n\nPreparing model", newline=True, color='yellow'):
-        model = OriginalTransformerModel(
-            experiment_name=args.experiment_name, nb_features=args.nb_features,
-            # Previous dirs:
-            nb_previous_dirs=args.nb_previous_dirs,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
-            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            normalize_prev_dirs=args.normalize_prev_dirs,
-            # Concerning inputs:
-            max_len=args.max_len,
-            positional_encoding_key=args.position_encoding,
-            embedding_key_x=args.data_embedding,
-            embedding_key_t=args.target_embedding,
-            # Torch's transformer parameters
-            d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,
-            nheads=args.nheads, dropout_rate=args.dropout_rate,
-            activation=args.activation, n_layers_e=args.n_layers_e,
-            n_layers_d=args.n_layers_e,
-            # Direction getter
-            dg_key=args.dg_key, dg_args=dg_args,
-            normalize_targets=args.normalize_targets,
-            # Other
-            neighborhood_type=args.neighborhood_type,
-            neighborhood_radius=args.neighborhood_radius,
-            log_level=sub_loggers_level)
-
-        logging.info("Transformer (original) model final parameters:" +
-                     format_dict_to_str(model.params_for_json_prints))
-
-    return model
-
-
-def prepare_ttst_model(args, dg_args, sub_loggers_level):
-    with Timer("\n\nPreparing model", newline=True, color='yellow'):
-        model = TransformerSrcAndTgtModel(
-            experiment_name=args.experiment_name, nb_features=args.nb_features,
-            # Previous dirs:
-            nb_previous_dirs=args.nb_previous_dirs,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
-            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            normalize_prev_dirs=args.normalize_prev_dirs,
-            # Concerning inputs:
-            max_len=args.max_len,
-            positional_encoding_key=args.position_encoding,
-            embedding_key_x=args.data_embedding,
-            embedding_key_t=args.target_embedding,
-            # Torch's transformer parameters
-            d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,
-            nheads=args.nheads, dropout_rate=args.dropout_rate,
-            activation=args.activation, n_layers_d=args.n_layers_d,
-            # Direction getter
-            dg_key=args.dg_key, dg_args=dg_args,
-            normalize_targets=args.normalize_targets,
-            # Other
-            neighborhood_type=args.neighborhood_type,
-            neighborhood_radius=args.neighborhood_radius,
-            log_level=sub_loggers_level)
-
-        logging.info("Transformer (src-tgt attention) model final "
-                     "parameters:" +
-                     format_dict_to_str(model.params_for_json_prints))
-
-    return model

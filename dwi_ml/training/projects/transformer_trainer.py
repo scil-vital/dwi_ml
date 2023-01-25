@@ -4,7 +4,7 @@ from typing import List
 
 import torch
 
-from dwi_ml.models.projects.streamline_transformers import AbstractTransformerModel
+from dwi_ml.models.projects.transforming_tractography import AbstractTransformerModel
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.trainers import DWIMLTrainerOneInput

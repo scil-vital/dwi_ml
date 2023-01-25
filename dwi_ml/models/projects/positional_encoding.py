@@ -68,7 +68,7 @@ class SinusoidalPositionalEncoding(AbstractPositionalEncoding):
         """
         # Important. Can't use +=. Inplace operation, backward propagation
         # would fail.
-        x = x + self.pos_emb
+        x = x + self.pos_emb[:, 0:x.shape[1], :]
 
         return x
 

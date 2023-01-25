@@ -1,40 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-We could use this for visu:
-https://github.com/jessevig/bertviz
+Child classes of Torch Transformers. Changes are:
+
+- Main transformer: Now returns the weights for visualisation + Added an option
+  to decide if we want to share the linear weights for Q, K, V.
+- Encoder: Idem
+- Decoder: Idem
+- EncoderLayer: Idem
+- DecoderLayer: Idem
 
 """
-
 from typing import Optional
 
 import torch
-from torch import Tensor, nan_to_num
+from torch import Tensor
 from torch.nn import (Transformer,
                       TransformerDecoderLayer, TransformerDecoder,
-                      TransformerEncoderLayer, TransformerEncoder)
-
-# Shapes:
-#  input: [nb_streamlines, max_len, d_model]
-#  target: [nb_streamlines, max_len, d_model]
-#  - Encoder:
-#  --- Attention: (torch.nn.functionnal.multi_head_attention_forward):
-#  n := nb streamlines * nb heads
-#  ------ Combined masks future + padding: [n, max_len, max_len].
-#         Contains -inf (or bool).
-#  ------ After (Q*K), scaled, masked, softmax: [n, max_len, max_len].
-#         Contains zeros where masked.
-#  ------ After * V: [nb_streamlines, max_len, d_model].
-#         Does not contain zeros anymore, that's ok.
-#  ------ Output (called 'memory'): [nb_streamlines, max_len, d_model].
-#  - Decoder: Similarly, output:
-#      [nb streamlines, max_len, d_model]
-#      Important. During softmax, during the self-attention, for the
-#      first position, we get
-#      softmax(-inf, -inf, -inf) = [nan, nan, nan].
-#      Which are replaced by 0 in our modified Decoder.
+                      TransformerEncoderLayer, TransformerEncoder,
+                      MultiheadAttention, Parameter)
 
 
-class TransformerGetWeights(Transformer):
+class ModifiedTransformer(Transformer):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
 
@@ -47,17 +33,10 @@ class TransformerGetWeights(Transformer):
         """
         Copy-pasted from torch. Now returns weights.
         """
-        is_batched = src.dim() == 3
-        if not self.batch_first and src.size(1) != tgt.size(1) and is_batched:
-            raise RuntimeError("the batch number of src and tgt must be equal")
-        elif self.batch_first and src.size(0) != tgt.size(0) and is_batched:
-            raise RuntimeError("the batch number of src and tgt must be equal")
-        if src.size(-1) != self.d_model or tgt.size(-1) != self.d_model:
-            raise RuntimeError("the feature number of src and tgt must be equal to d_model")
-
         memory, sa_weights_encoder = self.encoder(
             src, mask=src_mask, src_key_padding_mask=src_key_padding_mask,
             return_weights=return_weights, average_heads=average_heads)
+
         output, sa_weights_decoder, mha_weights = self.decoder(
             tgt, memory, tgt_mask=tgt_mask, memory_mask=memory_mask,
             tgt_key_padding_mask=tgt_key_padding_mask,
@@ -67,7 +46,7 @@ class TransformerGetWeights(Transformer):
         return output, sa_weights_encoder, sa_weights_decoder, mha_weights
 
 
-class TransformerEncoderGetWeights(TransformerEncoder):
+class ModifiedTransformerEncoder(TransformerEncoder):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
 
@@ -83,8 +62,10 @@ class TransformerEncoderGetWeights(TransformerEncoder):
         """
         if src_key_padding_mask is not None:
             _skpm_dtype = src_key_padding_mask.dtype
-            if _skpm_dtype != torch.bool and not torch.is_floating_point(src_key_padding_mask):
-                raise AssertionError("only bool and floating types of key_padding_mask are supported")
+            if _skpm_dtype != torch.bool and not \
+                    torch.is_floating_point(src_key_padding_mask):
+                raise AssertionError("only bool and floating types of "
+                                     "key_padding_mask are supported")
         output = src
         src_key_padding_mask_for_layers = src_key_padding_mask
         sa_weights = [None] * len(self.layers)
@@ -101,7 +82,7 @@ class TransformerEncoderGetWeights(TransformerEncoder):
         return output, sa_weights
 
 
-class TransformerDecoderGetWeights(TransformerDecoder):
+class ModifiedTransformerDecoder(TransformerDecoder):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
 
@@ -133,9 +114,34 @@ class TransformerDecoderGetWeights(TransformerDecoder):
         return output, sa_weights, mha_weights
 
 
-class TransformerEncoderLayerGetWeightsNoNaN(TransformerEncoderLayer):
-    def __init__(self, *args, **kw):
-        super().__init__(*args, **kw)
+def do_not_share_linear_weights(attn: MultiheadAttention, d_model):
+    """
+    I added a request for this parameter to be accessible.
+    https://github.com/pytorch/pytorch/issues/92990
+    """
+    factory_kwargs = {'device': None, 'dtype': None}
+
+    # Overriding some parameters in the self attention.
+    # Ugly but.... Torch does not have a parameter to NOT share linear
+    # weights. In their code, their only NOT share weights when dimensions
+    # are not the same. This is not our case. This is saved in their
+    # parameter _qkv_same_embed_dim. By changing this, we change their
+    # forward call to the MultiHeadAttention in self.self_attn.
+    attn._qkv_same_embed_dim = False
+    attn.q_proj_weight = Parameter(
+        torch.empty((d_model, d_model), **factory_kwargs))
+    attn.k_proj_weight = Parameter(
+        torch.empty((d_model, d_model), **factory_kwargs))
+    attn.v_proj_weight = Parameter(
+        torch.empty((d_model, d_model), **factory_kwargs))
+    attn.register_parameter('in_proj_weight', None)
+
+
+class ModifiedTransformerEncoderLayer(TransformerEncoderLayer):
+    def __init__(self, d_model, nhead, **kw):
+        super().__init__(d_model, nhead, **kw)
+
+        do_not_share_linear_weights(self.self_attn, d_model)
 
     def forward(self, src: Tensor, src_mask: Optional[Tensor] = None,
                 src_key_padding_mask: Optional[Tensor] = None,
@@ -146,16 +152,24 @@ class TransformerEncoderLayerGetWeightsNoNaN(TransformerEncoderLayer):
         """
         x = src
         if self.norm_first:
-            sa, sa_weights = self._sa_block(self.norm1(x), src_mask, src_key_padding_mask)
-            sa = nan_to_num(sa)
+            # Norm, SA, Add, Norm, FF, Add
+            sa, sa_weights = self._sa_block(self.norm1(x), src_mask,
+                                            src_key_padding_mask,
+                                            return_weights)
+            #sa = nan_to_num(sa)
+
             x = x + sa
             x = x + self._ff_block(self.norm2(x))
         else:
-            sa, sa_weights = self._sa_block(x, src_mask, src_key_padding_mask)
-            sa = nan_to_num(sa)
+            # SA, Add, Norm, FF, Add, Norm
+            sa, sa_weights = self._sa_block(x, src_mask, src_key_padding_mask,
+                                            return_weights)
+            #sa = nan_to_num(sa)
             x = self.norm1(x + sa)
             x = self.norm2(x + self._ff_block(x))
 
+        #if return_weights:
+        #    sa_weights = nan_to_num(sa_weights)
         return x, sa_weights
 
     # self-attention block
@@ -166,16 +180,13 @@ class TransformerEncoderLayerGetWeightsNoNaN(TransformerEncoderLayer):
         output = self.self_attn(x, x, x,
                                 attn_mask=attn_mask,
                                 key_padding_mask=key_padding_mask,
-                                need_weights=False)
-        if return_weights:
-            x, weights = output
-        else:
-            x, weights = output, None
+                                need_weights=return_weights)
+        x, weights = output  # if return_weights is False, weights is None
 
-        return self.dropout1(x[0]), weights
+        return self.dropout1(x), weights
 
 
-class TransformerDecoderLayerGetWeightsNoNaN(TransformerDecoderLayer):
+class ModifiedTransformerDecoderLayer(TransformerDecoderLayer):
     """
     Decoder Layer, in the case where we do not have a start of sequence (SOS)
     token, and our mask contains only -inf for the first position. Output of
@@ -183,8 +194,11 @@ class TransformerDecoderLayerGetWeightsNoNaN(TransformerDecoderLayer):
 
     Also, now returning attention weights.
     """
-    def __init__(self, *args, **kw):
-        super().__init__(*args, **kw)
+    def __init__(self, d_model, nhead, **kw):
+        super().__init__(d_model, nhead, **kw)
+
+        do_not_share_linear_weights(self.self_attn, d_model)
+        do_not_share_linear_weights(self.multihead_attn, d_model)
 
     def forward(self, tgt: Tensor, memory: Tensor,
                 tgt_mask: Tensor = None, memory_mask: Tensor = None,
@@ -198,20 +212,33 @@ class TransformerDecoderLayerGetWeightsNoNaN(TransformerDecoderLayer):
         # see Fig. 1 of https://arxiv.org/pdf/2002.04745v1.pdf
         x = tgt
         if self.norm_first:
-            sa, sa_weights = self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask)
-            sa = nan_to_num(sa)
+            # Norm, SA, Add, Norm, MHA, Add, Norm, FF, Add
+            sa, sa_weights = self._sa_block(self.norm1(x), tgt_mask,
+                                            tgt_key_padding_mask,
+                                            return_weights=return_weights)
+            #sa = nan_to_num(sa)
             x = x + sa
-            mha, mha_weights = self._mha_block(self.norm2(x), memory, memory_mask, memory_key_padding_mask)
+            mha, mha_weights = self._mha_block(self.norm2(x), memory,
+                                               memory_mask,
+                                               memory_key_padding_mask,
+                                               return_weights=return_weights)
             x = x + mha
             x = x + self._ff_block(self.norm3(x))
         else:
-            sa, sa_weights = self._sa_block(x, tgt_mask, tgt_key_padding_mask)
-            sa = nan_to_num(sa)
+            # SA, Add, Norm, MHA, Add, Norm, FF, Add, Norm.
+            sa, sa_weights = self._sa_block(x, tgt_mask, tgt_key_padding_mask,
+                                            return_weights=return_weights)
+            #sa = nan_to_num(sa)
             x = self.norm1(x + sa)
-            mha, mha_weights = self._mha_block(x, memory, memory_mask, memory_key_padding_mask)
+
+            mha, mha_weights = self._mha_block(x, memory, memory_mask,
+                                               memory_key_padding_mask,
+                                               return_weights=return_weights)
             x = self.norm2(x + mha)
             x = self.norm3(x + self._ff_block(x))
 
+        #if return_weights:
+        #    sa_weights = nan_to_num(sa_weights)
         return x, mha_weights, sa_weights
 
     # self-attention block
@@ -228,12 +255,9 @@ class TransformerDecoderLayerGetWeightsNoNaN(TransformerDecoderLayer):
                                 need_weights=return_weights,
                                 average_attn_weights=average_heads)
 
-        if return_weights:
-            x, weights = output
-        else:
-            x, weights = output, None
+        x, weights = output  # If not return_weights, weights is None.
 
-        return self.dropout1(x[0]), weights
+        return self.dropout1(x), weights
 
     # multihead attention block
     def _mha_block(self, x: Tensor, mem: Tensor,

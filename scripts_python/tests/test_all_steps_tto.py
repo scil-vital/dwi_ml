@@ -32,7 +32,7 @@ def experiments_path(tmp_path_factory):
     return str(experiments_path)
 
 
-def test_execution_bst(script_runner, experiments_path):
+def test_execution(script_runner, experiments_path):
     experiment_name = 'test_experiment'
     hdf5_file = os.path.join(data_dir, 'hdf5_file.hdf5')
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]
@@ -52,7 +52,7 @@ def test_execution_bst(script_runner, experiments_path):
                             '--nheads', '2', '--max_len', '115',
                             '--d_model', '6', '--n_layers_e', '1',
                             '--n_layers_d', '1', '--ffnn_hidden_size', '3',
-                            '--logging', 'INFO')
+                            '--dropout_rate', '0', '--logging', 'INFO')
     assert ret.success
 
     logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")

@@ -167,7 +167,13 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Will be implemented by each class
         raise NotImplementedError
 
-    def compute_loss(self, outputs: Any, target_directions: Tensor) -> Tensor:
+    def compute_loss(self, outputs: Any, target_directions: Tensor) -> Tuple:
+        """
+        Returns
+        -------
+        mean_loss: Tensor
+        n: int, Total number of data points in this batch.
+        """
         # Will be implemented by each class
         raise NotImplementedError
 

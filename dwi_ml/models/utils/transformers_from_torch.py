@@ -135,6 +135,7 @@ def do_not_share_linear_weights(attn: MultiheadAttention, d_model):
     attn.v_proj_weight = Parameter(
         torch.empty((d_model, d_model), **factory_kwargs))
     attn.register_parameter('in_proj_weight', None)
+    attn._reset_parameters()
 
 
 class ModifiedTransformerEncoderLayer(TransformerEncoderLayer):

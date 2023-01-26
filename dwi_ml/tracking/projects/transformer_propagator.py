@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
-import logging
-
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.projects.transforming_tractography import AbstractTransformerModel
 from dwi_ml.tracking.propagator import (DWIMLPropagatorOneInput,
                                         DWIMLPropagatorwithStreamlineMemory)
-
-logger = logging.getLogger('tracker_logger')
 
 
 class TransformerPropagator(DWIMLPropagatorOneInput,

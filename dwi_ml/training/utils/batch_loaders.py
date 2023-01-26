@@ -17,12 +17,12 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
              "\nwe will keep streamlines as they are. Note that you may have\n"
              "already resampled or compressed your data when creating your \n"
              "dataset, but you may use a different choice in the batch \n"
-             "sampler if you wish.")
+             "sampler if you wish. Default = None.")
     sub.add_argument(
         '--compress', action='store_true',
         help="If set, compress streamlines. Once again, the choice can be \n"
              "different in the batch sampler than chosen when creating the \n"
-             "hdf5.")
+             "hdf5. Default = Not set.")
     bl_g.add_argument(
         '--noise_gaussian_size_training', type=float, metavar='s', default=0.,
         help="If set, add random Gaussian noise to streamline coordinates \n"

@@ -682,7 +682,15 @@ class OriginalTransformerModel(AbstractTransformerModel):
 
     def _run_main_layer_forward(self, embed_x, embed_t, masks,
                                 return_weights, average_heads):
-        """Original Main transformer"""
+        """Original Main transformer
+
+        Returns
+        -------
+        outputs: Tensor
+            Shape: [nb_streamlines, max_batch_len, d_model]
+        masks: Tuple
+            Encoder's self-attention weights: [nb_streamlines, max_batch_len]
+        """
         mask_future_x, mask_future_t, mask_padding = masks
         outputs, sa_weights_encoder, sa_weights_decoder, mha_weights = \
             self.modified_torch_transformer(
@@ -818,5 +826,7 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         # (the last skip-connection makes more sense this way. That's why it's
         # more a "decoder" than an "encoder" in logical meaning.
         kept_outputs = outputs[:, -outputs.shape[1]//2:, :]
+
+        logging.warning("kept outputs: {}".format(kept_outputs))
 
         return kept_outputs, (sa_weights,)

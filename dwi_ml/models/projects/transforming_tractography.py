@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from typing import Union, List
+from typing import Union, List, Tuple
 
 import numpy as np
 import torch
@@ -456,8 +456,8 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # (Skip padding if all streamlines have the same length)
         use_padding = not np.all(unpadded_lengths == unpadded_lengths[0])
         batch_max_len = np.max(unpadded_lengths)
-        mask_future_x, mask_future_t, mask_padding = \
-            self._prepare_masks(unpadded_lengths, use_padding, batch_max_len)
+        masks = self._prepare_masks(
+            unpadded_lengths, use_padding, batch_max_len)
 
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
@@ -475,8 +475,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
         # 2. Main transformer
         outputs, weights = self._run_main_layer_forward(
-            embed_x, embed_t, mask_future_x, mask_future_t, mask_padding,
-            return_weights, average_heads)
+            embed_x, embed_t, masks, return_weights, average_heads)
 
         # Unpad now and combine everything for the direction getter.
         if is_tracking:
@@ -532,9 +531,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
         return inputs, targets
 
-    def _run_main_layer_forward(self, embed_x, embed_t, mask_future_x,
-                                mask_future_t, mask_padding,
-                                return_weights, average_heads):
+    def _run_main_layer_forward(
+            self, embed_x: torch.Tensor, embed_t: torch.Tensor, masks: Tuple,
+            return_weights: bool, average_heads: bool):
         raise NotImplementedError
 
     def compute_loss(self, model_outputs, streamlines, **kw):
@@ -673,15 +672,6 @@ class OriginalTransformerModel(AbstractTransformerModel):
             norm_first=self.norm_first)
 
     @property
-    def params_for_json_prints(self):
-        p = super().params_for_json_prints
-        p.update({
-            'n_layers_e': self.n_layers_e,
-            'n_layers_d': self.n_layers_d,
-        })
-        return p
-
-    @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
         p.update({
@@ -690,10 +680,10 @@ class OriginalTransformerModel(AbstractTransformerModel):
         })
         return p
 
-    def _run_main_layer_forward(self, embed_x, embed_t, mask_future_x,
-                                mask_future_t, mask_padding,
+    def _run_main_layer_forward(self, embed_x, embed_t, masks,
                                 return_weights, average_heads):
         """Original Main transformer"""
+        mask_future_x, mask_future_t, mask_padding = masks
         outputs, sa_weights_encoder, sa_weights_decoder, mha_weights = \
             self.modified_torch_transformer(
                 src=embed_x, tgt=embed_t,
@@ -730,7 +720,6 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                                              [ emb_choice_x ; emb_choice_y ]
 
     """
-
     def __init__(self, experiment_name: str, nb_features: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
@@ -765,7 +754,6 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                          dropout_rate, activation, norm_first,
                          dg_key, dg_args, normalize_targets, neighborhood_type,
                          neighborhood_radius, log_level)
-
         # ----------- Additional params
         self.n_layers_d = n_layers_d
 
@@ -786,14 +774,6 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
             double_layer, n_layers_d, norm=None)
 
     @property
-    def params_for_json_prints(self):
-        p = super().params_for_json_prints
-        p.update({
-            'n_layers_d': self.n_layers_d,
-        })
-        return p
-
-    @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
         p.update({
@@ -801,16 +781,13 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         })
         return p
 
-    def _run_main_layer_forward(self, embed_x, embed_t, mask_future_x,
-                                mask_future_t, mask_padding,
-                                return_weights, average_heads):
-
-        # Concatenating x and t
-        inputs = torch.cat((embed_x, embed_t), dim=1)
+    def _prepare_masks(self, unpadded_lengths, use_padding, batch_max_len):
+        mask_future_x, mask_future_t, mask_padding = super()._prepare_masks(
+            unpadded_lengths, use_padding, batch_max_len)
 
         # Concatenating mask future:
-        #  - For the input: self-attention.
-        all_masked = torch.full((self.max_len, self.max_len), True)
+        #  - For the input: self-attention only.
+        all_masked = torch.full((batch_max_len, batch_max_len), True)
         mask_future_x_padded = torch.cat((mask_future_x, all_masked), dim=-1)
         #  - For the target: mixed attention.
         mask_future_t_total = torch.cat((mask_future_x, mask_future_t), dim=-1)
@@ -819,7 +796,17 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                                 dim=0)
 
         # Concatenating mask padding:
-        total_mask_padding = torch.cat((mask_padding, mask_padding), dim=-1)
+        if use_padding:
+            mask_padding = torch.cat((mask_padding, mask_padding), dim=-1)
+
+        return mask_future, mask_padding
+
+    def _run_main_layer_forward(self, embed_x, embed_t, masks,
+                                return_weights, average_heads):
+        mask_future, total_mask_padding = masks
+
+        # Concatenating x and t
+        inputs = torch.cat((embed_x, embed_t), dim=1)
 
         # Main transformer
         outputs, sa_weights = self.modified_torch_transformer(
@@ -830,6 +817,6 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         # Take the second half of model outputs to direction getter
         # (the last skip-connection makes more sense this way. That's why it's
         # more a "decoder" than an "encoder" in logical meaning.
-        kept_outputs = outputs[:, -self.max_len:, :]
+        kept_outputs = outputs[:, -outputs.shape[1]//2:, :]
 
         return kept_outputs, (sa_weights,)

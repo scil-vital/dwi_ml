@@ -9,21 +9,21 @@ import argparse
 import logging
 import os
 
-from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.data.dataset.utils import (add_dataset_args,
-                                       prepare_multisubjectdataset)
+from dwi_ml.data.dataset.utils import (
+    add_dataset_args, prepare_multisubjectdataset)
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.models.projects.transformers_utils import (add_abstract_model_args,
-                                                       add_ttst_model_args,
-                                                       perform_checks,
-                                                       prepare_ttst_model)
-from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
-                                                  prepare_batch_sampler)
-from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
-                                                 prepare_batch_loader)
+from dwi_ml.models.projects.transforming_tractography import \
+    TransformerSrcAndTgtModel
+from dwi_ml.models.projects.transformers_utils import (
+    add_abstract_model_args, add_ttst_model_args, perform_checks)
+from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
+from dwi_ml.training.utils.batch_samplers import (
+    add_args_batch_sampler, prepare_batch_sampler)
+from dwi_ml.training.utils.batch_loaders import (
+    add_args_batch_loader, prepare_batch_loader)
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_training_experiment,
     add_memory_args_training_experiment)
@@ -65,7 +65,35 @@ def init_from_args(args, sub_loggers_level):
     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     args.nb_features = dataset.nb_features[input_group_idx]
     # Final model
-    model = prepare_ttst_model(args, dg_args, sub_loggers_level)
+    with Timer("\n\nPreparing model", newline=True, color='yellow'):
+        model = TransformerSrcAndTgtModel(
+            experiment_name=args.experiment_name, nb_features=args.nb_features,
+            # Previous dirs:
+            nb_previous_dirs=args.nb_previous_dirs,
+            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
+            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
+            normalize_prev_dirs=args.normalize_prev_dirs,
+            # Concerning inputs:
+            max_len=args.max_len,
+            positional_encoding_key=args.position_encoding,
+            embedding_key_x=args.data_embedding,
+            embedding_key_t=args.target_embedding,
+            # Torch's transformer parameters
+            d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,
+            nheads=args.nheads, dropout_rate=args.dropout_rate,
+            activation=args.activation,
+            norm_first=args.norm_first, n_layers_d=args.n_layers_d,
+            # Direction getter
+            dg_key=args.dg_key, dg_args=dg_args,
+            normalize_targets=args.normalize_targets,
+            # Other
+            neighborhood_type=args.neighborhood_type,
+            neighborhood_radius=args.neighborhood_radius,
+            log_level=sub_loggers_level)
+
+        logging.info("Transformer (src-tgt attention) model final "
+                     "parameters:" +
+                     format_dict_to_str(model.params_for_json_prints))
 
     # Preparing the batch sampler.
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)

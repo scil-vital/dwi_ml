@@ -167,7 +167,13 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Will be implemented by each class
         raise NotImplementedError
 
-    def compute_loss(self, outputs: Any, target_directions: Tensor) -> Tensor:
+    def compute_loss(self, outputs: Any, target_directions: Tensor) -> Tuple:
+        """
+        Returns
+        -------
+        mean_loss: Tensor
+        n: int, Total number of data points in this batch.
+        """
         # Will be implemented by each class
         raise NotImplementedError
 
@@ -210,8 +216,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             A list of numpy arrays (one per streamline), each of size (1, 3):
             the three coordinates of the next direction's vector.
         """
-        logging.warning("                ??????????????????????????????? type: {}".format(type(self)))
-        logging.warning("                                            model outputs: {}".format(outputs))
         if algo == 'det':
             next_dirs = self._get_tracking_direction_det(outputs)
         else:

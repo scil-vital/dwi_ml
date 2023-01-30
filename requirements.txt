@@ -21,3 +21,12 @@ dipy==1.5.*   # This is scilpy's current version. However, it breaks the
               # loggings. Waiting anxiously for version 1.6. Meanwhile, you can
               # manually use 1.4 instead if you want.
 nibabel==3.0.*
+
+
+
+
+
+# --------------- Notes to developers
+# 1. If we upgrade torch, verify if code copied in
+#    models.projects.transformers_from_torch has changed.
+#    (current code copied from torch 1.13.1)

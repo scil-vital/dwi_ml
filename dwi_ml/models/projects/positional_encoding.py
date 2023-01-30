@@ -66,7 +66,9 @@ class SinusoidalPositionalEncoding(AbstractPositionalEncoding):
         Args:
             x: Tensor. shape: [batch_size, seq_len, d_model]
         """
-        x += self.pos_emb
+        # Important. Can't use +=. Inplace operation, backward propagation
+        # would fail.
+        x = x + self.pos_emb[:, 0:x.shape[1], :]
 
         return x
 

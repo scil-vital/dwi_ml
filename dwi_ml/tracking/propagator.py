@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
 from datetime import datetime
-from typing import Union
+from typing import Union, List
 
+from dipy.io.stateful_tractogram import Space, Origin
 import numpy as np
 import torch
-from dipy.io.stateful_tractogram import Space, Origin
 
 from scilpy.tracking.propagator import AbstractPropagator
 
@@ -370,11 +370,11 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
 
         self.use_input_memory = input_memory
 
-        self.current_lines = None  # type: Union[list, None]
+        self.current_lines = None  # type: Union[List, None]
         # List of lines. All lines have the same number of points
         #         # as they are being propagated together.
         #         # List[list[list]]: nb_lines x (nb_points, 3).
-        self.input_memory = None  # type: Union[list, None]
+        self.input_memory = None  # type: Union[List, None]
         # List of inputs, as formatted by the model.
 
     def prepare_forward(self, seeding_pos, multiple_lines=False):
@@ -388,11 +388,12 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         # We need to manage the input.
         if self.use_input_memory:
             self.input_memory = \
-                [line_input.reverse() if len(line_input) > 1 else line_input
+                [torch.flip(line_input, dims=[0])
                  for line_input in self.input_memory]
         return super().prepare_backward(line, forward_dir, multiple_lines)
 
     def propagate(self, line, v_in):
+        # Saving the streamline now. We will save the input after computing it.
         self.current_lines = [line]
         return super().propagate(line, v_in)
 
@@ -414,7 +415,7 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
                 self.input_memory = inputs
             else:
                 self.input_memory = \
-                    [torch.cat((self.input_memory[i], inputs[i]), dim=-1)
+                    [torch.cat((self.input_memory[i], inputs[i]), dim=0)
                      for i in range(len(self.current_lines))]
 
         # Todo. This is not perfect yet. Sending data to new device at each

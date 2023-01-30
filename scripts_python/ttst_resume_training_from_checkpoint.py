@@ -6,7 +6,7 @@ import os
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.models.projects.transformers import TransformerSrcAndTgtModel
+from dwi_ml.models.projects.transforming_tractography import TransformerSrcAndTgtModel
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
 from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler

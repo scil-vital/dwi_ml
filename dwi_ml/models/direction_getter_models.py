@@ -220,18 +220,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             next_dirs = self._get_tracking_direction_det(outputs)
         else:
             next_dirs = self._sample_tracking_direction_prob(outputs)
-        return self._format_dirs(next_dirs)
-
-    @staticmethod
-    def _format_dirs(next_dirs):
-        # Bring back to cpu and get dir.
-        next_dirs = next_dirs.cpu().detach().numpy()
-
-        # next_dirs is of size [nb_points, 3]. Considering we are tracking,
-        # nb_points is 1 and we want to separate it into a list of (3,).
-        next_dirs = [x for x in next_dirs]
-
-        return next_dirs
+        return next_dirs.detach()
 
 
 class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):

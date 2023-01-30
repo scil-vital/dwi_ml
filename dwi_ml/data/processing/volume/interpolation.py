@@ -132,7 +132,7 @@ def interpolate_volume_in_neighborhood(
     ------
     data_tensor: tensor
         The data: a 4D tensor with last dimension F (nb of features).
-    coords_vox_corner: np.array with shape (M, 3)
+    coords_vox_corner: torch.Tensor shape (M, 3)
         A list of points (3d coordinates). Neighborhood will be added to these
         points based. Coords must be in voxel world, origin='corner', to use
         trilinear interpolation.
@@ -146,7 +146,7 @@ def interpolate_volume_in_neighborhood(
     -------
     subj_x_data: tensor of shape (M, F * (N+1))
         The interpolated data: M points with contatenated neighbors.
-    flat_coords_torch: tensor of shape (M x (N+1), 3)
+    coords_vox_corner: tensor of shape (M x (N+1), 3)
         The final coordinates.
     """
     if (neighborhood_vectors_vox is not None and
@@ -157,18 +157,18 @@ def interpolate_volume_in_neighborhood(
 
         # Extend the coords array with the neighborhood coordinates
         # coords: shape (M x (N+1), 3)
-        flat_coords_with_neighb, tiled_vectors = \
+        coords_vox_corner, tiled_vectors = \
             extend_coordinates_with_neighborhood(coords_vox_corner,
                                                  neighborhood_vectors_vox)
 
-        flat_coords_torch = torch.as_tensor(flat_coords_with_neighb,
+        coords_vox_corner = torch.as_tensor(coords_vox_corner,
                                             dtype=torch.float, device=device)
 
         # Interpolate signal for each (new) point
         # DWI data features for each neighbor are concatenated.
         # Result is of shape: (M * (N+1), F).
         flat_subj_x_data = torch_trilinear_interpolation(volume_as_tensor,
-                                                         flat_coords_torch)
+                                                         coords_vox_corner)
 
         # Neighbors become new features of the current point.
         # Reshape signal into (M, (N+1)*F))
@@ -176,11 +176,7 @@ def interpolate_volume_in_neighborhood(
         subj_x_data = flat_subj_x_data.reshape(m_input_points, new_nb_features)
 
     else:  # No neighborhood:
+        subj_x_data = torch_trilinear_interpolation(
+            volume_as_tensor, coords_vox_corner.to(device).float())
 
-        # Interpolate signal for each point
-        flat_coords_torch = torch.as_tensor(coords_vox_corner,
-                                            dtype=torch.float, device=device)
-        subj_x_data = torch_trilinear_interpolation(volume_as_tensor,
-                                                    flat_coords_torch)
-
-    return subj_x_data, flat_coords_torch
+    return subj_x_data, coords_vox_corner

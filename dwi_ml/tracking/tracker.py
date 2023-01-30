@@ -2,6 +2,7 @@
 import logging
 import multiprocessing
 import os
+from typing import List
 
 import numpy as np
 import torch
@@ -138,73 +139,68 @@ class DWIMLTracker(ScilpyTracker):
             next_seeds = np.asarray(
                 range(seed_count, seed_count + nb_next_seeds))
 
-            # Using DWIMLSeedGenerator's class
             n_seeds = self.seed_generator.get_next_n_pos(
                 random_generator, indices, next_seeds)
 
             tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
                 n_seeds)
-            lines.extend(tmp_lines)
+            lines.extend([line.tolist() for line in tmp_lines])
             seeds.extend(tmp_seeds)
 
             seed_count += nb_next_seeds
+
         return lines, seeds
 
-    def _get_multiple_lines_both_directions(self, n_seeds):
+    def _get_line_both_directions(self, seed: np.ndarray):
+        # Only using our torch-based version. Skipping scilpy's single-version.
+        self._get_multiple_lines_both_directions([seed])
+
+    def _get_multiple_lines_both_directions(self, n_seeds: List[np.ndarray]):
         """
         Equivalent of super's() _get_line_both_directions() for multiple lines
         tracking at the same time (meant to be used on GPU).
 
         Params
         ------
-        n_seeds : list[tuple]
-            3D positions, the seed position.
+        n_seeds : List[np.ndarray]
+            3D positions, the seed positions.
 
         Returns
         -------
-        line: list of 3D positions
-            The generated streamline for seeding_pos.
+        clean_lines: List[np.ndarray]
+            The generated streamline for each seeding_pos.
         """
-        lines = [[list(seeding_pos)] for seeding_pos in n_seeds]
+        # List of list. Sending to torch tensors.
+        n_seeds = [torch.Tensor(s).to(self.device) for s in n_seeds]
+        lines = [s.clone()[None, :] for s in n_seeds]
 
         logger.info("Multiple GPU tracking: Starting forward propagation for "
                     "the next {} seeds.".format(len(n_seeds)))
-        tracking_info = self.propagator.prepare_forward(n_seeds,
-                                                        multiple_lines=True)
-        lines, order1 = self._propagate_multiple_lines(lines, tracking_info)
+        tracking_info = self.propagator.prepare_forward(n_seeds)
+        lines = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:
-
-            # Reversing: **in place**
-            for line in lines:
-                line.reverse()
+            logger.debug("Multiple GPU tracking: Starting backward "
+                         "propagation.")
+            # Reversing:
+            lines = [torch.flip(line, (0,)) for line in lines]
 
             # We could loop to prepare reverse. Basic case not too heavy.
             # However, in some cases (ex, projects with memory), model
             # needs to be re-run before starting back-propagation. We let
             # the propagator deal with the looping.
             tracking_info = self.propagator.prepare_backward(
-                lines, tracking_info, multiple_lines=True)
+                lines, forward_dir=tracking_info)
 
-            logger.debug("Multiple GPU tracking: Starting backward "
-                         "propagation.")
-            lines, order2 = self._propagate_multiple_lines(
-                lines, tracking_info)
-
-            if self.save_seeds:
-                final_order = [order1[idx] for idx in order2]
-        elif self.save_seeds:
-            final_order = order1
+            lines = self._propagate_multiple_lines(lines, tracking_info)
 
         # Clean streamlines
-        clean_lines = []
-        clean_seeds = []
-        for i in range(len(lines)):
-            if self.min_nbr_pts <= len(lines[i]) <= self.max_nbr_pts:
-                clean_lines.append(np.asarray(lines[i]))
-                if self.save_seeds:
-                    clean_seeds.append(n_seeds[final_order[i]])
-
+        lengths = np.asarray([len(line) for line in lines])
+        good_lengths = np.logical_or(self.min_nbr_pts <= lengths,
+                                     lengths <= self.max_nbr_pts)
+        good_lengths, = np.where(good_lengths)
+        clean_lines = [lines[i] for i in good_lengths]
+        clean_seeds = [n_seeds[i] for i in good_lengths]
         return clean_lines, clean_seeds
 
     def _propagate_multiple_lines(self, lines, tracking_info):
@@ -213,75 +209,75 @@ class DWIMLTracker(ScilpyTracker):
         the same time (meant to be used on GPU).
         """
         nb_streamlines = len(lines)
+
+        # Monitoring
         invalid_direction_counts = np.zeros(nb_streamlines)
-        final_lines = []  # Will get the final lines when they are done.
-        final_tracking_info = []
+        final_tracking_info = [None] * nb_streamlines  # type: List[torch.Tensor]
+        idx_streamlines_left = np.arange(nb_streamlines)
+
+        # Will get the final lines when they are done.
         # Note! We modify the order of streamlines in final_lines!
-        # We need to remember the order to save the seeds.
-        initial_order = list(range(nb_streamlines))
-        final_lines_order = []
+        # We need to remember the order. Will help to save the seeds.
+        final_lines = [None] * nb_streamlines  # type: List[torch.Tensor]
 
+        # `lines` will be updated at each loop to only contain the remaining
+        # lines.
         all_lines_completed = False
-        # lines will only contain the remaining lines.
+        current_step = 0  # This count is reset for forward and backward
         while not all_lines_completed:
-            n_new_pos, tracking_info, are_directions_valid = \
-                self.propagator.propagate_multiple_lines(lines, tracking_info)
-            invalid_direction_counts[~are_directions_valid] += 1
+            current_step += 1
+            nb_streamlines_left = len(lines)
+            logging.debug("Propagation step #{}".format(current_step))
 
-            # ToDo. Check what is faster. Removing finished streamlines or
-            #  continue with all streamlines but remember where they ended.
+            n_new_pos, tracking_info, valid_dirs = self.propagator.propagate(
+                lines, tracking_info)
+
             # Verifying and appending
+            invalid_direction_counts[~valid_dirs.cpu()] += 1
+
             all_lines_completed = True
-            lines_that_continue = []
-            lines_that_stop = []
+            continuing_lines = np.ones(nb_streamlines_left).astype(bool)
             for i in range(len(lines)):
                 # In non-simultaneous, nbr pts is verified in the loop.
                 # Here, during forward, we can do that, but during backward,
                 # all streamlines have different lengths.
-                propagation_can_continue = (self._verify_stopping_criteria(
-                    invalid_direction_counts[i], n_new_pos[i]) and
-                    len(lines[i]) <= self.max_nbr_pts)
+                propagation_can_continue = (
+                        self._verify_stopping_criteria(
+                            invalid_direction_counts[i],
+                            n_new_pos[i].cpu().numpy()) and
+                        len(lines[i]) <= self.max_nbr_pts)
 
                 if propagation_can_continue:
                     all_lines_completed = False
-                    lines[i].append(n_new_pos[i])
-                    lines_that_continue.append(i)
+                    lines[i] = torch.vstack((lines[i], n_new_pos[i]))
                 else:
-                    lines_that_stop.append(i)
+                    continuing_lines[i] = False
+                    final_lines[idx_streamlines_left[i]] = lines[i]
+                    final_tracking_info[idx_streamlines_left[i]] = \
+                        tracking_info[i]
 
-            # Note. Indexing would be simpler with lines as an array but now
-            # propagator is coded to deal with a list.
-            final_lines.extend([lines[i] for i in lines_that_stop])
-            lines = [lines[i] for i in lines_that_continue]
+            # Keeping only remaining lines
+            continuing_lines_idx, = np.where(continuing_lines)
+            lines = [lines[i] for i in continuing_lines_idx]
+            tracking_info = [tracking_info[i] for i in continuing_lines_idx]
+            idx_streamlines_left = idx_streamlines_left[continuing_lines]
+            invalid_direction_counts = invalid_direction_counts[continuing_lines]
 
-            final_lines_order.extend(
-                [initial_order[i] for i in lines_that_stop])
-            initial_order = \
-                [initial_order[i] for i in lines_that_continue]
-
-            final_tracking_info.extend(
-                [tracking_info[i] for i in lines_that_stop])
-            tracking_info = [tracking_info[i] for i in lines_that_continue]
-
-            invalid_direction_counts = np.asanyarray(
-                [invalid_direction_counts[i] for i in lines_that_continue])
-
-            self.propagator.multiple_lines_update(lines_that_continue)
+            # Update model if needed.
+            self.propagator.multiple_lines_update(continuing_lines_idx)
 
         assert len(lines) == 0
-        assert len(initial_order) == 0
-        assert len(final_lines) == nb_streamlines
-        assert np.array_equal(np.arange(nb_streamlines),
-                              np.unique(final_lines_order))
+        assert len(idx_streamlines_left) == 0
 
         # Possible last step.
         # Looping. It should not be heavy.
-        for i in range(len(final_lines)):
+        for i in range(nb_streamlines):
             final_pos = self.propagator.finalize_streamline(
-                final_lines[i][-1], final_tracking_info[i])
+                final_lines[i][-1, :], final_tracking_info[i])
             if (final_pos is not None and
-                not np.array_equal(final_pos, final_lines[i][-1]) and
                     self.mask.is_coordinate_in_bound(
-                        *final_pos, space=self.space, origin=self.origin)):
-                final_lines[i].append(final_pos)
-        return final_lines, final_lines_order
+                        *final_pos.cpu().numpy(),
+                        space=self.space, origin=self.origin)):
+                final_lines[i] += final_pos
+
+        return final_lines

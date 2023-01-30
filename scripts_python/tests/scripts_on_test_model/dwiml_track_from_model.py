@@ -110,9 +110,8 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
         propagator = TestPropagator(
             input_volume_group=args.input_group,
             dataset=subset, subj_idx=subj_idx, model=model,
-            step_size=step_size_vox, rk_order=args.rk_order,
-            algo=args.algo, theta=theta, device=device,
-            normalize_directions=normalize_directions,
+            step_size=step_size_vox, algo=args.algo, theta=theta,
+            device=device, normalize_directions=normalize_directions,
             verify_opposite_direction=False)
 
         logging.debug("Instantiating tracker.")

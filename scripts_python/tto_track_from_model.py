@@ -100,7 +100,7 @@ def prepare_tracker(parser, args, device,
         propagator = TransformerPropagator(
             dataset=subset, subj_idx=subj_idx, model=model,
             input_volume_group=args.input_group, step_size=step_size_vox,
-            rk_order=args.rk_order, algo=args.algo, theta=theta, device=device)
+            algo=args.algo, theta=theta, device=device)
 
         logging.debug("Instantiating tracker.")
         tracker = DWIMLTracker(

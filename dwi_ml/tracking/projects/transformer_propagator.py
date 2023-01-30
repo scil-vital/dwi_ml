@@ -14,12 +14,12 @@ class TransformerPropagator(DWIMLPropagatorOneInput,
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: AbstractTransformerModel, input_volume_group: str,
-                 step_size: float, rk_order: int, algo: str, theta: float,
+                 step_size: float, algo: str, theta: float,
                  device=None):
         super().__init__(input_volume_group=input_volume_group,
                          dataset=dataset, subj_idx=subj_idx, model=model,
-                         step_size=step_size, rk_order=rk_order, algo=algo,
-                         theta=theta, device=device,
+                         step_size=step_size, algo=algo, theta=theta,
+                         device=device,
                          # Always fixed for Transformers:
                          verify_opposite_direction=False,
                          input_memory=True)

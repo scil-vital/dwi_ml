@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
-from datetime import datetime
 import logging
 
-import numpy as np
 import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
@@ -28,67 +26,33 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: Learn2TrackModel, input_volume_group: str,
-                 step_size: float, rk_order: int,
-                 algo: str, theta: float, device=None):
+                 step_size: float, algo: str, theta: float, device=None):
         super().__init__(dataset=dataset,
                          subj_idx=subj_idx, model=model,
                          input_volume_group=input_volume_group,
-                         step_size=step_size, rk_order=rk_order, algo=algo,
-                         theta=theta, device=device,
-                         verify_opposite_direction=False)
+                         step_size=step_size, algo=algo, theta=theta,
+                         device=device, verify_opposite_direction=False)
 
         # Internal state:
         # - previous_dirs, already dealt with by super.
         # - For RNN: new parameter: The hidden states of the RNN
         self.hidden_recurrent_states = None
 
-        if rk_order != 1:
-            raise ValueError("projects is not ready for runge-kutta "
-                             "integration of order > 1.")
-
-    def prepare_forward(self, seeding_pos, multiple_lines=False):
+    def prepare_forward(self, seeding_pos):
         """
         Additionnally to usual preparation, we need to reset the recurrent
         hidden state.
-
-        Parameters
-        ----------
-        seeding_pos: tuple(x,y,z)
-        multiple_lines: bool
-            If true, using version simulteanous tracking.
-
-        Returns
-        -------
-        tracking_info: None
-            No initial tracking information necessary for the propagation.
         """
-        logger.debug("projects: Resetting propagator for new "
+        logger.debug("Learn2track: Resetting propagator for new "
                      "streamline(s).")
         self.hidden_recurrent_states = None
 
-        return super().prepare_forward(seeding_pos, multiple_lines)
+        return super().prepare_forward(seeding_pos)
 
-    def prepare_backward(self, line, forward_dir, multiple_lines=False):
+    def prepare_backward(self, lines, forward_dir):
         """
         Preparing backward. We need to recompute the hidden recurrent state
         for this half-streamline.
-
-        Parameters
-        ----------
-        line: List
-            Result from the forward tracking, reversed. Single line: list of
-            coordinates. Simulatenous tracking: list of list of coordinates.
-        forward_dir: ndarray (3,)
-            v_in chosen at the forward step.
-        multiple_lines: bool
-            If true, using version simulteanous tracking.
-
-        Returns
-        -------
-        v_in: ndarray (3,) or list[ndarray]
-            Last direction of the streamline. If the streamline contains
-            only the seeding point (forward tracking failed), simply inverse
-            the forward direction.
         """
         logger.debug("Computing hidden RNN state at backward: run model on "
                      "(reversed) first half.")
@@ -96,13 +60,6 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         # Must re-run the model from scratch to get the hidden states
         # Either load all timepoints in memory and call model once.
         # Or loop.
-        if multiple_lines:
-            lines = line
-        else:
-            # Using the loop meant for multiple tracking to actually get
-            # multiple positions
-            lines = [line]
-
         all_inputs, _ = self.model.prepare_batch_one_input(
             lines, self.dataset, self.subj_idx, self.volume_group,
             self.device)
@@ -113,15 +70,14 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         # Running model. If we send is_tracking=True, will only compute the
         # previous dirs for the last point. To mimic training, we have to
         # add an additional fake point to the streamline, not used.
-        lines = [torch.cat((torch.tensor(np.vstack(line)),
-                            torch.zeros(1, 3)), dim=0)
+        lines = [torch.cat((line, torch.zeros(1, 3).to(self.device)), dim=0)
                  for line in lines]
 
         # Also, warning: creating a tensor from a list of np arrays is low.
         _, self.hidden_recurrent_states = self.model(
             all_inputs, lines, is_tracking=False, return_state=True)
 
-        return super().prepare_backward(line, forward_dir, multiple_lines)
+        return super().prepare_backward(lines, forward_dir)
 
     def _call_model_forward(self, inputs, lines):
         # For RNN, we need to send the hidden state too.
@@ -140,10 +96,9 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         lines_that_continue: list
             List of indexes of lines that are kept.
         """
-
         # Hidden states: list[states] (One value per layer).
         nb_streamlines = len(self.current_lines)
-        all_idx = np.zeros(nb_streamlines)
+        all_idx = torch.zeros(nb_streamlines)
         all_idx[lines_that_continue] = 1
 
         if self.model.rnn_model.rnn_torch_key == 'lstm':

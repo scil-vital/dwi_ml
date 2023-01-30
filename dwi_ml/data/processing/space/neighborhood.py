@@ -4,6 +4,7 @@ import logging
 from typing import Iterable, Union
 
 import numpy as np
+import torch
 
 
 def prepare_neighborhood_vectors(neighborhood_type: str, neighborhood_radius):
@@ -142,7 +143,7 @@ def get_neighborhood_vectors_grid(radius_vox_space: int):
 
 
 def extend_coordinates_with_neighborhood(
-        coords: np.ndarray, neighborhood_vectors: np.ndarray):
+        coords: torch.Tensor, neighborhood_vectors: np.ndarray):
     """
     From a list of coordinates and neighborhood vectors (e.g. [up, down, left,
     right]), get a new list of coordinates with all translations applied to all
@@ -161,6 +162,9 @@ def extend_coordinates_with_neighborhood(
         The new coordinates with all N neighbors (N+1 including the original
         coordinates), in the same space and origin as coords.
     """
+    logging.warning("!!!!!!!!!! TODO. Convert neighborhood vectors to torch")
+    neighborhood_vectors = torch.Tensor(neighborhood_vectors)
+
     m_coords = coords.shape[0]
     n_neighbors = neighborhood_vectors.shape[0]
 
@@ -168,6 +172,8 @@ def extend_coordinates_with_neighborhood(
     # original coordinate) before applying translations.
     # coords = [p1 p1... p2 p2 ... ...]'
     flat_coords = np.repeat(coords, n_neighbors + 1, axis=0)
+    logging.warning("flat_coords {}".format(flat_coords.shape))
+    exit(1)
 
     # 2. We translate each point based on the translations vector.
     # Ex, if neighborhood_translations = [here, up, down, left, right, ...]

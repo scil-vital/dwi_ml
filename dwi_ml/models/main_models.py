@@ -457,8 +457,9 @@ class MainModelOneInput(MainModelAbstract):
 
         Params
         ------
-        streamlines: list
-            The streamlines, IN VOXEL SPACE, CORNER ORIGIN
+        streamlines: list[Tensor]
+            The streamlines, IN VOXEL SPACE, CORNER ORIGIN.
+            Tensors are of shape (nb points, 3).
         subjset: MultisubjectSubset
             The dataset.
         subj: str
@@ -477,11 +478,14 @@ class MainModelOneInput(MainModelAbstract):
         input_mask: tensor or None
             In debugging mode, returns a mask of all voxels used as input.
         """
+        if type(streamlines[0]) != torch.Tensor:
+            logging.warning("!!!!!!!!!!! TO DO!!!. Change to tensor during training too.")
+            streamlines = [torch.tensor(s) for s in streamlines]
         start_time = datetime.now()
 
         # Flatten = concatenate signal for all streamlines to process
         # faster.
-        flat_subj_x_coords = np.concatenate(streamlines, axis=0)
+        flat_subj_x_coords = torch.cat(streamlines, dim=0)
 
         # Getting the subject's volume and sending to CPU/GPU
         # If data is lazy, get volume from cache or send to cache if
@@ -681,8 +685,8 @@ class ModelForTracking(MainModelAbstract):
 
         Returns
         -------
-        next_dir: list[array(3,)]
-            Numpy arrays with x,y,z value, one per streamline data point.
+        next_dir: Tensor(nb_streamlines, 3)
+            Tensors with x,y,z value, one per streamline data point.
         """
         raise NotImplementedError
 

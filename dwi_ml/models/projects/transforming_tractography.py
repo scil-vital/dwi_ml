@@ -443,7 +443,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             for i in range(nb_streamlines):
                 assert len(batch_streamlines[i]) == len(batch_x[i]), \
                     "During tracking, we expect the streamlines to have the " \
-                    "same number of points as the input."
+                    "same number of points as the input, but we received {} " \
+                    "input points and {} streamline points for streamline " \
+                    "#{}".format(len(batch_x[i]), len(batch_streamlines[i]), i)
         else:
             for i in range(nb_streamlines):
                 assert len(batch_streamlines[i]) == len(batch_x[i]) + 1, \
@@ -462,7 +464,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
-        batch_t = compute_directions(batch_streamlines, self.device)
+        batch_t = compute_directions(batch_streamlines)
 
         # ----------- Ok. Start processing
 
@@ -826,7 +828,5 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         # (the last skip-connection makes more sense this way. That's why it's
         # more a "decoder" than an "encoder" in logical meaning.
         kept_outputs = outputs[:, -outputs.shape[1]//2:, :]
-
-        logging.warning("kept outputs: {}".format(kept_outputs))
 
         return kept_outputs, (sa_weights,)

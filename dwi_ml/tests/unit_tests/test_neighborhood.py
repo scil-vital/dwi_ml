@@ -29,7 +29,8 @@ def test_neighborhood_vectors():
 
 def test_neighborhood_interpolation():
     # Coords must be of shape (M, 3). Fails if coordinates are ints!
-    current_coords = np.asarray([[10., 10., 10.], [3., 3., 3.]])
+    current_coords = torch.tensor([[10., 10., 10.],
+                                   [3., 3., 3.]])
     m_coords = 2
 
     neighb_vec = prepare_neighborhood_vectors('grid', neighborhood_radius=1)

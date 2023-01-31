@@ -18,7 +18,7 @@ logger = logging.getLogger('tracker_logger')
 class DWIMLPropagator(AbstractPropagator):
     """
     Abstract class for propagator object. Responsible for sampling the final
-    direction through Runge-Kutta integration.
+    direction (by running the model).
 
     Differences with traditional tractography (e.g. in scilpy):
         - current data values (ex, fODF, SH) are not known. The method needs to
@@ -35,7 +35,7 @@ class DWIMLPropagator(AbstractPropagator):
     dataset: MultisubjectSubset
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
-                 model: MainModelAbstract, step_size: float, rk_order: int,
+                 model: MainModelAbstract, step_size: float,
                  algo: str, theta: float, verify_opposite_direction: bool,
                  device=None, normalize_directions: bool = True):
         """
@@ -51,8 +51,6 @@ class DWIMLPropagator(AbstractPropagator):
             Your torch model.
         step_size: float
             The step size for tracking, in voxel space.
-        rk_order: int
-            Order for the Runge Kutta integration.
         algo: str
             'det' or 'prob'
         theta: float
@@ -70,7 +68,7 @@ class DWIMLPropagator(AbstractPropagator):
         """
         # Dataset will be managed differently. Not a DataVolume.
         # torch trilinear interpolation uses origin='corner', space=vox.
-        super().__init__(dataset, step_size, rk_order,
+        super().__init__(dataset, step_size, rk_order=1,
                          space=Space.VOX, origin=Origin('corner'))
 
         self.subj_idx = subj_idx
@@ -116,7 +114,7 @@ class DWIMLPropagator(AbstractPropagator):
             # Remove all handles
             self.dataset.close_all_handles()
 
-    def prepare_forward(self, seeding_pos, multiple_lines=False):
+    def prepare_forward(self, seeding_pos):
         """
         Prepare information necessary at the first point of the
         streamline for forward propagation: v_in and any other information
@@ -124,11 +122,9 @@ class DWIMLPropagator(AbstractPropagator):
 
         Parameters
         ----------
-        seeding_pos: tuple(x,y,z) or List[tuples]
+        seeding_pos: Tensor or List(Tensor)
             The 3D coordinates or, for simultaneous tracking, list of 3D
             coordinates.
-        multiple_lines: bool
-            If true, using version simulteanous tracking.
 
         Returns
         -------
@@ -136,25 +132,20 @@ class DWIMLPropagator(AbstractPropagator):
             Any tracking information necessary for the propagation.
         """
         # Our models should be able to get an initial direction even with no
-        # information about previous inputs.
-        if multiple_lines:
-            return [None for _ in seeding_pos]
-        else:
-            return None
+        # starting information. Override if your model is different.
+        return [None for _ in seeding_pos]
 
-    def prepare_backward(self, line, forward_dir, multiple_lines=False):
+    def prepare_backward(self, lines, forward_dir):
         """
         Preparing backward.
 
         Parameters
         ----------
-        line: List
-            Result from the forward tracking, reversed. Single line: list of
-            coordinates. Simulatenous tracking: list of list of coordinates.
-        forward_dir: ndarray (3,) or List[ndarray]
+        lines: List[Tensor]
+            Result from the forward tracking, reversed. Each tensor is of
+            shape (nb_points, 3).
+        forward_dir: List[Tensor]
             v_in chosen at the forward step.
-        multiple_lines: bool
-            If true, using version simulteanous tracking.
 
         Returns
         -------
@@ -171,21 +162,14 @@ class DWIMLPropagator(AbstractPropagator):
         # backward again with v_in=None. So basically, we will recompute
         # exactly the same model outputs as for the forward. But maybe the
         # sampling will create a new direction.
-        if not multiple_lines:
-            v_in = super().prepare_backward(line, forward_dir)
-
-            # v_in is in double format (np.float64) but it looks like we need
-            # float32.
-            # todo From testing with learn2track. Always true?
-            if v_in is not None:
-                v_in = v_in.astype(np.float32)
-        else:  # simultaneous tracking.
-            v_in = []
-            for i in range(len(line)):
-                this_v_in = super().prepare_backward(line[i], forward_dir[i])
-                if this_v_in is not None:
-                    this_v_in = this_v_in.astype(np.float32)
-                v_in.append(this_v_in)
+        v_in = [None] * len(lines)
+        for i in range(len(lines)):
+            if len(lines[i]) > 1:
+                v_in[i] = lines[i][-1, :] - lines[i][-2, :]
+                if self.normalize_directions:
+                    v_in[i] /= torch.linalg.norm(v_in[i])
+            elif forward_dir[i] is not None:
+                v_in[i] = torch.flip(forward_dir[i], (0,))
 
         return v_in
 
@@ -196,51 +180,51 @@ class DWIMLPropagator(AbstractPropagator):
         """
         pass
 
-    def propagate_multiple_lines(self, lines, n_v_in):
+    def propagate(self, lines, n_v_in):
         """
-        Equivalent of self.propagate() for multiple lines. We do not call
-        super's at it does not support multiple lines. Super's method supports
-        rk order. We don't. We skip this and directly call
-        _sample_next_direction_or_go_straight.
+        Overriding super()'s propagate. We don't support rk orders.
+        We skip this and directly call _sample_next_direction_or_go_straight.
+        Also, in our case, sub-methods return tensors.
 
         Params
         ------
-        line: list[list[ndarrray (3,)]]
-            Current lines.
-        v_in: list[ndarray (3,)]
+        line: List[Tensor]
+            For each streamline, tensor of shape (nb_points, 3).
+        n_v_in: list[ndarray (3,)]
             Previous tracking directions.
 
         Return
         ------
-        n_new_pos: list[ndarray (3,)]
+        n_new_pos: list[Tensor(3,)]
             The new segment position.
-        n_new_dir: list[ndarray (3,)]
+        n_new_dir: list[Tensor(3,)]
             The new segment direction.
-        are_directions_valid: list[bool]
+        valid_dirs: Tensor(nb_streamlines,)
             True if new_dir is valid.
         """
         # Keeping one coordinate per streamline; the last one.
-        # If model needs the streamlines, use current memory.
-        n_pos = [line[-1] for line in lines]
+        n_pos = [line[-1, :] for line in lines]
 
-        assert self.rk_order == 1
+        # Converting n_v_in to the same shape, [nb_streamlines, 3]
+        empty_pos = torch.full((3,), fill_value=torch.nan).to(self.device)
+        n_v_in = [torch.Tensor(v).to(self.device) if v is not None else
+                  empty_pos for v in n_v_in]
+        n_v_in = torch.vstack(n_v_in)
+        if len(n_v_in.shape) == 1:
+            n_v_in = n_v_in[None, :]
 
-        # Equivalent of sample_next_direction_or_go_straight:
-        n_v_out = self._sample_next_direction(n_pos, n_v_in,
-                                              multiple_lines=True)
-        are_directions_valid = np.array([False if v_out is None else True
-                                         for v_out in n_v_out])
+        # Equivalent of sample_next_direction_or_go_straight, but avoiding
+        # loop.
+        n_v_out = self._sample_next_direction(n_pos, n_v_in)
+        valid_dirs = n_v_out[:, 0] != torch.nan
+        n_v_out[~valid_dirs, :] = n_v_in[~valid_dirs, :]
 
-        # toDo. Faster to do one loop?
-        n_new_dir = [n_v_out[i] if are_directions_valid[i] else n_v_in[i]
-                     for i in range(len(n_v_in))]
+        n_new_pos = [n_pos[i] + self.step_size * n_v_out[i] for i in
+                     range(len(n_pos))]
 
-        n_new_pos = [n_pos[i] + self.step_size * np.array(n_new_dir[i])
-                     for i in range(len(lines))]
+        return n_new_pos, n_v_out, valid_dirs
 
-        return n_new_pos, n_new_dir, are_directions_valid
-
-    def _sample_next_direction(self, pos, v_in, multiple_lines=False):
+    def _sample_next_direction(self, n_pos, n_v_in):
         """
         Run the model to get the outputs, and sample a direction based on this
         information. None if the direction is more than theta angle
@@ -250,55 +234,39 @@ class DWIMLPropagator(AbstractPropagator):
 
         Parameters
         ----------
-        pos: ndarray (3,) or list of ndarrays
-            Current tracking position(s).
-        v_in: ndarray (3,) ir list of ndarrays
+        n_pos: List[Tensor]
+            Current tracking position(s). Tensors are of shape (3,).
+        n_v_in: tensor(nb_streamlines, 3)
             Previous tracking direction(s).
-        multiple_lines: bool
-            If true, using version simulteanous tracking.
 
         Return
         -------
-        direction: ndarray (3,) or list of ndarrays
+        next_dirs: tensor(nb_streamlines, 3)
             Valid tracking direction(s). None if no valid direction
             is found. If self.normalize_directions, direction must be
             normalized.
         """
-        if multiple_lines:
-            n_pos = pos
-            n_v_in = v_in
-        else:
-            n_pos = [pos]
-            n_v_in = [v_in]
-
         # Using the forward method to get the outputs.
         model_outputs = self._get_model_outputs_at_pos(n_pos)
 
         start_time = datetime.now()
-        next_dirs = self.model.get_tracking_directions(model_outputs,
-                                                       self.algo)
+        # Input to model is a list of streamlines but output should be
+        # next_dirs = a tensor of shape [nb_streamlines, 3].
+        next_dirs = self.model.get_tracking_directions(model_outputs, self.algo)
         duration_direction_getter = datetime.now() - start_time
+        logging.debug("Time for direction getter: {}s."
+                      .format(duration_direction_getter.total_seconds()))
 
         start_time = datetime.now()
-        for i in range(len(next_dirs)):
-            if self.normalize_directions:
-                next_dirs[i] /= np.linalg.norm(next_dirs[i])
-            # Verify curvature, else return None.
-            # toDo could we find a better solution for proba tracking?
-            #  Resampling until angle < theta? Easy on the sphere (restrain
-            #  probas on the sphere pics inside a cone theta) but what do we do
-            #  for other models? Ex: For the Gaussian direction getter?
-            if n_v_in[i] is not None:
-                next_dirs[i] = self._verify_angle(next_dirs[i], n_v_in[i])
+        if self.normalize_directions:
+            # Will divide along correct axis.
+            norm = torch.linalg.norm(next_dirs, dim=-1)
+            next_dirs = torch.div(next_dirs, norm[:, None])
+        next_dirs = self._verify_angle(next_dirs, n_v_in)
         duration_norm_angle = datetime.now() - start_time
 
-        logging.debug("Time for direction getter: {}s. Time for normalization "
-                      "+ verifying angle: {}s."
-                      .format(duration_direction_getter.total_seconds(),
-                              duration_norm_angle.total_seconds()))
-
-        if not multiple_lines:
-            return next_dirs[0]
+        logging.debug("Time for normalization + verifying angle: {}s."
+                      .format(duration_norm_angle.total_seconds()))
 
         return next_dirs
 
@@ -306,7 +274,7 @@ class DWIMLPropagator(AbstractPropagator):
         """
         Parameters
         ----------
-        n_pos: list of ndarrays
+        n_pos: List[Tensor(1,3)]
             Current position coordinates for each streamline.
         """
         inputs = self._prepare_inputs_at_pos(n_pos)
@@ -323,24 +291,40 @@ class DWIMLPropagator(AbstractPropagator):
     def _prepare_inputs_at_pos(self, pos):
         raise NotImplementedError
 
-    def _verify_angle(self, next_dir, v_in):
+    def _verify_angle(self, next_dirs: torch.Tensor, n_v_in: torch.Tensor):
+        # toDo could we find a better solution for proba tracking?
+        #  Resampling until angle < theta? Easy on the sphere (restrain
+        #  probas on the sphere pics inside a cone theta) but what do we do
+        #  for other models? Ex: For the Gaussian direction getter?
         if self.normalize_directions:
-            cos_angle = np.dot(next_dir, v_in.T)
+            # Already normalized
+            cos_angle = torch.sum(next_dirs * n_v_in)
         else:
-            cos_angle = np.dot(next_dir / np.linalg.norm(next_dir),
-                               v_in.T / np.linalg.norm(v_in))
+            norm1 = torch.linalg.norm(next_dirs, dim=-1)
+            norm2 = torch.linalg.norm(n_v_in, dim=-1)
+            cos_angle = torch.sum(torch.div(next_dirs, norm1[:, None]) *
+                                  torch.div(n_v_in, norm2[:, None]))
 
         # Resolving numerical instabilities:
-        cos_angle = min(max(-1.0, float(cos_angle)), 1.0)
-        angle = np.arccos(cos_angle)
+        # (Converts angle to numpy)
+        # Torch does not have a min() for tensor vs scalar. Using np. Ok,
+        # small step.
+        cos_angle = np.minimum(np.maximum(-1.0, cos_angle.cpu()), 1.0)
+        angle = torch.arccos(cos_angle)
+        if self.verify_opposite_direction:
+            mask_angle = angle > np.pi / 2  # 90 degrees
+            angle[mask_angle] = np.mod(angle[mask_angle] + np.pi, 2*np.pi)
+            next_dirs[mask_angle] = - next_dirs[mask_angle]
 
-        if self.verify_opposite_direction and angle > np.pi / 2:  # 90 degres
-            angle = np.mod(angle + np.pi, 2*np.pi)
-            next_dir = - next_dir
+        mask_angle = angle > self.theta
+        next_dirs[mask_angle] = torch.full((3,), fill_value=torch.nan
+                                           ).to(self.device)
 
-        if angle > self.theta:
-            return None
-        return next_dir
+        return next_dirs
+
+    def finalize_streamline(self, last_pos: torch.Tensor, v_in: torch.Tensor):
+        final_pos = last_pos + self.step_size * v_in
+        return final_pos
 
 
 class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
@@ -362,12 +346,6 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         """
         super().__init__(**kw)
 
-        if self.rk_order > 1:
-            logger.warning("dwi_ml with memory of streamlines is not ready "
-                           "for runge-kutta integration. Changing to rk_order "
-                           "1.")
-            self.rk_order = 1
-
         self.use_input_memory = input_memory
 
         self.current_lines = None  # type: Union[List, None]
@@ -377,35 +355,32 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         self.input_memory = None  # type: Union[List, None]
         # List of inputs, as formatted by the model.
 
-    def prepare_forward(self, seeding_pos, multiple_lines=False):
+    def prepare_forward(self, seeding_pos):
         self.current_lines = None
         self.input_memory = None
-        return super().prepare_forward(seeding_pos, multiple_lines)
+        return super().prepare_forward(seeding_pos)
 
-    def prepare_backward(self, line, forward_dir, multiple_lines=False):
+    def prepare_backward(self, line, forward_dir):
         # No need to invert the list of coordinates. Will be done by the
         # tracker anyway. We will update it at the next propagate() call.
         # We need to manage the input.
         if self.use_input_memory:
-            self.input_memory = \
-                [torch.flip(line_input, dims=[0])
-                 for line_input in self.input_memory]
-        return super().prepare_backward(line, forward_dir, multiple_lines)
+            # Not keeping the initial input point. Backward will start at
+            # that point and will compute it again.
+            self.input_memory = [torch.flip(line_input[1:, :], dims=[0])
+                                 for line_input in self.input_memory]
+        return super().prepare_backward(line, forward_dir)
 
-    def propagate(self, line, v_in):
-        # Saving the streamline now. We will save the input after computing it.
-        self.current_lines = [line]
-        return super().propagate(line, v_in)
-
-    def propagate_multiple_lines(self, lines, n_v_in):
+    def propagate(self, lines, v_in):
         self.current_lines = lines
-        return super().propagate_multiple_lines(lines, n_v_in)
+
+        return super().propagate(lines, v_in)
 
     def _get_model_outputs_at_pos(self, n_pos):
         """
         Parameters
         ----------
-        n_pos: list of ndarrays
+        n_pos: list[tensor(1,3)]
             Current position coordinates for each streamline.
         """
         inputs = self._prepare_inputs_at_pos(n_pos)
@@ -414,20 +389,19 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
             if self.input_memory is None:
                 self.input_memory = inputs
             else:
+                # If they all had the same lengths we could concatenate
+                # everything. But during backward, they don't.
                 self.input_memory = \
                     [torch.cat((self.input_memory[i], inputs[i]), dim=0)
                      for i in range(len(self.current_lines))]
 
-        # Todo. This is not perfect yet. Sending data to new device at each
-        #  new point. Could it already be a tensor in memory?
-        lines = [torch.tensor(np.vstack(line)).to(self.device) for
-                 line in self.current_lines]
-
         start_time = datetime.now()
         if self.use_input_memory:
-            model_outputs = self._call_model_forward(self.input_memory, lines)
+            model_outputs = self._call_model_forward(self.input_memory,
+                                                     self.current_lines)
         else:
-            model_outputs = self._call_model_forward(inputs, lines)
+            model_outputs = self._call_model_forward(inputs,
+                                                     self.current_lines)
         duration_running_model = datetime.now() - start_time
 
         logger.debug("Time to run the model: {}"
@@ -483,15 +457,12 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
 
         Params
         ------
-        pos: list[n x [[x, y, z]]]
+        n_pos: List[Tensor(1, 3)]
             List of n "streamlines" composed of one point.
         """
-        # torch trilinear interpolation uses origin='corner', space=vox.
-        # We're ok.
-        lines = [[point] for point in n_pos]
-
+        n_pos = [pos[None, :] for pos in n_pos]
         inputs, _ = self.model.prepare_batch_one_input(
-            lines, self.dataset, self.subj_idx, self.volume_group,
+            n_pos, self.dataset, self.subj_idx, self.volume_group,
             self.device)
 
         return inputs

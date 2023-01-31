@@ -73,6 +73,6 @@ def test_execution(script_runner, experiments_path):
     ret = script_runner.run(
         'ttst_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
-        '--algo', 'det', '--nt', '2', '--rk_order', '1', '--rng_seed', '0',
+        '--algo', 'det', '--nt', '2', '--rng_seed', '0',
         '--min_length', '0', '--subset', 'training')
     assert ret.success

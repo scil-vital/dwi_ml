@@ -321,11 +321,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             # Training
             return model_outputs
 
-    def _run_forward(self, inputs, streamlines, hidden_reccurent_states,
-                     is_tracking):
+    def _run_forward(self, inputs, streamlines: List[torch.Tensor],
+                     hidden_reccurent_states, is_tracking):
 
         if self.nb_previous_dirs > 0:
-            dirs = compute_directions(streamlines, self.device)
+            dirs = compute_directions(streamlines)
 
             logger.debug("*** 1. {} previous dirs - Embedding = {}..."
                          .format(self.nb_previous_dirs,
@@ -386,8 +386,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         # whole tensor.
         return model_outputs, out_hidden_recurrent_states
 
-    def compute_loss(self, model_outputs: Any, target_streamlines: list,
-                     **kw):
+    def compute_loss(self, model_outputs: Any,
+                     target_streamlines: List[torch.Tensor], **kw):
         """
         Computes the loss function using the provided outputs and targets.
         Returns the mean loss (loss averaged across timesteps and sequences).
@@ -400,7 +400,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             cosine regression direction getter return a simple Tensor. Please
             make sure that the chosen direction_getter's output size fits with
             the target ou the target's data if it's a PackedSequence.
-        target_streamlines : List
+        target_streamlines : List[tensor]
             The target streamlines for the batch.
 
         Returns
@@ -409,7 +409,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             The loss between the outputs and the targets, averaged across
             timesteps and sequences.
         """
-        target_dirs = compute_directions(target_streamlines, self.device)
+        target_dirs = compute_directions(target_streamlines)
 
         if self.normalize_targets:
             target_dirs = normalize_directions(target_dirs)

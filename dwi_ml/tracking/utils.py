@@ -63,12 +63,6 @@ def add_tracking_options(p):
                          metavar='M',
                          help='Maximum length of a streamline in mm. '
                               '[%(default)s]')
-    track_g.add_argument('--rk_order', metavar="K", type=int, default=2,
-                         choices=[1, 2, 4],
-                         help="The order of the Runge-Kutta integration used "
-                              "for the \nstep function [%(default)s]. As a "
-                              "rule of thumb, doubling the rk_order \nwill "
-                              "double the computation time in the worst case.")
 
     # Additional tracking options compared to scil_compute_local_tracking:
     track_g.add_argument('--theta', metavar='t', type=float,

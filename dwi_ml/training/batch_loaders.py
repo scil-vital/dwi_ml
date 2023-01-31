@@ -286,7 +286,7 @@ class DWIMLAbstractBatchLoader:
         -------
             (batch_streamlines, final_s_ids_per_subj)
         Where
-            - batch_streamlines: list[np.array]
+            - batch_streamlines: list[torch.tensor]
                 The new streamlines after data augmentation, IN VOXEL SPACE,
                 CORNER.
             - final_s_ids_per_subj: Dict[int, slice]
@@ -331,6 +331,7 @@ class DWIMLAbstractBatchLoader:
             sft.to_vox()
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
+        batch_streamlines = [torch.tensor(s) for s in batch_streamlines]
 
         return batch_streamlines, final_s_ids_per_subj
 
@@ -443,7 +444,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
 
             return batch_streamlines, final_s_ids_per_subj, batch_inputs
 
-    def compute_inputs(self, batch_streamlines: List[np.ndarray],
+    def compute_inputs(self, batch_streamlines: List[torch.tensor],
                        streamline_ids_per_subj: Dict[int, slice],
                        save_batch_input_mask: bool = False,
                        device=torch.device('cpu')):
@@ -485,11 +486,12 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             streamlines = batch_streamlines[y_ids]
             # We don't use the last coord because it is used only to
             # compute the last target direction, it's not really an input
-            streamlines = [s[:-1] for s in streamlines]
+            streamlines = [s[:-1, :].to(device) for s in streamlines]
 
             # Trilinear interpolation uses origin=corner, vox space, but ok
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
+            assert self.model.device == device
             subbatch_x_data, input_mask = \
                 self.model.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,

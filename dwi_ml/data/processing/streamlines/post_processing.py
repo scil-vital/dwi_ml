@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 import torch
 
-
-# toDo See what to do when values do not exist. See discussion here.
-#  https://stats.stackexchange.com/questions/169887/classification-with-partially-unknown-data
+# We could try using nan instead of zeros for non-existing previous dirs...
 DEFAULT_UNEXISTING_VAL = torch.zeros((1, 3), dtype=torch.float32)
 
 
@@ -107,7 +105,7 @@ def _get_one_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
     return n_previous_dirs
 
 
-def compute_directions(streamlines, device=torch.device('cpu')):
+def compute_directions(streamlines):
     """
     Params
     ------
@@ -115,13 +113,7 @@ def compute_directions(streamlines, device=torch.device('cpu')):
             The streamlines (after data augmentation)
     device: torch device
     """
-    # todo Would it be better to cast s as a tensor and use torch.diff?
-    #  in the trainer, when we call this, just one line further we do convert
-    #  streamlines to tensors.
-    batch_directions = [torch.as_tensor(s[1:] - s[:-1],
-                                        dtype=torch.float32,
-                                        device=device)
-                        for s in streamlines]
+    batch_directions = [torch.diff(s, n=1, dim=0) for s in streamlines]
 
     return batch_directions
 

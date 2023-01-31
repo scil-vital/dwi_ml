@@ -428,7 +428,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         """
         # Hints : Should start with:
 
-        # target_dirs = compute_directions(target_streamlines, self.device)
+        # target_dirs = compute_directions(target_streamlines)
         # n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
         #       target_dirs)
 
@@ -457,8 +457,9 @@ class MainModelOneInput(MainModelAbstract):
 
         Params
         ------
-        streamlines: list
-            The streamlines, IN VOXEL SPACE, CORNER ORIGIN
+        streamlines: list[Tensor]
+            The streamlines, IN VOXEL SPACE, CORNER ORIGIN.
+            Tensors are of shape (nb points, 3).
         subjset: MultisubjectSubset
             The dataset.
         subj: str
@@ -481,7 +482,7 @@ class MainModelOneInput(MainModelAbstract):
 
         # Flatten = concatenate signal for all streamlines to process
         # faster.
-        flat_subj_x_coords = np.concatenate(streamlines, axis=0)
+        flat_subj_x_coords = torch.cat(streamlines, dim=0)
 
         # Getting the subject's volume and sending to CPU/GPU
         # If data is lazy, get volume from cache or send to cache if
@@ -681,8 +682,8 @@ class ModelForTracking(MainModelAbstract):
 
         Returns
         -------
-        next_dir: list[array(3,)]
-            Numpy arrays with x,y,z value, one per streamline data point.
+        next_dir: Tensor(nb_streamlines, 3)
+            Tensors with x,y,z value, one per streamline data point.
         """
         raise NotImplementedError
 

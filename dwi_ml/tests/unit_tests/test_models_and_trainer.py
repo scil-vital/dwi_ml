@@ -80,8 +80,3 @@ def _create_trainer(batch_sampler, batch_loader, model, experiments_path,
     # Note. toDo Test fails with nb_cpu_processes=1. Why??
 
     return trainer
-
-
-if __name__ == '__main__':
-    logging.getLogger().setLevel(level='INFO')
-    test_trainer_and_models()

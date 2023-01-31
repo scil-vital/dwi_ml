@@ -1076,9 +1076,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
             self.logger.debug('*** Computing forward propagation and loss')
             if self.model.model_uses_streamlines:
-                batch_streamlines = [torch.tensor(s).to(self.device) for s in
-                                     batch_streamlines]
-
                 # Possibly computing directions twice (during forward and loss)
                 # but ok, shouldn't be too heavy. Easier to deal with multiple
                 # project's requirements by sending whole streamlines rather

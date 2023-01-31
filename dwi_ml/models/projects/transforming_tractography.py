@@ -443,7 +443,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             for i in range(nb_streamlines):
                 assert len(batch_streamlines[i]) == len(batch_x[i]), \
                     "During tracking, we expect the streamlines to have the " \
-                    "same number of points as the input."
+                    "same number of points as the input, but we received {} " \
+                    "input points and {} streamline points for streamline " \
+                    "#{}".format(len(batch_x[i]), len(batch_streamlines[i]), i)
         else:
             for i in range(nb_streamlines):
                 assert len(batch_streamlines[i]) == len(batch_x[i]) + 1, \

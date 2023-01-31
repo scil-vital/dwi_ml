@@ -75,6 +75,6 @@ def test_execution(script_runner, experiments_path):
         'tto_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0',
-        '--min_length', '0', '--subset', 'training')
+        '--min_length', '0', '--subset', 'training', '--logging', 'DEBUG')
 
     assert ret.success

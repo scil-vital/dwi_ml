@@ -165,7 +165,7 @@ class DWIMLPropagator(AbstractPropagator):
         v_in = [None] * len(lines)
         for i in range(len(lines)):
             if len(lines[i]) > 1:
-                v_in[i] = lines[i][-1,:] - lines[i][-2,:]
+                v_in[i] = lines[i][-1, :] - lines[i][-2, :]
                 if self.normalize_directions:
                     v_in[i] /= torch.linalg.norm(v_in[i])
             elif forward_dir[i] is not None:
@@ -365,9 +365,10 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         # tracker anyway. We will update it at the next propagate() call.
         # We need to manage the input.
         if self.use_input_memory:
-            self.input_memory = \
-                [torch.flip(line_input, dims=[0])
-                 for line_input in self.input_memory]
+            # Not keeping the initial input point. Backward will start at
+            # that point and will compute it again.
+            self.input_memory = [torch.flip(line_input[1:, :], dims=[0])
+                                 for line_input in self.input_memory]
         return super().prepare_backward(line, forward_dir)
 
     def propagate(self, lines, v_in):
@@ -388,6 +389,8 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
             if self.input_memory is None:
                 self.input_memory = inputs
             else:
+                # If they all had the same lengths we could concatenate
+                # everything. But during backward, they don't.
                 self.input_memory = \
                     [torch.cat((self.input_memory[i], inputs[i]), dim=0)
                      for i in range(len(self.current_lines))]

@@ -25,4 +25,7 @@ class TransformerPropagator(DWIMLPropagatorOneInput,
                          input_memory=True)
 
     def _call_model_forward(self, inputs, lines):
+        import logging
+        logging.warning("Inputs: {}".format((len(inputs), inputs[0].shape)))
+        logging.warning("Lines: {}".format((len(lines), lines[0].shape)))
         return self.model(inputs, lines, is_tracking=True)

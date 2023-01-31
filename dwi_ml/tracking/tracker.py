@@ -185,10 +185,6 @@ class DWIMLTracker(ScilpyTracker):
             # Reversing:
             lines = [torch.flip(line, (0,)) for line in lines]
 
-            # We could loop to prepare reverse. Basic case not too heavy.
-            # However, in some cases (ex, projects with memory), model
-            # needs to be re-run before starting back-propagation. We let
-            # the propagator deal with the looping.
             tracking_info = self.propagator.prepare_backward(
                 lines, forward_dir=tracking_info)
 

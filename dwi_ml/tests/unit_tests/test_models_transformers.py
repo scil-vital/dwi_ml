@@ -3,7 +3,6 @@ import logging
 
 import numpy as np
 from torch import Tensor, isnan, set_printoptions
-from dwi_ml.experiment_utils.prints import format_dict_to_str
 
 from dwi_ml.models.projects.transforming_tractography import (
     OriginalTransformerModel, TransformerSrcAndTgtModel)
@@ -17,17 +16,17 @@ def _create_batch():
     flattened_dwi1 = Tensor([[10., 11., 12., 13.],
                              [50., 51., 52., 53.],
                              [60., 62., 62., 63.]])
-    streamline1 = np.asarray([[0.1, 0.2, 0.3],
-                              [1.1, 1.2, 1.3],
-                              [2.1, 2.2, 2.3],
-                              [3.1, 3.2, 3.3]])
+    streamline1 = Tensor([[0.1, 0.2, 0.3],
+                          [1.1, 1.2, 1.3],
+                          [2.1, 2.2, 2.3],
+                          [3.1, 3.2, 3.3]])
 
     # dwi2 : data for the 2 first points
     flattened_dwi2 = Tensor([[10., 11., 12., 13.],
                              [50., 51., 52., 53.]])
-    streamline2 = np.asarray([[10.1, 10.2, 10.3],
-                              [11.1, 11.2, 11.3],
-                              [12.1, 12.2, 12.3]])
+    streamline2 = Tensor([[10.1, 10.2, 10.3],
+                          [11.1, 11.2, 11.3],
+                          [12.1, 12.2, 12.3]])
 
     batch_x_training = [flattened_dwi1, flattened_dwi2]
     batch_s_training = [streamline1, streamline2]

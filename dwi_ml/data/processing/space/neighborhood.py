@@ -162,9 +162,6 @@ def extend_coordinates_with_neighborhood(
         The new coordinates with all N neighbors (N+1 including the original
         coordinates), in the same space and origin as coords.
     """
-    logging.warning("!!!!!!!!!! TODO. Convert neighborhood vectors to torch")
-    neighborhood_vectors = torch.Tensor(neighborhood_vectors)
-
     m_coords = coords.shape[0]
     n_neighbors = neighborhood_vectors.shape[0]
 

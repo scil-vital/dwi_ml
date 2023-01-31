@@ -827,6 +827,4 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         # more a "decoder" than an "encoder" in logical meaning.
         kept_outputs = outputs[:, -outputs.shape[1]//2:, :]
 
-        logging.warning("kept outputs: {}".format(kept_outputs))
-
         return kept_outputs, (sa_weights,)

@@ -478,9 +478,6 @@ class MainModelOneInput(MainModelAbstract):
         input_mask: tensor or None
             In debugging mode, returns a mask of all voxels used as input.
         """
-        if type(streamlines[0]) != torch.Tensor:
-            logging.warning("!!!!!!!!!!! TO DO!!!. Change to tensor during training too.")
-            streamlines = [torch.tensor(s) for s in streamlines]
         start_time = datetime.now()
 
         # Flatten = concatenate signal for all streamlines to process

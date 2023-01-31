@@ -1045,9 +1045,8 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 self.logger.debug('Finalizing input data preparation on GPU.')
                 batch_streamlines, final_s_ids_per_subj = data
 
-                # toDo. Could we convert streamlines to tensor already when
-                #  loading, and send to GPU here? Would need to modify methods
-                #  such as extend_neighborhood_with_coords.
+                # Sending to GPU
+                batch_streamlines = [s.to(self.device) for s in batch_streamlines]
 
                 # Getting the inputs points from the volumes. Usually done in
                 # load_batch but we preferred to wait here to have a chance to

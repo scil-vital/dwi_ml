@@ -428,7 +428,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         """
         # Hints : Should start with:
 
-        # target_dirs = compute_directions(target_streamlines, self.device)
+        # target_dirs = compute_directions(target_streamlines)
         # n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
         #       target_dirs)
 

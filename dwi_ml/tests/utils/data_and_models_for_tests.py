@@ -94,8 +94,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
         self.instantiate_direction_getter(dg_input_size)
 
     def compute_loss(self, model_outputs: torch.tensor,
-                     target_streamlines: list, **kw):
-        target_dirs = compute_directions(target_streamlines, self.device)
+                     target_streamlines: List[torch.Tensor], **kw):
+        target_dirs = compute_directions(target_streamlines)
 
         if self.normalize_targets:
             target_dirs = normalize_directions(target_dirs)
@@ -126,7 +126,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
                 hidden_reccurent_states: tuple = None,
                 return_state: bool = False, is_tracking: bool = False,
                 ) -> List[torch.tensor]:
-        target_dirs = compute_directions(target_streamlines, self.device)
+        target_dirs = compute_directions(target_streamlines)
 
         assert len(target_dirs) == len(inputs), \
             ("Error. The target directions contain {} streamlines but the "

@@ -462,7 +462,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
-        batch_t = compute_directions(batch_streamlines, self.device)
+        batch_t = compute_directions(batch_streamlines)
 
         # ----------- Ok. Start processing
 

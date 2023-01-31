@@ -57,7 +57,7 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
 
     def forward(self, x: list):
         _ = self.fake_parameter
-        regressed_dir = [1., 1., 1.]
+        regressed_dir = torch.tensor([1., 1., 1.])
 
         return [regressed_dir for _ in x]
 
@@ -113,7 +113,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
 
     def get_tracking_directions(self, regressed_dirs, algo):
         if algo == 'det':
-            return regressed_dirs.cpu().detach().numpy()
+            return regressed_dirs.detach()
         elif algo == 'prob':
             raise NotImplementedError(
                 "Our test model uses (fake) regression and does not allow "

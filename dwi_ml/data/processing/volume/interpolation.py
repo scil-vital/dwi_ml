@@ -161,9 +161,6 @@ def interpolate_volume_in_neighborhood(
             extend_coordinates_with_neighborhood(coords_vox_corner,
                                                  neighborhood_vectors_vox)
 
-        coords_vox_corner = torch.as_tensor(coords_vox_corner,
-                                            dtype=torch.float, device=device)
-
         # Interpolate signal for each (new) point
         # DWI data features for each neighbor are concatenated.
         # Result is of shape: (M * (N+1), F).

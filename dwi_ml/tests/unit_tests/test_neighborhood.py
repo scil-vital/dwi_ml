@@ -58,9 +58,6 @@ def test_neighborhood_interpolation():
     # Without adding coordinates
     interpolated_data, _ = interpolate_volume_in_neighborhood(
         data, current_coords, neighb_vec)
-    logging.warning(data[10, 10, 10])
-    logging.warning(data[3,3,3])
-    logging.warning(interpolated_data)
 
     assert np.array_equal(interpolated_data.shape,
                           [m_coords, (n_neigh + 1) * f_features])

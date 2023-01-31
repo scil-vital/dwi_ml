@@ -98,7 +98,7 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     neighborhood_vectors = []
     for r in radius:
         neighborhood_vectors.extend(unit_axes * r)
-    neighborhood_vectors = torch.tensor(neighborhood_vectors)
+    neighborhood_vectors = torch.tensor(np.asarray(neighborhood_vectors))
 
     return neighborhood_vectors
 
@@ -158,9 +158,12 @@ def extend_coordinates_with_neighborhood(
 
     Returns
     -------
-    flat_coords: np.ndarray[float] with shape (M x (N+1), 3)
+    flat_coords: tensor of shape (M x (N+1), 3)
         The new coordinates with all N neighbors (N+1 including the original
         coordinates), in the same space and origin as coords.
+    tiled_vectors: tensor
+        The coordinates of neighbors per respect to the current coordinate
+        (translation vectors).
     """
     m_coords = coords.shape[0]
     n_neighbors = neighborhood_vectors.shape[0]

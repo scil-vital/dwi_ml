@@ -77,8 +77,8 @@ def _verify_mri(mri_data, training_set, group_number):
 
     # Non-lazy: getting data as tensor directly.
     # Lazy: it should load it.
-    assert isinstance(mri_data.as_tensor(device), torch.Tensor)
-    assert list(mri_data.as_tensor(device).shape) == expected_shape
+    assert isinstance(mri_data.convert_to_tensor(device), torch.Tensor)
+    assert list(mri_data.convert_to_tensor(device).shape) == expected_shape
 
     # This should also get it.
     volume0 = training_set.get_volume_verify_cache(0, 0)

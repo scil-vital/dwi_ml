@@ -108,8 +108,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
         # Depends on model. Ex: regression: direct difference.
         # Classification: log-likelihood.
         # Gaussian: difference between distribution and target.
-        return self.direction_getter.compute_loss(
-            model_outputs.to(self.device), target_dirs.to(self.device))
+        return self.direction_getter.compute_loss(model_outputs, target_dirs)
 
     def get_tracking_directions(self, regressed_dirs, algo):
         if algo == 'det':
@@ -139,7 +138,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
             assert len(n_prev_dirs_embedded) == len(target_dirs)
 
         # Fake intermediate layer
-        model_outputs = [torch.ones(len(s), self.direction_getter.input_size)
+        model_outputs = [torch.ones(len(s), self.direction_getter.input_size,
+                                    device=self.device)
                          for s in inputs]
 
         # Packing results
@@ -147,7 +147,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
         model_outputs = pack_sequence(model_outputs, enforce_sorted=False).data
 
         # Direction getter
-        model_outputs = self.direction_getter(model_outputs.to(self.device))
+        model_outputs = self.direction_getter(model_outputs)
         if self.normalize_outputs:
             model_outputs = normalize_directions([model_outputs])
 

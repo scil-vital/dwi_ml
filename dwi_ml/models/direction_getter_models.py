@@ -133,7 +133,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         Careful. Calling model.to(a_device) does not influence the self.device.
         Prefer this method for easier management.
         """
-        self.to(device)
+        self.to(device, non_blocking=True)
         self.device = device
 
     @property

@@ -63,7 +63,7 @@ class MainModelAbstract(torch.nn.Module):
         Careful. Calling model.to(a_device) does not influence the self.device.
         Prefer this method for easier management.
         """
-        self.to(device)
+        self.to(device, non_blocking=True)
         self.device = device
 
     @property
@@ -178,6 +178,12 @@ class ModelWithNeighborhood(MainModelAbstract):
         # Reminder. nb neighbors does not include origin.
         self.nb_neighbors = len(self.neighborhood_vectors) if \
             self.neighborhood_vectors is not None else 0
+
+    def move_to(self, device):
+        super().move_to(device)
+        if self.neighborhood_vectors is not None:
+            self.neighborhood_vectors = self.neighborhood_vectors.to(
+                device, non_blocking=True)
 
     @staticmethod
     def add_neighborhood_args_to_parser(p: argparse.PARSER):
@@ -482,11 +488,11 @@ class MainModelOneInput(MainModelAbstract):
         # faster.
         flat_subj_x_coords = torch.cat(streamlines, dim=0)
 
-        # Getting the subject's volume and sending to CPU/GPU
+        # Getting the subject's volume (creating it directly on right device)
         # If data is lazy, get volume from cache or send to cache if
         # it wasn't there yet.
         data_tensor = subset.get_volume_verify_cache(
-            subj, input_group_idx, device=self.device, non_blocking=True)
+            subj, input_group_idx, device=self.device)
 
         # Prepare the volume data
         # Coord_torch contain the coords after interpolation, possibly clipped

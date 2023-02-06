@@ -318,7 +318,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         else:
             padded_data = unpadded_data
 
-        return torch.stack(padded_data).to(self.device)
+        return torch.stack(padded_data)
 
     def _generate_future_mask(self, sz):
         """DO NOT USE FLOAT, their code had a bug (see issue #92554. Fixed in

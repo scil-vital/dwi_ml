@@ -44,7 +44,7 @@ def compute_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
     if nb_previous_dirs == 0:
         return None
 
-    unexisting_val = unexisting_val.to(device)
+    unexisting_val = unexisting_val.to(device, non_blocking=True)
 
     if point_idx:
         prev_dirs = _get_one_n_previous_dirs(

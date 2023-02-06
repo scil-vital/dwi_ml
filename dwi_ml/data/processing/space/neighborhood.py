@@ -98,7 +98,8 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     neighborhood_vectors = []
     for r in radius:
         neighborhood_vectors.extend(unit_axes * r)
-    neighborhood_vectors = torch.as_tensor(np.asarray(neighborhood_vectors))
+    neighborhood_vectors = torch.as_tensor(np.asarray(neighborhood_vectors),
+                                           dtype=torch.float)
 
     return neighborhood_vectors
 
@@ -137,7 +138,8 @@ def get_neighborhood_vectors_grid(radius_vox_space: int):
     for x, y, z in itertools.product(the_range, the_range, the_range):
         if not (x == y == z == 0):  # Not adding origin; not a neighbor
             neighborhood_vectors.append([x, y, z])
-    neighborhood_vectors = torch.as_tensor(np.asarray(neighborhood_vectors))
+    neighborhood_vectors = torch.as_tensor(np.asarray(neighborhood_vectors),
+                                           dtype=torch.float)
 
     return neighborhood_vectors
 
@@ -166,7 +168,9 @@ def extend_coordinates_with_neighborhood(
         (translation vectors).
     """
     device = neighborhood_vectors.device
-    assert coords.device == device
+    assert coords.device == device, "Neighborhood device is {}, but current " \
+                                    "coordinates device is {}" \
+                                    .format(device, coords.device)
 
     m_coords = coords.shape[0]
     n_neighbors = neighborhood_vectors.shape[0]
@@ -181,7 +185,7 @@ def extend_coordinates_with_neighborhood(
     # coords = [p1+0 p1+up p1+down ..., p2+0 p2+up, p2+down, ...]'
     # toDo. This "cat" happens every iteration. We can include it in
     #  neighborhood vectors.
-    total_neighborhood = torch.cat((torch.zeros(1, 3),
+    total_neighborhood = torch.cat((torch.zeros(1, 3, device=device),
                                     neighborhood_vectors))
     tiled_vectors = torch.tile(total_neighborhood, (m_coords, 1))
     flat_coords += tiled_vectors

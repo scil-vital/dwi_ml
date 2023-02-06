@@ -329,7 +329,7 @@ class DWIMLAbstractBatchLoader:
             sft.to_vox()
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
-        batch_streamlines = [torch.tensor(s) for s in batch_streamlines]
+        batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
 
         return batch_streamlines, final_s_ids_per_subj
 

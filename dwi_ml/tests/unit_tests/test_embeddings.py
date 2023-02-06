@@ -41,8 +41,9 @@ def test_embeddings():
 
     logging.debug("Unit test: embeddings on tensors")
 
-    tensor_a = torch.Tensor([[0.0, 1.0, 2.2],
-                             [10.3, 11.4, 12.5]])  # Two inputs with 3 features
+    # Two inputs with 3 features
+    tensor_a = torch.as_tensor([[0.0, 1.0, 2.2],
+                                [10.3, 11.4, 12.5]])
     _verify_all_outputs(tensor_a, keys_on_tensors, nb_features=3)
 
 

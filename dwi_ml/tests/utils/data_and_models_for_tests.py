@@ -48,7 +48,7 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
                          neighborhood_type=neighborhood_type,
                          neighborhood_radius=neighborhood_radius,
                          log_level=log_level)
-        self.fake_parameter = torch.nn.Parameter(torch.tensor(42.0))
+        self.fake_parameter = torch.nn.Parameter(torch.as_tensor(42.0))
 
     def compute_loss(self, model_outputs, target_streamlines=None):
         mean = self.fake_parameter
@@ -57,7 +57,7 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
 
     def forward(self, x: list):
         _ = self.fake_parameter
-        regressed_dir = torch.tensor([1., 1., 1.])
+        regressed_dir = torch.as_tensor([1., 1., 1.])
 
         return [regressed_dir for _ in x]
 

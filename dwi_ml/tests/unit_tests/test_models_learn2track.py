@@ -30,7 +30,8 @@ def _create_batch():
                               [11.1, 11.2, 11.3],
                               [12.1, 12.2, 12.3]])
 
-    batch_x = [torch.Tensor(flattened_dwi1), torch.Tensor(flattened_dwi2)]
+    batch_x = [torch.as_tensor(flattened_dwi1),
+               torch.as_tensor(flattened_dwi2)]
     batch_s = [streamline1, streamline2]
 
     return batch_x, batch_s

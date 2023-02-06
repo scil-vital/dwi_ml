@@ -12,12 +12,12 @@ logging.getLogger().setLevel(level='INFO')
 
 def test_packing_unpacking():
 
-    streamline1 = torch.tensor(np.array([[1, 0, 0],
-                                         [1, 1, 1],
-                                         [0, 1, 0]], dtype='float32'))
-    streamline2 = torch.tensor(np.array([[2, 0, 0],
-                                         [2, 2, 2],
-                                         [0, 2, 0]], dtype='float32'))
+    streamline1 = torch.as_tensor(np.array([[1, 0, 0],
+                                            [1, 1, 1],
+                                            [0, 1, 0]], dtype='float32'))
+    streamline2 = torch.as_tensor(np.array([[2, 0, 0],
+                                            [2, 2, 2],
+                                            [0, 2, 0]], dtype='float32'))
     streamlines = [streamline1, streamline2]
 
     logging.info('Testing packing and unpacking')

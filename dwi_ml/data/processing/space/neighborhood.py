@@ -98,7 +98,7 @@ def get_neighborhood_vectors_axes(radius: Union[float, Iterable[float]]):
     neighborhood_vectors = []
     for r in radius:
         neighborhood_vectors.extend(unit_axes * r)
-    neighborhood_vectors = torch.tensor(np.asarray(neighborhood_vectors))
+    neighborhood_vectors = torch.as_tensor(np.asarray(neighborhood_vectors))
 
     return neighborhood_vectors
 
@@ -137,7 +137,7 @@ def get_neighborhood_vectors_grid(radius_vox_space: int):
     for x, y, z in itertools.product(the_range, the_range, the_range):
         if not (x == y == z == 0):  # Not adding origin; not a neighbor
             neighborhood_vectors.append([x, y, z])
-    neighborhood_vectors = torch.tensor(neighborhood_vectors)
+    neighborhood_vectors = torch.as_tensor(np.asarray(neighborhood_vectors))
 
     return neighborhood_vectors
 

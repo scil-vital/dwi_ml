@@ -521,7 +521,7 @@ class MainModelOneInput(MainModelAbstract):
             coords_to_idx_clipped = torch.min(
                 torch.max(torch.floor(coords_torch).long(), lower),
                 upper)
-            input_mask = torch.tensor(np.zeros(data_tensor.shape[0:3]))
+            input_mask = torch.as_tensor(np.zeros(data_tensor.shape[0:3]))
             for s in range(len(coords_torch)):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 

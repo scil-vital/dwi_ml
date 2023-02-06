@@ -59,6 +59,20 @@ def test_execution_training_tracking(script_runner, experiments_path):
                             '--new_max_epochs', '2')
     assert ret.success
 
+    # Test training on GPU
+    logging.info("************ TESTING TRAINING ************")
+    ret = script_runner.run('l2t_train_model.py',
+                            experiments_path, 'test_l2t_gpu', hdf5_file,
+                            input_group_name, streamline_group_name,
+                            '--max_epochs', '1', '--batch_size_training', '5',
+                            '--batch_size_validation', '5',
+                            '--batch_size_units', 'nb_streamlines',
+                            '--max_batches_per_epoch_training', '2',
+                            '--max_batches_per_epoch_validation', '1',
+                            '--logging', 'INFO', '--use_gpu')
+    assert ret.success
+
+    # Test Tracking
     logging.info("************ TESTING TRACKING FROM MODEL ************")
     whole_experiment_path = os.path.join(experiments_path, experiment_name)
     out_tractogram = os.path.join(experiments_path, 'test_tractogram.trk')

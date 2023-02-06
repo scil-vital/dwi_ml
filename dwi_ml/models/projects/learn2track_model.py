@@ -419,8 +419,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         target_dirs = pack_sequence(target_dirs, enforce_sorted=False).data
 
         # Computing loss
-        return self.direction_getter.compute_loss(
-            model_outputs.to(self.device), target_dirs.to(self.device))
+        return self.direction_getter.compute_loss(model_outputs, target_dirs)
 
     def get_tracking_directions(self, model_outputs, algo):
         """

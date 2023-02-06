@@ -61,7 +61,7 @@ class DWIMLAbstractTrainer:
                  patience: int = None, nb_cpu_processes: int = 0,
                  use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False,
+                 from_checkpoint: bool = False, mixed_precision: bool = False,
                  log_level=logging.root.level):
         """
         Parameters
@@ -119,6 +119,7 @@ class DWIMLAbstractTrainer:
         from_checkpoint: bool
              If true, we do not create the output dir, as it should already
              exist. Default: False.
+
         """
         # To developers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
@@ -202,6 +203,11 @@ class DWIMLAbstractTrainer:
                                  "available!")
         else:
             self.device = torch.device('cpu')
+
+        # toDo. See if we would like to implement mixed precision.
+        #  Could improve performance / speed
+        #  https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
+        #  https://pytorch.org/blog/what-every-user-should-know-about-mixed-precision-training-in-pytorch/
 
         # ----------------------
         # Values that will be modified later on. If initializing experiment
@@ -573,6 +579,9 @@ class DWIMLAbstractTrainer:
                 grad_norm = compute_gradient_norm(self.model.parameters())
 
                 # Update parameters
+                # toDo. We could update only every n steps.
+                #  Effective batch size is n time bigger.
+                #  See here https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
                 self.optimizer.step()
 
                 # Reset parameter gradients to zero or to None before the next

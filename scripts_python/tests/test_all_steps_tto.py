@@ -49,7 +49,8 @@ def test_execution(script_runner, experiments_path):
                             input_group_name, streamline_group_name,
                             '--max_epochs', '1', '--batch_size_training', '5',
                             '--batch_size_units', 'nb_streamlines',
-                            '--max_batches_per_epoch_training', '5',
+                            '--max_batches_per_epoch_training', '2',
+                            '--max_batches_per_epoch_validation', '1',
                             '--nheads', '2', '--max_len', str(MAX_LEN),
                             '--d_model', '6', '--n_layers_e', '1',
                             '--n_layers_d', '1', '--ffnn_hidden_size', '3',
@@ -60,6 +61,22 @@ def test_execution(script_runner, experiments_path):
     ret = script_runner.run(
         'tto_resume_training_from_checkpoint.py',
         experiments_path, 'test_experiment', '--new_max_epochs', '2')
+    assert ret.success
+
+    # Test training GPU
+    logging.info("************ TESTING TRAINING GPU ************")
+    ret = script_runner.run('tto_train_model.py',
+                            experiments_path, 'tto_test', hdf5_file,
+                            input_group_name, streamline_group_name,
+                            '--max_epochs', '1', '--batch_size_training', '5',
+                            '--batch_size_units', 'nb_streamlines',
+                            '--max_batches_per_epoch_training', '2',
+                            '--max_batches_per_epoch_validation', '1',
+                            '--nheads', '2', '--max_len', str(MAX_LEN),
+                            '--d_model', '6', '--n_layers_e', '1',
+                            '--n_layers_d', '1', '--ffnn_hidden_size', '3',
+                            '--dropout_rate', '0', '--logging', 'INFO',
+                            '--use_gpu')
     assert ret.success
 
     logging.info("************ TESTING TRACKING FROM MODEL ************")

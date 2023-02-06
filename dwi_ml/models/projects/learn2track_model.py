@@ -345,8 +345,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         logger.debug("*** 2. Inputs: Embedding = {}"
                      .format(self.input_embedding_key))
+
         # Packing inputs and saving info
-        inputs = pack_sequence(inputs, enforce_sorted=False).to(self.device)
+        inputs = pack_sequence(inputs, enforce_sorted=False)
         batch_sizes = inputs.batch_sizes
         sorted_indices = inputs.sorted_indices
         unsorted_indices = inputs.unsorted_indices

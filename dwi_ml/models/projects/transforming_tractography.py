@@ -564,7 +564,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
-            model_outputs.to(self.device), torch.cat(targets).to(self.device))
+            model_outputs, torch.cat(targets))
 
     def get_tracking_directions(self, model_outputs, algo):
         return self.direction_getter.get_tracking_directions(model_outputs,

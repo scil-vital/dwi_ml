@@ -384,7 +384,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
                                                enforce_sorted=False)
 
             n_prev_dirs = n_prev_dirs_packed.data
-            n_prev_dirs.to(self.device)
 
         # Result is a tensor
         n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
@@ -696,4 +695,4 @@ class ModelForTracking(MainModelAbstract):
 
     def move_to(self, device):
         super().move_to(device)
-        self.direction_getter.to(device)
+        self.direction_getter.move_to(device)

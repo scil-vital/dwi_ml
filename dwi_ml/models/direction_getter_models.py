@@ -91,7 +91,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     """
     def __init__(self, input_size, dropout: float, key: str,
                  supports_compressed_streamlines: bool,
-                 loss_description: str = ''):
+                 loss_description: str = '', device=None):
         """
         Parameters
         ----------
@@ -109,6 +109,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         super().__init__()
 
         self.input_size = input_size
+        self.device = device
+        self.move_to(device)
 
         # Info on this Direction Getter
         self.key = key
@@ -125,6 +127,14 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             self.dropout_sublayer = lambda x: x
 
         self.relu_sublayer = ReLU()
+
+    def move_to(self, device):
+        """
+        Careful. Calling model.to(a_device) does not influence the self.device.
+        Prefer this method for easier management.
+        """
+        self.to(device)
+        self.device = device
 
     @property
     def params(self):
@@ -417,7 +427,7 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         # Classes
         self.sphere_name = sphere
         self.sphere = dipy.data.get_sphere(sphere)
-        self.torch_sphere = TorchSphere(self.sphere)
+        self.torch_sphere = TorchSphere(self.sphere, self.device)
         nb_classes = self.sphere.vertices.shape[0]
 
         self.layers = init_2layer_fully_connected(input_size, nb_classes)

@@ -1046,14 +1046,14 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 batch_streamlines, final_s_ids_per_subj = data
 
                 # Sending to GPU
+                # Model is already on GPU
                 batch_streamlines = [s.to(self.device) for s in batch_streamlines]
 
                 # Getting the inputs points from the volumes. Usually done in
                 # load_batch but we preferred to wait here to have a chance to
                 # run things on GPU.
                 batch_inputs = self.batch_loader.compute_inputs(
-                    batch_streamlines, final_s_ids_per_subj,
-                    device=self.device)
+                    batch_streamlines, final_s_ids_per_subj)
 
             else:
                 # Data is already ready

@@ -449,7 +449,7 @@ class MainModelOneInput(MainModelAbstract):
         super().__init__(**kw)
 
     def prepare_batch_one_input(self, streamlines, subset, subj,
-                                input_group_idx, device, prepare_mask=False):
+                                input_group_idx, prepare_mask=False):
         """
         These params are passed by either the batch loader or the propagator,
         which manage the data.
@@ -465,7 +465,6 @@ class MainModelOneInput(MainModelAbstract):
             The subject id.
         input_groupd_idx: int
             The volume group.
-        device: Torch device
         prepare_mask: bool
             If true, return a mask of chosen coordinates (DEBUGGING MODE).
 
@@ -487,7 +486,7 @@ class MainModelOneInput(MainModelAbstract):
         # If data is lazy, get volume from cache or send to cache if
         # it wasn't there yet.
         data_tensor = subset.get_volume_verify_cache(
-            subj, input_group_idx, device=device, non_blocking=True)
+            subj, input_group_idx, device=self.device, non_blocking=True)
 
         # Prepare the volume data
         # Coord_torch contain the coords after interpolation, possibly clipped
@@ -496,10 +495,10 @@ class MainModelOneInput(MainModelAbstract):
             # Adding neighborhood.
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, self.neighborhood_vectors,
-                device)
+                self.device)
         else:
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, None, device)
+                data_tensor, flat_subj_x_coords, None, self.device)
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]
@@ -516,8 +515,8 @@ class MainModelOneInput(MainModelAbstract):
 
             # Clipping used coords (i.e. possibly with neighborhood)
             # outside volume
-            lower = torch.as_tensor([0, 0, 0], device=device)
-            upper = torch.as_tensor(data_tensor.shape[:3], device=device)
+            lower = torch.as_tensor([0, 0, 0], device=self.device)
+            upper = torch.as_tensor(data_tensor.shape[:3], device=self.device)
             upper -= 1
             coords_to_idx_clipped = torch.min(
                 torch.max(torch.floor(coords_torch).long(), lower),

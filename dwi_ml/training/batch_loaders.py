@@ -45,10 +45,8 @@ from collections import defaultdict
 import logging
 from typing import Dict, List, Tuple
 
-from dipy.io.stateful_tractogram import StatefulTractogram
 import numpy as np
 import torch
-from dipy.tracking.metrics import length
 
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
@@ -446,8 +444,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
 
     def compute_inputs(self, batch_streamlines: List[torch.tensor],
                        streamline_ids_per_subj: Dict[int, slice],
-                       save_batch_input_mask: bool = False,
-                       device=torch.device('cpu')):
+                       save_batch_input_mask: bool = False):
         """
         Get the DWI (depending on volume: as raw, SH, fODF, etc.) volume for
         each point in each streamline (+ depending on options: neighborhood,
@@ -486,17 +483,15 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             streamlines = batch_streamlines[y_ids]
             # We don't use the last coord because it is used only to
             # compute the last target direction, it's not really an input
-            streamlines = [s[:-1, :].to(device) for s in streamlines]
+            streamlines = [s[:-1, :] for s in streamlines]
 
             # Trilinear interpolation uses origin=corner, vox space, but ok
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
-            assert self.model.device == device
             subbatch_x_data, input_mask = \
                 self.model.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,
-                    self.input_group_idx, device,
-                    prepare_mask=save_batch_input_mask)
+                    self.input_group_idx, prepare_mask=save_batch_input_mask)
 
             batch_x_data.extend(subbatch_x_data)
 

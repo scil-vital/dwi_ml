@@ -29,8 +29,8 @@ def test_neighborhood_vectors():
 
 def test_neighborhood_interpolation():
     # Coords must be of shape (M, 3). Fails if coordinates are ints!
-    current_coords = torch.tensor([[10., 10., 10.],
-                                   [3., 3., 3.]])
+    current_coords = torch.as_tensor([[10., 10., 10.],
+                                      [3., 3., 3.]])
     m_coords = 2
 
     neighb_vec = prepare_neighborhood_vectors('grid', neighborhood_radius=1)
@@ -48,7 +48,7 @@ def test_neighborhood_interpolation():
     # 10, 10, 10 should have values ~30
     n_neigh = 6
     f_features = 2
-    data = torch.tensor(np.random.rand(15, 15, 15, f_features))
+    data = torch.as_tensor(np.random.rand(15, 15, 15, f_features))
     for i in range(15):
         for j in range(15):
             for k in range(15):

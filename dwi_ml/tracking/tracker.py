@@ -120,7 +120,6 @@ class DWIMLTracker(ScilpyTracker):
         """
         assert torch.cuda.is_available()
         assert self.device.type == 'cuda'
-        self.propagator.move_to(self.device)
 
         random_generator, indices = self.seed_generator.init_generator(
             self.rng_seed, self.skip)
@@ -171,7 +170,8 @@ class DWIMLTracker(ScilpyTracker):
             The generated streamline for each seeding_pos.
         """
         # List of list. Sending to torch tensors.
-        n_seeds = [torch.Tensor(s).to(self.device) for s in n_seeds]
+        n_seeds = [torch.as_tensor(s, device=self.device, dtype=torch.float)
+                   for s in n_seeds]
         lines = [s.clone()[None, :] for s in n_seeds]
 
         logger.info("Multiple GPU tracking: Starting forward propagation for "

@@ -190,7 +190,7 @@ class DWIMLPropagator(AbstractPropagator):
         ------
         line: List[Tensor]
             For each streamline, tensor of shape (nb_points, 3).
-        n_v_in: list[ndarray (3,)]
+        n_v_in: list[Tensor(3,)]
             Previous tracking directions.
 
         Return
@@ -206,9 +206,8 @@ class DWIMLPropagator(AbstractPropagator):
         n_pos = [line[-1, :] for line in lines]
 
         # Converting n_v_in to the same shape, [nb_streamlines, 3]
-        empty_pos = torch.full((3,), fill_value=torch.nan).to(self.device)
-        n_v_in = [torch.Tensor(v).to(self.device) if v is not None else
-                  empty_pos for v in n_v_in]
+        empty_pos = torch.full((3,), fill_value=torch.nan, device=self.device)
+        n_v_in = [v if v is not None else empty_pos for v in n_v_in]
         n_v_in = torch.vstack(n_v_in)
         if len(n_v_in.shape) == 1:
             n_v_in = n_v_in[None, :]
@@ -317,8 +316,8 @@ class DWIMLPropagator(AbstractPropagator):
             next_dirs[mask_angle] = - next_dirs[mask_angle]
 
         mask_angle = angle > self.theta
-        next_dirs[mask_angle] = torch.full((3,), fill_value=torch.nan
-                                           ).to(self.device)
+        next_dirs[mask_angle] = torch.full((3,), fill_value=torch.nan,
+                                           device=self.device)
 
         return next_dirs
 

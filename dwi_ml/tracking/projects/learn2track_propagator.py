@@ -70,7 +70,8 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         # Running model. If we send is_tracking=True, will only compute the
         # previous dirs for the last point. To mimic training, we have to
         # add an additional fake point to the streamline, not used.
-        lines = [torch.cat((line, torch.zeros(1, 3).to(self.device)), dim=0)
+        lines = [torch.cat((line, torch.zeros(1, 3, device=self.device)),
+                           dim=0)
                  for line in lines]
 
         # Also, warning: creating a tensor from a list of np arrays is low.

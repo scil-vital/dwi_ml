@@ -135,7 +135,6 @@ class MultisubjectSubset(Dataset):
 
     def get_volume_verify_cache(self, subj_idx: int, group_idx: int,
                                 device: torch.device = torch.device('cpu'),
-                                non_blocking: bool = False,
                                 as_tensor: bool = True):
         """
         Get a volume from a specific subject. For lazy data, load it (if not
@@ -149,8 +148,6 @@ class MultisubjectSubset(Dataset):
             Index of the volume to load.
         device:
             Torch device. Used when loading as tensor.
-        non_blocking: bool
-            Used when loading as tensor.
         as_tensor: bool
             If true, loads volume as a tensor. Else, as a DatasetVolume.
 
@@ -200,8 +197,7 @@ class MultisubjectSubset(Dataset):
         # Casting as wanted. If was cached: non-lazy. Direct access.
         # If was not cached: depends on self.is_lazy.
         if as_tensor:
-            return mri_data.as_tensor.to(device=device,
-                                         non_blocking=non_blocking)
+            return mri_data.convert_to_tensor(device)
         else:
             return mri_data.as_data_volume
 

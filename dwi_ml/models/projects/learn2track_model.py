@@ -345,8 +345,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         logger.debug("*** 2. Inputs: Embedding = {}"
                      .format(self.input_embedding_key))
+
         # Packing inputs and saving info
-        inputs = pack_sequence(inputs, enforce_sorted=False).to(self.device)
+        inputs = pack_sequence(inputs, enforce_sorted=False)
         batch_sizes = inputs.batch_sizes
         sorted_indices = inputs.sorted_indices
         unsorted_indices = inputs.unsorted_indices
@@ -419,8 +420,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         target_dirs = pack_sequence(target_dirs, enforce_sorted=False).data
 
         # Computing loss
-        return self.direction_getter.compute_loss(
-            model_outputs.to(self.device), target_dirs.to(self.device))
+        return self.direction_getter.compute_loss(model_outputs, target_dirs)
 
     def get_tracking_directions(self, model_outputs, algo):
         """

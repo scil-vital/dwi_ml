@@ -14,17 +14,17 @@ def test_previous_dirs(script_runner):
           "------------------------")
 
     # Short streamline: length 1
-    streamline1 = torch.tensor([[3.2, 31.2, 45.7]], dtype=torch.float32)
+    streamline1 = torch.as_tensor([[3.2, 31.2, 45.7]], dtype=torch.float32)
 
     # Streamline of length 2
-    streamline2 = torch.tensor([[5, 5, 5],
-                                [6, 7, 8]], dtype=torch.float32)
+    streamline2 = torch.as_tensor([[5, 5, 5],
+                                   [6, 7, 8]], dtype=torch.float32)
 
     # Long streamline: length 12
-    sub_streamline = torch.tensor([[1, 1, 1],
-                                   [2, 2, 2],
-                                   [6, 6, 6],
-                                   [4, 4, 4]], dtype=torch.float32)
+    sub_streamline = torch.as_tensor([[1, 1, 1],
+                                      [2, 2, 2],
+                                      [6, 6, 6],
+                                      [4, 4, 4]], dtype=torch.float32)
     streamline3 = torch.cat((sub_streamline, sub_streamline, sub_streamline))
 
     # Testing previous dirs with various lengths of streamlines

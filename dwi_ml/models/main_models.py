@@ -63,7 +63,7 @@ class MainModelAbstract(torch.nn.Module):
         Careful. Calling model.to(a_device) does not influence the self.device.
         Prefer this method for easier management.
         """
-        self.to(device)
+        self.to(device, non_blocking=True)
         self.device = device
 
     @property
@@ -178,6 +178,12 @@ class ModelWithNeighborhood(MainModelAbstract):
         # Reminder. nb neighbors does not include origin.
         self.nb_neighbors = len(self.neighborhood_vectors) if \
             self.neighborhood_vectors is not None else 0
+
+    def move_to(self, device):
+        super().move_to(device)
+        if self.neighborhood_vectors is not None:
+            self.neighborhood_vectors = self.neighborhood_vectors.to(
+                device, non_blocking=True)
 
     @staticmethod
     def add_neighborhood_args_to_parser(p: argparse.PARSER):
@@ -384,7 +390,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
                                                enforce_sorted=False)
 
             n_prev_dirs = n_prev_dirs_packed.data
-            n_prev_dirs.to(self.device)
 
         # Result is a tensor
         n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
@@ -450,7 +455,7 @@ class MainModelOneInput(MainModelAbstract):
         super().__init__(**kw)
 
     def prepare_batch_one_input(self, streamlines, subset, subj,
-                                input_group_idx, device, prepare_mask=False):
+                                input_group_idx, prepare_mask=False):
         """
         These params are passed by either the batch loader or the propagator,
         which manage the data.
@@ -466,7 +471,6 @@ class MainModelOneInput(MainModelAbstract):
             The subject id.
         input_groupd_idx: int
             The volume group.
-        device: Torch device
         prepare_mask: bool
             If true, return a mask of chosen coordinates (DEBUGGING MODE).
 
@@ -484,11 +488,11 @@ class MainModelOneInput(MainModelAbstract):
         # faster.
         flat_subj_x_coords = torch.cat(streamlines, dim=0)
 
-        # Getting the subject's volume and sending to CPU/GPU
+        # Getting the subject's volume (creating it directly on right device)
         # If data is lazy, get volume from cache or send to cache if
         # it wasn't there yet.
         data_tensor = subset.get_volume_verify_cache(
-            subj, input_group_idx, device=device, non_blocking=True)
+            subj, input_group_idx, device=self.device)
 
         # Prepare the volume data
         # Coord_torch contain the coords after interpolation, possibly clipped
@@ -497,10 +501,10 @@ class MainModelOneInput(MainModelAbstract):
             # Adding neighborhood.
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, self.neighborhood_vectors,
-                device)
+                self.device)
         else:
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, None, device)
+                data_tensor, flat_subj_x_coords, None, self.device)
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]
@@ -517,13 +521,13 @@ class MainModelOneInput(MainModelAbstract):
 
             # Clipping used coords (i.e. possibly with neighborhood)
             # outside volume
-            lower = torch.as_tensor([0, 0, 0], device=device)
-            upper = torch.as_tensor(data_tensor.shape[:3], device=device)
+            lower = torch.as_tensor([0, 0, 0], device=self.device)
+            upper = torch.as_tensor(data_tensor.shape[:3], device=self.device)
             upper -= 1
             coords_to_idx_clipped = torch.min(
                 torch.max(torch.floor(coords_torch).long(), lower),
                 upper)
-            input_mask = torch.tensor(np.zeros(data_tensor.shape[0:3]))
+            input_mask = torch.as_tensor(np.zeros(data_tensor.shape[0:3]))
             for s in range(len(coords_torch)):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
@@ -696,4 +700,4 @@ class ModelForTracking(MainModelAbstract):
 
     def move_to(self, device):
         super().move_to(device)
-        self.direction_getter.to(device)
+        self.direction_getter.move_to(device)

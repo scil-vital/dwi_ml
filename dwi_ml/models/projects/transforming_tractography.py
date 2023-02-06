@@ -318,25 +318,20 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         else:
             padded_data = unpadded_data
 
-        return torch.stack(padded_data).to(self.device)
+        return torch.stack(padded_data)
 
-    @staticmethod
-    def _generate_future_mask(sz):
+    def _generate_future_mask(self, sz):
         """DO NOT USE FLOAT, their code had a bug (see issue #92554. Fixed in
-        latest github branch. Waiting for release.)
-
-        Float is deprecated but their method has not been changed yet.
-        Should be boolean. I warned them, not changed yet.
+        latest github branch. Waiting for release.) Using boolean masks.
         """
-        mask = Transformer.generate_square_subsequent_mask(sz)
+        mask = Transformer.generate_square_subsequent_mask(sz, self.device)
         return mask < 0
 
-    @staticmethod
-    def _generate_padding_mask(unpadded_lengths, batch_max_len):
+    def _generate_padding_mask(self, unpadded_lengths, batch_max_len):
         nb_streamlines = len(unpadded_lengths)
 
         mask_padding = torch.full((nb_streamlines, batch_max_len),
-                                  fill_value=False)
+                                  fill_value=False, device=self.device)
         for i in range(nb_streamlines):
             mask_padding[i, unpadded_lengths[i]:] = True
 
@@ -527,7 +522,8 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         targets = self._stack_batch(batch_t, use_padding, batch_max_len - 1)
         targets = self.embedding_layer_t(targets)
         targets = torch.cat((torch.full((len(batch_t), 1, self.d_model),
-                                        fill_value=SOS_TOKEN),
+                                        fill_value=SOS_TOKEN,
+                                        device=self.device),
                              targets), dim=1)
         targets = self.position_encoding_layer(targets)
 
@@ -568,7 +564,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
-            model_outputs.to(self.device), torch.cat(targets).to(self.device))
+            model_outputs, torch.cat(targets))
 
     def get_tracking_directions(self, model_outputs, algo):
         return self.direction_getter.get_tracking_directions(model_outputs,
@@ -797,7 +793,8 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
 
         # Concatenating mask future:
         #  - For the input: self-attention only.
-        all_masked = torch.full((batch_max_len, batch_max_len), True)
+        all_masked = torch.full((batch_max_len, batch_max_len),
+                                fill_value=True, device=self.device)
         mask_future_x_padded = torch.cat((mask_future_x, all_masked), dim=-1)
         #  - For the target: mixed attention.
         mask_future_t_total = torch.cat((mask_future_x, mask_future_t), dim=-1)

@@ -173,7 +173,7 @@ def interpolate_volume_in_neighborhood(
         subj_x_data = flat_subj_x_data.reshape(m_input_points, new_nb_features)
 
     else:  # No neighborhood:
-        subj_x_data = torch_trilinear_interpolation(
-            volume_as_tensor, coords_vox_corner.to(device).float())
+        subj_x_data = torch_trilinear_interpolation(volume_as_tensor,
+                                                    coords_vox_corner)
 
     return subj_x_data, coords_vox_corner

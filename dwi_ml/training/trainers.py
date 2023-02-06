@@ -1070,7 +1070,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 # See here for some explanation
                 # https://stackoverflow.com/questions/48001598/why-do-we-need-
                 # to-call-zero-grad-in-pytorch
-                self.optimizer.zero_grad()
+                self.optimizer.zero_grad(set_to_none=True)
 
             forward_kwargs = self._prepare_other_forward_kwargs(
                 is_training, final_s_ids_per_subj)

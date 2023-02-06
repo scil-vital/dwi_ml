@@ -1052,7 +1052,8 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
             # Sending to GPU
             # Model is already on GPU
-            batch_streamlines = [s.to(self.device, non_blocking=True)
+            batch_streamlines = [s.to(self.device, non_blocking=True,
+                                      dtype=torch.float)
                                  for s in batch_streamlines]
 
             # Getting the inputs points from the volumes. Usually done in

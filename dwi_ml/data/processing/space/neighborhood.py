@@ -165,6 +165,9 @@ def extend_coordinates_with_neighborhood(
         The coordinates of neighbors per respect to the current coordinate
         (translation vectors).
     """
+    device = neighborhood_vectors.device
+    assert coords.device == device
+
     m_coords = coords.shape[0]
     n_neighbors = neighborhood_vectors.shape[0]
 

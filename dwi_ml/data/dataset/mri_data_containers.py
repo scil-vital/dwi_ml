@@ -66,8 +66,7 @@ class MRIDataAbstract(object):
         """Returns the _data in the format of scilpy's DataVolume."""
         raise NotImplementedError
 
-    @property
-    def as_tensor(self) -> Tensor:
+    def as_tensor(self, device) -> Tensor:
         """Returns the _data in the tensor format."""
         raise NotImplementedError
 
@@ -102,10 +101,9 @@ class MRIData(MRIDataAbstract):
         # Data is already a np.array
         return DataVolume(self._data, self.voxres, self.interpolation)
 
-    @property
-    def as_tensor(self):
+    def as_tensor(self, device):
         # Data is already a np.array
-        return torch.as_tensor(self._data, dtype=torch.float)
+        return torch.as_tensor(self._data, dtype=torch.float, device=device)
 
 
 class LazyMRIData(MRIDataAbstract):
@@ -141,11 +139,10 @@ class LazyMRIData(MRIDataAbstract):
         return DataVolume(np.array(self._data, dtype=np.float32),
                           self.voxres, self.interpolation)
 
-    @property
-    def as_tensor(self):
+    def as_tensor(self, device):
         logger.debug("Loading from hdf5 now: {}".format(self._data))
         return torch.as_tensor(np.array(self._data, dtype=np.float32),
-                               dtype=torch.float)
+                               dtype=torch.float, device=device)
 
     @property
     def as_non_lazy(self):

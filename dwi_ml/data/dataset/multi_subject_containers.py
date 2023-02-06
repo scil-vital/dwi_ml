@@ -200,8 +200,7 @@ class MultisubjectSubset(Dataset):
         # Casting as wanted. If was cached: non-lazy. Direct access.
         # If was not cached: depends on self.is_lazy.
         if as_tensor:
-            return mri_data.as_tensor.to(device=device,
-                                         non_blocking=non_blocking)
+            return mri_data.as_tensor(device).to(non_blocking=non_blocking)
         else:
             return mri_data.as_data_volume
 

@@ -5,6 +5,8 @@ import os
 import pytest
 import tempfile
 
+import torch
+
 from dwi_ml.tests.utils.expected_values import (
     TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_STREAMLINE_GROUPS,
     TEST_EXPECTED_SUBJ_NAMES)
@@ -64,20 +66,21 @@ def test_execution(script_runner, experiments_path):
     assert ret.success
 
     # Test training GPU
-    logging.info("************ TESTING TRAINING GPU ************")
-    ret = script_runner.run('tto_train_model.py',
-                            experiments_path, 'tto_test', hdf5_file,
-                            input_group_name, streamline_group_name,
-                            '--max_epochs', '1', '--batch_size_training', '5',
-                            '--batch_size_units', 'nb_streamlines',
-                            '--max_batches_per_epoch_training', '2',
-                            '--max_batches_per_epoch_validation', '1',
-                            '--nheads', '2', '--max_len', str(MAX_LEN),
-                            '--d_model', '6', '--n_layers_e', '1',
-                            '--n_layers_d', '1', '--ffnn_hidden_size', '3',
-                            '--dropout_rate', '0', '--logging', 'INFO',
-                            '--use_gpu')
-    assert ret.success
+    if torch.cuda.is_available():
+        logging.info("************ TESTING TRAINING GPU ************")
+        ret = script_runner.run('tto_train_model.py',
+                                experiments_path, 'tto_test', hdf5_file,
+                                input_group_name, streamline_group_name,
+                                '--max_epochs', '1', '--batch_size_training', '5',
+                                '--batch_size_units', 'nb_streamlines',
+                                '--max_batches_per_epoch_training', '2',
+                                '--max_batches_per_epoch_validation', '1',
+                                '--nheads', '2', '--max_len', str(MAX_LEN),
+                                '--d_model', '6', '--n_layers_e', '1',
+                                '--n_layers_d', '1', '--ffnn_hidden_size', '3',
+                                '--dropout_rate', '0', '--logging', 'INFO',
+                                '--use_gpu')
+        assert ret.success
 
     logging.info("************ TESTING TRACKING FROM MODEL ************")
     whole_experiment_path = os.path.join(experiments_path, experiment_name)

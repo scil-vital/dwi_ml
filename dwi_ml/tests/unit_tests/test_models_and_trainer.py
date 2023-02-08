@@ -31,7 +31,7 @@ def test_trainer_and_models(experiments_path):
     dataset.load_data()
 
     # Initializing model 1 + associated batch sampler.
-    logging.info("\n\n---------------TESTING MODEL # 1 -------------")
+    logging.info("\n\n---------------TESTING TEST MODEL # 1 -------------")
     model = ModelForTest()
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
@@ -41,7 +41,7 @@ def test_trainer_and_models(experiments_path):
     trainer.train_and_validate()
 
     # Initializing model 2
-    logging.info("\n\n---------------TESTING MODEL # 2 -------------")
+    logging.info("\n\n---------------TESTING TEST MODEL # 2 -------------")
     model2 = TrackingModelForTestWithPD()
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 

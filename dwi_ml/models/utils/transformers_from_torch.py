@@ -154,15 +154,16 @@ class ModifiedTransformerEncoderLayer(TransformerEncoderLayer):
         x = src
         if self.norm_first:
             # Norm, SA, Add, Norm, FF, Add
-            sa, sa_weights = self._sa_block(self.norm1(x), src_mask,
-                                            src_key_padding_mask,
-                                            return_weights)
+            sa, sa_weights = self._sa_block(
+                self.norm1(x), src_mask, src_key_padding_mask,
+                return_weights=return_weights, average_heads=average_heads)
             x = x + sa
             x = x + self._ff_block(self.norm2(x))
         else:
             # SA, Add, Norm, FF, Add, Norm
-            sa, sa_weights = self._sa_block(x, src_mask, src_key_padding_mask,
-                                            return_weights)
+            sa, sa_weights = self._sa_block(
+                x, src_mask, src_key_padding_mask,
+                return_weights=return_weights, average_heads=average_heads)
             x = self.norm1(x + sa)
             x = self.norm2(x + self._ff_block(x))
 
@@ -173,10 +174,10 @@ class ModifiedTransformerEncoderLayer(TransformerEncoderLayer):
                   attn_mask: Optional[Tensor],
                   key_padding_mask: Optional[Tensor],
                   return_weights=False, average_heads=False):
-        output = self.self_attn(x, x, x,
-                                attn_mask=attn_mask,
-                                key_padding_mask=key_padding_mask,
-                                need_weights=return_weights)
+        output = self.self_attn(
+            x, x, x,
+            attn_mask=attn_mask, key_padding_mask=key_padding_mask,
+            need_weights=return_weights, average_attn_weights=average_heads)
         x, weights = output  # if return_weights is False, weights is None
 
         return self.dropout1(x), weights
@@ -209,25 +210,26 @@ class ModifiedTransformerDecoderLayer(TransformerDecoderLayer):
         x = tgt
         if self.norm_first:
             # Norm, SA, Add, Norm, MHA, Add, Norm, FF, Add
-            sa, sa_weights = self._sa_block(self.norm1(x), tgt_mask,
-                                            tgt_key_padding_mask,
-                                            return_weights=return_weights)
+            sa, sa_weights = self._sa_block(
+                self.norm1(x), tgt_mask, tgt_key_padding_mask,
+                return_weights=return_weights, average_heads=average_heads)
             x = x + sa
-            mha, mha_weights = self._mha_block(self.norm2(x), memory,
-                                               memory_mask,
-                                               memory_key_padding_mask,
-                                               return_weights=return_weights)
+
+            mha, mha_weights = self._mha_block(
+                self.norm2(x), memory, memory_mask, memory_key_padding_mask,
+                return_weights=return_weights, average_heads=average_heads)
             x = x + mha
             x = x + self._ff_block(self.norm3(x))
         else:
             # SA, Add, Norm, MHA, Add, Norm, FF, Add, Norm.
-            sa, sa_weights = self._sa_block(x, tgt_mask, tgt_key_padding_mask,
-                                            return_weights=return_weights)
+            sa, sa_weights = self._sa_block(
+                x, tgt_mask, tgt_key_padding_mask,
+                return_weights=return_weights, average_heads=average_heads)
             x = self.norm1(x + sa)
 
-            mha, mha_weights = self._mha_block(x, memory, memory_mask,
-                                               memory_key_padding_mask,
-                                               return_weights=return_weights)
+            mha, mha_weights = self._mha_block(
+                x, memory, memory_mask, memory_key_padding_mask,
+                return_weights=return_weights, average_heads=average_heads)
             x = self.norm2(x + mha)
             x = self.norm3(x + self._ff_block(x))
 
@@ -241,11 +243,10 @@ class ModifiedTransformerDecoderLayer(TransformerDecoderLayer):
         """
         Copy-pasted from torch. Now returns weights.
         """
-        output = self.self_attn(x, x, x,
-                                attn_mask=attn_mask,
-                                key_padding_mask=key_padding_mask,
-                                need_weights=return_weights,
-                                average_attn_weights=average_heads)
+        output = self.self_attn(
+            x, x, x,
+            attn_mask=attn_mask, key_padding_mask=key_padding_mask,
+            need_weights=return_weights, average_attn_weights=average_heads)
 
         x, weights = output  # If not return_weights, weights is None.
 
@@ -259,11 +260,10 @@ class ModifiedTransformerDecoderLayer(TransformerDecoderLayer):
         """
         Copy-pasted from torch. Can now use need_weight = True.
         """
-        output = self.multihead_attn(x, mem, mem,
-                                     attn_mask=attn_mask,
-                                     key_padding_mask=key_padding_mask,
-                                     need_weights=return_weights,
-                                     average_attn_weights=average_heads)
+        output = self.multihead_attn(
+            x, mem, mem,
+            attn_mask=attn_mask, key_padding_mask=key_padding_mask,
+            need_weights=return_weights, average_attn_weights=average_heads)
 
         if return_weights:
             x, weights = output

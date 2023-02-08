@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from dipy.io.streamline import save_tractogram
 from scilpy.io.streamlines import load_tractogram_with_reference
-from scilpy.io.utils import add_reference_arg, add_overwrite_arg
+from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 
 from dwi_ml.experiment_utils.prints import add_logging_arg
 from dwi_ml.tracking.utils import prepare_dataset_one_subj
@@ -59,6 +59,7 @@ def build_argparser_visu_error(skip_exp=False):
                         "'training' or 'validation'.")
     add_resample_or_compress_arg(p)
     add_reference_arg(p)
+    add_bbox_arg(p)
     add_overwrite_arg(p)
     add_logging_arg(p)
 
@@ -71,8 +72,7 @@ def prepare_batch_visu_error(p, args, model, check_data_loader=True):
     Loads the batch streamlines from a SFT rather than from the hdf5.
     """
     # Load SFT, possibly pick one streamline
-    sft = load_tractogram_with_reference(p, args, args.input_sft,
-                                         bbox_check=True)
+    sft = load_tractogram_with_reference(p, args, args.input_sft)
 
     if len(sft) > 1 and args.pick_one:
         streamline_ids = np.random.randint(0, len(sft), size=1)

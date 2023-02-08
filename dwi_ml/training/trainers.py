@@ -501,6 +501,16 @@ class DWIMLAbstractTrainer:
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
+            self._save_log_locally(self.train_loss_monitor.average_per_epoch,
+                                   "training_loss_per_epoch.npy")
+            self._save_log_locally(self.valid_loss_monitor.average_per_epoch,
+                                   "validation_loss_per_epoch.npy")
+            self._save_log_locally(self.grad_norm_monitor.average_per_epoch,
+                                   "gradient_norm.npy")
+            self._save_log_locally(self.training_time_monitor.epoch_durations,
+                                   "training_epochs_duration")
+            self._save_log_locally(self.validation_time_monitor.epoch_durations,
+                                   "validation_epochs_duration")
 
             # Check for early stopping
             if self.best_epoch_monitoring.is_patience_reached:
@@ -511,17 +521,6 @@ class DWIMLAbstractTrainer:
                             self.best_epoch_monitoring.best_value,
                             self.best_epoch_monitoring.best_epoch))
                 break
-
-        self._save_log_from_array(self.train_loss_monitor.average_per_epoch,
-                                  "training_loss_per_epoch.npy")
-        self._save_log_from_array(self.valid_loss_monitor.average_per_epoch,
-                                  "validation_loss_per_epoch.npy")
-        self._save_log_from_array(self.grad_norm_monitor.average_per_epoch,
-                                  "gradient_norm.npy")
-        self._save_log_from_array(self.training_time_monitor.epoch_durations,
-                                  "training_epochs_duration")
-        self._save_log_from_array(self.validation_time_monitor.epoch_durations,
-                                  "validation_epochs_duration")
 
     def train_one_epoch(self, epoch):
         """
@@ -943,7 +942,7 @@ class DWIMLAbstractTrainer:
 
         return checkpoint_info
 
-    def _save_log_from_array(self, array: np.ndarray, fname: str):
+    def _save_log_locally(self, array: np.ndarray, fname: str):
         log_dir = os.path.join(self.saving_path, "logs")
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)

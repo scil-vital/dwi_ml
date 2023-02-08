@@ -9,7 +9,7 @@ from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 
 def add_args_batch_sampler(p: argparse.ArgumentParser):
     # BATCH SIZE
-    g_batch_size = p.add_argument_group("Batch sampler: batch size")
+    g_batch_size = p.add_argument_group("Batch sampler")
 
     g_batch_size.add_argument(
         '--batch_size_training', type=int, default=100, metavar='s',

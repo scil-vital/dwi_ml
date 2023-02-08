@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from typing import Tuple
+
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.projects.positional_encoding import (
     keys_to_positional_encodings)
@@ -9,6 +11,28 @@ from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 
 def add_abstract_model_args(p):
     """ Optional parameters for TransformingTractography"""
+    gt = p.add_argument_group(
+        "Streamline processing to use as input.\n"
+        "The target is shifted with an additional Start Of Sequence (SOS) "
+        "token in the first position. \nConsidering that we do not work with "
+        "a dictionary of token, this is not straightforward. Choose one.")
+    gtt = gt.add_mutually_exclusive_group(required=True)
+    gtt.add_argument(
+        '--SOS_as_label', action='store_true',
+        help="Add an initial [0,0,0,1] direction at the first point.\n"
+             "Other points become [x, y, z, 0].")
+    gtt.add_argument(
+        '--SOS_as_zero_embedding', action='store_true',
+        help="Add a [0,0,...,0] value after the embedding layer on the "
+             "targets.")
+    gtt.add_argument(
+        '--SOS_as_class', metavar='sphere',
+        help="Convert all input directions to classes on the sphere. \nAn "
+             "additional class is added as SOS. \nPlease specify the type of "
+             "dipy sphere amongst \n"
+             "'symmetric362', 'symmetric642', 'symmetric724', 'repulsion724',"
+             "'repulsion100', 'repulsion200'.")
+
     gx = p.add_argument_group("Embedding:")
     gx.add_argument(
         '--data_embedding', default='nn_embedding',

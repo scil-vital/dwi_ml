@@ -77,6 +77,9 @@ def init_from_args(args, sub_loggers_level):
             max_len=args.max_len,
             positional_encoding_key=args.position_encoding,
             embedding_key_x=args.data_embedding,
+            # Concerning targets:
+            sos_as_label=args.SOS_as_label, sos_as_class=args.SOS_as_class,
+            sos_as_zero_embedding=args.SOS_as_zero_embedding,
             embedding_key_t=args.target_embedding,
             # Torch's transformer parameters
             d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,

@@ -4,11 +4,13 @@ from typing import Union, List, Tuple
 
 import numpy as np
 import torch
+from dipy.data import get_sphere
 from torch.nn import Dropout, Transformer
-from torch.nn.functional import pad
+from torch.nn.functional import pad, one_hot
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions
+from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
@@ -39,11 +41,41 @@ logger = logging.getLogger('model_logger')  # Same logger as Super.
 # Here prepared code with dim (nb streamlines, max_len, d_model), which
 # corresponds to True.
 BATCH_FIRST = True
-SOS_TOKEN = 0.0
 
 
 def forward_padding(data: torch.tensor, expected_length):
     return pad(data, (0, 0, 0, expected_length - len(data)))
+
+
+def pad_and_stack_batch(unpadded_data, pad_first: bool, pad_length: int):
+    """
+    Pad the list of tensors so that all streamlines have length max_len.
+    Then concatenate all streamlines.
+
+    Params
+    ------
+    unpadded_data: list[Tensor]
+        Len: nb streamlines. Shape of each tensor: nb points x nb features.
+    pad_first: bool
+        If false, padding is skipped. (Ex: If all streamlines already
+        contain the right number of points.)
+    pad_length: int
+        Expected final lengths of streamlines.
+
+    Returns
+    -------
+    formatted_x: Tensor
+        Shape [nb_streamlines, max_len, nb_features] where nb features is
+        the size of the batch input at this point (ex, initial number of
+        features or d_model if embedding is already done).
+    """
+    if pad_first:
+        padded_data = [forward_padding(unpadded_data[i], pad_length)
+                       for i in range(len(unpadded_data))]
+    else:
+        padded_data = unpadded_data
+
+    return torch.stack(padded_data)
 
 
 class AbstractTransformerModel(ModelWithPreviousDirections,
@@ -63,13 +95,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
     https://kazemnejad.com/blog/transformer_architecture_positional_encoding/
     the embedding probably adapts to leave place for the positional encoding.
     """
-    # mask_sos: bool
-    #       The input to the decoder is the shifted target sequence with an
-    #       additional Start Of Sequence (SOS) token in the first position.
-    #       Considering as we do not work with a dictionary of token, this is
-    #       not straightforward here. We use (0,0,..., 0) as SOS value. We can
-    #       hope that the model will learn its signification, or hide it in the
-    #       attention.
     # Option mask_sos does not work yet. Creates some nan in the attention.
     # We can solve the forward propagation with nantonum (setting to 0)
     # but the backward propagation fails.
@@ -84,7 +109,10 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
                  normalize_prev_dirs: bool,
                  # INPUTS
                  max_len: int, positional_encoding_key: str,
-                 embedding_key_x: str, embedding_key_t: str,
+                 embedding_key_x: str,
+                 # TARGETS (as input)
+                 sos_as_label: bool, sos_as_zero_embedding: bool,
+                 sos_as_class: Union[str, None], embedding_key_t: str,
                  # TRANSFORMER
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
@@ -97,27 +125,10 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
                  neighborhood_radius: Union[int, float, List[float], None],
                  log_level=logging.root.level):
         """
-        Args
+        Args (see also args description in super)
         ----
-        experiment_name: str
-            Name of the experiment.
-        nb_features: int
-            This value should be known from the actual data. Number of features
-            in the data (last dimension).
-        nb_previous_dirs: int
-            Number of previous direction to concatenate to each input.
-            Default: 0.
-        prev_dirs_embedding_size: int
-            Dimension of the final vector representing the previous directions
-            (no matter the number of previous directions used).
-            Default: nb_previous_dirs * 3.
-        prev_dirs_embedding_key: str,
-            Key to an embedding class (one of
-            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
-            Default: None (no previous directions added).
-        normalize_prev_dirs: bool
-            If true, direction vectors are normalized (norm=1) when computing
-            the previous direction.
+        max_len: int
+            Maximum sequence length (streamlines will be padded).
         positional_encoding_key: str,
             Chosen class for the input's positional embedding. Choices:
             keys_to_positional_embeddings.keys(). Default: 'sinusoidal'.
@@ -125,6 +136,15 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             Chosen class for the input embedding (the data embedding part).
             Choices: keys_to_embeddings.keys().
             Default: 'no_embedding'.
+        sos_as_label: bool
+            Add an initial [0,0,0,1] direction at the first point. Other points
+            become [x, y, z, 0].
+        sos_as_zero_embedding: bool
+            Add a [0,0,...,0] value after the embedding layer on the targets.
+        sos_as_class: bool
+            Convert all input directions to classes on the sphere. An
+            additional class is added as SOS. Please specify the number of
+            directions.
         embedding_key_t: str,
             Target embedding, with the same choices as above.
             Default: 'no_embedding'.
@@ -153,32 +173,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             Torch default + in original paper: False. In the tensor2tensor code
             they suggest that learning is more robust when preprocessing each
             layer with the norm.
-        dg_key: str
-            Key to the chosen direction getter class. Choices:
-            keys_to_direction_getters.keys(). Default: 'cosine-regression'.
-        dg_args: dict
-            Arguments necessary for the instantiation of the chosen direction
-            getter.
-        normalize_targets: bool
-            If true, target streamline's directions vectors are normalized
-            (norm=1). If the step size is fixed, it shouldn't make any
-            difference. If streamlines are compressed, in theory you should
-            normalize, but you could hope that not normalizing could give back
-            to the algorithm a sense of distance between points.
-            If true and the dg_key is a regression model, then, output
-            directions are also normalized too. Default: True.
-        normalize_outputs: bool
-            If true, REGRESSED outputs are normalized.
-        neighborhood_type: str
-            The type of neighborhood to add. One of 'axes', 'grid' or None. If
-            None, don't add any. See
-            dwi_ml.data.processing.space.Neighborhood for more information.
-        neighborhood_radius : Union[int, float, Iterable[float]]
-            Add neighborhood points at the given distance (in voxels) in each
-            direction (nb_neighborhood_axes). (Can be none)
-                - For a grid neighborhood: type must be int.
-                - For an axes neighborhood: type must be float. If it is an
-                iterable of floats, we will use a multi-radius neighborhood.
         """
         super().__init__(
             # MainAbstract
@@ -208,8 +202,15 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size \
             else d_model // 2
         self.norm_first = norm_first
+        self.sos_as_label = sos_as_label
+        self.sos_as_zero_embedding = sos_as_zero_embedding
+        self.sos_as_class = sos_as_class
 
         # ----------- Checks
+        assert (sos_as_label + sos_as_zero_embedding +
+                (sos_as_class is not None) == 1), \
+            "You must choose exactly one of sos_as_label, " \
+            "sos_as_zero_embedding and sos_as_class"
         if self.embedding_key_x not in keys_to_embeddings.keys():
             raise ValueError("Embedding choice for x data not understood: {}"
                              .format(self.embedding_key_x))
@@ -232,6 +233,16 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         self.input_size = nb_features * (self.nb_neighbors + 1)
 
         # ----------- Instantiations
+        if self.sos_as_class is not None:
+            # Prepare sphere
+            cpu_sphere = get_sphere(self.sos_as_class)
+            self.sphere = TorchSphere(cpu_sphere)
+            # Nb class: + 1 for the SOS
+            self.nb_dirs = self.sphere.vertices.shape[0]
+        else:
+            self.sphere = None
+            self.nb_dirs = None
+
         # 1. Previous dirs embedding: prepared by super.
 
         # 2. x embedding
@@ -253,7 +264,13 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
         # 4. target embedding
         cls_t = keys_to_embeddings[self.embedding_key_t]
-        self.embedding_layer_t = cls_t(3, d_model)
+        if sos_as_label:
+            nb_features = 4
+        elif sos_as_class:
+            nb_features = self.nb_dirs + 1
+        else:
+            nb_features = 3
+        self.embedding_layer_t = cls_t(nb_features, d_model)
 
         # 5. Transformer: See child classes
 
@@ -264,6 +281,11 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # on a kaiming uniform, same as uniform(-sqrt(k), sqrt(k)) where k is
         # the nb of features.
         self.instantiate_direction_getter(d_model)
+
+    def move_to(self, device):
+        super().move_to(device)
+        if self.sphere is not None:
+            self.sphere.move_to(device)
 
     @property
     def params_for_json_prints(self):
@@ -290,38 +312,11 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             'd_model': self.d_model,
             'ffnn_hidden_size': self.ffnn_hidden_size,
             'norm_first': self.norm_first,
+            'sos_as_label': self.sos_as_label,
+            'sos_as_class': self.sos_as_class,
+            'sos_as_zero_embedding': self.sos_as_zero_embedding
         })
         return p
-
-    def _stack_batch(self, unpadded_data, pad_first: bool, pad_length: int):
-        """
-        Pad the batch inputs and targets so that all streamlines have lenth
-        max_len. Then concatenate all streamlines.
-
-        Params
-        ------
-        batch_x: list[Tensor]
-            Len: nb streamlines. Shape of each tensor: nb points x nb features.
-        pad_first: bool
-            If false, padding is skipped. (Ex: If all streamlines already
-            contain the right number of points.
-        pad_length: int
-            Expected final lengths of streamlines.
-
-        Returns
-        -------
-        formatted_x: Tensor
-            Shape [nb_streamlines, max_len, nb_features] where nb features is
-            the size of the batch input at this point (ex, initial number of
-            features or d_model if embedding is already done).
-        """
-        if pad_first:
-            padded_data = [forward_padding(unpadded_data[i], pad_length)
-                           for i in range(len(unpadded_data))]
-        else:
-            padded_data = unpadded_data
-
-        return torch.stack(padded_data)
 
     def _generate_future_mask(self, sz):
         """DO NOT USE FLOAT, their code had a bug (see issue #92554. Fixed in
@@ -389,6 +384,51 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
         return mask_future_x, mask_future_t, mask_padding
 
+    def add_sos_as_class(self, targets):
+        """
+        Uses the points on the sphere as classes + an additional class for the
+        SOS
+        """
+        # Find class index
+        # n classes ranging from 0 to n-1.
+        # We need to get a tensor of shape (0, nb_points) for each streamline.
+        targets = [self.sphere.find_closest(s) for s in targets]
+
+        # Add class #n = SOS at first position
+        # (we now have n+1 classes = SOS)
+        # Next step, one_hot, requires longTensor, i.e. int64.
+        sos_class = torch.as_tensor(self.nb_dirs, device=self.device)
+        targets = [torch.hstack((sos_class, s)).to(dtype=torch.int64)
+                   for s in targets]
+
+        # Convert to one-hot vector
+        nb_classes = self.nb_dirs + 1
+        return [one_hot(s, num_classes=nb_classes).to(dtype=torch.float)
+                for s in targets]
+
+    def add_sos_as_label(self, targets):
+        batch_size, padded_len, _ = targets.shape
+
+        # Add fourth dimension
+        labels = torch.zeros(batch_size, padded_len, 1,
+                             device=self.device)
+
+        targets = torch.cat((targets, labels), dim=2)
+
+        # Add sos at first position
+        sos = torch.as_tensor([[0., 0., 0., 1.]], device=self.device)
+        sos = sos.repeat(batch_size, 1)[:, None, :]
+
+        return torch.cat((sos, targets), dim=1)
+
+    def add_sos_as_zeros(self, targets):
+        batch_size = targets.shape[0]
+
+        # Add sos at first position
+        sos = torch.zeros(batch_size, 1, self.d_model,
+                          device=self.device)
+        return torch.cat((sos, targets), dim=1)
+
     def forward(self, batch_x: List[torch.tensor],
                 batch_streamlines: List[torch.tensor],
                 is_tracking=False, return_weights=False,
@@ -430,11 +470,11 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         """
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
-        unpadded_lengths = np.asarray([len(i) for i in batch_x])
+        unpadded_x_len = np.asarray([len(i) for i in batch_x])
         nb_streamlines = len(batch_streamlines)
 
         # ----------- Checks
-        if np.any(unpadded_lengths > self.max_len):
+        if np.any(unpadded_x_len > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
         if is_tracking:
@@ -444,20 +484,13 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
                     "same number of points as the input, but we received {} " \
                     "input points and {} streamline points for streamline " \
                     "#{}".format(len(batch_x[i]), len(batch_streamlines[i]), i)
-        else:
-            for i in range(nb_streamlines):
-                assert len(batch_streamlines[i]) == len(batch_x[i]) + 1, \
-                    "We expect the streamlines to have one more point " \
-                    "than the inputs. Directions will be used. No need " \
-                    "to compute the last input. (During training)."
 
         # ----------- Ok. Prepare masks and parameters
 
         # (Skip padding if all streamlines have the same length)
-        use_padding = not np.all(unpadded_lengths == unpadded_lengths[0])
-        batch_max_len = np.max(unpadded_lengths)
-        masks = self._prepare_masks(
-            unpadded_lengths, use_padding, batch_max_len)
+        use_padding = not np.all(unpadded_x_len == unpadded_x_len[0])
+        batch_max_x_len = np.max(unpadded_x_len)
+        masks = self._prepare_masks(unpadded_x_len, use_padding, batch_max_x_len)
 
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
@@ -470,7 +503,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Run embedding on padded data. Necessary to make the model
         # adapt for the positional encoding.
         embed_x, embed_t = self.run_embedding(batch_x, batch_t, use_padding,
-                                              batch_max_len)
+                                              batch_max_x_len, is_tracking)
         embed_x, embed_t = self.dropout(embed_x), self.dropout(embed_t)
 
         # 2. Main transformer
@@ -483,14 +516,14 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             # No need to actually unpad, we only take the last (unpadded)
             # point, newly created.
             # (len = len(x) so that's the new point. -1 for python indexing)
-            outputs = [outputs[i, unpadded_lengths[i] - 1, :]
+            outputs = [outputs[i, unpadded_x_len[i] - 1, :]
                        for i in range(nb_streamlines)]
             outputs = torch.vstack(outputs)
         else:
             if use_padding:
                 # outputs size = [nb streamlines, max_len, d_model].
                 # We take all (unpadded) points.
-                outputs = [outputs[i, 0:unpadded_lengths[i], :]
+                outputs = [outputs[i, 0:unpadded_x_len[i], :]
                            for i in range(nb_streamlines)]
             outputs = torch.cat(outputs, dim=0)
 
@@ -506,31 +539,50 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             return outputs, weights
         return outputs
 
-    def run_embedding(self, batch_x, batch_t, use_padding, batch_max_len):
+    def run_embedding(self, inputs, targets, use_padding,
+                      pad_len_x, is_tracking):
         """
         Pad + concatenate.
         Embedding. (Add SOS token to target.)
         Positional encoding.
         """
-        # Inputs
-        inputs = self._stack_batch(batch_x, use_padding, batch_max_len)
+        if not is_tracking:
+            # Ignoring the last target as input to the decoder.
+            # Then, it has one less point than input, same as during tracking.
+            targets = [s[:-1, :] for s in targets]
+
+        # -- Inputs --
+        inputs = pad_and_stack_batch(inputs, use_padding, pad_len_x)
+        # Embedding
         inputs = self.embedding_layer_x(inputs)
+        # Add previous dirs
         if self.nb_previous_dirs > 0:
             n_prev_dirs = self.normalize_and_embed_previous_dirs(
-                batch_t, unpack_results=True)
-            n_prev_dirs = \
-                self._stack_batch(n_prev_dirs, use_padding, batch_max_len)
-            # Total input must still be of size d_model.
+                targets, unpack_results=True)
+            n_prev_dirs = pad_and_stack_batch(n_prev_dirs, use_padding,
+                                              pad_len_x)
             inputs = torch.cat((inputs, n_prev_dirs), dim=-1)
+        # Position encoding
         inputs = self.position_encoding_layer(inputs)
 
-        # Targets
-        targets = self._stack_batch(batch_t, use_padding, batch_max_len - 1)
+        # -- Targets --
+        # One less target than input. We will eventually add SOS.
+        pad_len_y = pad_len_x - 1
+        if self.sos_as_class is not None:
+            # Choice 1 for management of SOS
+            targets = self.add_sos_as_class(targets)
+            pad_len_y += 1
+        # Stacking
+        targets = pad_and_stack_batch(targets, use_padding, pad_len_y)
+        if self.sos_as_label:
+            # Choice 2 for management of SOS
+            targets = self.add_sos_as_label(targets)
+        # Embedding
         targets = self.embedding_layer_t(targets)
-        targets = torch.cat((torch.full((len(batch_t), 1, self.d_model),
-                                        fill_value=SOS_TOKEN,
-                                        device=self.device),
-                             targets), dim=1)
+        if self.sos_as_zero_embedding:
+            # Choice 3 for management of SOS
+            targets = self.add_sos_as_zeros(targets)
+        # Position encoding
         targets = self.position_encoding_layer(targets)
 
         return inputs, targets
@@ -615,7 +667,10 @@ class OriginalTransformerModel(AbstractTransformerModel):
                  normalize_prev_dirs: bool,
                  # INPUTS
                  max_len: int, positional_encoding_key: str,
-                 embedding_key_x: str, embedding_key_t: str,
+                 embedding_key_x: str,
+                 # TARGETS
+                 sos_as_label: bool, sos_as_zero_embedding: bool,
+                 sos_as_class: Union[str, None], embedding_key_t: str,
                  # TRANSFORMER
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
@@ -639,6 +694,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
                          prev_dirs_embedding_size, prev_dirs_embedding_key,
                          normalize_prev_dirs,
                          max_len, positional_encoding_key, embedding_key_x,
+                         sos_as_label, sos_as_zero_embedding, sos_as_class,
                          embedding_key_t, d_model, ffnn_hidden_size, nheads,
                          dropout_rate, activation, norm_first,
                          dg_key, dg_args, normalize_targets, normalize_outputs,
@@ -740,7 +796,10 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                  normalize_prev_dirs: bool,
                  # INPUTS
                  max_len: int, positional_encoding_key: str,
-                 embedding_key_x: str, embedding_key_t: str,
+                 embedding_key_x: str,
+                 # TARGETS
+                 sos_as_label: bool, sos_as_zero_embedding: bool,
+                 sos_as_class: Union[str, None], embedding_key_t: str,
                  # TRANSFORMER
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
@@ -762,6 +821,7 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                          prev_dirs_embedding_size, prev_dirs_embedding_key,
                          normalize_prev_dirs,
                          max_len, positional_encoding_key, embedding_key_x,
+                         sos_as_label, sos_as_zero_embedding, sos_as_class,
                          embedding_key_t, d_model, ffnn_hidden_size, nheads,
                          dropout_rate, activation, norm_first,
                          dg_key, dg_args, normalize_targets, normalize_outputs,

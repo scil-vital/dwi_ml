@@ -54,8 +54,7 @@ class DWIMLAbstractTrainer:
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
                  learning_rate: float = 0.001, weight_decay: float = 0.01,
-                 use_radam: bool = False, betas: List[float] = None,
-                 max_epochs: int = 10,
+                 use_radam: bool = False, max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None, nb_cpu_processes: int = 0,
@@ -88,9 +87,6 @@ class DWIMLAbstractTrainer:
             (torch's default).
         use_radam: bool
             If true, use RAdam optimizer. Else, use Adam.
-        betas: List[float]
-            With RAdam optimizer, beta values. Default: None (use torch's
-            default; (0.9, 0.999).
         max_epochs: int
             Maximum number of epochs. Default = 10, for no good reason.
         max_batches_per_epoch_training: int
@@ -168,14 +164,7 @@ class DWIMLAbstractTrainer:
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.betas = betas
         self.use_radam = use_radam
-        if self.betas is not None and self.use_radam:
-            logger.warning("Beta values were given, but use_radam option was "
-                           "not chosen. This value is discarded.")
-            self.betas = None
-        if self.betas is None and self.use_radam:
-            self.betas = (0.9, 0.99)
         self.nb_cpu_processes = nb_cpu_processes
         self.use_gpu = use_gpu
 
@@ -290,7 +279,6 @@ class DWIMLAbstractTrainer:
         if self.use_radam:
             self.optimizer = torch.optim.RAdam(self.model.parameters(),
                                                lr=learning_rate,
-                                               betas=self.betas,
                                                weight_decay=weight_decay)
         else:
             self.optimizer = torch.optim.Adam(self.model.parameters(),
@@ -310,6 +298,7 @@ class DWIMLAbstractTrainer:
             'use_gpu': self.use_gpu,
             'comet_workspace': self.comet_workspace,
             'comet_project': self.comet_project,
+            'use_radam': self.use_radam,
         }
         return params
 

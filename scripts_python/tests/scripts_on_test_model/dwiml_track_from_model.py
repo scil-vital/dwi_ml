@@ -60,7 +60,7 @@ def build_argparser():
     # If you need the sphere for your model:
     add_sphere_arg(track_g, symmetric_only=False)
 
-    add_dataset_args(p)
+    add_dataset_args(p, with_volumes=True)
 
     # As in scilpy:
     add_seeding_options(p)

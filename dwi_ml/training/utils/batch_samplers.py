@@ -7,7 +7,8 @@ from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 
 
-def add_args_batch_sampler(p: argparse.ArgumentParser):
+def add_args_batch_sampler(p: argparse.ArgumentParser,
+                           with_volumes: bool = False):
     # BATCH SIZE
     g_batch_size = p.add_argument_group("Batch sampler: batch size")
 
@@ -38,10 +39,12 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
              "in memory, particularly for lazy data. If not set, we will "
              "use \ntrue random sampling. Suggestion, 5. \n"
              "**Note: Will influence the cache if the cache_manager is used.")
-    g_batch_size.add_argument(
-        '--cycles', type=int, metavar='c',
-        help="Relevant only if nb_subject_per_batch is set. Number of cycles\n"
-             "before changing to new subjects (and thus loading new volumes).")
+    if with_volumes:
+        g_batch_size.add_argument(
+            '--cycles', type=int, metavar='c',
+            help="Relevant only if nb_subject_per_batch is set. Number of "
+                 "cycles\n before changing to new subjects (and thus loading "
+                 "new volumes).")
 
 
 def prepare_batch_sampler(dataset, args, sub_loggers_level):

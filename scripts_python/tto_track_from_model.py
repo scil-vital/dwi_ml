@@ -51,7 +51,7 @@ def build_argparser():
     # Sphere used if the direction_getter key is the sphere-classification.
     add_sphere_arg(track_g, symmetric_only=False)
 
-    add_dataset_args(p)
+    add_dataset_args(p, with_volumes=True)
 
     # As in scilpy:
     add_seeding_options(p)

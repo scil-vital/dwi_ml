@@ -9,7 +9,7 @@ from scipy.special import logsumexp, softmax
 import torch
 from torch.nn.utils.rnn import PackedSequence
 
-from dwi_ml.models.direction_getter_models import (
+from dwi_ml.models.direction_getter_layers import (
     CosineRegressionDirectionGetter, FisherVonMisesDirectionGetter,
     GaussianMixtureDirectionGetter, L2RegressionDirectionGetter,
     SingleGaussianDirectionGetter, SphereClassificationDirectionGetter)

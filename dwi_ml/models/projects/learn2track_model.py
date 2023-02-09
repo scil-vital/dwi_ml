@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     normalize_directions, compute_directions
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
+from dwi_ml.models.embedding_layers import keys_to_embeddings as \
     keys_to_tensor_embeddings
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelForTracking, ModelWithNeighborhood,

@@ -20,9 +20,9 @@ from dwi_ml.data.processing.space.neighborhood import \
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, normalize_directions
 from dwi_ml.experiment_utils.prints import format_dict_to_str
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
+from dwi_ml.models.direction_getter_layers import keys_to_direction_getters, \
     AbstractDirectionGetterModel
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
+from dwi_ml.models.embedding_layers import keys_to_embeddings
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
 logger = logging.getLogger('model_logger')

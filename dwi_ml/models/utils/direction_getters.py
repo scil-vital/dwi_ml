@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters
+from dwi_ml.models.direction_getter_layers import keys_to_direction_getters
 
 
 def add_direction_getter_args(p):

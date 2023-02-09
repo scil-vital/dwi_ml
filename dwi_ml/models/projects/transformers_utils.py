@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
+from dwi_ml.models.embedding_layers import keys_to_embeddings
 from dwi_ml.models.projects.positional_encoding import (
     keys_to_positional_encodings)
 from dwi_ml.models.projects.transforming_tractography import (

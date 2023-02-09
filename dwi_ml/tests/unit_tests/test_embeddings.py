@@ -5,7 +5,7 @@ import logging
 import torch
 from torch.nn.utils.rnn import pack_sequence
 
-from dwi_ml.models.embeddings_on_tensors import \
+from dwi_ml.models.embedding_layers import \
     keys_to_embeddings as keys_on_tensors
 
 

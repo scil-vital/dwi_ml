@@ -37,11 +37,11 @@ T_EMBEDDING_KEY = 'nn_embedding'
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    add_mandatory_args_training_experiment(p)
+    add_mandatory_args_training_experiment(p, with_inputs=True)
     add_logging_arg(p)
     add_memory_args_training_experiment(p)
-    add_dataset_args(p)
-    add_args_batch_sampler(p)
+    add_dataset_args(p, with_volumes=True)
+    add_args_batch_sampler(p, with_volumes=True)
     add_args_batch_loader(p)
     add_training_args(p)
 

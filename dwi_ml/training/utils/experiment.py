@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 
-def add_mandatory_args_training_experiment(p):
+def add_mandatory_args_training_experiment(p, with_inputs: bool = False):
     p.add_argument(
         'experiments_path',
         help='Path where to save your experiment. \nComplete path will be '
@@ -13,9 +13,10 @@ def add_mandatory_args_training_experiment(p):
         'hdf5_file',
         help='Path to the .hdf5 dataset. Should contain both your training \n'
              'and validation subjects.')
-    p.add_argument(
-        'input_group_name',
-        help='Name of the input volume in the hdf5 dataset.')
+    if with_inputs:
+        p.add_argument(
+            'input_group_name',
+            help='Name of the input volume in the hdf5 dataset.')
     p.add_argument(
         'streamline_group_name',
         help="Name of the streamlines group in the hdf5 dataset.")

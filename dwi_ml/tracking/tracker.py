@@ -80,6 +80,8 @@ class DWIMLTracker(ScilpyTracker):
         # NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, TO CORNER.
         assert self.space == Space.VOX
         assert self.origin == Origin('corner')
+        assert self.seed_generator.space == Space.VOX
+        assert self.seed_generator.origin == Origin('corner')
 
     def track(self):
         """
@@ -144,7 +146,7 @@ class DWIMLTracker(ScilpyTracker):
             tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
                 n_seeds)
             lines.extend([line.tolist() for line in tmp_lines])
-            seeds.extend(tmp_seeds)
+            seeds.extend([s.tolist() for s in tmp_seeds])
 
             seed_count += nb_next_seeds
 
@@ -174,14 +176,13 @@ class DWIMLTracker(ScilpyTracker):
                    for s in n_seeds]
         lines = [s.clone()[None, :] for s in n_seeds]
 
-        logger.info("Multiple GPU tracking: Starting forward propagation for "
-                    "the next {} seeds.".format(len(n_seeds)))
+        logger.info("Multiple GPU tracking: Starting forward propagation.")
         tracking_info = self.propagator.prepare_forward(n_seeds)
         lines = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:
-            logger.debug("Multiple GPU tracking: Starting backward "
-                         "propagation.")
+            logger.info("Multiple GPU tracking: Starting backward "
+                        "propagation.")
             # Reversing:
             lines = [torch.flip(line, (0,)) for line in lines]
 
@@ -209,11 +210,9 @@ class DWIMLTracker(ScilpyTracker):
         # Monitoring
         invalid_direction_counts = np.zeros(nb_streamlines)
         final_tracking_info = [None] * nb_streamlines  # type: List[torch.Tensor]
-        idx_streamlines_left = np.arange(nb_streamlines)
+        continuing_lines_rawidx = np.arange(nb_streamlines)
 
         # Will get the final lines when they are done.
-        # Note! We modify the order of streamlines in final_lines!
-        # We need to remember the order. Will help to save the seeds.
         final_lines = [None] * nb_streamlines  # type: List[torch.Tensor]
 
         # `lines` will be updated at each loop to only contain the remaining
@@ -248,32 +247,25 @@ class DWIMLTracker(ScilpyTracker):
                     lines[i] = torch.vstack((lines[i], n_new_pos[i]))
                 else:
                     continuing_lines[i] = False
-                    final_lines[idx_streamlines_left[i]] = lines[i]
-                    final_tracking_info[idx_streamlines_left[i]] = \
+                    final_lines[continuing_lines_rawidx[i]] = lines[i]
+                    final_tracking_info[continuing_lines_rawidx[i]] = \
                         tracking_info[i]
 
             # Keeping only remaining lines
-            continuing_lines_idx, = np.where(continuing_lines)
-            lines = [lines[i] for i in continuing_lines_idx]
-            tracking_info = [tracking_info[i] for i in continuing_lines_idx]
-            idx_streamlines_left = idx_streamlines_left[continuing_lines]
+            continuing_lines_subidx, = np.where(continuing_lines)
+            continuing_lines_rawidx = continuing_lines_rawidx[continuing_lines]
+            lines = [lines[i] for i in continuing_lines_subidx]
+            tracking_info = [tracking_info[i] for i in continuing_lines_subidx]
             invalid_direction_counts = invalid_direction_counts[continuing_lines]
 
             # Update model if needed.
-            self.propagator.multiple_lines_update(continuing_lines_idx)
+            self.propagator.multiple_lines_update(continuing_lines_subidx)
 
         assert len(lines) == 0
-        assert len(idx_streamlines_left) == 0
+        assert len(continuing_lines_rawidx) == 0
 
         # Possible last step.
-        # Looping. It should not be heavy.
-        for i in range(nb_streamlines):
-            final_pos = self.propagator.finalize_streamline(
-                final_lines[i][-1, :], final_tracking_info[i])
-            if (final_pos is not None and
-                    self.mask.is_coordinate_in_bound(
-                        *final_pos.cpu().numpy(),
-                        space=self.space, origin=self.origin)):
-                final_lines[i] += final_pos
+        final_lines = self.propagator.finalize_streamlines(
+            final_lines, final_tracking_info, self.mask)
 
         return final_lines

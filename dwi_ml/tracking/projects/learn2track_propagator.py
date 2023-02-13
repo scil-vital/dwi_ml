@@ -61,8 +61,7 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         # Either load all timepoints in memory and call model once.
         # Or loop.
         all_inputs, _ = self.model.prepare_batch_one_input(
-            lines, self.dataset, self.subj_idx, self.volume_group,
-            self.device)
+            lines, self.dataset, self.subj_idx, self.volume_group)
 
         # all_inputs is a tuple of
         # nb_streamlines x tensor[nb_points, nb_features]

@@ -53,15 +53,14 @@ class DWIMLAbstractTrainer:
                  experiment_name: str,
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
+                 learning_rates: List = None, weight_decay: float = 0.01,
                  use_radam: bool = False, max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None, nb_cpu_processes: int = 0,
                  use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, mixed_precision: bool = False,
-                 log_level=logging.root.level):
+                 from_checkpoint: bool = False, log_level=logging.root.level):
         """
         Parameters
         ----------
@@ -80,8 +79,11 @@ class DWIMLAbstractTrainer:
             Instantiated class with a load_batch method able to load data
             associated to sampled batch ids. Data in batch_sampler.dataset must
             be already loaded.
-        learning_rate: float
-            Learning rate. Default: 0.001 (torch's default)
+        learning_rates: List
+            List of at least one learning rate, or None (will use
+            torch's default, 0.001). A list [0.01, 0.01, 0.001], for instance,
+            would use these values for the first 3 epochs, and keep the final
+            value for remaining epochs.
         weight_decay: float
             Add a weight decay penalty on the parameters. Default: 0.01.
             (torch's default).
@@ -162,7 +164,10 @@ class DWIMLAbstractTrainer:
         self.max_epochs = max_epochs
         self.max_batches_per_epochs_train = max_batches_per_epoch_training
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
-        self.learning_rate = learning_rate
+        if learning_rates is None:
+            self.learning_rates = [0.001]
+        else:
+            self.learning_rates = learning_rates
         self.weight_decay = weight_decay
         self.use_radam = use_radam
         self.nb_cpu_processes = nb_cpu_processes
@@ -276,20 +281,21 @@ class DWIMLAbstractTrainer:
         self.logger.debug("This trainer will use Adam optimization on the "
                           "following model.parameters: {}".format(list_params))
 
+        self.current_lr = self.learning_rates[0]
         if self.use_radam:
             self.optimizer = torch.optim.RAdam(self.model.parameters(),
-                                               lr=learning_rate,
+                                               lr=self.current_lr,
                                                weight_decay=weight_decay)
         else:
             self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                              lr=learning_rate,
+                                              lr=self.current_lr,
                                               weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
         # These are the parameters necessary to use _init_
         params = {
-            'learning_rate': self.learning_rate,
+            'learning_rates': self.learning_rates,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
             'max_batches_per_epoch_training': self.max_batches_per_epochs_train,
@@ -457,6 +463,13 @@ class DWIMLAbstractTrainer:
 
             self.logger.info("******* STARTING : Epoch {} (i.e. #{}) *******"
                              .format(epoch, epoch + 1))
+
+            # Set learning rate to either current value or last value
+            self.current_lr = self.learning_rates[
+                min(self.current_epoch, len(self.learning_rates) - 1)]
+            self.logger.info("Learning rate = {}".format(self.current_lr))
+            for g in self.optimizer.param_groups:
+                g['lr'] = self.current_lr
 
             # Training
             self.logger.info("*** TRAINING")

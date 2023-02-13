@@ -11,8 +11,12 @@ logger = logging.getLogger('train_logger')
 def add_training_args(p: argparse.ArgumentParser):
     training_group = p.add_argument_group("Training")
     training_group.add_argument(
-        '--learning_rate', type=float, default=0.001, metavar='r',
-        help="Learning rate. [0.001] (torch's default)")
+        '--learning_rate', metavar='r', nargs='+',
+        help="Learning rate. Can be set as a single float, or as a list of "
+             "[lr*step]. \n"
+             "Ex: '--learning_rate 0.001*3 0.0001' would set the lr to 0.001 "
+             "for the first \n3 epochs, and 0.0001 for the remaining epochs.\n"
+             "(torch's default = 0.001)")
     training_group.add_argument(
         '--weight_decay', type=float, default=0.01, metavar='v',
         help="Add a weight decay penalty on the parameters (regularization "
@@ -50,6 +54,34 @@ def add_training_args(p: argparse.ArgumentParser):
         help='Send your experiment to a specific comet.ml project. If not \n'
              'set, it will be sent to Uncategorized Experiments.')
     return training_group
+
+
+def format_lr(lr_arg):
+    """
+    Formatting [0.001*2 0.002] into [0.001 0.001 0.002].
+    """
+    if lr_arg is None:
+        return None
+
+    all_lr = []
+    for lr in lr_arg[:-1]:
+        assert '*' in lr, "When using multiple learning rates, you should " \
+                          "define the number of epochs to use each, with " \
+                          "the notation lr*nb_epochs."
+        _lr, nb = lr.split('*')
+        try:
+            all_lr += [float(_lr)] * int(nb)
+        except ValueError:
+            raise ValueError("The first learning rates should be formatted a "
+                             "float*int: learning_rate*nb_epoch.")
+
+    try:
+        all_lr += [float(lr_arg[-1])]
+    except ValueError:
+        raise ValueError("The list of learning rates should end with a final "
+                         "float that will be kept fixed until the end of "
+                         "training.")
+    return all_lr
 
 
 def run_experiment(trainer):

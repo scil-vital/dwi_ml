@@ -27,7 +27,8 @@ from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_training_experiment,
     add_memory_args_training_experiment)
-from dwi_ml.training.utils.trainer import add_training_args, run_experiment
+from dwi_ml.training.utils.trainer import add_training_args, run_experiment, \
+    format_lr
 
 
 def prepare_arg_parser():
@@ -95,6 +96,7 @@ def init_from_args(args, sub_loggers_level):
 
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
+        lr = format_lr(args.learning_rate)
         trainer = TransformerTrainer(
             model, args.experiments_path, args.experiment_name,
             batch_sampler, batch_loader,
@@ -102,7 +104,7 @@ def init_from_args(args, sub_loggers_level):
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
             # TRAINING
-            learning_rate=args.learning_rate, max_epochs=args.max_epochs,
+            learning_rates=lr, max_epochs=args.max_epochs,
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,

@@ -16,7 +16,7 @@ class TransformerTrainer(DWIMLTrainerOneInput):
                  experiment_name: str,
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLBatchLoaderOneInput,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
+                 learning_rates: List = None, weight_decay: float = 0.01,
                  use_radam: bool = False, max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: int = 1000,
@@ -29,7 +29,7 @@ class TransformerTrainer(DWIMLTrainerOneInput):
         """
         super().__init__(model, experiments_path, experiment_name,
                          batch_sampler, batch_loader,
-                         learning_rate, weight_decay,
+                         learning_rates, weight_decay,
                          use_radam, max_epochs,
                          max_batches_per_epoch_training,
                          max_batches_per_epoch_validation,

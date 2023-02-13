@@ -26,7 +26,8 @@ from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_training_experiment,
     add_memory_args_training_experiment)
-from dwi_ml.training.utils.trainer import add_training_args, run_experiment
+from dwi_ml.training.utils.trainer import add_training_args, run_experiment, \
+    format_lr
 
 # Please adapt
 from dwi_ml.tests.utils.data_and_models_for_tests import TrackingModelForTestWithPD
@@ -73,6 +74,7 @@ def init_from_args(args, sub_loggers_level):
     # Instantiate trainer
     # streamlines need to be sent to the forward method.
     with Timer("\nPreparing trainer", newline=True, color='red'):
+        lr = format_lr(args.learning_rate)
         trainer = DWIMLTrainerOneInput(
             model=model, experiments_path=args.experiments_path,
             experiment_name=args.experiment_name,
@@ -81,7 +83,7 @@ def init_from_args(args, sub_loggers_level):
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
             # TRAINING
-            learning_rate=args.learning_rate, weight_decay=args.weight_decay,
+            learning_rates=lr, weight_decay=args.weight_decay,
             use_radam=args.use_radam, max_epochs=args.max_epochs,
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,

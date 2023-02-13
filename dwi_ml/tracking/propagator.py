@@ -461,7 +461,6 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
         """
         n_pos = [pos[None, :] for pos in n_pos]
         inputs, _ = self.model.prepare_batch_one_input(
-            n_pos, self.dataset, self.subj_idx, self.volume_group,
-            self.device)
+            n_pos, self.dataset, self.subj_idx, self.volume_group)
 
         return inputs

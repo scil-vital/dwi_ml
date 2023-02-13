@@ -169,8 +169,7 @@ def main():
                  .format(args.out_tractogram))
     sft = StatefulTractogram(streamlines, ref, Space.VOXMM,
                              data_per_streamline=data_per_streamline)
-    save_tractogram(sft, args.out_tractogram,
-                    bbox_valid_check=False)
+    save_tractogram(sft, args.out_tractogram, bbox_valid_check=False)
 
 
 if __name__ == "__main__":

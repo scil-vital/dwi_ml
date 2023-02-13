@@ -265,14 +265,7 @@ class DWIMLTracker(ScilpyTracker):
         assert len(continuing_lines_rawidx) == 0
 
         # Possible last step.
-        # Looping. It should not be heavy.
-        for i in range(nb_streamlines):
-            final_pos = self.propagator.finalize_streamline(
-                final_lines[i][-1, :], final_tracking_info[i])
-            if (final_pos is not None and
-                    self.mask.is_coordinate_in_bound(
-                        *final_pos.cpu().numpy(),
-                        space=self.space, origin=self.origin)):
-                final_lines[i] = torch.vstack((final_lines[i], final_pos))
+        final_lines = self.propagator.finalize_streamlines(
+            final_lines, final_tracking_info, self.mask)
 
         return final_lines

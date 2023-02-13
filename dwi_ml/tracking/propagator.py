@@ -321,9 +321,20 @@ class DWIMLPropagator(AbstractPropagator):
 
         return next_dirs
 
-    def finalize_streamline(self, last_pos: torch.Tensor, v_in: torch.Tensor):
-        final_pos = last_pos + self.step_size * v_in
-        return final_pos
+    def finalize_streamlines(self, final_lines: List[torch.Tensor],
+                             v_in: List[torch.Tensor], mask):
+        #  Looping. It should not be heavy.
+        #  toDo. Create a tensor mask?
+        for i in range(len(final_lines)):
+            final_pos = final_lines[i][-1, :] + self.step_size * v_in[i]
+
+            if (final_pos is not None and
+                    mask.is_coordinate_in_bound(
+                        *final_pos.cpu().numpy(),
+                        space=self.space, origin=self.origin)):
+                final_lines[i] = torch.vstack((final_lines[i], final_pos))
+
+        return final_lines
 
 
 class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
@@ -359,16 +370,37 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         self.input_memory = None
         return super().prepare_forward(seeding_pos)
 
-    def prepare_backward(self, line, forward_dir):
+    def prepare_backward(self, lines, forward_dir):
         # No need to invert the list of coordinates. Will be done by the
         # tracker anyway. We will update it at the next propagate() call.
         # We need to manage the input.
+
         if self.use_input_memory:
             # Not keeping the initial input point. Backward will start at
             # that point and will compute it again.
             self.input_memory = [torch.flip(line_input[1:, :], dims=[0])
                                  for line_input in self.input_memory]
-        return super().prepare_backward(line, forward_dir)
+
+        return super().prepare_backward(lines, forward_dir)
+
+    def finalize_streamlines(self, final_lines: List[torch.Tensor],
+                             v_in: List[torch.Tensor], mask):
+        #  Looping. It should not be heavy.
+        #  toDo. Create a tensor mask?
+        for i in range(len(final_lines)):
+            final_pos = final_lines[i][-1, :] + self.step_size * v_in[i]
+
+            if (final_pos is not None and
+                    mask.is_coordinate_in_bound(
+                        *final_pos.cpu().numpy(),
+                        space=self.space, origin=self.origin)):
+                final_lines[i] = torch.vstack((final_lines[i], final_pos))
+                if self.use_input_memory:
+                    inputs = self._prepare_inputs_at_pos([final_pos])
+                    self.input_memory[i] = torch.cat(
+                        (self.input_memory[i], inputs[i]), dim=0)
+
+        return final_lines
 
     def propagate(self, lines, v_in):
         self.current_lines = lines

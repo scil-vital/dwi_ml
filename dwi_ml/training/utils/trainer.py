@@ -22,9 +22,9 @@ def add_training_args(p: argparse.ArgumentParser):
         help="Add a weight decay penalty on the parameters (regularization "
              "parameter) [0.01] (torch's default).")
     training_group.add_argument(
-        '--use_radam', action='store_true',
-        help='If set, use RAdam instead of Adam optimizer; adaptative '
-             'learning rate.')
+        '--optimizer', choices=['Adam', 'RAdam', 'SGD'], default='Adam',
+        help="Choice of torch optimizer amongst ['Adam', 'RAdam', 'SGD'].\n"
+             "Default: Adam.")
     training_group.add_argument(
         '--max_epochs', type=int, default=100, metavar='n',
         help="Maximum number of epochs. [100]")

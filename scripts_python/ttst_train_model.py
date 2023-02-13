@@ -109,11 +109,11 @@ def init_from_args(args, sub_loggers_level):
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
             # TRAINING
-            learning_rates=lr, max_epochs=args.max_epochs,
+            learning_rates=lr, weight_decay=args.weight_decay,
+            optimizer=args.optimizer, max_epochs=args.max_epochs,
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,
-            weight_decay=args.weight_decay,
             # MEMORY
             nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
         logging.info("Trainer params : " +

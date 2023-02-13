@@ -54,13 +54,15 @@ class DWIMLAbstractTrainer:
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
                  learning_rates: List = None, weight_decay: float = 0.01,
-                 use_radam: bool = False, max_epochs: int = 10,
+                 optimizer: str = 'Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None, nb_cpu_processes: int = 0,
                  use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, log_level=logging.root.level):
+                 from_checkpoint: bool = False, log_level=logging.root.level,
+                 # To be deprecated
+                 use_radam: bool = None):
         """
         Parameters
         ----------
@@ -87,8 +89,9 @@ class DWIMLAbstractTrainer:
         weight_decay: float
             Add a weight decay penalty on the parameters. Default: 0.01.
             (torch's default).
-        use_radam: bool
-            If true, use RAdam optimizer. Else, use Adam.
+        optimizer: str
+            Torch optimizer choice. Current available options are SGD, Adam or
+            RAdam.
         max_epochs: int
             Maximum number of epochs. Default = 10, for no good reason.
         max_batches_per_epoch_training: int
@@ -117,7 +120,8 @@ class DWIMLAbstractTrainer:
         from_checkpoint: bool
              If true, we do not create the output dir, as it should already
              exist. Default: False.
-
+        use_radam: bool
+            Deprecated. If true, use RAdam optimizer. Else, use Adam.
         """
         # To developers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
@@ -166,12 +170,23 @@ class DWIMLAbstractTrainer:
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
         if learning_rates is None:
             self.learning_rates = [0.001]
+        elif isinstance(learning_rates, float):
+            # Should be a list but we will accept it.
+            self.learning_rates = [learning_rates]
         else:
             self.learning_rates = learning_rates
         self.weight_decay = weight_decay
         self.use_radam = use_radam
         self.nb_cpu_processes = nb_cpu_processes
         self.use_gpu = use_gpu
+        if self.use_radam is not None:
+            logging.warning("Option --use_radam will be removed. Use option "
+                            "--optimizer instead.")
+            optimizer = 'RAdam'
+        if optimizer not in ['SGD', 'Adam', 'RAdam']:
+            raise ValueError("Optimizer choice {} not recognized."
+                             .format(optimizer))
+        self.optimizer_key = optimizer
 
         self.comet_workspace = comet_workspace
         self.comet_project = comet_project
@@ -282,14 +297,15 @@ class DWIMLAbstractTrainer:
                           "following model.parameters: {}".format(list_params))
 
         self.current_lr = self.learning_rates[0]
-        if self.use_radam:
-            self.optimizer = torch.optim.RAdam(self.model.parameters(),
-                                               lr=self.current_lr,
-                                               weight_decay=weight_decay)
+        if self.optimizer_key == 'RAdam':
+            cls = torch.optim.RAdam
+        elif self.optimizer_key == 'Adam':
+            cls = torch.optim.Adam
         else:
-            self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                              lr=self.current_lr,
-                                              weight_decay=weight_decay)
+            cls = torch.optim.SGD
+
+        self.optimizer = cls(self.model.parameters(),
+                             lr=self.current_lr, weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
@@ -304,7 +320,7 @@ class DWIMLAbstractTrainer:
             'use_gpu': self.use_gpu,
             'comet_workspace': self.comet_workspace,
             'comet_project': self.comet_project,
-            'use_radam': self.use_radam,
+            'optimizer': self.optimizer_key,
         }
         return params
 

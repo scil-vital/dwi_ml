@@ -29,14 +29,14 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLBatchLoaderOneInput,
                  learning_rates: List = None, weight_decay: float = 0.01,
-                 use_radam: bool = False, max_epochs: int = 10,
+                 optimizer='Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None,
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, clip_grad: float = None,
-                 log_level=logging.WARNING):
+                 log_level=logging.WARNING, use_radam: bool = False):
         """
         Init trainer.
 
@@ -49,8 +49,8 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
             model=model, experiments_path=experiments_path,
             experiment_name=experiment_name, batch_sampler=batch_sampler,
             batch_loader=batch_loader, learning_rates=learning_rates,
-            weight_decay=weight_decay, use_radam=use_radam,
-            max_epochs=max_epochs,
+            weight_decay=weight_decay, optimizer=optimizer,
+            use_radam=use_radam, max_epochs=max_epochs,
             max_batches_per_epoch_training=max_batches_per_epoch_training,
             max_batches_per_epoch_validation=max_batches_per_epoch_validation,
             patience=patience, nb_cpu_processes=nb_cpu_processes,

@@ -36,7 +36,8 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, clip_grad: float = None,
-                 log_level=logging.WARNING, use_radam: bool = False):
+                 log_level=logging.WARNING, use_radam: bool = None,
+                 learning_rate: float = None):
         """
         Init trainer.
 
@@ -56,7 +57,7 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
             patience=patience, nb_cpu_processes=nb_cpu_processes,
             use_gpu=use_gpu, comet_workspace=comet_workspace,
             comet_project=comet_project, from_checkpoint=from_checkpoint,
-            log_level=log_level)
+            log_level=log_level, learning_rate=learning_rate)
 
         self.clip_grad = clip_grad
         self.weight_visualizor = {

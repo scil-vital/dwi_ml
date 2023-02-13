@@ -62,7 +62,7 @@ class DWIMLAbstractTrainer:
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, log_level=logging.root.level,
                  # To be deprecated
-                 use_radam: bool = None):
+                 use_radam: bool = None, learning_rate: float = None):
         """
         Parameters
         ----------
@@ -168,7 +168,11 @@ class DWIMLAbstractTrainer:
         self.max_epochs = max_epochs
         self.max_batches_per_epochs_train = max_batches_per_epoch_training
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
-        if learning_rates is None:
+        if learning_rate is not None:
+            logging.warning("Deprecated use of learning rate. Should now "
+                            "be learning_rates.")
+            self.learning_rates = [learning_rate]
+        elif learning_rates is None:
             self.learning_rates = [0.001]
         elif isinstance(learning_rates, float):
             # Should be a list but we will accept it.
@@ -182,7 +186,7 @@ class DWIMLAbstractTrainer:
         if self.use_radam is not None:
             logging.warning("Option --use_radam will be removed. Use option "
                             "--optimizer instead.")
-            optimizer = 'RAdam'
+            optimizer = 'RAdam' if self.use_radam else 'Adam'
         if optimizer not in ['SGD', 'Adam', 'RAdam']:
             raise ValueError("Optimizer choice {} not recognized."
                              .format(optimizer))

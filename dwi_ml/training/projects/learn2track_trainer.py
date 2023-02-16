@@ -28,15 +28,16 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
                  experiment_name: str,
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLBatchLoaderOneInput,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
-                 use_radam: bool = False,  max_epochs: int = 10,
+                 learning_rates: List = None, weight_decay: float = 0.01,
+                 optimizer='Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None,
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, clip_grad: float = None,
-                 log_level=logging.WARNING):
+                 log_level=logging.WARNING, use_radam: bool = None,
+                 learning_rate: float = None):
         """
         Init trainer.
 
@@ -48,15 +49,15 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
         super().__init__(
             model=model, experiments_path=experiments_path,
             experiment_name=experiment_name, batch_sampler=batch_sampler,
-            batch_loader=batch_loader, learning_rate=learning_rate,
-            weight_decay=weight_decay, use_radam=use_radam,
-            max_epochs=max_epochs,
+            batch_loader=batch_loader, learning_rates=learning_rates,
+            weight_decay=weight_decay, optimizer=optimizer,
+            use_radam=use_radam, max_epochs=max_epochs,
             max_batches_per_epoch_training=max_batches_per_epoch_training,
             max_batches_per_epoch_validation=max_batches_per_epoch_validation,
             patience=patience, nb_cpu_processes=nb_cpu_processes,
             use_gpu=use_gpu, comet_workspace=comet_workspace,
             comet_project=comet_project, from_checkpoint=from_checkpoint,
-            log_level=log_level)
+            log_level=log_level, learning_rate=learning_rate)
 
         self.clip_grad = clip_grad
         self.weight_visualizor = {

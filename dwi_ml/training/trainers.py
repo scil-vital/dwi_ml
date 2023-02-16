@@ -53,15 +53,16 @@ class DWIMLAbstractTrainer:
                  experiment_name: str,
                  batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
-                 learning_rate: float = 0.001, weight_decay: float = 0.01,
-                 use_radam: bool = False, max_epochs: int = 10,
+                 learning_rates: List = None, weight_decay: float = 0.01,
+                 optimizer: str = 'Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None, nb_cpu_processes: int = 0,
                  use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, mixed_precision: bool = False,
-                 log_level=logging.root.level):
+                 from_checkpoint: bool = False, log_level=logging.root.level,
+                 # To be deprecated
+                 use_radam: bool = None, learning_rate: float = None):
         """
         Parameters
         ----------
@@ -80,13 +81,17 @@ class DWIMLAbstractTrainer:
             Instantiated class with a load_batch method able to load data
             associated to sampled batch ids. Data in batch_sampler.dataset must
             be already loaded.
-        learning_rate: float
-            Learning rate. Default: 0.001 (torch's default)
+        learning_rates: List
+            List of at least one learning rate, or None (will use
+            torch's default, 0.001). A list [0.01, 0.01, 0.001], for instance,
+            would use these values for the first 3 epochs, and keep the final
+            value for remaining epochs.
         weight_decay: float
             Add a weight decay penalty on the parameters. Default: 0.01.
             (torch's default).
-        use_radam: bool
-            If true, use RAdam optimizer. Else, use Adam.
+        optimizer: str
+            Torch optimizer choice. Current available options are SGD, Adam or
+            RAdam.
         max_epochs: int
             Maximum number of epochs. Default = 10, for no good reason.
         max_batches_per_epoch_training: int
@@ -115,7 +120,8 @@ class DWIMLAbstractTrainer:
         from_checkpoint: bool
              If true, we do not create the output dir, as it should already
              exist. Default: False.
-
+        use_radam: bool
+            Deprecated. If true, use RAdam optimizer. Else, use Adam.
         """
         # To developers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
@@ -162,11 +168,29 @@ class DWIMLAbstractTrainer:
         self.max_epochs = max_epochs
         self.max_batches_per_epochs_train = max_batches_per_epoch_training
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
-        self.learning_rate = learning_rate
+        if learning_rate is not None:
+            logging.warning("Deprecated use of learning rate. Should now "
+                            "be learning_rates.")
+            self.learning_rates = [learning_rate]
+        elif learning_rates is None:
+            self.learning_rates = [0.001]
+        elif isinstance(learning_rates, float):
+            # Should be a list but we will accept it.
+            self.learning_rates = [learning_rates]
+        else:
+            self.learning_rates = learning_rates
         self.weight_decay = weight_decay
         self.use_radam = use_radam
         self.nb_cpu_processes = nb_cpu_processes
         self.use_gpu = use_gpu
+        if self.use_radam is not None:
+            logging.warning("Option --use_radam will be removed. Use option "
+                            "--optimizer instead.")
+            optimizer = 'RAdam' if self.use_radam else 'Adam'
+        if optimizer not in ['SGD', 'Adam', 'RAdam']:
+            raise ValueError("Optimizer choice {} not recognized."
+                             .format(optimizer))
+        self.optimizer_key = optimizer
 
         self.comet_workspace = comet_workspace
         self.comet_project = comet_project
@@ -276,20 +300,22 @@ class DWIMLAbstractTrainer:
         self.logger.debug("This trainer will use Adam optimization on the "
                           "following model.parameters: {}".format(list_params))
 
-        if self.use_radam:
-            self.optimizer = torch.optim.RAdam(self.model.parameters(),
-                                               lr=learning_rate,
-                                               weight_decay=weight_decay)
+        self.current_lr = self.learning_rates[0]
+        if self.optimizer_key == 'RAdam':
+            cls = torch.optim.RAdam
+        elif self.optimizer_key == 'Adam':
+            cls = torch.optim.Adam
         else:
-            self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                              lr=learning_rate,
-                                              weight_decay=weight_decay)
+            cls = torch.optim.SGD
+
+        self.optimizer = cls(self.model.parameters(),
+                             lr=self.current_lr, weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
         # These are the parameters necessary to use _init_
         params = {
-            'learning_rate': self.learning_rate,
+            'learning_rates': self.learning_rates,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
             'max_batches_per_epoch_training': self.max_batches_per_epochs_train,
@@ -298,7 +324,7 @@ class DWIMLAbstractTrainer:
             'use_gpu': self.use_gpu,
             'comet_workspace': self.comet_workspace,
             'comet_project': self.comet_project,
-            'use_radam': self.use_radam,
+            'optimizer': self.optimizer_key,
         }
         return params
 
@@ -457,6 +483,13 @@ class DWIMLAbstractTrainer:
 
             self.logger.info("******* STARTING : Epoch {} (i.e. #{}) *******"
                              .format(epoch, epoch + 1))
+
+            # Set learning rate to either current value or last value
+            self.current_lr = self.learning_rates[
+                min(self.current_epoch, len(self.learning_rates) - 1)]
+            self.logger.info("Learning rate = {}".format(self.current_lr))
+            for g in self.optimizer.param_groups:
+                g['lr'] = self.current_lr
 
             # Training
             self.logger.info("*** TRAINING")

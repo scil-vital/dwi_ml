@@ -11,6 +11,9 @@ class TorchSphere:
                                         dtype=torch.float32,
                                         device=device)
 
+    def move_to(self, device):
+        self.vertices = self.vertices.to(device)
+
     def find_closest(self, xyz):
         """
         Returns vertices by index of cosine distance to a direction vector
@@ -19,10 +22,6 @@ class TorchSphere:
         # torch methods.
         #       cos_sim = np.dot(self.vertices, xyz)
         #       return np.argmax(cos_sim)
-
-        # First send the vertices on the right device, i.e. same as target
-        # directions
-        self.vertices = self.vertices.to(device=xyz.device)
 
         # We will use cosine similarity to find nearest vertex
         cosine_similarity = torch.matmul(xyz, self.vertices.t())

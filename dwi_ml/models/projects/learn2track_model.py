@@ -3,12 +3,12 @@ import logging
 from typing import Any, Union, List
 
 import torch
-from torch.nn.utils.rnn import PackedSequence, pack_sequence
+from torch.nn.utils.rnn import PackedSequence, pack_sequence, unpack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     normalize_directions, compute_directions
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
-    keys_to_tensor_embeddings
+    keys_to_tensor_embeddings, NoEmbedding
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelForTracking, ModelWithNeighborhood,
     MainModelOneInput)
@@ -324,12 +324,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
     def _run_forward(self, inputs, streamlines: List[torch.Tensor],
                      hidden_reccurent_states, is_tracking):
 
+        # ==== 1. Previous dirs embedding ====
         if self.nb_previous_dirs > 0:
             dirs = compute_directions(streamlines)
-
-            logger.debug("*** 1. {} previous dirs - Embedding = {}..."
-                         .format(self.nb_previous_dirs,
-                                 self.prev_dirs_embedding_key))
 
             # During training, we need all the previous n directions, during
             # tracking, the last one only.
@@ -343,31 +340,47 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         else:
             n_prev_dirs_embedded = None
 
-        logger.debug("*** 2. Inputs: Embedding = {}"
-                     .format(self.input_embedding_key))
-
+        # ==== 2. Inputs embedding ====
         # Packing inputs and saving info
-        inputs = pack_sequence(inputs, enforce_sorted=False)
-        batch_sizes = inputs.batch_sizes
-        sorted_indices = inputs.sorted_indices
-        unsorted_indices = inputs.unsorted_indices
+        # Shape of inputs.data: nb_pts_total * nb_features
+        if is_tracking:
+            # We are only dealing with one point per streamlines (and the
+            # hidden state). Ensure that packed_sequence has the right size.
+            nb_streamlines = len(inputs)
+            inputs = torch.vstack(inputs)
+            batch_sizes = torch.as_tensor([nb_streamlines])
+            sorted_indices = torch.arange(nb_streamlines, device=self.device)
+            unsorted_indices = torch.arange(nb_streamlines, device=self.device)
+            inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
+                                    unsorted_indices)
+        else:
+            # Streamlines have different lengths. Packing.
+            inputs = pack_sequence(inputs, enforce_sorted=False)
+            batch_sizes = inputs.batch_sizes
+            sorted_indices = inputs.sorted_indices
+            unsorted_indices = inputs.unsorted_indices
 
-        logger.debug("Input size: {}".format(inputs.data.shape))
-        inputs = self.input_embedding(inputs.data)
-        logger.debug("Output size: {}".format(inputs.shape))
+        # Avoiding unpacking and packing back if not needed.
+        if not isinstance(self.input_embedding, NoEmbedding) or \
+                self.nb_previous_dirs > 0:
 
-        logger.debug("*** 3. Concatenating previous dirs and inputs's "
-                     "embeddings...")
-        if n_prev_dirs_embedded is not None:
-            inputs = torch.cat((inputs, n_prev_dirs_embedded.data), dim=-1)
-            logger.debug("Concatenated shape: {}".format(inputs.shape))
-        inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
-                                unsorted_indices)
+            # Embedding. Shape of inputs: nb_pts_total * embedding_size
+            inputs = self.input_embedding(inputs.data)
 
-        logger.debug("*** 4. Stacked RNN (on packed sequence!)....")
+            # ==== 3. Concat with previous dirs ====
+            if n_prev_dirs_embedded is not None:
+                inputs = torch.cat((inputs, n_prev_dirs_embedded.data), dim=-1)
+                logger.debug("Concatenated shape: {}".format(inputs.shape))
+
+            # Shaping again as packed sequence.
+            # Shape of inputs.data: nb_pts_total * embedding_size_total
+            inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
+                                    unsorted_indices)
+
+        # ==== 3. Stacked RNN (on packed sequence!) ====
+        # rnn_output shape: nb_pts_total * last_hidden_layer_size
         rnn_output, out_hidden_recurrent_states = self.rnn_model(
             inputs, hidden_reccurent_states)
-        logger.debug("Output size: {}".format(rnn_output.data.shape[-1]))
 
         logger.debug("*** 5. Direction getter....")
         # direction getter can't get a list of sequences.

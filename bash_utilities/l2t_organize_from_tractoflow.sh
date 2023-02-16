@@ -135,7 +135,7 @@ do
 
     # mask/wm
     echo "  File: wm"
-    wm=$tractoflow_folder/$subjid/Segment_Tissues/${subjid}__map_wm.nii.gz
+    wm=$tractoflow_folder/$subjid/Segment_Tissues/${subjid}__mask_wm.nii.gz
     if [ ! -f $wm ]; then echo "Subject's WM map not found: $wm"; exit 1; fi
     ln -s $wm $dwi_ml_folder/$subjid/masks/wm.nii.gz
 

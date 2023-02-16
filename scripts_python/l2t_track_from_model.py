@@ -94,7 +94,7 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
             args.step_size, res)
         propagator = RecurrentPropagator(
             subset, subj_idx, model, args.input_group, step_size_vox,
-            args.algo, theta, device)
+            args.algo, theta, device, normalize_directions=normalize_directions)
 
         logging.debug("Instantiating tracker.")
         tracker = DWIMLTracker(

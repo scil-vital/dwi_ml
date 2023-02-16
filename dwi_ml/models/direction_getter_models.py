@@ -91,7 +91,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     """
     def __init__(self, input_size, dropout: float, key: str,
                  supports_compressed_streamlines: bool,
-                 loss_description: str = '', device=None):
+                 loss_description: str = ''):
         """
         Parameters
         ----------
@@ -109,8 +109,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         super().__init__()
 
         self.input_size = input_size
-        self.device = device
-        self.move_to(device)
+        self.device = None
 
         # Info on this Direction Getter
         self.key = key
@@ -426,13 +425,17 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
 
         # Classes
         self.sphere_name = sphere
-        self.sphere = dipy.data.get_sphere(sphere)
-        self.torch_sphere = TorchSphere(self.sphere, self.device)
-        nb_classes = self.sphere.vertices.shape[0]
+        sphere = dipy.data.get_sphere(sphere)
+        self.torch_sphere = TorchSphere(sphere)
+        nb_classes = sphere.vertices.shape[0]
 
         self.layers = init_2layer_fully_connected(input_size, nb_classes)
 
         # Loss will be defined in compute_loss, using torch distribution
+
+    def move_to(self, device):
+        super().move_to(device)
+        self.torch_sphere.move_to(device)
 
     @property
     def params(self):
@@ -458,15 +461,13 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         """
         # Find the closest class for each target direction
         target_idx = self.torch_sphere.find_closest(target_directions)
-        target_idx_tensor = torch.as_tensor(target_idx, dtype=torch.int16,
-                                            device=logits_per_class.device)
 
         # Create an official probability distribution from the logits
         # Applies a softmax
         distribution = Categorical(logits=logits_per_class)
 
         # Compute loss between distribution and target vertex
-        nll_losses = -distribution.log_prob(target_idx_tensor)
+        nll_losses = -distribution.log_prob(target_idx)
 
         return _mean_and_weight(nll_losses)
 
@@ -488,7 +489,7 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         """
         Get the predicted class with highest logits (=probabilities).
         """
-        return self.vertices[logits_per_class.argmax()]
+        return self.torch_sphere.vertices[logits_per_class.argmax(dim=1)]
 
 
 class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):

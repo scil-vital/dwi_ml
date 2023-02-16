@@ -30,7 +30,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
     """
 
     def __init__(self, experiment_name, nb_features: int,
-                 rnn_layer_sizes: List[int],
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
                  prev_dirs_embedding_size: Union[int, None],
@@ -41,7 +40,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
                  input_embedding_size: Union[int, None],
                  input_embedding_size_ratio: Union[float, None],
                  # RNN
-                 rnn_key: str, use_skip_connection: bool,
+                 rnn_key: str, rnn_layer_sizes: List[int],
+                 use_skip_connection: bool,
                  use_layer_normalization: bool, dropout: float,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
@@ -57,9 +57,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         nb_features: int
             This value should be known from the actual data. Number of features
             in the data (last dimension).
-        rnn_layer_sizes: List[int]
-            The list of layer sizes for the rnn. The real size will depend
-            on the skip_connection parameter.
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received.
@@ -89,6 +86,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             [ratio * (nb_features * (nb_neighbors+1))]
         rnn_key: str
             Either 'LSTM' or 'GRU'.
+        rnn_layer_sizes: List[int]
+            The list of layer sizes for the rnn. The real size will depend
+            on the skip_connection parameter.
         use_skip_connection: bool
             Whether to use skip connections. See [1] (Figure 1) to visualize
             the architecture.

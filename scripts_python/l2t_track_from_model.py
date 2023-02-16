@@ -9,9 +9,6 @@ import logging
 import math
 
 import dipy.core.geometry as gm
-from dipy.io.stateful_tractogram import (StatefulTractogram, Space,
-                                         set_sft_logger_level)
-from dipy.io.streamline import save_tractogram
 from dipy.io.utils import is_header_compatible
 import h5py
 import nibabel as nib
@@ -35,7 +32,7 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    prepare_dataset_for_tracking,
                                    prepare_seed_generator,
                                    prepare_tracking_mask,
-                                   prepare_step_size_vox)
+                                   prepare_step_size_vox, track_and_save)
 
 
 def build_argparser():
@@ -71,6 +68,7 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
     with Timer("\nLoading data and preparing tracker...",
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
+        # Vox space, corner origin
         seed_generator, nbr_seeds, seeding_mask_header = \
             prepare_seed_generator(parser, args, hdf_handle)
 
@@ -151,25 +149,7 @@ def main():
                                    max_nbr_pts, max_invalid_dirs)
 
     # ----- Track
-
-    with Timer("\nTracking...", newline=True, color='blue'):
-        streamlines, seeds = tracker.track()
-
-        logging.debug("Tracked {} streamlines (out of {} seeds). Now saving..."
-                      .format(len(streamlines), tracker.nbr_seeds))
-
-    # save seeds if args.save_seeds is given
-    data_per_streamline = {'seeds': seeds} if args.save_seeds else {}
-
-    # Silencing SFT's logger if our logging is in DEBUG mode, because it
-    # typically produces a lot of outputs!
-    set_sft_logger_level('WARNING')
-
-    logging.info("Saving resulting tractogram to {}"
-                 .format(args.out_tractogram))
-    sft = StatefulTractogram(streamlines, ref, Space.VOXMM,
-                             data_per_streamline=data_per_streamline)
-    save_tractogram(sft, args.out_tractogram, bbox_valid_check=False)
+    track_and_save(tracker, args, ref)
 
 
 if __name__ == "__main__":

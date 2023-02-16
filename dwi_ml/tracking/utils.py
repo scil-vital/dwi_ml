@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from dipy.io.stateful_tractogram import (Space, Origin)
+from dipy.io.stateful_tractogram import (Space, Origin, set_sft_logger_level,
+                                         StatefulTractogram)
 import nibabel as nib
 import numpy as np
+from dipy.io.streamline import save_tractogram
 
 from scilpy.io.utils import add_processes_arg
 from scilpy.image.datasets import DataVolume
 from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+from dwi_ml.experiment_utils.timer import Timer
 
 
 def add_mandatory_options_tracking(p):
@@ -218,3 +221,36 @@ def prepare_step_size_vox(step_size, res):
         normalize_directions = False
 
     return step_size_vox_space, normalize_directions
+
+
+def track_and_save(tracker, args, ref):
+    with Timer("\nTracking...", newline=True, color='blue'):
+        streamlines, seeds = tracker.track()
+
+        logging.debug("Tracked {} streamlines (out of {} seeds). Now saving..."
+                      .format(len(streamlines), tracker.nbr_seeds))
+
+    if len(streamlines) == 0:
+        logging.warning("No streamlines created! Not saving tractogram!")
+        return
+
+    # save seeds if args.save_seeds is given
+    # Seeds must be saved in voxel space (ok!), but origin: center, if we want
+    # to use scripts such as scil_compute_seed_density_map.
+    if args.save_seeds:
+        print("Saving seeds in data_per_streamline.")
+        seeds = [np.asarray(seed) - 0.5 for seed in seeds]  # to_center
+        data_per_streamline = {'seeds': seeds}
+    else:
+        data_per_streamline = {}
+
+    # Silencing SFT's logger if our logging is in DEBUG mode, because it
+    # typically produces a lot of outputs!
+    set_sft_logger_level('WARNING')
+
+    logging.info("Saving resulting tractogram to {}"
+                 .format(args.out_tractogram))
+    sft = StatefulTractogram(streamlines, ref, space=Space.VOX,
+                             origin=Origin('corner'),
+                             data_per_streamline=data_per_streamline)
+    save_tractogram(sft, args.out_tractogram, bbox_valid_check=False)

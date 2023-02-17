@@ -85,10 +85,8 @@ class DWIMLPropagator(AbstractPropagator):
                             "output from the model. Using a step size other "
                             "than 1 does not really make sense. You probably "
                             "want to advance of exactly 1 * output.")
-        # In Main Models, we get:
-        # if normalize_targets and 'regression' in self.dg_key:
-        #     self.normalize_outputs = True
-        # Then, output is already normalized, no need to do it again.
+            
+        # If output is already normalized, no need to do it again.
         if self.model.normalize_outputs:
             self.normalize_directions = False
 

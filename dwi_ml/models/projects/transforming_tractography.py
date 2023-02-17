@@ -8,7 +8,7 @@ from torch.nn import Dropout, Transformer
 from torch.nn.functional import pad
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
+    compute_directions, normalize_directions
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
@@ -498,6 +498,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Outputs will be all streamlines merged.
         # To compute loss = ok. During tracking, we will need to split back.
         outputs = self.direction_getter(outputs)
+
+        if self.normalize_outputs:
+            outputs = normalize_directions(outputs)
 
         if return_weights:
             return outputs, weights

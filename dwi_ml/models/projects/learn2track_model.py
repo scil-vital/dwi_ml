@@ -377,7 +377,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
                                     unsorted_indices)
 
-        # ==== 3. Stacked RNN (on packed sequence!) ====
+        # ==== 3. Stacked RNN (on packed sequence, returns a tensor) ====
         # rnn_output shape: nb_pts_total * last_hidden_layer_size
         rnn_output, out_hidden_recurrent_states = self.rnn_model(
             inputs, hidden_reccurent_states)
@@ -398,9 +398,13 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # Not unpacking now; we will compute the loss point by point on this
         # whole tensor.
+        if not is_tracking:
+            model_outputs = PackedSequence(model_outputs, batch_sizes,
+                                           sorted_indices, unsorted_indices)
+
         return model_outputs, out_hidden_recurrent_states
 
-    def compute_loss(self, model_outputs: Any,
+    def compute_loss(self, model_outputs: PackedSequence,
                      target_streamlines: List[torch.Tensor], **kw):
         """
         Computes the loss function using the provided outputs and targets.
@@ -408,7 +412,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         Parameters
         ----------
-        model_outputs : Any
+        model_outputs : PackedSequence
             The model outputs for a batch of sequences. Ex: a gaussian mixture
             direction getter returns a Tuple[Tensor, Tensor, Tensor], but a
             cosine regression direction getter return a simple Tensor. Please
@@ -430,10 +434,13 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.
-        target_dirs = pack_sequence(target_dirs, enforce_sorted=False).data
+        target_dirs = pack_sequence(target_dirs, enforce_sorted=False)
+        assert torch.equal(target_dirs.sorted_indices,
+                           model_outputs.sorted_indices)
 
         # Computing loss
-        return self.direction_getter.compute_loss(model_outputs, target_dirs)
+        return self.direction_getter.compute_loss(model_outputs.data,
+                                                  target_dirs.data)
 
     def get_tracking_directions(self, model_outputs, algo):
         """

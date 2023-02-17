@@ -26,12 +26,14 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: Learn2TrackModel, input_volume_group: str,
-                 step_size: float, algo: str, theta: float, device=None):
+                 step_size: float, algo: str, theta: float, device=None,
+                 normalize_directions: bool = True):
         super().__init__(dataset=dataset,
                          subj_idx=subj_idx, model=model,
                          input_volume_group=input_volume_group,
                          step_size=step_size, algo=algo, theta=theta,
-                         device=device, verify_opposite_direction=False)
+                         device=device, verify_opposite_direction=False,
+                         normalize_directions=normalize_directions)
 
         # Internal state:
         # - previous_dirs, already dealt with by super.
@@ -68,14 +70,15 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
 
         # Running model. If we send is_tracking=True, will only compute the
         # previous dirs for the last point. To mimic training, we have to
-        # add an additional fake point to the streamline, not used.
-        lines = [torch.cat((line, torch.zeros(1, 3, device=self.device)),
-                           dim=0)
-                 for line in lines]
+        # add an additional fake point to the streamline, not used (during
+        # training, only used to compute the loss).
+        lines_with0 = [torch.cat((line, torch.zeros(1, 3, device=self.device)),
+                                 dim=0)
+                       for line in lines]
 
         # Also, warning: creating a tensor from a list of np arrays is low.
         _, self.hidden_recurrent_states = self.model(
-            all_inputs, lines, is_tracking=False, return_state=True)
+            all_inputs, lines_with0, is_tracking=False, return_state=True)
 
         return super().prepare_backward(lines, forward_dir)
 

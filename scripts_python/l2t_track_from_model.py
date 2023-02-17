@@ -94,7 +94,7 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
             args.step_size, res)
         propagator = RecurrentPropagator(
             subset, subj_idx, model, args.input_group, step_size_vox,
-            args.algo, theta, device)
+            args.algo, theta, device, normalize_directions=normalize_directions)
 
         logging.debug("Instantiating tracker.")
         tracker = DWIMLTracker(
@@ -111,6 +111,7 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
 def main():
     parser = build_argparser()
     args = parser.parse_args()
+    torch.cuda.empty_cache()
 
     # Setting root logger to high level to max info, not debug, prints way too
     # much stuff. (but we can set our tracker's logger to debug)
@@ -133,7 +134,7 @@ def main():
 
     # ----- Prepare values
     max_nbr_pts = int(args.max_length / args.step_size)
-    min_nbr_pts = int(args.min_length / args.step_size) + 1
+    min_nbr_pts = int(args.min_length / args.step_size)
     max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size))
 
     device = torch.device('cpu')

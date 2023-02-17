@@ -83,6 +83,7 @@ def prepare_model(args, dg_args, log_level):
             # TRACKING MODEL
             dg_key=args.dg_key, dg_args=dg_args,
             normalize_targets=args.normalize_targets,
+            normalize_outputs=args.normalize_outputs,
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,

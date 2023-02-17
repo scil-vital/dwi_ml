@@ -72,7 +72,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
                  prev_dirs_embedding_key=None, normalize_prev_dirs=True,
                  # DIRECTION GETTER
                  dg_key='cosine-regression', dg_args=None,
-                 dg_input_size=4, normalize_targets=True):
+                 dg_input_size=4, normalize_targets=True,
+                 normalize_outputs=True):
 
         super().__init__(
             experiment_name=experiment_name,
@@ -151,7 +152,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
         if self.normalize_outputs:
             model_outputs = normalize_directions([model_outputs])
 
-        return model_outputs[0]
+        return model_outputs
 
 
 def create_test_batch_sampler(

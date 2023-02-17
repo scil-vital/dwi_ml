@@ -543,7 +543,7 @@ class ModelForTracking(MainModelAbstract):
     """
     def __init__(self, dg_key: str = 'cosine-regression',
                  dg_args: dict = None, normalize_targets: bool = True,
-                 **kw):
+                 normalize_outputs: bool = False, **kw):
         """
         Params
         ------
@@ -564,8 +564,8 @@ class ModelForTracking(MainModelAbstract):
             difference. If streamlines are compressed, in theory you should
             normalize, but you could hope that not normalizing could give back
             to the algorithm a sense of distance between points.
-            If true and the dg_key is a regression model, then, output
-            directions are also normalized too. Default: True.
+        normalize_outputs: bool
+            If true, REGRESSED outputs are normalized.
         """
         super().__init__(**kw)
 
@@ -583,7 +583,7 @@ class ModelForTracking(MainModelAbstract):
         # About the targets and outputs
         self.normalize_targets = normalize_targets
         self.normalize_outputs = False
-        if normalize_targets and 'regression' in self.dg_key:
+        if normalize_outputs and 'regression' in self.dg_key:
             self.normalize_outputs = True
 
         # To tell our trainer what to send to the forward / loss methods.
@@ -598,11 +598,15 @@ class ModelForTracking(MainModelAbstract):
     def add_args_tracking_model(p):
         p.add_argument(
             '--normalize_targets', action='store_true',
-            help="If true, directions will be normalized, both during "
+            help="If set, directions will be normalized, both during "
                  "tracking (usually, we \nnormalize. But by not normalizing "
                  "and working with compressed streamlines, \nyou could hope "
                  "your model will gain a sense of distance) and during "
                  "training \n(if you train a regression model).")
+        p.add_argument(
+            '--normalize_outputs', action='store_true',
+            help="If set, model outputs will be normalized (only in the case "
+                 "of a regression model).")
         add_direction_getter_args(p)
 
     @property
@@ -612,6 +616,7 @@ class ModelForTracking(MainModelAbstract):
             'dg_key': self.dg_key,
             'dg_args': self.dg_args,
             'normalize_targets': self.normalize_targets,
+            'normalize_outputs': self.normalize_outputs,
         })
         return p
 
@@ -622,45 +627,6 @@ class ModelForTracking(MainModelAbstract):
             'direction_getter': self.direction_getter.params,
         })
         return params
-
-    def _format_output_to_streamlines(self, output_dirs, ref_streamlines,
-                                      ref_dirs):
-        """
-        Depending on your model's output format, transform to streamlines
-        format.
-
-        Here is an example of use. Overwrite if it does not fit with your data.
-
-        Params
-        ------
-        model_outputs: Any
-            Your model's output.
-        ref_streamlines: list
-            The target streamlines, to use as reference.
-        ref_dirs: list
-            The target dirs.
-
-        Returns
-        -------
-        streamlines: list
-            The streamlines.
-        """
-        if not self.normalize_outputs:
-            # We normalize them here to eventually give them the right length.
-            output_dirs = normalize_directions(output_dirs)
-
-        initial_lengths = [torch.linalg.norm(s, dim=-1, keepdim=True) for s in
-                           ref_dirs]
-
-        # First point is the same
-        # Next points start from real streamline but advance in the output
-        # direction instead. We don't know the step size (or compress use) so
-        # giving them the same lengths as reference dirs.
-        output_streamlines = [
-            s[0].append(s[0:-1] + d * initial_lengths[i]) for
-            i, s, d in enumerate(zip(ref_streamlines, output_dirs))]
-
-        return output_streamlines
 
     def forward(self, inputs, target_streamlines, **kw):
         """

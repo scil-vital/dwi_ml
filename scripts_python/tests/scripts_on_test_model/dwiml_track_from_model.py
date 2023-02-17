@@ -149,7 +149,7 @@ def main():
     # ----- Prepare values
     # Using step size in mm here.
     max_nbr_pts = int(args.max_length / args.step_size)
-    min_nbr_pts = int(args.min_length / args.step_size) + 1
+    min_nbr_pts = int(args.min_length / args.step_size)
     max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size))
 
     device = torch.device('cpu')

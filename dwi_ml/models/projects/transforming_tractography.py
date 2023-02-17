@@ -8,7 +8,7 @@ from torch.nn import Dropout, Transformer
 from torch.nn.functional import pad
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
+    compute_directions, normalize_directions
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
@@ -91,7 +91,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
                  norm_first: bool,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
-                 normalize_targets: bool,
+                 normalize_targets: bool, normalize_outputs: bool,
                  # Other
                  neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, List[float], None],
@@ -167,6 +167,8 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             to the algorithm a sense of distance between points.
             If true and the dg_key is a regression model, then, output
             directions are also normalized too. Default: True.
+        normalize_outputs: bool
+            If true, REGRESSED outputs are normalized.
         neighborhood_type: str
             The type of neighborhood to add. One of 'axes', 'grid' or None. If
             None, don't add any. See
@@ -186,6 +188,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             prev_dirs_embedding_size=prev_dirs_embedding_size,
             prev_dirs_embedding_key=prev_dirs_embedding_key,
             normalize_prev_dirs=normalize_prev_dirs,
+            normalize_outputs=normalize_outputs,
             # Neighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
@@ -496,6 +499,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # To compute loss = ok. During tracking, we will need to split back.
         outputs = self.direction_getter(outputs)
 
+        if self.normalize_outputs:
+            outputs = normalize_directions(outputs)
+
         if return_weights:
             return outputs, weights
         return outputs
@@ -616,7 +622,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
                  norm_first: bool, n_layers_e: int, n_layers_d: int,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
-                 normalize_targets: bool,
+                 normalize_targets: bool, normalize_outputs: bool,
                  # Other
                  neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, List[float], None],
@@ -635,8 +641,8 @@ class OriginalTransformerModel(AbstractTransformerModel):
                          max_len, positional_encoding_key, embedding_key_x,
                          embedding_key_t, d_model, ffnn_hidden_size, nheads,
                          dropout_rate, activation, norm_first,
-                         dg_key, dg_args, normalize_targets, neighborhood_type,
-                         neighborhood_radius, log_level)
+                         dg_key, dg_args, normalize_targets, normalize_outputs,
+                         neighborhood_type, neighborhood_radius, log_level)
 
         # ----------- Additional params
         self.n_layers_e = n_layers_e
@@ -741,7 +747,7 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                  norm_first: bool, n_layers_d: int,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
-                 normalize_targets: bool,
+                 normalize_targets: bool, normalize_outputs: bool,
                  # Other
                  neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, List[float], None],
@@ -758,8 +764,8 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                          max_len, positional_encoding_key, embedding_key_x,
                          embedding_key_t, d_model, ffnn_hidden_size, nheads,
                          dropout_rate, activation, norm_first,
-                         dg_key, dg_args, normalize_targets, neighborhood_type,
-                         neighborhood_radius, log_level)
+                         dg_key, dg_args, normalize_targets, normalize_outputs,
+                         neighborhood_type, neighborhood_radius, log_level)
         # ----------- Additional params
         self.n_layers_d = n_layers_d
 

@@ -171,6 +171,8 @@ class DWIMLTracker(ScilpyTracker):
         clean_lines: List[np.ndarray]
             The generated streamline for each seeding_pos.
         """
+        torch.cuda.empty_cache()
+
         # List of list. Sending to torch tensors.
         n_seeds = [torch.as_tensor(s, device=self.device, dtype=torch.float)
                    for s in n_seeds]
@@ -193,8 +195,8 @@ class DWIMLTracker(ScilpyTracker):
 
         # Clean streamlines
         lengths = np.asarray([len(line) for line in lines])
-        good_lengths = np.logical_or(self.min_nbr_pts <= lengths,
-                                     lengths <= self.max_nbr_pts)
+        good_lengths = np.logical_and(self.min_nbr_pts <= lengths,
+                                      lengths <= self.max_nbr_pts)
         good_lengths, = np.where(good_lengths)
         clean_lines = [lines[i] for i in good_lengths]
         clean_seeds = [n_seeds[i] for i in good_lengths]

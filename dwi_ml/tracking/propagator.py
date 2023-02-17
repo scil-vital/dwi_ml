@@ -10,7 +10,7 @@ import torch
 from scilpy.tracking.propagator import AbstractPropagator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
-from dwi_ml.models.main_models import MainModelAbstract, MainModelOneInput
+from dwi_ml.models.main_models import ModelForTracking, MainModelOneInput
 
 logger = logging.getLogger('tracker_logger')
 
@@ -35,7 +35,7 @@ class DWIMLPropagator(AbstractPropagator):
     dataset: MultisubjectSubset
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
-                 model: MainModelAbstract, step_size: float,
+                 model: ModelForTracking, step_size: float,
                  algo: str, theta: float, verify_opposite_direction: bool,
                  device=None, normalize_directions: bool = True):
         """
@@ -47,7 +47,7 @@ class DWIMLPropagator(AbstractPropagator):
             one subject.
         subj_idx: int
             Subject used for tracking.
-        model: MainModelAbstract
+        model: ModelForTracking
             Your torch model.
         step_size: float
             The step size for tracking, in voxel space.
@@ -85,6 +85,10 @@ class DWIMLPropagator(AbstractPropagator):
                             "output from the model. Using a step size other "
                             "than 1 does not really make sense. You probably "
                             "want to advance of exactly 1 * output.")
+            
+        # If output is already normalized, no need to do it again.
+        if self.model.normalize_outputs:
+            self.normalize_directions = False
 
         self.device = device
         if device is not None:
@@ -252,6 +256,7 @@ class DWIMLPropagator(AbstractPropagator):
         # Input to model is a list of streamlines but output should be
         # next_dirs = a tensor of shape [nb_streamlines, 3].
         next_dirs = self.model.get_tracking_directions(model_outputs, self.algo)
+
         duration_direction_getter = datetime.now() - start_time
         logging.debug("Time for direction getter: {}s."
                       .format(duration_direction_getter.total_seconds()))
@@ -259,8 +264,8 @@ class DWIMLPropagator(AbstractPropagator):
         start_time = datetime.now()
         if self.normalize_directions:
             # Will divide along correct axis.
-            norm = torch.linalg.norm(next_dirs, dim=-1)
-            next_dirs = torch.div(next_dirs, norm[:, None])
+            norm = torch.linalg.norm(next_dirs, dim=-1)[:, None]
+            next_dirs = torch.div(next_dirs, norm)
         next_dirs = self._verify_angle(next_dirs, n_v_in)
         duration_norm_angle = datetime.now() - start_time
 
@@ -297,12 +302,12 @@ class DWIMLPropagator(AbstractPropagator):
         #  for other models? Ex: For the Gaussian direction getter?
         if self.normalize_directions:
             # Already normalized
-            cos_angle = torch.sum(next_dirs * n_v_in)
+            cos_angle = torch.sum(next_dirs * n_v_in, dim=1)
         else:
             norm1 = torch.linalg.norm(next_dirs, dim=-1)
             norm2 = torch.linalg.norm(n_v_in, dim=-1)
             cos_angle = torch.sum(torch.div(next_dirs, norm1[:, None]) *
-                                  torch.div(n_v_in, norm2[:, None]))
+                                  torch.div(n_v_in, norm2[:, None]), dim=1)
 
         # Resolving numerical instabilities:
         # (Converts angle to numpy)
@@ -310,6 +315,7 @@ class DWIMLPropagator(AbstractPropagator):
         # small step.
         cos_angle = np.minimum(np.maximum(-1.0, cos_angle.cpu()), 1.0)
         angle = torch.arccos(cos_angle)
+
         if self.verify_opposite_direction:
             mask_angle = angle > np.pi / 2  # 90 degrees
             angle[mask_angle] = np.mod(angle[mask_angle] + np.pi, 2*np.pi)
@@ -374,7 +380,6 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         # No need to invert the list of coordinates. Will be done by the
         # tracker anyway. We will update it at the next propagate() call.
         # We need to manage the input.
-
         if self.use_input_memory:
             # Not keeping the initial input point. Backward will start at
             # that point and will compute it again.
@@ -441,7 +446,7 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         return model_outputs
 
     def _call_model_forward(self, inputs, lines):
-        return self.model(inputs, lines)
+        return self.model(inputs, lines, is_tracking=True)
 
 
 class DWIMLPropagatorOneInput(DWIMLPropagator):

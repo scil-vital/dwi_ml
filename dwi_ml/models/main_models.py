@@ -543,7 +543,7 @@ class ModelForTracking(MainModelAbstract):
     """
     def __init__(self, dg_key: str = 'cosine-regression',
                  dg_args: dict = None, normalize_targets: bool = True,
-                 **kw):
+                 normalize_outputs: bool = False, **kw):
         """
         Params
         ------
@@ -564,8 +564,8 @@ class ModelForTracking(MainModelAbstract):
             difference. If streamlines are compressed, in theory you should
             normalize, but you could hope that not normalizing could give back
             to the algorithm a sense of distance between points.
-            If true and the dg_key is a regression model, then, output
-            directions are also normalized too. Default: True.
+        normalize_outputs: bool
+            If true, REGRESSED outputs are normalized.
         """
         super().__init__(**kw)
 
@@ -583,7 +583,7 @@ class ModelForTracking(MainModelAbstract):
         # About the targets and outputs
         self.normalize_targets = normalize_targets
         self.normalize_outputs = False
-        if normalize_targets and 'regression' in self.dg_key:
+        if normalize_outputs and 'regression' in self.dg_key:
             self.normalize_outputs = True
 
         # To tell our trainer what to send to the forward / loss methods.
@@ -598,11 +598,15 @@ class ModelForTracking(MainModelAbstract):
     def add_args_tracking_model(p):
         p.add_argument(
             '--normalize_targets', action='store_true',
-            help="If true, directions will be normalized, both during "
+            help="If set, directions will be normalized, both during "
                  "tracking (usually, we \nnormalize. But by not normalizing "
                  "and working with compressed streamlines, \nyou could hope "
                  "your model will gain a sense of distance) and during "
                  "training \n(if you train a regression model).")
+        p.add_argument(
+            '--normalize_outputs', action='store_true',
+            help="If set, model outputs will be normalized (only in the case "
+                 "of a regression model).")
         add_direction_getter_args(p)
 
     @property

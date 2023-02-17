@@ -72,7 +72,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
                  prev_dirs_embedding_key=None, normalize_prev_dirs=True,
                  # DIRECTION GETTER
                  dg_key='cosine-regression', dg_args=None,
-                 dg_input_size=4, normalize_targets=True):
+                 dg_input_size=4, normalize_targets=True,
+                 normalize_outputs=True):
 
         super().__init__(
             experiment_name=experiment_name,

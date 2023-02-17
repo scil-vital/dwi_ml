@@ -45,7 +45,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
                  use_layer_normalization: bool, dropout: float,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
-                 normalize_targets: bool,
+                 normalize_targets: bool, normalize_outputs: bool,
                  # Other
                  neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, List[float], None],
@@ -122,6 +122,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             compressed, in theory you should normalize, but you could hope that
             not normalizing could give back to the algorithm a sense of
             distance between points.
+        normalize_outputs: bool
+            If true, REGRESSED outputs are normalized.
         ---
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
@@ -145,7 +147,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             normalize_prev_dirs=normalize_prev_dirs,
             # For super ModelForTracking:
             dg_args=dg_args, dg_key=dg_key,
-            normalize_targets=normalize_targets)
+            normalize_targets=normalize_targets,
+            normalize_outputs=normalize_outputs)
 
         self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features

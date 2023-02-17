@@ -152,7 +152,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
         if self.normalize_outputs:
             model_outputs = normalize_directions([model_outputs])
 
-        return model_outputs[0]
+        return model_outputs
 
 
 def create_test_batch_sampler(

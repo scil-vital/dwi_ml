@@ -616,6 +616,7 @@ class ModelForTracking(MainModelAbstract):
             'dg_key': self.dg_key,
             'dg_args': self.dg_args,
             'normalize_targets': self.normalize_targets,
+            'normalize_outputs': self.normalize_outputs,
         })
         return p
 

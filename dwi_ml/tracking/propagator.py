@@ -446,7 +446,7 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         return model_outputs
 
     def _call_model_forward(self, inputs, lines):
-        return self.model(inputs, lines)
+        return self.model(inputs, lines, is_tracking=True)
 
 
 class DWIMLPropagatorOneInput(DWIMLPropagator):

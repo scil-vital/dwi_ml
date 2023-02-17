@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
 
-import numpy as np
 from torch import Tensor, isnan, set_printoptions
 
 from dwi_ml.models.projects.transforming_tractography import (
@@ -63,6 +62,7 @@ def test_models():
                                      n_layers_e=1, n_layers_d=1,
                                      dg_key='cosine-regression', dg_args=None,
                                      normalize_targets=True,
+                                     normalize_outputs=True,
                                      neighborhood_type=None,
                                      neighborhood_radius=None)
 
@@ -106,6 +106,7 @@ def test_models():
                                       n_layers_d=1,
                                       dg_key='cosine-regression', dg_args=None,
                                       normalize_targets=True,
+                                      normalize_outputs=True,
                                       neighborhood_type=None,
                                       neighborhood_radius=None)
 

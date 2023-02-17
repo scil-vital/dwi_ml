@@ -627,45 +627,6 @@ class ModelForTracking(MainModelAbstract):
         })
         return params
 
-    def _format_output_to_streamlines(self, output_dirs, ref_streamlines,
-                                      ref_dirs):
-        """
-        Depending on your model's output format, transform to streamlines
-        format.
-
-        Here is an example of use. Overwrite if it does not fit with your data.
-
-        Params
-        ------
-        model_outputs: Any
-            Your model's output.
-        ref_streamlines: list
-            The target streamlines, to use as reference.
-        ref_dirs: list
-            The target dirs.
-
-        Returns
-        -------
-        streamlines: list
-            The streamlines.
-        """
-        if not self.normalize_outputs:
-            # We normalize them here to eventually give them the right length.
-            output_dirs = normalize_directions(output_dirs)
-
-        initial_lengths = [torch.linalg.norm(s, dim=-1, keepdim=True) for s in
-                           ref_dirs]
-
-        # First point is the same
-        # Next points start from real streamline but advance in the output
-        # direction instead. We don't know the step size (or compress use) so
-        # giving them the same lengths as reference dirs.
-        output_streamlines = [
-            s[0].append(s[0:-1] + d * initial_lengths[i]) for
-            i, s, d in enumerate(zip(ref_streamlines, output_dirs))]
-
-        return output_streamlines
-
     def forward(self, inputs, target_streamlines, **kw):
         """
         Params

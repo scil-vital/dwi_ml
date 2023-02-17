@@ -432,7 +432,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
     def forward(self, batch_x: List[torch.tensor],
                 batch_streamlines: List[torch.tensor],
                 is_tracking=False, return_weights=False,
-                average_heads=False, **kw):
+                average_heads=False):
         """
         Params
         ------
@@ -470,11 +470,11 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         """
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
-        unpadded_x_len = np.asarray([len(i) for i in batch_x])
+        unpadded_lengths = np.asarray([len(i) for i in batch_x])
         nb_streamlines = len(batch_streamlines)
 
         # ----------- Checks
-        if np.any(unpadded_x_len > self.max_len):
+        if np.any(unpadded_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
         if is_tracking:
@@ -485,12 +485,31 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
                     "input points and {} streamline points for streamline " \
                     "#{}".format(len(batch_x[i]), len(batch_streamlines[i]), i)
 
-        # ----------- Ok. Prepare masks and parameters
+        # ----------- Ok. Now run
+        try:
+            return self._run_forward(unpadded_x_len, batch_x,
+                                     batch_streamlines, is_tracking,
+                                     return_weights, average_heads)
+        except RuntimeError:
+            logging.warning("There was a RunTimeError. Emptying cache and "
+                            "trying again!")
+            torch.cuda.empty_cache()
+            return self._run_forward(unpadded_x_len, batch_x,
+                                     batch_streamlines, is_tracking,
+                                     return_weights, average_heads)
 
+    def _run_forward(self, unpadded_x_len, batch_x: List[torch.tensor],
+                     batch_streamlines: List[torch.tensor],
+                     is_tracking=False, return_weights=False,
+                     average_heads=False):
+        # Prepare masks and parameters.
+        nb_streamlines = len(batch_streamlines)
+        
         # (Skip padding if all streamlines have the same length)
-        use_padding = not np.all(unpadded_x_len == unpadded_x_len[0])
-        batch_max_x_len = np.max(unpadded_x_len)
-        masks = self._prepare_masks(unpadded_x_len, use_padding, batch_max_x_len)
+        use_padding = not np.all(unpadded_lengths == unpadded_lengths[0])
+        batch_max_x_len = np.max(unpadded_lengths)
+        masks = self._prepare_masks(unpadded_lengths, use_padding,
+                                    batch_max_x_len)
 
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
@@ -516,14 +535,14 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             # No need to actually unpad, we only take the last (unpadded)
             # point, newly created.
             # (len = len(x) so that's the new point. -1 for python indexing)
-            outputs = [outputs[i, unpadded_x_len[i] - 1, :]
+            outputs = [outputs[i, unpadded_lengths[i] - 1, :]
                        for i in range(nb_streamlines)]
             outputs = torch.vstack(outputs)
         else:
             if use_padding:
                 # outputs size = [nb streamlines, max_len, d_model].
                 # We take all (unpadded) points.
-                outputs = [outputs[i, 0:unpadded_x_len[i], :]
+                outputs = [outputs[i, 0:unpadded_lengths[i], :]
                            for i in range(nb_streamlines)]
             outputs = torch.cat(outputs, dim=0)
 

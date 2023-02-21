@@ -163,6 +163,8 @@ class DWIMLPropagator(AbstractPropagator):
             only the seeding point (forward tracking failed), simply inverse
             the forward direction.
         """
+        logger.debug("Propagator is now preparing backward propagation.")
+
         # If forward tracking succeeded, takes the last direction, inverted and
         # normalized (if self.normalize_directions).
 
@@ -211,6 +213,9 @@ class DWIMLPropagator(AbstractPropagator):
         valid_dirs: Tensor(nb_streamlines,)
             True if new_dir is valid.
         """
+        logger.debug("New propagation step! {} streamlines, of length {}"
+                     .format(len(lines), len(lines[0])))
+
         # Keeping one coordinate per streamline; the last one.
         n_pos = [line[-1, :] for line in lines]
 
@@ -355,16 +360,23 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
 
         self.use_input_memory = input_memory
 
-        self.current_lines = None  # type: Union[List, None]
         # List of lines. All lines have the same number of points
         #         # as they are being propagated together.
         #         # List[list[list]]: nb_lines x (nb_points, 3).
-        self.input_memory = None  # type: Union[List, None]
+        self.current_lines = None  # type: Union[List, None]
+
         # List of inputs, as formatted by the model.
+        self.input_memory = None  # type: Union[List, None]
+
+        # For the backward: either we recompute all inputs, or we need to
+        # remember them during forward when the streamline is finished.
+        self.input_memory_for_backward = None
 
     def prepare_forward(self, seeding_pos):
         self.current_lines = None
-        self.input_memory = None
+        if self.use_input_memory:
+            self.input_memory = None
+            self.input_memory_for_backward = [None] * len(seeding_pos)
         return super().prepare_forward(seeding_pos)
 
     def prepare_backward(self, lines, forward_dir):
@@ -374,27 +386,56 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
         if self.use_input_memory:
             # Not keeping the initial input point. Backward will start at
             # that point and will compute it again.
-            self.input_memory = [torch.flip(line_input[1:, :], dims=[0])
-                                 for line_input in self.input_memory]
+            self.input_memory = [
+                torch.flip(line_input[1:, :], dims=[0])
+                for line_input in self.input_memory_for_backward]
+            self.input_memory_for_backward = None
 
         return super().prepare_backward(lines, forward_dir)
 
+    def multiple_lines_update(self, lines_that_continue: list):
+        if self.use_input_memory:
+            if len(lines_that_continue) != len(self.input_memory):
+                # During forward tracking, saving removed inputs for later.
+                if self.input_memory_for_backward is not None:
+                    lines_stopping = set(range(len(self.input_memory))) - \
+                                     set(lines_that_continue)
+                    remaining_ids = [
+                        i for i, x in enumerate(self.input_memory_for_backward)
+                        if x is None]
+                    for i in lines_stopping:
+                        self.input_memory_for_backward[remaining_ids[i]] = \
+                            self.input_memory[i]
+
+                # Now updating input memory
+                self.input_memory = [self.input_memory[i] for i in
+                                     lines_that_continue]
+
     def finalize_streamlines(self, final_lines: List[torch.Tensor],
-                             v_in: List[torch.Tensor], mask):
+                             n_v_in: List[torch.Tensor], mask):
         #  Looping. It should not be heavy.
         #  toDo. Create a tensor mask?
-        for i in range(len(final_lines)):
-            final_pos = final_lines[i][-1, :] + self.step_size * v_in[i]
 
+        final_pos = [line[-1, :] + self.step_size * v_in for line, v_in in
+                     zip(final_lines, n_v_in)]
+        if self.input_memory_for_backward is not None:
+            # Prepare once all final positions. Some won't be used if out of
+            # bounds but very rare; only if mask goes close to border. So this
+            # is faster than looping
+            inputs = self._prepare_inputs_at_pos(final_pos)
+
+        for i in range(len(final_lines)):
             if (final_pos is not None and
                     mask.is_coordinate_in_bound(
-                        *final_pos.cpu().numpy(),
+                        *final_pos[i].cpu().numpy(),
                         space=self.space, origin=self.origin)):
-                final_lines[i] = torch.vstack((final_lines[i], final_pos))
-                if self.use_input_memory:
-                    inputs = self._prepare_inputs_at_pos([final_pos])
-                    self.input_memory[i] = torch.cat(
-                        (self.input_memory[i], inputs[i]), dim=0)
+                final_lines[i] = torch.vstack((final_lines[i], final_pos[i]))
+
+                # Adding this input, will be used at backward
+                if self.input_memory_for_backward is not None:
+                    self.input_memory_for_backward[i] = torch.cat(
+                        (self.input_memory_for_backward[i], inputs[i]),
+                        dim=0)
 
         return final_lines
 
@@ -420,7 +461,7 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
                 # everything. But during backward, they don't.
                 self.input_memory = \
                     [torch.cat((self.input_memory[i], inputs[i]), dim=0)
-                     for i in range(len(self.current_lines))]
+                     for i in range(len(self.input_memory))]
 
         if self.use_input_memory:
             model_outputs = self._call_model_forward(self.input_memory,

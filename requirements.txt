@@ -8,7 +8,8 @@ contextlib2
 nested_lookup
 nose
 sphinx_rtd_theme # no longer a hard dependency since version 1.4.0
-
+bertviz
+jupyter
 
 ## Necessary but should be installed with scilpy (Last check: 03/2022, version 1.2.2):
 matplotlib==2.2.*

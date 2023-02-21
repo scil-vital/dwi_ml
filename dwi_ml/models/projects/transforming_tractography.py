@@ -432,7 +432,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
     def forward(self, batch_x: List[torch.tensor],
                 batch_streamlines: List[torch.tensor],
                 is_tracking=False, return_weights=False,
-                average_heads=False):
+                average_heads=False, unpack_outputs=False):
         """
         Params
         ------
@@ -458,12 +458,20 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         average_heads: bool
             If return_weights, you may choose to average the weights from
             different heads together.
+        unpack_outputs: bool
+            During tracking, this is not used; output is one point per
+            streamline. During training, by default, output is concatenated;
+            only used to compute loss point by point. For other usages, such
+            as visualisation of outputs, you may set this to true.
 
         Returns
         -------
         output: Tensor,
             Batch output, of shape:
-                - During training: [total nb points all streamlines, out size]
+                - During training, unpack_outputs False:
+                                   [total nb points all streamlines, out size]
+                                   unpack_outputs True:
+                           List of [nb_points, out_size]
                 - During tracking: [nb streamlines * 1, out size]
         weights: Tuple
             If return weigts: The weights (depending on the child model)
@@ -471,37 +479,34 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
         unpadded_lengths = np.asarray([len(i) for i in batch_x])
-        nb_streamlines = len(batch_streamlines)
 
         # ----------- Checks
         if np.any(unpadded_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
-        if is_tracking:
-            for i in range(nb_streamlines):
-                assert len(batch_streamlines[i]) == len(batch_x[i]), \
-                    "During tracking, we expect the streamlines to have the " \
-                    "same number of points as the input, but we received {} " \
-                    "input points and {} streamline points for streamline " \
-                    "#{}".format(len(batch_x[i]), len(batch_streamlines[i]), i)
+
+        # Could also check that: during tracking len(streamline) = len(input).
+        # During training, len(streamlines) = len(input) + 1.
+        # But requires loop on streamlines.
 
         # ----------- Ok. Now run
         try:
-            return self._run_forward(unpadded_x_len, batch_x,
+            return self._run_forward(unpadded_lengths, batch_x,
                                      batch_streamlines, is_tracking,
-                                     return_weights, average_heads)
+                                     return_weights, average_heads,
+                                     unpack_outputs)
         except RuntimeError:
             logging.warning("There was a RunTimeError. Emptying cache and "
                             "trying again!")
             torch.cuda.empty_cache()
-            return self._run_forward(unpadded_x_len, batch_x,
+            return self._run_forward(unpadded_lengths, batch_x,
                                      batch_streamlines, is_tracking,
-                                     return_weights, average_heads)
+                                     return_weights, average_heads,
+                                     unpack_outputs)
 
-    def _run_forward(self, unpadded_x_len, batch_x: List[torch.tensor],
-                     batch_streamlines: List[torch.tensor],
-                     is_tracking=False, return_weights=False,
-                     average_heads=False):
+    def _run_forward(self, unpadded_lengths, batch_x,  batch_streamlines,
+                     is_tracking, return_weights, average_heads,
+                     unpack_outputs):
         # Prepare masks and parameters.
         nb_streamlines = len(batch_streamlines)
         
@@ -530,6 +535,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             embed_x, embed_t, masks, return_weights, average_heads)
 
         # Unpad now and combine everything for the direction getter.
+        # outputs size = [nb streamlines, max_len, d_model].
         if is_tracking:
             outputs = outputs.detach()
             # No need to actually unpad, we only take the last (unpadded)
@@ -539,12 +545,15 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
                        for i in range(nb_streamlines)]
             outputs = torch.vstack(outputs)
         else:
+            # We want size: [nb_points_total, d_model]
             if use_padding:
-                # outputs size = [nb streamlines, max_len, d_model].
                 # We take all (unpadded) points.
                 outputs = [outputs[i, 0:unpadded_lengths[i], :]
                            for i in range(nb_streamlines)]
-            outputs = torch.cat(outputs, dim=0)
+                outputs = torch.cat(outputs, dim=0)
+            else:
+                # We reshape the data directly
+                outputs = torch.reshape(outputs, (-1, self.d_model))
 
         # 3. Direction getter
         # Outputs will be all streamlines merged.
@@ -553,6 +562,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
         if self.normalize_outputs:
             outputs = normalize_directions(outputs)
+
+        if unpack_outputs:
+            outputs = torch.split(outputs, unpadded_lengths)
 
         if return_weights:
             return outputs, weights
@@ -621,9 +633,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         model_outputs : Any
             The model outputs for a batch of sequences. Ex: a gaussian mixture
             direction getter returns a Tuple[Tensor, Tensor, Tensor], but a
-            cosine regression direction getter return a simple Tensor. Please
-            make sure that the chosen direction_getter's output size fits with
-            the target ou the target's data if it's a PackedSequence.
+            cosine regression direction getter return a simple Tensor.
         streamlines : List
             The target values for the batch (the streamlines).
 

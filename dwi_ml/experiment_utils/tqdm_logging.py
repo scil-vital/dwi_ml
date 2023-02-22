@@ -8,7 +8,6 @@ Their class is not ready for comet_ml environment. I have added a PR to their gi
 
 Copying here before it is accepted.
 """
-from __future__ import absolute_import
 
 import logging
 import sys

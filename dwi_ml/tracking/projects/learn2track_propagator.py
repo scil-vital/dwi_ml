@@ -77,16 +77,18 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
                        for line in lines]
 
         # Also, warning: creating a tensor from a list of np arrays is low.
-        _, self.hidden_recurrent_states = self.model(
-            all_inputs, lines_with0, is_tracking=False, return_state=True)
+        with self.grad_context:
+            _, self.hidden_recurrent_states = self.model(
+                all_inputs, lines_with0, is_tracking=False, return_state=True)
 
         return super().prepare_backward(lines, forward_dir)
 
     def _call_model_forward(self, inputs, lines):
         # For RNN, we need to send the hidden state too.
-        model_outputs, self.hidden_recurrent_states = self.model(
-            inputs, lines, self.hidden_recurrent_states,
-            return_state=True, is_tracking=True)
+        with self.grad_context:
+            model_outputs, self.hidden_recurrent_states = self.model(
+                inputs, lines, self.hidden_recurrent_states,
+                return_state=True, is_tracking=True)
 
         return model_outputs
 

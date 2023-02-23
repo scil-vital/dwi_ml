@@ -123,7 +123,7 @@ def add_tracking_options(p):
     return track_g
 
 
-def prepare_dataset_for_tracking(args):
+def prepare_dataset_one_subj(args):
     # Right now, we con only track on one subject at the time. We could
     # instantiate a LazySubjectData directly but we want to use the cache
     # manager (suited better for multiprocessing)
@@ -133,13 +133,16 @@ def prepare_dataset_for_tracking(args):
 
     if args.subset == 'testing':
         # Most logical choice.
-        dataset.load_data(load_training=False, load_validation=False)
+        dataset.load_data(load_training=False, load_validation=False,
+                          subj_id=args.subj_id)
         subset = dataset.testing_set
     elif args.subset == 'training':
-        dataset.load_data(load_validation=False, load_testing=False)
+        dataset.load_data(load_validation=False, load_testing=False,
+                          subj_id=args.subj_id)
         subset = dataset.training_set
     elif args.subset == 'validation':
-        dataset.load_data(load_training=False, load_testing=False)
+        dataset.load_data(load_training=False, load_testing=False,
+                          subj_id=args.subj_id)
         subset = dataset.validation_set
     else:
         raise ValueError("Subset must be one of 'training', 'validation' "
@@ -148,7 +151,7 @@ def prepare_dataset_for_tracking(args):
     if args.subj_id not in subset.subjects:
         raise ValueError("Subject {} does not belong in hdf5's {} set."
                          .format(args.subj_id, args.subset))
-    subj_idx = subset.subjects.index(args.subj_id)
+    subj_idx = subset.subjects.index(args.subj_id)  # Should be 0.
 
     return subset, subj_idx
 

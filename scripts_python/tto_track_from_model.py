@@ -33,7 +33,7 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,
                                    prepare_seed_generator,
                                    prepare_tracking_mask,
-                                   prepare_dataset_for_tracking,
+                                   prepare_dataset_one_subj,
                                    prepare_step_size_vox, track_and_save)
 
 
@@ -82,7 +82,7 @@ def prepare_tracker(parser, args, device,
         res = seeding_mask_header['pixdim'][0:3]
 
         logging.info("Loading subject's data.")
-        subset, subj_idx = prepare_dataset_for_tracking(args)
+        subset, subj_idx = prepare_dataset_one_subj(args)
 
         logging.info("Loading model.")
         model = OriginalTransformerModel.load_params_and_state(

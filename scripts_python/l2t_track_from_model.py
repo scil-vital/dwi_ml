@@ -29,7 +29,7 @@ from dwi_ml.tracking.projects.learn2track_propagator import RecurrentPropagator
 from dwi_ml.tracking.tracker import DWIMLTracker
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,
-                                   prepare_dataset_for_tracking,
+                                   prepare_dataset_one_subj,
                                    prepare_seed_generator,
                                    prepare_tracking_mask,
                                    prepare_step_size_vox, track_and_save)
@@ -80,7 +80,7 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
         res = seeding_mask_header['pixdim'][0:3]
 
         logging.info("Loading subject's data.")
-        subset, subj_idx = prepare_dataset_for_tracking(args)
+        subset, subj_idx = prepare_dataset_one_subj(args)
 
         logging.info("Loading model.")
         model = Learn2TrackModel.load_params_and_state(

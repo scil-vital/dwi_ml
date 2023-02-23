@@ -9,7 +9,6 @@ from typing import Union
 from dipy.io.stateful_tractogram import StatefulTractogram
 from nibabel.streamlines.tractogram import (PerArrayDict, PerArraySequenceDict)
 import numpy as np
-from scipy.stats import truncnorm
 
 from dwi_ml.data.processing.streamlines.utils import split_array_at_lengths
 
@@ -18,8 +17,11 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
                              gaussian_variability: float,
                              noise_rng: np.random.RandomState,
                              step_size: float = None):
-    """Add gaussian noise (truncated to +/- 2*noise_sigma) to streamlines
-    coordinates.
+    """
+    Add gaussian noise to streamlines coordinates: normal distribution centered
+    at 0, with sigma=gaussian_size. Noise is truncated at +/- 2*gaussian_size.
+
+    Gaussian variability changes the gaussian noise for the whole SFT.
 
     Keep in mind that you need to choose noise small enough so that directions
     won't flip. If step_size is provided, we make this check for you, ensuring
@@ -70,30 +72,31 @@ def add_noise_to_streamlines(sft: StatefulTractogram, gaussian_size: float,
     gaussian_size = random.uniform(gaussian_size - gaussian_variability,
                                    gaussian_size + gaussian_variability)
 
-    # Perform noise addition (flattening before to go faster)
+    # We chose to truncate noise at ± 2*gaussian_size.
     # max: min(2*gaussian_size, step_size/2)
-    #    = min(2, step_size/(2*gaussian_size)) * gaussian_size
-    flattened_coords = np.concatenate(sft.streamlines, axis=0)
     if step_size:
-        max_noise_unscaled = min(2., step_size / (2 * gaussian_size))
+        max_noise = min(2. * gaussian_size, step_size / 2)
     else:
-        max_noise_unscaled = 2
+        max_noise = 2 * gaussian_size
 
-    # Adding noise: between
-    # (-max_noise_unscaled, max_noise_unscaled) * gaussian_size
-    flattened_coords += truncnorm.rvs(-max_noise_unscaled, max_noise_unscaled,
-                                      size=flattened_coords.shape,
-                                      scale=gaussian_size,
-                                      random_state=noise_rng)
+    # Adding noise: (flattening before to go faster)
+    # ( Tested with torch + PackedSequence and unpacking sequence; 5x slower)
+    #   Tested with scipy.stats.truncnorm.rvs; 2 x slower)
+
+    # Clipping to (-max_noise_unscaled, max_noise_unscaled) * gaussian_size
+    flattened_coords = np.concatenate(sft.streamlines, axis=0)
+    noise = noise_rng.normal(loc=0., scale=gaussian_size,
+                             size=flattened_coords.shape)
+    flattened_coords += np.clip(noise, -max_noise, max_noise)
     noisy_streamlines = split_array_at_lengths(
         flattened_coords, [len(s) for s in sft.streamlines])
 
     # Create output tractogram
-    noisy_sft = StatefulTractogram.from_sft(
+    sft = StatefulTractogram.from_sft(
         noisy_streamlines, sft, data_per_point=sft.data_per_point,
         data_per_streamline=sft.data_per_streamline)
 
-    return noisy_sft
+    return sft
 
 
 def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,

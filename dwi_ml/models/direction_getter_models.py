@@ -11,7 +11,7 @@ from torch.distributions import Categorical, MultivariateNormal
 from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
-from dwi_ml.models.utils.spheres import TorchSphere
+from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.utils.gaussians import \
     independent_gaussian_log_prob
 from dwi_ml.models.utils.fisher_von_mises import fisher_von_mises_log_prob

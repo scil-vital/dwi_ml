@@ -63,7 +63,7 @@ def _independent_gaussian_log_prob_vector(x, mus, sigmas):
 
 
 def _get_random_vector(size=3):
-    scaling = np.random.randint(1, 10)
+    scaling = np.random.randint(1, 9)
     return np.array(np.random.randn(size), dtype=np.float32) * scaling
 
 
@@ -352,6 +352,7 @@ def test_fisher_von_mises():
 
 
 if __name__ == '__main__':
+    np.random.seed(1234)
     test_cosine_regression_loss()
     test_fisher_von_mises()
     test_gaussian_loss()

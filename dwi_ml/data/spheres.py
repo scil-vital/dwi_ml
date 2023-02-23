@@ -12,11 +12,19 @@ class TorchSphere:
                                         device=device)
 
     def move_to(self, device):
-        self.vertices = self.vertices.to(device)
+        self.vertices = self.vertices.to(device, non_blocking=True)
 
     def find_closest(self, xyz):
         """
-        Returns vertices by index of cosine distance to a direction vector
+        Returns vertices by index of cosine distance to a direction vector.
+
+        Parameters
+        ----------
+        xyz: Tensor of shape (nb, 3).
+
+        Returns
+        -------
+        index: tensor of shape (nb,)
         """
         # Note: See self.sphere.find_closest(), but here we want to work with
         # torch methods.

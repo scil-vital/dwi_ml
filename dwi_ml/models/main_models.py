@@ -332,9 +332,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
         return p
 
     def normalize_and_embed_previous_dirs(
-            self, dirs: Union[list, torch.tensor],
-            unpack_results: bool = True, point_idx=None) \
-            -> Union[PackedSequence, List[torch.tensor], None]:
+            self, dirs: List, packing_order=None, unpack_results: bool = True,
+            point_idx=None):
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
         the model's output. Else, returns the data as is. Should be used in
@@ -342,14 +341,16 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
         Params
         ------
-        dirs: list or tensor
-            Batch all streamline directions. If it is a tensor, it should be of
-            size [nb_points, 3].
-            If it is a list, length of the list is the number of streamlines in
-            the batch. Each tensor is as described above. The batch will be
-            packed and embedding will be ran on resulting tensor.
+        dirs: List
+            Batch all streamline directions. Length of the list is the number
+            of streamlines in the batch. Each tensor is of size [nb_points, 3].
+            The batch will be packed and embedding will be ran on resulting
+            tensor.
+        packing_order: Tuple,
+            Packing information (batch_sizes, sorted_indices, unsorted_indices)
+            to enforce. If not given, will use default.
         unpack_results: bool
-            If data was a list, unpack the model's outputs before returning.
+            If true, unpack the model's outputs before returning.
             Default: True. Hint: skipping unpacking can be useful if you want
             to concatenate this embedding to your input's packed sequence's
             embedding.
@@ -376,36 +377,37 @@ class ModelWithPreviousDirections(MainModelAbstract):
             # direction (ex, last target), but won't be used as an input.
             n_prev_dirs = [s[:-1] for s in n_prev_dirs]
 
-        if self.prev_dirs_embedding is None:
-            return n_prev_dirs
-
-        # Embedding, if asked
-        is_list = isinstance(n_prev_dirs, list)
-        n_prev_dirs_packed = None
-        if is_list:
-            # We could loop on all lists and embed each.
-            # Probably faster to pack result, run model once on all points
-            # and unpack later.
+        # Packing
+        # We could loop on all lists and embed each.
+        # Probably faster to pack result, run model once on all points
+        # and unpack later.
+        # Packing to the same order as inputs.
+        if packing_order is not None:
+            batch_sizes, sorted_indices, unsorted_indices = packing_order
+            n_prev_dirs = [n_prev_dirs[i] for i in sorted_indices]
+            n_prev_dirs = torch.cat(n_prev_dirs, dim=0)
+            n_prev_dirs_packed = PackedSequence(
+                n_prev_dirs, batch_sizes=batch_sizes,
+                sorted_indices=sorted_indices,
+                unsorted_indices=unsorted_indices)
+        else:
             n_prev_dirs_packed = pack_sequence(n_prev_dirs,
                                                enforce_sorted=False)
 
-            n_prev_dirs = n_prev_dirs_packed.data
+        if self.prev_dirs_embedding is None:
+            return n_prev_dirs_packed
 
-        # Result is a tensor
-        n_prev_dirs_embedded = self.prev_dirs_embedding(n_prev_dirs)
+        data = self.prev_dirs_embedding(n_prev_dirs_packed.data)
+        n_prev_dirs_packed = \
+            PackedSequence(data,
+                           n_prev_dirs_packed.batch_sizes,
+                           n_prev_dirs_packed.sorted_indices,
+                           n_prev_dirs_packed.unsorted_indices)
 
-        if is_list:
-            # Packing back to correctly unpack.
-            n_prev_dirs_embedded = \
-                PackedSequence(n_prev_dirs_embedded,
-                               n_prev_dirs_packed.batch_sizes,
-                               n_prev_dirs_packed.sorted_indices,
-                               n_prev_dirs_packed.unsorted_indices)
-
-            if unpack_results:
-                n_prev_dirs_embedded = unpack_sequence(n_prev_dirs_embedded)
-
-        return n_prev_dirs_embedded
+        if unpack_results:
+            return unpack_sequence(n_prev_dirs_packed)
+        else:
+            return n_prev_dirs_packed
 
     def format_previous_dirs(self, all_streamline_dirs, point_idx=None):
         """
@@ -465,7 +467,7 @@ class MainModelOneInput(MainModelAbstract):
         streamlines: list[Tensor]
             The streamlines, IN VOXEL SPACE, CORNER ORIGIN.
             Tensors are of shape (nb points, 3).
-        subjset: MultisubjectSubset
+        subset: MultisubjectSubset
             The dataset.
         subj: str
             The subject id.

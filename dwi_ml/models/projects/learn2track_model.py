@@ -326,25 +326,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
     def _run_forward(self, inputs, streamlines: List[torch.Tensor],
                      hidden_reccurent_states, is_tracking):
-
-        # ==== 1. Previous dirs embedding ====
-        if self.nb_previous_dirs > 0:
-            dirs = compute_directions(streamlines)
-
-            # During training, we need all the previous n directions, during
-            # tracking, the last one only.
-            point_idx = -1 if is_tracking else None
-
-            # Result will be a packed sequence.
-            n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
-                dirs, unpack_results=False, point_idx=point_idx)
-            logger.debug("Output size: {}"
-                         .format(n_prev_dirs_embedded.data.shape))
-        else:
-            n_prev_dirs_embedded = None
-
-        # ==== 2. Inputs embedding ====
-        # Packing inputs and saving info
+        # Ordering of PackedSequence for 1) inputs, 2) previous dirs and
+        # 3) targets (when computing loss) may not always be the same.
+        # Pack inputs now and use that information for others.
         # Shape of inputs.data: nb_pts_total * nb_features
         if is_tracking:
             # We are only dealing with one point per streamlines (and the
@@ -363,6 +347,22 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             sorted_indices = inputs.sorted_indices
             unsorted_indices = inputs.unsorted_indices
 
+        # ==== 1. Previous dirs embedding ====
+        if self.nb_previous_dirs > 0:
+            dirs = compute_directions(streamlines)
+
+            # During training, we need all the previous n directions, during
+            # tracking, the last one only.
+            point_idx = -1 if is_tracking else None
+
+            # Result will be a packed sequence.
+            n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
+                dirs, unpack_results=False, point_idx=point_idx,
+                packing_order=(batch_sizes, sorted_indices, unsorted_indices))
+        else:
+            n_prev_dirs_embedded = None
+
+        # ==== 2. Inputs embedding ====
         # Avoiding unpacking and packing back if not needed.
         if not isinstance(self.input_embedding, NoEmbedding) or \
                 self.nb_previous_dirs > 0:
@@ -400,7 +400,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         # (tracking) part, done step by step.
 
         # Not unpacking now; we will compute the loss point by point on this
-        # whole tensor.
+        # whole tensor. Sending as PackedSequence to be sure that targets will
+        # be concatenated in the same order when computing loss.
         if not is_tracking:
             model_outputs = PackedSequence(model_outputs, batch_sizes,
                                            sorted_indices, unsorted_indices)

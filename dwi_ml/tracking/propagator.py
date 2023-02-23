@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import datetime
 from typing import Union, List
 
 from dipy.io.stateful_tractogram import Space, Origin
@@ -71,6 +70,7 @@ class DWIMLPropagator(AbstractPropagator):
         super().__init__(dataset, step_size, rk_order=1,
                          space=Space.VOX, origin=Origin('corner'))
 
+        # ----- Parameters
         self.subj_idx = subj_idx
         self.model = model
 
@@ -97,6 +97,11 @@ class DWIMLPropagator(AbstractPropagator):
         # Contrary to super: normalize direction is optional
         self.normalize_directions = normalize_directions
         self.verify_opposite_direction = verify_opposite_direction
+
+        # -------- Context
+        # Uses torch's module eval(), which "turns off" the training mode.
+        self.model.eval()
+        self.grad_context = torch.no_grad()
 
     def move_to(self, device):
         #  Reminder. Contrary to tensors, model.to overwrites the model.
@@ -252,25 +257,15 @@ class DWIMLPropagator(AbstractPropagator):
         # Using the forward method to get the outputs.
         model_outputs = self._get_model_outputs_at_pos(n_pos)
 
-        start_time = datetime.now()
         # Input to model is a list of streamlines but output should be
         # next_dirs = a tensor of shape [nb_streamlines, 3].
         next_dirs = self.model.get_tracking_directions(model_outputs, self.algo)
 
-        duration_direction_getter = datetime.now() - start_time
-        logging.debug("Time for direction getter: {}s."
-                      .format(duration_direction_getter.total_seconds()))
-
-        start_time = datetime.now()
         if self.normalize_directions:
             # Will divide along correct axis.
             norm = torch.linalg.norm(next_dirs, dim=-1)[:, None]
             next_dirs = torch.div(next_dirs, norm)
         next_dirs = self._verify_angle(next_dirs, n_v_in)
-        duration_norm_angle = datetime.now() - start_time
-
-        logging.debug("Time for normalization + verifying angle: {}s."
-                      .format(duration_norm_angle.total_seconds()))
 
         return next_dirs
 
@@ -283,12 +278,8 @@ class DWIMLPropagator(AbstractPropagator):
         """
         inputs = self._prepare_inputs_at_pos(n_pos)
 
-        start_time = datetime.now()
-        model_outputs = self.model(inputs)
-        duration_running_model = datetime.now() - start_time
-
-        logger.debug("Time to run the model: {}"
-                     .format(duration_running_model.total_seconds()))
+        with self.grad_context:
+            model_outputs = self.model(inputs)
 
         return model_outputs
 
@@ -431,22 +422,18 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
                     [torch.cat((self.input_memory[i], inputs[i]), dim=0)
                      for i in range(len(self.current_lines))]
 
-        start_time = datetime.now()
         if self.use_input_memory:
             model_outputs = self._call_model_forward(self.input_memory,
                                                      self.current_lines)
         else:
             model_outputs = self._call_model_forward(inputs,
                                                      self.current_lines)
-        duration_running_model = datetime.now() - start_time
-
-        logger.debug("Time to run the model: {}"
-                     .format(duration_running_model.total_seconds()))
 
         return model_outputs
 
     def _call_model_forward(self, inputs, lines):
-        return self.model(inputs, lines, is_tracking=True)
+        with self.grad_context:
+            return self.model(inputs, lines, is_tracking=True)
 
 
 class DWIMLPropagatorOneInput(DWIMLPropagator):

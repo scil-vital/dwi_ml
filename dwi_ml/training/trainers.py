@@ -644,9 +644,14 @@ class DWIMLAbstractTrainer:
         self.valid_loss_monitor.start_new_epoch()
 
         # Setting contexts
+        # Turn gradients off (no back-propagation)
+        # Uses torch's module eval(), which "turns off" the training mode.
         self.batch_loader.set_context('validation')
         self.batch_sampler.set_context('validation')
         comet_context = self.comet_exp.validate if self.comet_exp else None
+        self.model.eval()
+        self.batch_loader.set_context('validation')
+        grad_context = torch.no_grad
 
         # Make sure there are no existing HDF handles if using parallel workers
         if (self.nb_cpu_processes > 0 and
@@ -669,11 +674,6 @@ class DWIMLAbstractTrainer:
                     break
 
                 # Validate this batch: forward propagation + loss
-                # Turn gradients off (no back-propagation)
-                # Uses torch's module eval(), which "turns off" the training mode.
-                self.model.eval()
-                self.batch_loader.set_context('validation')
-                grad_context = torch.no_grad
                 with grad_context():
                     mean_loss, n = self.run_one_batch(data)
 

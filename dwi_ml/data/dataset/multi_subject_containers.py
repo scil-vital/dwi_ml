@@ -222,7 +222,7 @@ class MultisubjectSubset(Dataset):
 
         return mri_data
 
-    def load(self, hdf_handle: h5py.File):
+    def load(self, hdf_handle: h5py.File, subj_id = None):
         """
         Load all subjects for this subjset (either training, validation or
         testing).
@@ -230,6 +230,13 @@ class MultisubjectSubset(Dataset):
 
         # Checking if there are any subjects to load
         subject_keys = sorted(hdf_handle.attrs[self.set_name + '_subjs'])
+        if subj_id is not None:
+            if subj_id not in subject_keys:
+                raise ValueError("Given subject ID {} to be loaded in the {} "
+                                 "does not exist."
+                                 .format(subj_id, self.set_name))
+            else:
+                subject_keys = [subj_id]
         self.subjects = subject_keys
         self.nb_subjects = len(subject_keys)
 
@@ -401,9 +408,12 @@ class MultiSubjectDataset:
         return all_params
 
     def load_data(self, load_training=True, load_validation=True,
-                  load_testing=True):
+                  load_testing=True, subj_id: str = None):
         """
         Load raw dataset into memory.
+
+        If `subj_id` is given, loads only this subject. Useful at
+        tractography time, for instance.
         """
         with h5py.File(self.hdf5_file, 'r') as hdf_handle:
             # Load main attributes from hdf file, but each process calling
@@ -418,10 +428,9 @@ class MultiSubjectDataset:
 
             # Loading the first training subject's group information.
             # Others should fit.
-            subject_keys = sorted(hdf_handle.attrs['training_subjs'])
+            one_subj = hdf_handle.attrs['training_subjs'][0]
             group_info = \
-                prepare_groups_info(subject_keys[0], hdf_handle,
-                                    group_info=None)
+                prepare_groups_info(one_subj, hdf_handle, group_info=None)
             (self.volume_groups, self.nb_features,
              self.streamline_groups) = group_info
             logger.debug("        Volume groups are: {}"
@@ -437,8 +446,8 @@ class MultiSubjectDataset:
 
             # LOADING
             if load_training:
-                self.training_set.load(hdf_handle)
+                self.training_set.load(hdf_handle, subj_id)
             if load_validation and self.training_set.nb_subjects > 0:
-                self.validation_set.load(hdf_handle)
+                self.validation_set.load(hdf_handle, subj_id)
             if load_testing:
-                self.testing_set.load(hdf_handle)
+                self.testing_set.load(hdf_handle, subj_id)

@@ -12,7 +12,6 @@ sphinx_rtd_theme # no longer a hard dependency since version 1.4.0
 
 ## Necessary but should be installed with scilpy (Last check: 03/2022, version 1.2.2):
 matplotlib==2.2.*
-future==0.17.*
 numpy==1.21.*
 scipy==1.4.*
 # h5py must absolutely be >2.4: that's when it became thread-safe

@@ -476,6 +476,10 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         weights: Tuple
             If return weigts: The weights (depending on the child model)
         """
+        print("NEW STEP")
+        print("   X = {}".format(batch_x[0][:, 0]))
+        print("   S = {}".format(batch_streamlines[0][:, 0]))
+
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
         unpadded_lengths = np.asarray([len(i) for i in batch_x])
@@ -520,6 +524,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
         batch_t = compute_directions(batch_streamlines)
+        print("   T = {}".format(batch_t[0][:, 0]))
 
         # ----------- Ok. Start processing
 
@@ -595,6 +600,8 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             inputs = torch.cat((inputs, n_prev_dirs), dim=-1)
         # Position encoding
         inputs = self.position_encoding_layer(inputs)
+
+        print("      Emdedded + pos enc. input:")
 
         # -- Targets --
         # One less target than input. We will eventually add SOS.

@@ -92,9 +92,6 @@ def add_abstract_model_args(p):
              "when preprocessing each layer with the norm.\n"
              "Default: False.")
 
-    g = p.add_argument_group("Previous directions")
-    AbstractTransformerModel.add_args_model_with_pd(g)
-
     g = p.add_argument_group("Neighborhood")
     AbstractTransformerModel.add_neighborhood_args_to_parser(g)
 

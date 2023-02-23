@@ -65,11 +65,6 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = OriginalTransformerModel(
             experiment_name=args.experiment_name, nb_features=args.nb_features,
-            # Previous dirs:
-            nb_previous_dirs=args.nb_previous_dirs,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
-            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            normalize_prev_dirs=args.normalize_prev_dirs,
             # Concerning inputs:
             max_len=args.max_len,
             positional_encoding_key=args.position_encoding,

@@ -18,8 +18,6 @@ def _prepare_original_model(sos_as_label, sos_as_class,
     # Using defaults from script
     model = OriginalTransformerModel(
         'test', nb_features=4, d_model=4, max_len=5, log_level='DEBUG',
-        nb_previous_dirs=0, prev_dirs_embedding_size=None,
-        prev_dirs_embedding_key=None, normalize_prev_dirs=True,
         positional_encoding_key='sinusoidal',
         embedding_key_x='nn_embedding',
         sos_as_label=sos_as_label, sos_as_class=sos_as_class,
@@ -36,8 +34,6 @@ def _prepare_original_model(sos_as_label, sos_as_class,
 def _prepare_ttst_model(sos_as_label, sos_as_class, sos_as_zero_embedding):
     model = TransformerSrcAndTgtModel(
         'test', nb_features=4, d_model=4, max_len=5, log_level='DEBUG',
-        nb_previous_dirs=0, prev_dirs_embedding_size=None,
-        prev_dirs_embedding_key=None, normalize_prev_dirs=True,
         positional_encoding_key='sinusoidal', embedding_key_x='nn_embedding',
         sos_as_label=sos_as_label, sos_as_class=sos_as_class,
         sos_as_zero_embedding=sos_as_zero_embedding,

@@ -194,9 +194,10 @@ class DWIMLTracker(ScilpyTracker):
             lines = self._propagate_multiple_lines(lines, tracking_info)
 
         # Clean streamlines
+        # Using max + 1 because we do one last step at the end.
         lengths = np.asarray([len(line) for line in lines])
         good_lengths = np.logical_and(self.min_nbr_pts <= lengths,
-                                      lengths <= self.max_nbr_pts)
+                                      lengths <= self.max_nbr_pts + 1)
         good_lengths, = np.where(good_lengths)
         clean_lines = [lines[i] for i in good_lengths]
         clean_seeds = [n_seeds[i] for i in good_lengths]

@@ -130,6 +130,12 @@ class MainModelAbstract(torch.nn.Module):
         model_state_file = os.path.join(model_dir, "model_state.pkl")
         model_state = torch.load(model_state_file)
 
+        # -----------------------------------À EFFACER. POUR LES TESTS Removing deprecated use of previous dirs for existing models
+        #del params['nb_previous_dirs']
+        #del params['prev_dirs_embedding_key']
+        #del params['prev_dirs_embedding_size']
+        #del params['normalize_prev_dirs']
+
         params.update(log_level=log_level)
         model = cls(**params)
         model.load_state_dict(model_state)  # using torch's method

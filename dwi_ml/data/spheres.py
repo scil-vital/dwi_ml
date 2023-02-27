@@ -26,12 +26,20 @@ class TorchSphere:
         -------
         index: tensor of shape (nb,)
         """
-        # Note: See self.sphere.find_closest(), but here we want to work with
+        # Note: See dipy.sphere.find_closest(), but here we want to work with
         # torch methods.
         #       cos_sim = np.dot(self.vertices, xyz)
         #       return np.argmax(cos_sim)
 
         # We will use cosine similarity to find nearest vertex
+        # No need to normalize first to find argmax (if all compared vectors
+        # have the same length).
+        # similarity = x1 * x2 / |x1| * |x2|
+        # x2 (sphere vertices) are normalized.
+        # x1 are not compared to each other.
+
+        # Could transpose in init() but then we need to transpose when
+        # accessing vertices, not better.
         cosine_similarity = torch.matmul(xyz, self.vertices.t())
 
         # Ordering by similarity. On the last dimension = per time step per

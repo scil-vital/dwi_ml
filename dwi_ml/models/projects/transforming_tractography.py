@@ -457,10 +457,6 @@ class AbstractTransformerModel(ModelWithNeighborhood,
         weights: Tuple
             If return weigts: The weights (depending on the child model)
         """
-        print("NEW STEP")
-        print("   X = {}".format(batch_x[0][:, 0]))
-        print("   S = {}".format(batch_streamlines[0][:, 0]))
-
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
         unpadded_lengths = np.asarray([len(i) for i in batch_x])
@@ -470,9 +466,13 @@ class AbstractTransformerModel(ModelWithNeighborhood,
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
 
-        # Could also check that: during tracking len(streamline) = len(input).
-        # During training, len(streamlines) = len(input) + 1.
-        # But requires loop on streamlines.
+        # Could also check that:
+        #   - During tracking len(streamline) = len(input).
+        #   - During training, len(streamlines) = len(input) + 1.
+        # But would require a loop on streamlines.
+        if not is_tracking:
+            # Last coordinate is only used to compute loss
+            batch_streamlines = [s[:-1, :] for s in batch_streamlines]
 
         # ----------- Ok. Now run
         try:
@@ -505,7 +505,6 @@ class AbstractTransformerModel(ModelWithNeighborhood,
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
         batch_t = compute_directions(batch_streamlines)
-        print("   T = {}".format(batch_t[0][:, 0]))
 
         # ----------- Ok. Start processing
 
@@ -513,7 +512,7 @@ class AbstractTransformerModel(ModelWithNeighborhood,
         # Run embedding on padded data. Necessary to make the model
         # adapt for the positional encoding.
         embed_x, embed_t = self.run_embedding(batch_x, batch_t, use_padding,
-                                              batch_max_x_len, is_tracking)
+                                              batch_max_x_len)
         embed_x, embed_t = self.dropout(embed_x), self.dropout(embed_t)
 
         # 2. Main transformer
@@ -525,20 +524,23 @@ class AbstractTransformerModel(ModelWithNeighborhood,
         if is_tracking:
             outputs = outputs.detach()
             # No need to actually unpad, we only take the last (unpadded)
-            # point, newly created.
-            # (len = len(x) so that's the new point. -1 for python indexing)
-            outputs = [outputs[i, unpadded_lengths[i] - 1, :]
-                       for i in range(nb_streamlines)]
-            outputs = torch.vstack(outputs)
+            # point, newly created. (-1 for python indexing)
+            if use_padding:
+                outputs = [outputs[i, unpadded_lengths[i] - 1, :]
+                           for i in range(nb_streamlines)]
+                outputs = torch.vstack(outputs)
+            else:
+                outputs = outputs[:, -1, :]
         else:
             # We want size: [nb_points_total, d_model]
             if use_padding:
                 # We take all (unpadded) points.
                 outputs = [outputs[i, 0:unpadded_lengths[i], :]
                            for i in range(nb_streamlines)]
-                outputs = torch.cat(outputs, dim=0)
+                outputs = torch.vstack(outputs)
             else:
-                # We reshape the data directly
+                # We reshape the data directly. Last dimension = unchanged.
+                # First dim: -1 = nb_streamlines * nb_points.
                 outputs = torch.reshape(outputs, (-1, self.d_model))
 
         # 3. Direction getter
@@ -546,6 +548,7 @@ class AbstractTransformerModel(ModelWithNeighborhood,
         # To compute loss = ok. During tracking, we will need to split back.
         outputs = self.direction_getter(outputs)
 
+        # If regression model:
         if self.normalize_outputs:
             outputs = normalize_directions(outputs)
 
@@ -554,31 +557,27 @@ class AbstractTransformerModel(ModelWithNeighborhood,
 
         if return_weights:
             return outputs, weights
+
         return outputs
 
-    def run_embedding(self, inputs, targets, use_padding,
-                      pad_len_x, is_tracking):
+    def run_embedding(self, inputs, targets, use_padding, pad_len_x):
         """
         Pad + concatenate.
         Embedding. (Add SOS token to target.)
         Positional encoding.
         """
-        if not is_tracking:
-            # Ignoring the last target as input to the decoder.
-            # Then, it has one less point than input, same as during tracking.
-            targets = [s[:-1, :] for s in targets]
 
         # -- Inputs --
         inputs = pad_and_stack_batch(inputs, use_padding, pad_len_x)
         # Embedding
         inputs = self.embedding_layer_x(inputs)
+
         # Position encoding
         inputs = self.position_encoding_layer(inputs)
 
-        print("      Emdedded + pos enc. input:")
-
         # -- Targets --
-        # One less target than input. We will eventually add SOS.
+        # One less target than input. We will eventually add SOS to have the
+        # same length for both sequences.
         pad_len_y = pad_len_x - 1
         if self.sos_as_class is not None:
             # Choice 1 for management of SOS

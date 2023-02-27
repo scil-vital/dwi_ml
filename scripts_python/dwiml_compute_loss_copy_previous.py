@@ -34,6 +34,9 @@ def prepare_arg_parser():
                    help="Input tractogram to use as target.")
     p.add_argument('dg_key', choices=CHOICES,
                    help="Direction getter choice amongst {}.".format(CHOICES))
+    p.add_argument('--use_0_for_first_dir', action='store_true',
+                   help="If set, previous direction for the first point will "
+                        "be [0,0,0]. Else, first point's loss is skipped.")
     sub = p.add_mutually_exclusive_group()
     sub.add_argument(
         '--step_size', type=float, metavar='s',
@@ -69,6 +72,10 @@ def main():
 
     streamlines = [torch.as_tensor(s) for s in sft.streamlines]
     directions = compute_directions(streamlines)
+
+    if args.use_0_for_first_dir:
+        zeros = torch.zeros(3)
+        directions = [torch.vstack((zeros, d)) for d in directions]
 
     # 3. Prepare targets and fake outputs.
     targets = [d[1:, :] for d in directions]

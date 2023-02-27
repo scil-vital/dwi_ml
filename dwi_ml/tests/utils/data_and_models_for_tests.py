@@ -8,7 +8,7 @@ from torch.nn.utils.rnn import pack_sequence
 from scilpy.io.fetcher import fetch_data, get_home
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions, compute_directions
+    compute_directions
 from dwi_ml.models.main_models import (
     ModelForTracking, ModelWithNeighborhood, MainModelOneInput,
     ModelWithPreviousDirections)
@@ -72,8 +72,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
                  prev_dirs_embedding_key=None, normalize_prev_dirs=True,
                  # DIRECTION GETTER
                  dg_key='cosine-regression', dg_args=None,
-                 dg_input_size=4, normalize_targets=True,
-                 normalize_outputs=True):
+                 dg_input_size=4):
 
         super().__init__(
             experiment_name=experiment_name,
@@ -85,8 +84,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
             prev_dirs_embedding_key=prev_dirs_embedding_key,
             normalize_prev_dirs=normalize_prev_dirs,
             # For super MainModelForTracking:
-            normalize_targets=normalize_targets, dg_key=dg_key,
-            dg_args=dg_args)
+            dg_key=dg_key, dg_args=dg_args)
 
         # If multiple inheritance goes well, these params should be set
         # correctly
@@ -97,9 +95,6 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
     def compute_loss(self, model_outputs: torch.tensor,
                      target_streamlines: List[torch.Tensor], **kw):
         target_dirs = compute_directions(target_streamlines)
-
-        if self.normalize_targets:
-            target_dirs = normalize_directions(target_dirs)
 
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.
@@ -149,8 +144,6 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
 
         # Direction getter
         model_outputs = self.direction_getter(model_outputs)
-        if self.normalize_outputs:
-            model_outputs = normalize_directions([model_outputs])
 
         return model_outputs
 

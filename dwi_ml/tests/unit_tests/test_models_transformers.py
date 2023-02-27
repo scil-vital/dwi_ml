@@ -61,8 +61,6 @@ def test_models():
                                      activation='relu', norm_first=False,
                                      n_layers_e=1, n_layers_d=1,
                                      dg_key='cosine-regression', dg_args=None,
-                                     normalize_targets=True,
-                                     normalize_outputs=True,
                                      neighborhood_type=None,
                                      neighborhood_radius=None)
 
@@ -105,8 +103,6 @@ def test_models():
                                       activation='relu', norm_first=False,
                                       n_layers_d=1,
                                       dg_key='cosine-regression', dg_args=None,
-                                      normalize_targets=True,
-                                      normalize_outputs=True,
                                       neighborhood_type=None,
                                       neighborhood_radius=None)
 

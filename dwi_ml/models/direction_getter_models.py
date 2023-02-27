@@ -11,6 +11,8 @@ from torch.distributions import Categorical, MultivariateNormal
 from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    normalize_directions
 from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.utils.gaussians import \
     independent_gaussian_log_prob
@@ -244,19 +246,54 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
     """
     def __init__(self, input_size, dropout: float, key: str,
                  supports_compressed_streamlines: bool,
-                 loss_description: str = ''):
+                 loss_description: str = '',
+                 normalize_targets: float = False,
+                 normalize_outputs: float = False):
+        """
+        normalize_targets: float
+            Value to which to normalize targets when computing loss.
+            Influences the result in the L2 case. No influence on the cosine
+            loss. Default: 0 (no normalization).
+        normalize_outputs: float
+            Value to which to normalize the learned direction.
+            Default: 0 (no normalization).
+        """
         super().__init__(input_size, dropout, key,
                          supports_compressed_streamlines, loss_description)
 
         # Regression: output is of size 3.
         self.layers = init_2layer_fully_connected(input_size, 3)
+        self.normalize_targets = normalize_targets
+        self.normalize_outputs = normalize_outputs
+
+    @property
+    def params(self):
+        p = super().params
+        p.update({
+            'normalize_targets': self.normalize_targets,
+            'normalize_outputs': self.normalize_outputs,
+        })
+        return p
 
     def forward(self, inputs: Tensor):
         """
         Run the inputs through the loop on layers.
         """
         output = self.loop_on_layers(inputs, self.layers)
+
+        if self.normalize_outputs:
+            output = normalize_directions(output) * self.normalize_outputs
         return output
+
+    def compute_loss(self, learned_directions: Tensor,
+                     target_directions: Tensor) -> Tuple:
+        if self.normalize_targets:
+            target_directions = normalize_directions(target_directions) \
+                                * self.normalize_targets
+
+        losses = self._compute_loss(learned_directions, target_directions)
+
+        return _mean_and_weight(losses)
 
     def _sample_tracking_direction_prob(self, model_outputs: Tensor):
         raise ValueError("Regression models do not support probabilistic "
@@ -277,57 +314,27 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
     Loss = negative cosine similarity.
     * If sequence: averaged on time steps and sequences.
     """
-    def __init__(self, input_size: int, dropout: float = None):
+    def __init__(self, input_size: int, dropout: float = None,
+                 normalize_targets: float = False,
+                 normalize_outputs: float = False):
         super().__init__(input_size, dropout,
                          key='cosine-regression',
                          supports_compressed_streamlines=False,
-                         loss_description='negative cosine similarity')
+                         loss_description='negative cosine similarity',
+                         normalize_targets=normalize_targets,
+                         normalize_outputs=normalize_outputs)
 
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
 
-    def compute_loss(self, learned_directions: Tensor,
-                     target_directions: Tensor):
-        """
-        Compute the average negative cosine similarity between the computed
-        directions and the target directions (both tensors should contain
-        x,y,z values).
-
-        Params
-        ------
-        learned_directions: Tensor
-            Shape: [nb_points, 3]
-        target_directions: Tensor
-            Shape: [nb_points, 3]
-
-        Returns
-        -------
-        mean_loss : torch.Tensor
-            The loss between the outputs and the targets, averaged across
-            timesteps (and sequences).
-        """
+    def _compute_loss(self, learned_directions: Tensor,
+                      target_directions: Tensor):
         # A reminder: a cosine of -1 = aligned but wrong direction!
         #             a cosine of 0 = 90 degrees apart.
         #             a cosine of 1 = small angle
         # Thus we aim for a big cosine (maximize)! We minimize -cosine.
-
-        # losses is of shape [nb_points,]
-        losses = -self.cos_loss(learned_directions, target_directions)
-
-        if logging.getLogger().level == logging.DEBUG:
-            # Comparing with l2-norm:
-            l2_losses = PairwiseDistance()(learned_directions,
-                                           target_directions)
-            mean, _ = _mean_and_weight(l2_losses)
-            logging.debug("           -  Current l2-loss: {}".format(mean))
-
-            # Verifying range of outputs
-            learned = learned_directions.cpu().detach().numpy()
-            np.set_printoptions(suppress=True)
-            logging.debug("Norm of learned directions: {}"
-                          .format(np.sqrt(np.sum(learned ** 2, axis=-1))))
-
-        return _mean_and_weight(losses)
+        losses = - self.cos_loss(learned_directions, target_directions)
+        return losses
 
 
 class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
@@ -337,65 +344,49 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
     Loss = Pairwise distance = p_root(sum(|x_i|^P))
     * If sequence: averaged on time steps and sequences.
     """
-    def __init__(self, input_size: int, dropout: float = None):
+    def __init__(self, input_size: int, dropout: float = None,
+                 normalize_targets: float = False,
+                 normalize_outputs: float = False):
         # L2 Distance loss supports compressed streamlines
         super().__init__(input_size, dropout,
                          key='l2-regression',
                          supports_compressed_streamlines=True,
-                         loss_description="torch's pairwise distance")
+                         loss_description="torch's pairwise distance",
+                         normalize_targets=normalize_targets,
+                         normalize_outputs=normalize_outputs)
 
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
         self.l2_loss = PairwiseDistance()
 
-    def compute_loss(self, learned_directions: Tensor,
-                     target_directions: Tensor):
-        """
-        Compute the average pairwise distance between the computed directions
-        and the target directions.
-        """
-        # If outputs and targets are of shape (N, D), losses is of shape N
+    def _compute_loss(self, learned_directions: Tensor,
+                      target_directions: Tensor):
         losses = self.l2_loss(learned_directions, target_directions)
-
-        if logging.getLogger().level == logging.DEBUG:
-            # Comparing with cosine-norm:
-            cos_losses = CosineSimilarity(dim=-1)(learned_directions,
-                                                  target_directions)
-            mean, _ = _mean_and_weight(cos_losses)
-            logging.debug("           -  Current cos-loss: {}".format(-mean))
-
-        return _mean_and_weight(losses)
+        return losses
 
 
 class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
-    def __init__(self, input_size: int, dropout: float = None):
+    def __init__(self, input_size: int, dropout: float = None,
+                 normalize_targets: float = False,
+                 normalize_outputs: float = False):
         super().__init__(input_size, dropout,
                          key='cos-plus-l2-regression',
                          supports_compressed_streamlines=False,
-                         loss_description='l2 + negative cosine similarity')
+                         loss_description='l2 + negative cosine similarity',
+                         normalize_targets=normalize_targets,
+                         normalize_outputs=normalize_outputs)
 
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
         self.l2_loss = PairwiseDistance()
 
-    def compute_loss(self, learned_directions: Tensor,
-                     target_directions: Tensor):
-        """
-        Compute the average pairwise distance between the computed directions
-        and the target directions.
-        """
-        # If outputs and targets are of shape (N, D), losses is of shape N
+    def _compute_loss(self, learned_directions: Tensor,
+                      target_directions: Tensor):
         l2_losses = self.l2_loss(learned_directions, target_directions)
         cos_losses = -self.cos_loss(learned_directions, target_directions)
         losses = l2_losses + cos_losses
 
-        if logging.getLogger().level == logging.DEBUG:
-            mean, _ = _mean_and_weight(cos_losses)
-            logging.debug("           -  Current cos-loss: {}".format(mean))
-            mean, _ = _mean_and_weight(l2_losses)
-            logging.debug("           -  Current l2-loss: {}".format(mean))
-
-        return _mean_and_weight(losses)
+        return losses
 
 
 class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):

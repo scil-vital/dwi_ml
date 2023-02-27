@@ -71,7 +71,6 @@ def test_learn2track():
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,
                              dg_key='cosine-regression', dg_args=None,
-                             normalize_targets=True, normalize_outputs=True,
                              neighborhood_type=None, neighborhood_radius=None)
 
     logging.info("Transformer original model final parameters:" +

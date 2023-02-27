@@ -14,9 +14,9 @@ from dwi_ml.data.dataset.utils import (
     add_dataset_args, prepare_multisubjectdataset)
 from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from dwi_ml.models.projects.learn2track_utils import add_model_args
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
-from dwi_ml.models.projects.learn2track_utils import (
-    add_model_args, prepare_model)
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
@@ -66,7 +66,34 @@ def init_from_args(args, sub_loggers_level):
     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     args.nb_features = dataset.nb_features[input_group_idx]
     # Final model
-    model = prepare_model(args, dg_args, log_level=sub_loggers_level)
+    with Timer("\n\nPreparing model", newline=True, color='yellow'):
+        # INPUTS: verifying args
+        model = Learn2TrackModel(
+            experiment_name=args.experiment_name,
+            # PREVIOUS DIRS
+            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
+            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
+            nb_previous_dirs=args.nb_previous_dirs,
+            normalize_prev_dirs=args.normalize_prev_dirs,
+            # INPUTS
+            input_embedding_key=args.input_embedding_key,
+            input_embedding_size=args.input_embedding_size,
+            input_embedding_size_ratio=args.input_embedding_size_ratio,
+            nb_features=args.nb_features,
+            # RNN
+            rnn_key=args.rnn_key, rnn_layer_sizes=args.rnn_layer_sizes,
+            dropout=args.dropout,
+            use_layer_normalization=args.use_layer_normalization,
+            use_skip_connection=args.use_skip_connection,
+            # TRACKING MODEL
+            dg_key=args.dg_key, dg_args=dg_args,
+            # Other
+            neighborhood_type=args.neighborhood_type,
+            neighborhood_radius=args.neighborhood_radius,
+            log_level=sub_loggers_level)
+
+        logging.info("Learn2track model final parameters:" +
+                     format_dict_to_str(model.params_for_json_prints))
 
     # Preparing the batch samplers
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)

@@ -3,10 +3,10 @@ import logging
 from typing import Any, Union, List
 
 import torch
-from torch.nn.utils.rnn import PackedSequence, pack_sequence, unpack_sequence
+from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions, compute_directions
+    compute_directions
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
     keys_to_tensor_embeddings, NoEmbedding
 from dwi_ml.models.main_models import (
@@ -45,7 +45,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
                  use_layer_normalization: bool, dropout: float,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
-                 normalize_targets: bool, normalize_outputs: bool,
                  # Other
                  neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, List[float], None],
@@ -116,14 +115,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
                 - For a grid neighborhood: type must be int.
                 - For an axes neighborhood: type must be float. If it is an
                 iterable of floats, we will use a multi-radius neighborhood.
-        normalize_targets: bool
-            If true, direction vectors are normalized (norm=1). If the step
-            size is fixed, it shouldn't make any difference. If streamlines are
-            compressed, in theory you should normalize, but you could hope that
-            not normalizing could give back to the algorithm a sense of
-            distance between points.
-        normalize_outputs: bool
-            If true, REGRESSED outputs are normalized.
         ---
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
@@ -146,9 +137,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             prev_dirs_embedding_key=prev_dirs_embedding_key,
             normalize_prev_dirs=normalize_prev_dirs,
             # For super ModelForTracking:
-            dg_args=dg_args, dg_key=dg_key,
-            normalize_targets=normalize_targets,
-            normalize_outputs=normalize_outputs)
+            dg_args=dg_args, dg_key=dg_key)
 
         self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features
@@ -392,10 +381,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         model_outputs = self.direction_getter(rnn_output)
         logger.debug("Output size: {}".format(model_outputs.shape[-1]))
 
-        # The two sections below should only happen for regression models
-        if self.normalize_outputs:
-            model_outputs = normalize_directions(model_outputs)
-
         # Return the hidden states. Necessary for the generative
         # (tracking) part, done step by step.
 
@@ -432,9 +417,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             timesteps and sequences.
         """
         target_dirs = compute_directions(target_streamlines)
-
-        if self.normalize_targets:
-            target_dirs = normalize_directions(target_dirs)
 
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.

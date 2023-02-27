@@ -20,8 +20,9 @@ from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
+    compute_directions, normalize_directions
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
+from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
 CHOICES = ['cosine-regression', 'l2-regression', 'cosine-plus-l2-regression',
            'sphere-classification']
@@ -32,8 +33,8 @@ def prepare_arg_parser():
                                 formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument('input_sft',
                    help="Input tractogram to use as target.")
-    p.add_argument('dg_key', choices=CHOICES,
-                   help="Direction getter choice amongst {}.".format(CHOICES))
+    add_direction_getter_args(p, dropout_arg=False, gaussian_fisher_args=False)
+
     p.add_argument('--use_0_for_first_dir', action='store_true',
                    help="If set, previous direction for the first point will "
                         "be [0,0,0]. Else, first point's loss is skipped.")
@@ -55,10 +56,17 @@ def main():
     args = p.parse_args()
 
     # 1. Prepare direction getter
+    if args.dg_key not in CHOICES:
+        raise NotImplementedError("Script ot ready for this choice of "
+                                  "direction getter")
     dg_cls = keys_to_direction_getters[args.dg_key]
     input_size = 1  # Fake, we won't use the forward method.
-    dropout = 0
-    dg = dg_cls(input_size, dropout)
+    if 'regression' in args.dg_key:
+        dg = dg_cls(input_size, dropout=0,
+                    normalize_targets=args.normalize_targets,
+                    normalize_outputs=args.normalize_outputs)
+    else:
+        dg = dg_cls(input_size, dropout=0)
 
     # 2. Load SFT
     assert_inputs_exist(p, args.input_sft, args.reference)
@@ -87,9 +95,13 @@ def main():
         # Just the index of the class as a one-hot
         classes = dg.torch_sphere.find_closest(outputs)
         outputs = torch.nn.functional.one_hot(classes.to(dtype=torch.long))
+    else:  # regression
+        if args.normalize_outputs:
+            outputs = normalize_directions(outputs) * args.normalize_outputs
 
     # 4. Compute loss
-    loss, n = dg.compute_loss(outputs, targets)
+    with torch.no_grad():
+        loss, n = dg.compute_loss(outputs, targets)
 
     print("{} loss function, averaged over all {} points in the chosen SFT, "
           "is: {}.".format(args.dg_key, n, loss))

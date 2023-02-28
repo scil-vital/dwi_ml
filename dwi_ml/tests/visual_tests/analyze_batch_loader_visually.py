@@ -19,8 +19,7 @@ from dwi_ml.tests.utils.data_and_models_for_tests import (
 
 tmp_dir = tempfile.TemporaryDirectory()
 batch_size = 500  # Testing only one value here.
-wait_for_gpu = False  # Testing both True and False is heavier...
-results_folder='./'
+results_folder = './'
 
 
 def save_loaded_batch_for_visual_assessment(dataset, ref):
@@ -44,15 +43,14 @@ def save_loaded_batch_for_visual_assessment(dataset, ref):
     logging.info("Split + reverse:")
     batch_loader = create_batch_loader(
         dataset, model, step_size=0.5, noise_size=0.2, noise_variability=0.1,
-        split_ratio=1, reverse_ratio=0.5, wait_for_gpu=wait_for_gpu)
+        split_ratio=1, reverse_ratio=0.5)
     batch_loader.set_context('training')
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'split')
 
     # 2) With compressing
     logging.info("*********")
     logging.info("Compressed:")
-    batch_loader = create_batch_loader(dataset, model, compress=True,
-                                       wait_for_gpu=wait_for_gpu)
+    batch_loader = create_batch_loader(dataset, model, compress=True)
     batch_loader.set_context('training')
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'compress')
 
@@ -63,8 +61,7 @@ def save_loaded_batch_for_visual_assessment(dataset, ref):
     model = ModelForTest(experiment_name='test',
                          neighborhood_type='axes',
                          neighborhood_radius=[1, 2])
-    batch_loader = create_batch_loader(dataset, model,
-                                       wait_for_gpu=wait_for_gpu)
+    batch_loader = create_batch_loader(dataset, model)
     batch_loader.set_context('training')
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'neighb')
 
@@ -77,8 +74,11 @@ def _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, suffix):
     suffix += '_' + now_s
 
     # Load batch
-    batch_streamlines, ids, inputs_tuple = batch_loader.load_batch(
-        batch_idx_tuples, save_batch_input_mask=True)
+    batch_streamlines, ids = batch_loader.load_batch_streamlines(
+        batch_idx_tuples)
+
+    inputs_tuple  = batch_loader.load_batch_inputs(
+        batch_streamlines, ids, save_batch_input_mask=True)
 
     # Saving input coordinates as mask. You can open the mask and verify that
     # they fit the streamlines.

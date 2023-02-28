@@ -67,8 +67,7 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             noise_gaussian_var_validation=args.noise_gaussian_var_validation,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # OTHER
-            rng=args.rng, wait_for_gpu=args.use_gpu,
-            log_level=sub_loggers_level)
+            rng=args.rng, log_level=sub_loggers_level)
 
         logging.info("Loader user-defined parameters: " +
                      format_dict_to_str(batch_loader.params_for_json_prints))

@@ -60,8 +60,7 @@ def _create_sampler_and_loader(dataset, model):
         batch_size_units='nb_streamlines', log_level=logging.WARNING)
 
     batch_loader = create_batch_loader(dataset, model,
-                                       log_level=logging.WARNING,
-                                       wait_for_gpu=False)
+                                       log_level=logging.WARNING)
 
     return batch_sampler, batch_loader
 

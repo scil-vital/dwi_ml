@@ -266,20 +266,21 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             GRU: States are tensors; h_t.
                 Size of tensors are [1, nb_streamlines, nb_neurons].
         """
-        assert len(target_streamlines) == len(inputs)
-        if is_tracking:
-            for i in range(len(target_streamlines)):
-                assert len(inputs[i]) == 1, \
-                    "During tracking, you should only be sending the input " \
-                    "for the current point (but the whole streamline to " \
-                    "allow computing the n previous dirs)."
-        else:
-            for i in range(len(target_streamlines)):
-                assert len(target_streamlines[i]) == len(inputs[i]) + 1, \
-                    "During training, we expect the streamlines to have the " \
-                    "one more point than the inputs. No need to compute the " \
-                    "input of the last point; we don't have a target " \
-                    "direction there."
+        if target_streamlines is not None:
+            assert len(target_streamlines) == len(inputs)
+            if is_tracking:
+                for i in range(len(target_streamlines)):
+                    assert len(inputs[i]) == 1, \
+                        "During tracking, you should only be sending the " \
+                        "input for the current point (but the whole " \
+                        "streamline to allow computing the n previous dirs)."
+            else:
+                for i in range(len(target_streamlines)):
+                    assert len(target_streamlines[i]) == len(inputs[i]) + 1, \
+                        "During training, we expect the streamlines to have " \
+                        "one more point than the inputs. No need to compute " \
+                        "the input of the last point; we don't have a " \
+                        "target direction there."
 
         try:
             # Apply model. This calls our model's forward function
@@ -297,7 +298,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             # consuming.
             # If it fails again, try closing terminal and opening new one to
             # empty cache better.
-            # Todo : ADDED BY PHILIPPE. SEE IF THERE ARE STILL ERRORS?
             logging.warning("There was a RunTimeError. Emptying cache and "
                             "trying again!")
 

@@ -544,8 +544,7 @@ class ModelForTracking(MainModelAbstract):
       with targets (in the case of regression).
     """
     def __init__(self, dg_key: str = 'cosine-regression',
-                 dg_args: dict = None, normalize_targets: bool = True,
-                 normalize_outputs: bool = False, **kw):
+                 dg_args: dict = None, **kw):
         """
         Params
         ------
@@ -560,14 +559,6 @@ class ModelForTracking(MainModelAbstract):
         dg_args: dict
             Arguments necessary for the instantiation of the chosen direction
             getter.
-        normalize_targets: bool
-            If true, target streamline's directions vectors are normalized
-            (norm=1). If the step size is fixed, it shouldn't make any
-            difference. If streamlines are compressed, in theory you should
-            normalize, but you could hope that not normalizing could give back
-            to the algorithm a sense of distance between points.
-        normalize_outputs: bool
-            If true, REGRESSED outputs are normalized.
         """
         super().__init__(**kw)
 
@@ -582,12 +573,6 @@ class ModelForTracking(MainModelAbstract):
             raise ValueError("Direction getter choice not understood: {}"
                              .format(self.positional_encoding_key))
 
-        # About the targets and outputs
-        self.normalize_targets = normalize_targets
-        self.normalize_outputs = False
-        if normalize_outputs and 'regression' in self.dg_key:
-            self.normalize_outputs = True
-
         # To tell our trainer what to send to the forward / loss methods.
         self.model_uses_streamlines = True
 
@@ -598,17 +583,6 @@ class ModelForTracking(MainModelAbstract):
 
     @staticmethod
     def add_args_tracking_model(p):
-        p.add_argument(
-            '--normalize_targets', action='store_true',
-            help="If set, directions will be normalized, both during "
-                 "tracking (usually, we \nnormalize. But by not normalizing "
-                 "and working with compressed streamlines, \nyou could hope "
-                 "your model will gain a sense of distance) and during "
-                 "training \n(if you train a regression model).")
-        p.add_argument(
-            '--normalize_outputs', action='store_true',
-            help="If set, model outputs will be normalized (only in the case "
-                 "of a regression model).")
         add_direction_getter_args(p)
 
     @property
@@ -617,8 +591,6 @@ class ModelForTracking(MainModelAbstract):
         p.update({
             'dg_key': self.dg_key,
             'dg_args': self.dg_args,
-            'normalize_targets': self.normalize_targets,
-            'normalize_outputs': self.normalize_outputs,
         })
         return p
 
@@ -641,8 +613,6 @@ class ModelForTracking(MainModelAbstract):
         """
         # Should end with:
         # model_outputs = self.direction_getter(last_layer_output)
-        # if self.normalize_outputs:
-        #     model_outputs = normalize_directions(model_outputs)
         raise NotImplementedError
 
     def get_tracking_directions(self, model_outputs: Tensor, algo: str):
@@ -662,8 +632,6 @@ class ModelForTracking(MainModelAbstract):
     def compute_loss(self, model_outputs, target_streamlines, **kw):
         # Should probably use:
         # target_dirs = compute_directions(target_streamlines, self.device)
-        # if self.normalize_targets:
-        #     target_dirs = normalize_directions(target_dirs)
         raise NotImplementedError
 
     def move_to(self, device):

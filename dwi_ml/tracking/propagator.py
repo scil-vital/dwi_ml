@@ -87,7 +87,8 @@ class DWIMLPropagator(AbstractPropagator):
                             "want to advance of exactly 1 * output.")
             
         # If output is already normalized, no need to do it again.
-        if self.model.normalize_outputs:
+        if 'regression' in self.model.direction_getter.key and \
+                self.model.direction_getter.normalize_outputs == 1:
             self.normalize_directions = False
 
         self.device = device

@@ -85,8 +85,6 @@ def init_from_args(args, sub_loggers_level):
             norm_first=args.norm_first, n_layers_d=args.n_layers_d,
             # Direction getter
             dg_key=args.dg_key, dg_args=dg_args,
-            normalize_targets=args.normalize_targets,
-            normalize_outputs=args.normalize_outputs,
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,

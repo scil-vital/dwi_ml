@@ -58,37 +58,3 @@ def add_model_args(p: argparse.ArgumentParser):
 
     g = p.add_argument_group("Learn2track model: Tracking options")
     Learn2TrackModel.add_args_tracking_model(g)
-
-
-def prepare_model(args, dg_args, log_level):
-    with Timer("\n\nPreparing model", newline=True, color='yellow'):
-        # INPUTS: verifying args
-        model = Learn2TrackModel(
-            experiment_name=args.experiment_name,
-            # PREVIOUS DIRS
-            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
-            nb_previous_dirs=args.nb_previous_dirs,
-            normalize_prev_dirs=args.normalize_prev_dirs,
-            # INPUTS
-            input_embedding_key=args.input_embedding_key,
-            input_embedding_size=args.input_embedding_size,
-            input_embedding_size_ratio=args.input_embedding_size_ratio,
-            nb_features=args.nb_features,
-            # RNN
-            rnn_key=args.rnn_key, rnn_layer_sizes=args.rnn_layer_sizes,
-            dropout=args.dropout,
-            use_layer_normalization=args.use_layer_normalization,
-            use_skip_connection=args.use_skip_connection,
-            # TRACKING MODEL
-            dg_key=args.dg_key, dg_args=dg_args,
-            normalize_targets=args.normalize_targets,
-            normalize_outputs=args.normalize_outputs,
-            # Other
-            neighborhood_type=args.neighborhood_type,
-            neighborhood_radius=args.neighborhood_radius,
-            log_level=log_level)
-
-        logging.info("Learn2track model final parameters:" +
-                     format_dict_to_str(model.params_for_json_prints))
-    return model

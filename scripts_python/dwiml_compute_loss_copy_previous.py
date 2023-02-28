@@ -63,10 +63,11 @@ def main():
     # 2. Load SFT
     assert_inputs_exist(p, args.input_sft, args.reference)
     sft = load_tractogram_with_reference(p, args, args.input_sft)
-    sft.to_vox()
-
     sft = resample_or_compress(sft, args.step_size, args.compress)
 
+    # To tensor
+    sft.to_vox()
+    sft.to_corner()
     streamlines = [torch.as_tensor(s) for s in sft.streamlines]
     directions = compute_directions(streamlines)
 

@@ -5,24 +5,13 @@ import logging
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
+from dwi_ml.utils import add_resample_or_compress_arg
 
 
 def add_args_batch_loader(p: argparse.ArgumentParser):
     # STREAMLINES PREPROCESSING
     bl_g = p.add_argument_group("Batch loader")
-    sub = bl_g.add_mutually_exclusive_group()
-    sub.add_argument(
-        '--step_size', type=float, metavar='s',
-        help="Resample all streamlines to this step size (in mm). If not set,"
-             "\nwe will keep streamlines as they are. Note that you may have\n"
-             "already resampled or compressed your data when creating your \n"
-             "dataset, but you may use a different choice in the batch \n"
-             "sampler if you wish. Default = None.")
-    sub.add_argument(
-        '--compress', action='store_true',
-        help="If set, compress streamlines. Once again, the choice can be \n"
-             "different in the batch sampler than chosen when creating the \n"
-             "hdf5. Default = Not set.")
+    add_resample_or_compress_arg(bl_g)
     bl_g.add_argument(
         '--noise_gaussian_size_training', type=float, metavar='s', default=0.,
         help="If set, add random Gaussian noise to streamline coordinates \n"

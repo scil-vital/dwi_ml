@@ -16,13 +16,12 @@ import argparse
 import torch.nn.functional
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import add_reference_arg, assert_inputs_exist
-from scilpy.tracking.tools import resample_streamlines_step_size
-from scilpy.utils.streamlines import compress_sft
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
+from dwi_ml.utils import add_resample_or_compress_arg, resample_or_compress
 
 CHOICES = ['cosine-regression', 'l2-regression', 'cosine-plus-l2-regression',
            'sphere-classification']
@@ -38,14 +37,7 @@ def prepare_arg_parser():
     p.add_argument('--use_0_for_first_dir', action='store_true',
                    help="If set, previous direction for the first point will "
                         "be [0,0,0]. Else, first point's loss is skipped.")
-    sub = p.add_mutually_exclusive_group()
-    sub.add_argument(
-        '--step_size', type=float, metavar='s',
-        help="Resample all streamlines to this step size (in mm). "
-             "Default = None.")
-    sub.add_argument(
-        '--compress', action='store_true',
-        help="If set, compress streamlines.")
+    add_resample_or_compress_arg(p)
     add_reference_arg(p)
 
     return p
@@ -73,10 +65,7 @@ def main():
     sft = load_tractogram_with_reference(p, args, args.input_sft)
     sft.to_vox()
 
-    if args.step_size:
-        sft = resample_streamlines_step_size(sft, args.step_size)
-    else:
-        sft = compress_sft(sft)
+    sft = resample_or_compress(sft, args.step_size, args.compress)
 
     streamlines = [torch.as_tensor(s) for s in sft.streamlines]
     directions = compute_directions(streamlines)

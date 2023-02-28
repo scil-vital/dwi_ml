@@ -14,11 +14,11 @@ from nested_lookup import nested_lookup
 import nibabel as nib
 import numpy as np
 
-from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft, concatenate_sft
 
 from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data
+from dwi_ml.utils import resample_or_compress
 
 
 def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
@@ -713,15 +713,6 @@ class HDF5Creator:
         sft.to_center()
 
         # Resample or compress streamlines
-        # Note. No matter the chosen space, resampling is done in
-        # mm.
-        if self.step_size:
-            logging.info("          - Resampling")
-            sft = resample_streamlines_step_size(sft, self.step_size)
-            logging.debug("      *Resampled streamlines' step size to {}mm"
-                          .format(self.step_size))
-        elif self.compress:
-            logging.info("          - Compressing")
-            sft = compress_sft(sft)
+        sft = resample_or_compress(sft, self.step_size, self.compress)
 
         return sft

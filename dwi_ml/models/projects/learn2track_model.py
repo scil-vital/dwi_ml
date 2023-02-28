@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from typing import Any, Union, List
+from typing import Union, List
 
 import torch
 from torch.nn.utils.rnn import PackedSequence, pack_sequence

@@ -48,13 +48,11 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 
-from scilpy.tracking.tools import resample_streamlines_step_size
-from scilpy.utils.streamlines import compress_sft
-
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     add_noise_to_streamlines, reverse_streamlines, split_streamlines)
 from dwi_ml.models.main_models import MainModelOneInput, ModelWithNeighborhood
+from dwi_ml.utils import resample_or_compress
 
 logger = logging.getLogger('batch_loader_logger')
 
@@ -216,20 +214,12 @@ class DWIMLAbstractBatchLoader:
         self.dataset.context = context
 
     def data_augmentation_sft(self, sft):
-        if self.step_size:
-            # Resampling streamlines to a fixed step size, if any
-            logger.debug("            Resampling: {}".format(self.step_size))
-            if self.context_subset.step_size == self.step_size:
-                logger.debug("Step size is the same as when creating "
-                             "the hdf5 dataset. Not resampling again.")
-            else:
-                sft = resample_streamlines_step_size(sft,
-                                                     step_size=self.step_size)
-
-        # Compressing, if wanted.
-        if self.compress:
-            logger.debug("            Compressing: {}".format(self.compress))
-            sft = compress_sft(sft)
+        if self.step_size is not None and \
+                self.context_subset.step_size == self.step_size:
+            logger.debug("Step size is the same as when creating "
+                         "the hdf5 dataset. Not resampling again.")
+        else:
+            sft = resample_or_compress(sft, self.step_size, self.compress)
 
         # Adding noise to coordinates
         # Noise is considered in mm so we need to make sure the sft is in

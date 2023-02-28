@@ -10,6 +10,7 @@ from pathlib import Path
 from dipy.io.stateful_tractogram import Space
 
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
+from dwi_ml.utils import add_resample_or_compress_arg
 
 
 def add_basic_args(p: ArgumentParser):
@@ -73,14 +74,7 @@ def add_mri_processing_args(p: ArgumentParser):
 
 def add_streamline_processing_args(p: ArgumentParser):
     g = p.add_argument_group('Streamlines processing options:')
-    sg = g.add_mutually_exclusive_group()
-    sg.add_argument('--step_size', type=float, metavar='s',
-                    help="Common step size to resample the data. \n"
-                         "-> Must be in the same space as the streamlines.")
-    sg.add_argument('--compress', action="store_true",
-                    help="If set, streamlines will be compressed.\n"
-                         "-> If neither step_size nor compress are chosen, "
-                         "streamlines will be kept \nas they are.")
+    add_resample_or_compress_arg(g)
     g.add_argument('--space', type=str, default='vox',
                    choices=['rasmm', 'vox', 'voxmm'],
                    help="Default space to bring all the stateful tractograms.")

@@ -56,7 +56,8 @@ class MainModelAbstract(torch.nn.Module):
         self.device = None
 
         # To tell our trainer what to send to the forward / loss methods.
-        self.model_uses_streamlines = False
+        self.forward_uses_streamlines = False
+        self.loss_uses_streamlines = False
 
     def move_to(self, device):
         """
@@ -285,7 +286,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
             self.prev_dirs_embedding = None
 
         # To tell our trainer what to send to the forward / loss methods.
-        self.model_uses_streamlines = True
+        self.forward_uses_streamlines = True
 
     @staticmethod
     def add_args_model_with_pd(p):
@@ -574,7 +575,8 @@ class ModelForTracking(MainModelAbstract):
                              .format(self.positional_encoding_key))
 
         # To tell our trainer what to send to the forward / loss methods.
-        self.model_uses_streamlines = True
+        self.forward_uses_streamlines = True
+        self.loss_uses_streamlines = True
 
     def instantiate_direction_getter(self, dg_input_size):
         direction_getter_cls = keys_to_direction_getters[self.dg_key]

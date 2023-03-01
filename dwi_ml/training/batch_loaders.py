@@ -147,7 +147,6 @@ class DWIMLAbstractBatchLoader:
         # Set random numbers
         self.rng = rng
         self.np_rng = np.random.RandomState(self.rng)
-        self.torch_rng = torch.Generator()
         torch.manual_seed(self.rng)  # Set torch seed
 
         # Data augmentation for streamlines:
@@ -250,7 +249,7 @@ class DWIMLAbstractBatchLoader:
                                  self.context_noise_var))
             batch_streamlines = add_noise_to_tensor(
                 batch_streamlines, self.context_noise_size,
-                self.context_noise_var, self.torch_rng, device)
+                self.context_noise_var, device)
         return batch_streamlines
 
     def load_batch_streamlines(

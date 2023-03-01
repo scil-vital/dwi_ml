@@ -184,10 +184,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # If multiple inheritance goes well, these params should be set
         # correctly
-        assert self.model_uses_streamlines
+        assert self.forward_uses_streamlines
+        assert self.loss_uses_streamlines
         if nb_previous_dirs == 0:
             # Then the forward method will not use the streamlines.
-            self.model_uses_streamlines = False
+            self.forward_uses_streamlines = False
 
     @property
     def params_for_json_prints(self):

@@ -7,8 +7,7 @@ import torch
 
 
 def add_noise_to_tensor(batch_data: List[torch.Tensor], gaussian_size: float,
-                        gaussian_variability: float,
-                        generator: torch.Generator, device=None):
+                        gaussian_variability: float, device=None):
     """
     Add gaussian noise to data: normal distribution centered at 0,
     with sigma=gaussian_size. Noise is truncated at +/- 2*gaussian_size.
@@ -26,8 +25,6 @@ def add_noise_to_tensor(batch_data: List[torch.Tensor], gaussian_size: float,
         more noisy streamlines and less noisy streamlines. This means that the
         real gaussian_size will be a random number between
         [size - variability, size + variability]. Default: 0.
-    generator: torch.Generator
-        Torch initialized generator.
     device: torch device
 
     Returns
@@ -44,7 +41,7 @@ def add_noise_to_tensor(batch_data: List[torch.Tensor], gaussian_size: float,
     if gaussian_variability == 0:
         # Flattening to go faster
         flattened_batch = torch.cat(batch_data, dim=0)
-        noise = torch.normal(mean=0., std=gaussian_size, generator=generator,
+        noise = torch.normal(mean=0., std=gaussian_size,
                              size=flattened_batch.shape, device=device)
         max_noise = 2 * gaussian_size
         flattened_batch += torch.clip(noise, -max_noise, max_noise)
@@ -63,7 +60,7 @@ def add_noise_to_tensor(batch_data: List[torch.Tensor], gaussian_size: float,
         noisy_data = [None] * batch_size
         for i in range(batch_size):
             noise = torch.normal(
-                mean=0., std=gaussian_sizes[i], generator=generator,
+                mean=0., std=gaussian_sizes[i],
                 size=batch_data[i].shape, device=device)
             max_noise = 2 * gaussian_sizes[i]
             noisy_data[i] = batch_data[i] + \

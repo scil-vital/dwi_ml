@@ -90,7 +90,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
 
         # If multiple inheritance goes well, these params should be set
         # correctly
-        assert self.model_uses_streamlines
+        assert self.forward_uses_streamlines
+        assert self.loss_uses_streamlines
 
         self.instantiate_direction_getter(dg_input_size)
 

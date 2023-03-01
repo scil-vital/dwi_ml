@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 import argparse
-import logging
 
-from dwi_ml.experiment_utils.prints import format_dict_to_str
-from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 

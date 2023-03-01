@@ -20,12 +20,12 @@ def test_help_option(script_runner):
     ret = script_runner.run('dwiml_train_model.py', '--help')
     assert ret.success
 
-    #ret = script_runner.run('dwiml_resume_training_from_checkpoint.py',
-    #                        '--help')
-    #assert ret.success
+    ret = script_runner.run('dwiml_resume_training_from_checkpoint.py',
+                            '--help')
+    assert ret.success
 
-    #ret = script_runner.run('dwiml_track_from_model.py', '--help')
-    #assert ret.success
+    ret = script_runner.run('dwiml_track_from_model.py', '--help')
+    assert ret.success
 
 
 @pytest.fixture(scope="session")

@@ -125,8 +125,7 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
 
 
 def interpolate_volume_in_neighborhood(
-        volume_as_tensor, coords_vox_corner, neighborhood_vectors_vox=None,
-        device=torch.device('cpu')):
+        volume_as_tensor, coords_vox_corner, neighborhood_vectors_vox=None):
     """
     Params
     ------

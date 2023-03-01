@@ -18,39 +18,28 @@ try:
 except ImportError:
     pass
 
+from tqdm.contrib.logging import _TqdmLoggingHandler
 from tqdm.std import tqdm as std_tqdm
 
 
-class _TqdmLoggingHandler(logging.StreamHandler):
-    def __init__(
-        self,
-        tqdm_class=std_tqdm  # type: Type[std_tqdm]
-    ):
-        super(_TqdmLoggingHandler, self).__init__()
-        self.tqdm_class = tqdm_class
-
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            self.tqdm_class.write(msg, file=self.stream)
-            self.flush()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except:  # noqa pylint: disable=bare-except
-            self.handleError(record)
-
-
 def _is_console_logging_handler(handler):
-    # Real tqdm code:
+    # Real tqdm code dans tqdm.contrib.logging:
     # (isinstance(handler, logging.StreamHandler) and
     #     handler.stream in {sys.stdout, sys.stderr})
 
     # Modified by Emma:
+    # Note. Before upgrading to python 3.10, I didn't need the
+    # "if hasattr(handler, 'stream')". But then, I didn't change comet nor
+    # tqdm and I still got something changed here. Maybe pytest updated
+    # something?
     is_std_name = False
-    if hasattr(handler.stream, 'name'):
-        is_std_name = handler.stream.name in {'<stdout>', '<stderr>'}
+    is_std_stream = False
+    if hasattr(handler, 'stream'):
+        if hasattr(handler.stream, 'name'):
+            is_std_name = handler.stream.name in {'<stdout>', '<stderr>'}
+        is_std_stream = handler.stream in {sys.stdout, sys.stderr}
     return (isinstance(handler, logging.StreamHandler) and
-            (is_std_name or handler.stream in {sys.stdout, sys.stderr}))
+            (is_std_name or is_std_stream))
 
 
 def _get_first_found_console_logging_handler(handlers):

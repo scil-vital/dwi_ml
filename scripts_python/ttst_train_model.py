@@ -9,21 +9,27 @@ import argparse
 import logging
 import os
 
+# comet_ml not used, but comet_ml requires to be imported before torch.
+# See bug report here https://github.com/Lightning-AI/lightning/issues/5829
+# Importing now to solve issues later.
+import comet_ml
+
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import (
     add_dataset_args, prepare_multisubjectdataset)
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.models.projects.transformers_utils import (add_abstract_model_args,
+                                                       add_ttst_model_args,
+                                                       perform_checks)
 from dwi_ml.models.projects.transforming_tractography import \
     TransformerSrcAndTgtModel
-from dwi_ml.models.projects.transformers_utils import (
-    add_abstract_model_args, add_ttst_model_args, perform_checks)
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
-from dwi_ml.training.utils.batch_samplers import (
-    add_args_batch_sampler, prepare_batch_sampler)
-from dwi_ml.training.utils.batch_loaders import (
-    add_args_batch_loader, prepare_batch_loader)
+from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
+                                                  prepare_batch_sampler)
+from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
+                                                 prepare_batch_loader)
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_training_experiment,
     add_memory_args_training_experiment)

@@ -50,7 +50,8 @@ import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
-    add_noise_to_tensor, reverse_streamlines, split_streamlines)
+    reverse_streamlines, split_streamlines)
+from dwi_ml.data.processing.utils import add_noise_to_tensor
 from dwi_ml.models.main_models import MainModelOneInput, ModelWithNeighborhood
 from dwi_ml.utils import resample_or_compress
 
@@ -146,6 +147,7 @@ class DWIMLAbstractBatchLoader:
         # Set random numbers
         self.rng = rng
         self.np_rng = np.random.RandomState(self.rng)
+        self.torch_rng = torch.Generator()
         torch.manual_seed(self.rng)  # Set torch seed
 
         # Data augmentation for streamlines:
@@ -177,8 +179,6 @@ class DWIMLAbstractBatchLoader:
             'rng': self.rng,
             'noise_gaussian_size_training': self.noise_gaussian_size_train,
             'noise_gaussian_var_training': self.noise_gaussian_var_train,
-            'noise_gaussian_size_validation': self.noise_gaussian_size_valid,
-            'noise_gaussian_var_validation': self.noise_gaussian_var_valid,
             'reverse_ratio': self.reverse_ratio,
             'split_ratio': self.split_ratio,
             'step_size': self.step_size,
@@ -201,8 +201,8 @@ class DWIMLAbstractBatchLoader:
                 self.context_noise_var = self.noise_gaussian_var_train
             elif context == 'validation':
                 self.context_subset = self.dataset.validation_set
-                self.context_noise_size = self.noise_gaussian_size_valid
-                self.context_noise_var = self.noise_gaussian_var_valid
+                self.context_noise_size = 0.
+                self.context_noise_var = 0.
             else:
                 raise ValueError("Context should be either 'training' or "
                                  "'validation'.")
@@ -239,17 +239,19 @@ class DWIMLAbstractBatchLoader:
 
         return sft
 
-    def add_noise(self, batch_streamlines):
+    def add_noise_streamlines(self, batch_streamlines, device):
+        # This method is called by the trainer only before the forward method.
+        # Targets are not modified for the loss computation.
         # Adding noise to coordinates. Streamlines are in voxel space by now.
         # Noise is considered in voxel space.
-        if self.context_noise_size and self.context_noise_size > 0:
+        if self.context_noise_size is not None and self.context_noise_size > 0:
             logger.debug("            Adding noise {} +- {}"
                          .format(self.context_noise_size,
                                  self.context_noise_var))
-            sft = add_noise_to_tensor(sft, self.context_noise_size,
-                                      self.context_noise_var,
-                                      self.np_rng, self.step_size)
-            sft.to_vox()
+            batch_streamlines = add_noise_to_tensor(
+                batch_streamlines, self.context_noise_size,
+                self.context_noise_var, self.torch_rng, device)
+        return batch_streamlines
 
     def load_batch_streamlines(
             self, streamline_ids_per_subj: List[Tuple[int, list]]):

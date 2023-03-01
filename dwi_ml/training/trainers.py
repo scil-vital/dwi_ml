@@ -1075,10 +1075,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         batch_inputs = self.batch_loader.load_batch_inputs(
             batch_streamlines, final_s_ids_per_subj)
 
-        # Now possibly add noise to streamlines;
-        # The whole target will be noisy, even when computing the loss.
-        batch_streamlines = self.batch_loader.add_noise(batch_streamlines)
-
         lengths = [len(s) - 1 for s in batch_streamlines]
         logger.debug("Loaded a batch of {} streamlines, {} inputs points"
                      .format(len(batch_streamlines), sum(lengths)))
@@ -1087,11 +1083,16 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         self.logger.debug('*** Computing forward propagation and loss')
         if self.model.model_uses_streamlines:
+            # Now possibly add noise to streamlines;
+            # The whole target will be noisy, even when computing the loss.
+            batch_streamlines_forward = \
+                self.batch_loader.add_noise_streamlines(batch_streamlines, self.device)
+
             # Possibly computing directions twice (during forward and loss)
             # but ok, shouldn't be too heavy. Easier to deal with multiple
             # project's requirements by sending whole streamlines rather
             # than only directions.
-            model_outputs = self.model(batch_inputs, batch_streamlines)
+            model_outputs = self.model(batch_inputs, batch_streamlines_forward)
             mean_loss, n = self.model.compute_loss(model_outputs,
                                                    batch_streamlines)
         else:

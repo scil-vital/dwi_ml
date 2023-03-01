@@ -185,6 +185,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         # If multiple inheritance goes well, these params should be set
         # correctly
         assert self.model_uses_streamlines
+        if nb_previous_dirs == 0:
+            # Then the forward method will not use the streamlines.
+            self.model_uses_streamlines = False
 
     @property
     def params_for_json_prints(self):
@@ -217,7 +220,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         return params
 
     def forward(self, inputs: List[torch.tensor],
-                target_streamlines: List[torch.tensor],
+                target_streamlines: List[torch.tensor] = None,
                 hidden_reccurent_states: tuple = None,
                 return_state: bool = False, is_tracking: bool = False):
         """Run the model on a batch of sequences.

@@ -183,8 +183,8 @@ def create_batch_loader(
         dataset=subset, input_group_name=TEST_EXPECTED_VOLUME_GROUPS[0],
         streamline_group_name=TEST_EXPECTED_STREAMLINE_GROUPS[0], rng=1234,
         compress=compress, step_size=step_size, split_ratio=split_ratio,
-        noise_gaussian_size_training=noise_size,
-        noise_gaussian_var_training=noise_variability,
+        noise_gaussian_size_forward=noise_size,
+        noise_gaussian_var_forward=noise_variability,
         reverse_ratio=reverse_ratio, log_level=log_level, model=model)
 
     return batch_loader

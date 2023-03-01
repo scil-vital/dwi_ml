@@ -63,8 +63,8 @@ class DWIMLAbstractBatchLoader:
                  streamline_group_name: str, rng: int,
                  step_size: float = None, compress: bool = False,
                  split_ratio: float = 0.,
-                 noise_gaussian_size_training: float = 0.,
-                 noise_gaussian_var_training: float = 0.,
+                 noise_gaussian_size_forward: float = 0.,
+                 noise_gaussian_var_forward: float = 0.,
                  reverse_ratio: float = 0., log_level=logging.root.level):
         """
         Parameters
@@ -93,7 +93,7 @@ class DWIMLAbstractBatchLoader:
             The reason for cutting is to help the ML algorithm to track from
             the middle of WM by having already seen half-streamlines. If you
             are using interface seeding, this is not necessary.
-        noise_gaussian_size_training : float
+        noise_gaussian_size_forward : float
             DATA AUGMENTATION: Add random Gaussian noise to streamline
             coordinates with given variance. This corresponds to the std of the
             Gaussian. Value is given in voxel world. Noise is truncated to
@@ -105,7 +105,7 @@ class DWIMLAbstractBatchLoader:
             rewinds of step_size/2, but not further, so the direction of the
             segment won't flip. Suggestion, you could choose ~0.1 * step-size
             (with var=0). Default = 0.
-        noise_gaussian_var_training: float
+        noise_gaussian_var_forward: float
             DATA AUGMENTATION: If this is given, a variation is applied to the
             streamline_noise_gaussian_size to have more noisy streamlines and
             less noisy streamlines. This means that the real gaussian_size will
@@ -150,8 +150,8 @@ class DWIMLAbstractBatchLoader:
         torch.manual_seed(self.rng)  # Set torch seed
 
         # Data augmentation for streamlines:
-        self.noise_gaussian_size_train = noise_gaussian_size_training
-        self.noise_gaussian_var_train = noise_gaussian_var_training
+        self.noise_gaussian_size_train = noise_gaussian_size_forward
+        self.noise_gaussian_var_train = noise_gaussian_var_forward
         self.split_ratio = split_ratio
         self.reverse_ratio = reverse_ratio
         if self.split_ratio and not 0 <= self.split_ratio <= 1:
@@ -176,8 +176,8 @@ class DWIMLAbstractBatchLoader:
         params = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'noise_gaussian_size_training': self.noise_gaussian_size_train,
-            'noise_gaussian_var_training': self.noise_gaussian_var_train,
+            'noise_gaussian_size_forward': self.noise_gaussian_size_train,
+            'noise_gaussian_var_forward': self.noise_gaussian_var_train,
             'reverse_ratio': self.reverse_ratio,
             'split_ratio': self.split_ratio,
             'step_size': self.step_size,

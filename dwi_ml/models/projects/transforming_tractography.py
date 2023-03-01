@@ -256,12 +256,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         assert self.forward_uses_streamlines
 
     @property
-    def params_for_json_prints(self):
-        p = super().params_for_json_prints
-        p.update(self.params_for_checkpoint)
-        return p
-
-    @property
     def params_for_checkpoint(self):
         """
         Every parameter necessary to build the different layers again
@@ -550,19 +544,13 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             The loss between the outputs and the targets, averaged across
             timesteps and sequences.
         """
-        # Computing directions. Note that if previous dirs are used, this was
-        # already computed when calling the forward method. We could try to
-        # prevent double calculations, but a little complicated in actual class
-        # structure.
-        targets = compute_directions(streamlines)
-
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
-            model_outputs, torch.cat(targets))
+            model_outputs, torch.vstack(streamlines))
 
     def get_tracking_directions(self, model_outputs, algo):
-        return self.direction_getter.get_tracking_directions(model_outputs,
-                                                             algo)
+        return self.direction_getter.get_tracking_directions(
+            model_outputs, algo)
 
 
 class OriginalTransformerModel(AbstractTransformerModel):

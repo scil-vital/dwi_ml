@@ -88,7 +88,7 @@ def prepare_tracker(parser, args, device,
         model = OriginalTransformerModel.load_params_and_state(
             args.experiment_path + '/best_model', log_level=sub_logger_level)
         logging.info("* Formatted model: " +
-                     format_dict_to_str(model.params_for_json_prints))
+                     format_dict_to_str(model.params_for_checkpoint))
 
         logging.debug("Instantiating propagator.")
         theta = gm.math.radians(args.theta)

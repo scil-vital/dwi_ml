@@ -5,8 +5,6 @@ from typing import Union, List
 import torch
 from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
     keys_to_tensor_embeddings, NoEmbedding
 from dwi_ml.models.main_models import (
@@ -52,27 +50,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         """
         Params
         ------
-        experiment_name: str
         nb_features: int
             This value should be known from the actual data. Number of features
             in the data (last dimension).
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received.
-        nb_previous_dirs: int
-            Number of previous direction to concatenate to each input.
-            Default: 0.
-        prev_dirs_embedding_size: int
-            Dimension of the final vector representing the previous directions
-            (no matter the number of previous directions used).
-            Default: nb_previous_dirs * 3.
-        prev_dirs_embedding_key: str,
-            Key to an embedding class (one of
-            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
-            Default: None (no previous directions added).
-        normalize_prev_dirs: bool
-            If true, direction vectors are normalized (norm=1) when computing
-            the previous direction.
         input_embedding_key: str
             Key to an embedding class (one of
             dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
@@ -97,24 +80,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         dropout : float
             If non-zero, introduces a `Dropout` layer on the outputs of each
             RNN layer except the last layer, with given dropout probability.
-        dg_key: str
-            Key to a direction getter class (one of
-            dwi_ml.direction_getter_models.keys_to_direction_getters).
-            Default: Default: 'cosine-regression'.
-        dg_args: dict
-            Arguments necessary for the instantiation of the chosen direction
-            getter (other than input size, which will be the rnn's output
-            size).
-        neighborhood_type: str
-            The type of neighborhood to add. One of 'axes', 'grid' or None. If
-            None, don't add any. See
-            dwi_ml.data.processing.space.Neighborhood for more information.
-        neighborhood_radius : Union[int, float, Iterable[float]]
-            Add neighborhood points at the given distance (in voxels) in each
-            direction (nb_neighborhood_axes). (Can be none)
-                - For a grid neighborhood: type must be int.
-                - For an axes neighborhood: type must be float. If it is an
-                iterable of floats, we will use a multi-radius neighborhood.
         ---
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
@@ -150,6 +115,10 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # ---------- Instantiations
         # 1. Previous dirs embedding: prepared by super.
+            if embedding_layer is None:
+                raise ValueError(
+                    "SOS_as_zero_embedding cannot be chosen when no "
+                    "embedding layer is defined.")
 
         # 2. Input embedding
         self.input_size = nb_features * (self.nb_neighbors + 1)
@@ -189,17 +158,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         if nb_previous_dirs == 0:
             # Then the forward method will not use the streamlines.
             self.forward_uses_streamlines = False
-
-    @property
-    def params_for_json_prints(self):
-        params = super().params_for_json_prints
-        params.update({
-            'input_embedding': self.input_embedding.params,
-            'rnn_model': self.rnn_model.params,
-            'use_skip_connection': self.rnn_model.use_skip_connection,
-            'use_layer_normalization': self.rnn_model.use_layer_normalization,
-        })
-        return params
 
     @property
     def params_for_checkpoint(self):
@@ -270,22 +228,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             GRU: States are tensors; h_t.
                 Size of tensors are [1, nb_streamlines, nb_neurons].
         """
-        if target_streamlines is not None:
-            assert len(target_streamlines) == len(inputs)
-            if is_tracking:
-                for i in range(len(target_streamlines)):
-                    assert len(inputs[i]) == 1, \
-                        "During tracking, you should only be sending the " \
-                        "input for the current point (but the whole " \
-                        "streamline to allow computing the n previous dirs)."
-            else:
-                for i in range(len(target_streamlines)):
-                    assert len(target_streamlines[i]) == len(inputs[i]) + 1, \
-                        "During training, we expect the streamlines to have " \
-                        "one more point than the inputs. No need to compute " \
-                        "the input of the last point; we don't have a " \
-                        "target direction there."
-
         try:
             # Apply model. This calls our model's forward function
             # (the hidden states are not used here, neither as input nor
@@ -342,7 +284,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # ==== 1. Previous dirs embedding ====
         if self.nb_previous_dirs > 0:
-            dirs = compute_directions(streamlines)
+            dirs = self.prepare_targets_forward(streamlines, during_forward=True)
 
             # During training, we need all the previous n directions, during
             # tracking, the last one only.
@@ -420,11 +362,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             The loss between the outputs and the targets, averaged across
             timesteps and sequences.
         """
-        target_dirs = compute_directions(target_streamlines)
-
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.
-        target_dirs = pack_sequence(target_dirs, enforce_sorted=False)
+        target_dirs = pack_sequence(target_streamlines, enforce_sorted=False)
         assert torch.equal(target_dirs.sorted_indices,
                            model_outputs.sorted_indices)
 

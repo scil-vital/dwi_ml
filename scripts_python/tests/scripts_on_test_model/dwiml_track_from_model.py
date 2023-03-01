@@ -97,7 +97,7 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
         model = TrackingModelForTestWithPD.load_params_and_state(
             args.experiment_path + '/best_model', log_level=sub_logger_level)
         logging.info("* Loaded params: " +
-                     format_dict_to_str(model.params_for_json_prints) +
+                     format_dict_to_str(model.params_for_checkpoint) +
                      "\n")
 
         logging.debug("Instantiating propagator.")

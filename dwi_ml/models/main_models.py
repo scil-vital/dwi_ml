@@ -9,6 +9,10 @@ from typing import List, Union
 
 import numpy as np
 import torch
+from dipy.data import get_sphere
+from dwi_ml.data.processing.streamlines.sos_eos_management import \
+    convert_dirs_to_class, add_label_as_last_dim, add_zeros_sos_eos
+from dwi_ml.data.spheres import TorchSphere
 from torch import Tensor
 from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
     unpack_sequence
@@ -18,7 +22,7 @@ from dwi_ml.data.processing.volume.interpolation import \
 from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_n_previous_dirs, normalize_directions
+    compute_n_previous_dirs, normalize_directions, compute_directions
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
@@ -26,6 +30,8 @@ from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
 logger = logging.getLogger('model_logger')
+sphere_choices = ['symmetric362', 'symmetric642', 'symmetric724',
+                  'repulsion724', 'repulsion100', 'repulsion200']
 
 
 class MainModelAbstract(torch.nn.Module):
@@ -35,8 +41,7 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name: str,
-                 log_level=logging.root.level):
+    def __init__(self, experiment_name: str, log_level=logging.root.level):
         """
         Params
         ------
@@ -77,13 +82,6 @@ class MainModelAbstract(torch.nn.Module):
         return {
             'experiment_name': self.experiment_name,
         }
-
-    @property
-    def params_for_json_prints(self):
-        """
-        Adding more information, if necessary, for loggings.
-        """
-        return self.params_for_checkpoint
 
     def save_params_and_state(self, model_dir):
         model_state = self.state_dict()
@@ -220,7 +218,152 @@ class ModelWithNeighborhood(MainModelAbstract):
         return p
 
 
-class ModelWithPreviousDirections(MainModelAbstract):
+class ModelWithStreamlines(MainModelAbstract):
+    """
+    Adds modifications on the streamlines, such as classification of the
+    directions, or addition of EOS / SOS.
+    """
+    def __init__(self, convert_dirs_to_classes: str = None,
+                 sos_type: str = None, eos_type: str = None, **kw):
+        """
+        Params
+        ------
+        convert_dirs_to_classes: str
+            If set, directions are converted to one-hot vectors before
+            utilisation. Name of a dipy sphere.
+        
+        sos_type: str
+            One of 'SOS_as_label' or 'SOS_as_class' (or None).
+        eos_type: str
+            One of 'EOS_as_label', 'EOS_as_zeros' or 'EOS_as_class' (or None).
+        """
+        self.check_eos_sos_args(convert_dirs_to_classes, sos_type, eos_type)
+
+        super().__init__(**kw)
+
+        self.convert_dirs_to_classes = convert_dirs_to_classes
+        self.sos_type = sos_type
+        self.eos_type = eos_type
+
+        self.sphere = None
+        if convert_dirs_to_classes is not None:
+            dipy_sphere = get_sphere(convert_dirs_to_classes)
+            self.sphere = TorchSphere(dipy_sphere)
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
+        p.update({
+            'convert_dirs_to_classes': self.convert_dirs_to_classes,
+            'sos_type': self.sos_type,
+            'eos_type': self.eos_type,
+            'smooth_labels': self.smooth_labels
+        })
+        return p
+
+    @staticmethod
+    def add_target_management_arg(p, add_sos=True, add_eos=True):
+        p.add_argument(
+            '--convert_dirs_to_classes', const='repulsion724',
+            choices=sphere_choices,
+            help="If set, converts all input directions to classes on the "
+                 "sphere.")
+
+        if add_sos:
+            p.add_argument(
+                '--SOS_type_foward', choices=['as_label', 'as_class'],
+                help="Choice of SOS addition (in the forward method; no "
+                     "impact on the loss computation).\n"
+                     "  - as_label: Adds an initial [0,0,0,1] direction "
+                     "as the first direction.\n"
+                     "    Other points become [x, y, z, 0].\n"
+                     "  - as_class: To be used with convert_dirs_to_classes.\n"
+                     "    Adds an additional SOS class.")
+
+        if add_eos:
+            p.add_argument(
+                '--EOS_type_forward',
+                choices=['as_label', 'as_zeros', 'as_class'],
+                help="Choice of EOS addition (in the forward method; no "
+                     "impact on the loss computation).\n"
+                     "  - as_label: Adds an initial [0,0,0,1] direction "
+                     "as the last direction.\n"
+                     "    Other points become [x, y, z, 0].\n"
+                     "  - as_zeros: Adds a [0, 0, 0] value as last target.\n"
+                     "  - as_class: To be used with convert_dirs_to_classes.\n"
+                     "    Adds an additional SOS class.")
+
+    @staticmethod
+    def check_eos_sos_args(convert_dirs_to_classes, sos_type, eos_type):
+        if sos_type == 'as_label' and convert_dirs_to_classes is not None:
+            raise ValueError(
+                "--SOS_type_forward 'as_label' is not intented to be used "
+                "together with --convert_dirs_to_classes")
+        elif sos_type == 'as_class' and convert_dirs_to_classes is None:
+            raise ValueError(
+                "--SOS_type_forward 'as_class' cannot be used without "
+                "--convert_dirs_to_classes")
+
+        if eos_type == 'as_label' and convert_dirs_to_classes is not None:
+            raise ValueError(
+                "--EOS_type_forward 'as_label' is not intented to be used "
+                "together with --convert_dirs_to_classes")
+        elif eos_type == 'as_zeros' and convert_dirs_to_classes is not None:
+            raise ValueError(
+                "--EOS_type_forward 'as_zeros' is not intented to be used "
+                "together with --convert_dirs_to_classes")
+        elif eos_type == 'as_class' and convert_dirs_to_classes is None:
+            raise ValueError(
+                "--EOS_type_forward 'as_class' cannot be used without "
+                "--convert_dirs_to_classes")
+
+    def prepare_targets_forward(self, batch_streamlines, device=None):
+        """
+        batch_streamlines: List[Tensors]
+        during_loss: bool
+            If true, this is called during loss computation, and only EOS is
+            added.
+        during_foward: bool
+            If True, this is called in the forward method, and both
+            EOS and SOS are added.
+        """
+        batch_dirs = compute_directions(batch_streamlines)
+        add_sos = self.sos_type is not None
+        add_eos = self.eos_type is not None
+
+        if self.convert_dirs_to_classes:
+            batch_dirs = convert_dirs_to_class(
+                batch_dirs, self.sphere, smooth_label=self.smooth_labels,
+                add_sos=add_sos, add_eos=add_eos, device=device)
+        else:
+            # if add_sos, this means that sos_type if SOS_as_labels.
+            # EOS: possibly as label too.
+            batch_dirs = add_label_as_last_dim(
+                batch_dirs, add_sos=add_sos,
+                add_eos=self.eos_type == 'as_label', device=device)
+
+            # Final choice of EOS: EOS_as_zeros
+            if self.eos_type == 'as_zeros':
+                batch_dirs = add_zeros_sos_eos(batch_dirs, add_sos=False,
+                                               add_eos=True)
+        return batch_dirs
+
+    def forward(self, inputs, target_streamlines, **kw):
+        """
+        Params
+        ------
+        inputs: Any
+        target_streamlines: List[torch.tensor],
+            Batch of streamlines (only necessary to save estimated outputs,
+            if asked).
+        """
+        # Hints: should start with
+        # target_dirs = self.prepare_target_forward(target_streamlines,
+        #                                           during_loss=False)
+        raise NotImplementedError
+
+
+class ModelWithPreviousDirections(ModelWithStreamlines):
     """
     Adds tools to work with previous directions. Prepares a layer for previous
     directions embedding, and a tool method for direction formatting.
@@ -232,10 +375,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
         """
         Params
         ------
-        experiment_name: str
-            Name of the experiment
-        log_level: str
-            Level of the model logger.
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received. Default: 0.
@@ -319,16 +458,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
             'prev_dirs_embedding_key': self.prev_dirs_embedding_key,
             'prev_dirs_embedding_size': self.prev_dirs_embedding_size,
             'normalize_prev_dirs': self.normalize_prev_dirs
-        })
-        return p
-
-    @property
-    def params_for_json_prints(self):
-        p = super().params_for_json_prints
-        p.update({
-            'prev_dirs_embedding':
-                self.prev_dirs_embedding.params if
-                self.prev_dirs_embedding else None,
         })
         return p
 
@@ -436,7 +565,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
         """
         # Hints : Should start with:
 
-        # target_dirs = compute_directions(target_streamlines)
+        # target_dirs = self.prepare_target(target_streamlines,
+        #                                   during_loss=False)
         # n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
         #       target_dirs)
 
@@ -447,14 +577,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 class MainModelOneInput(MainModelAbstract):
     def __init__(self, **kw):
-        """
-        Params
-        ------
-        experiment_name: str
-            Name of the experiment
-        log_level: str
-            Level of the model logger.
-        """
         super().__init__(**kw)
 
     def prepare_batch_one_input(self, streamlines, subset, subj,
@@ -548,10 +670,6 @@ class ModelForTracking(MainModelAbstract):
         """
         Params
         ------
-        experiment_name: str
-            Name of the experiment
-        log_level: str
-            Level of the model logger.
         dg_key: str
             Key to a direction getter class (one of
             dwi_ml.direction_getter_models.keys_to_direction_getters).
@@ -595,14 +713,6 @@ class ModelForTracking(MainModelAbstract):
         })
         return p
 
-    @property
-    def params_for_json_prints(self):
-        params = super().params_for_json_prints
-        params.update({
-            'direction_getter': self.direction_getter.params,
-        })
-        return params
-
     def forward(self, inputs, target_streamlines, **kw):
         """
         Params
@@ -631,8 +741,6 @@ class ModelForTracking(MainModelAbstract):
         raise NotImplementedError
 
     def compute_loss(self, model_outputs, target_streamlines, **kw):
-        # Should probably use:
-        # target_dirs = compute_directions(target_streamlines, self.device)
         raise NotImplementedError
 
     def move_to(self, device):

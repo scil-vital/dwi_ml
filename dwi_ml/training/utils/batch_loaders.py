@@ -60,6 +60,6 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             rng=args.rng, log_level=sub_loggers_level)
 
         logging.info("Loader user-defined parameters: " +
-                     format_dict_to_str(batch_loader.params_for_json_prints))
+                     format_dict_to_str(batch_loader.params_for_checkpoint))
 
     return batch_loader

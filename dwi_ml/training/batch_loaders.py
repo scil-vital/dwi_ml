@@ -185,13 +185,6 @@ class DWIMLAbstractBatchLoader:
         }
         return params
 
-    @property
-    def params_for_json_prints(self):
-        # All params are all right.
-        p = self.params_for_checkpoint
-        p.update({'type': str(type(self))})
-        return p
-
     def set_context(self, context: str):
         if self.context != context:
             if context == 'training':

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from math import ceil
-from typing import Any, Tuple
+from typing import Any, Tuple, List
 
 import dipy.data
 import numpy as np
@@ -11,7 +11,9 @@ from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions
+    normalize_directions, compute_directions
+from dwi_ml.data.processing.streamlines.sos_eos_management import \
+    add_label_as_last_dim
 from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.utils.gaussians import \
     independent_gaussian_log_prob
@@ -177,7 +179,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Will be implemented by each class
         raise NotImplementedError
 
-    def compute_loss(self, outputs: Any, target_directions: Tensor) -> Tuple:
+    def compute_loss(self, outputs: Any, target_streamlines: Tensor) -> Tuple:
         """
         Returns
         -------
@@ -185,7 +187,13 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         n: int, Total number of data points in this batch.
         """
         # Will be implemented by each class
+        # Should start with
+        # target_dirs = self.prepare_targets(target_streamlines)
         raise NotImplementedError
+
+    @staticmethod
+    def prepare_targets(target_streamlines):
+        return compute_directions(target_streamlines)
 
     def _sample_tracking_direction_prob(self, outputs: Tensor) -> Tensor:
         """
@@ -247,7 +255,8 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
                  supports_compressed_streamlines: bool,
                  loss_description: str = '',
                  normalize_targets: float = False,
-                 normalize_outputs: float = False):
+                 normalize_outputs: float = False,
+                 add_eos_label: float = False):
         """
         normalize_targets: float
             Value to which to normalize targets when computing loss.
@@ -260,10 +269,13 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         super().__init__(input_size, dropout, key,
                          supports_compressed_streamlines, loss_description)
 
-        # Regression: output is of size 3.
-        self.layers = init_2layer_fully_connected(input_size, 3)
+        output_size = 3  # x, y, z direction.
+        if add_eos_label:
+            output_size = 4  # + EOS choice.
+        self.layers = init_2layer_fully_connected(input_size, output_size)
         self.normalize_targets = normalize_targets
         self.normalize_outputs = normalize_outputs
+        self.add_eos_label = add_eos_label
 
     @property
     def params(self):
@@ -271,6 +283,7 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         p.update({
             'normalize_targets': self.normalize_targets,
             'normalize_outputs': self.normalize_outputs,
+            'add_eos_label': self.add_eos_label
         })
         return p
 
@@ -285,14 +298,23 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         return output
 
     def compute_loss(self, learned_directions: Tensor,
-                     target_directions: Tensor) -> Tuple:
-        if self.normalize_targets:
-            target_directions = normalize_directions(target_directions) \
-                                * self.normalize_targets
-
-        losses = self._compute_loss(learned_directions, target_directions)
+                     target_streamlines: List[Tensor]) -> Tuple:
+        target_dirs = self.prepare_targets(target_streamlines)
+        losses = self._compute_loss(learned_directions, target_dirs)
 
         return _mean_and_weight(losses)
+
+    def prepare_targets(self, target_streamlines):
+        target_dirs = compute_directions(target_streamlines)
+
+        if self.normalize_targets:
+            target_dirs = normalize_directions(target_dirs) * self.normalize_targets
+
+        target_dirs = add_label_as_last_dim(
+            target_dirs, add_sos=False, add_eos=self.add_eos_label,
+            device=self.device)
+
+        return target_dirs
 
     def _sample_tracking_direction_prob(self, model_outputs: Tensor):
         raise ValueError("Regression models do not support probabilistic "
@@ -315,13 +337,15 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
     """
     def __init__(self, input_size: int, dropout: float = None,
                  normalize_targets: float = False,
-                 normalize_outputs: float = False):
+                 normalize_outputs: float = False,
+                 add_eos_label: bool = False):
         super().__init__(input_size, dropout,
                          key='cosine-regression',
                          supports_compressed_streamlines=False,
                          loss_description='negative cosine similarity',
                          normalize_targets=normalize_targets,
-                         normalize_outputs=normalize_outputs)
+                         normalize_outputs=normalize_outputs,
+                         add_eos_label=add_eos_label)
 
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
@@ -345,14 +369,16 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
     """
     def __init__(self, input_size: int, dropout: float = None,
                  normalize_targets: float = False,
-                 normalize_outputs: float = False):
+                 normalize_outputs: float = False,
+                 add_eos_label: bool = False):
         # L2 Distance loss supports compressed streamlines
         super().__init__(input_size, dropout,
                          key='l2-regression',
                          supports_compressed_streamlines=True,
                          loss_description="torch's pairwise distance",
                          normalize_targets=normalize_targets,
-                         normalize_outputs=normalize_outputs)
+                         normalize_outputs=normalize_outputs,
+                         add_eos_label=add_eos_label)
 
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
@@ -367,13 +393,15 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
 class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
     def __init__(self, input_size: int, dropout: float = None,
                  normalize_targets: float = False,
-                 normalize_outputs: float = False):
+                 normalize_outputs: float = False,
+                 add_eos_label: bool = False):
         super().__init__(input_size, dropout,
                          key='cos-plus-l2-regression',
                          supports_compressed_streamlines=False,
                          loss_description='l2 + negative cosine similarity',
                          normalize_targets=normalize_targets,
-                         normalize_outputs=normalize_outputs)
+                         normalize_outputs=normalize_outputs,
+                         add_eos_label=add_eos_label)
 
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
@@ -403,10 +431,12 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
     Loss = negative log-likelihood.
     """
     def __init__(self, input_size: int, dropout: float = None,
-                 sphere: str = 'symmetric724'):
+                 sphere: str = 'symmetric724', add_eos_class=False):
         """
-        sphere: dipy.core.Sphere
-            An instance of dipy's Sphere.
+        sphere: str
+            An choice of dipy's Sphere.
+        add_eos_class: bool
+            If true, add an additional class for EOS.
         """
         super().__init__(input_size, dropout,
                          key='sphere-classification',
@@ -417,8 +447,11 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         self.sphere_name = sphere
         sphere = dipy.data.get_sphere(sphere)
         self.torch_sphere = TorchSphere(sphere)
-        nb_classes = sphere.vertices.shape[0]
 
+        # EOS
+        self.add_eos_class = add_eos_class
+
+        nb_classes = sphere.vertices.shape[0]
         self.layers = init_2layer_fully_connected(input_size, nb_classes)
 
         # Loss will be defined in compute_loss, using torch distribution
@@ -432,7 +465,8 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         params = super().params
 
         params.update({
-            'sphere': self.sphere_name
+            'sphere': self.sphere_name,
+            'add_eos_class': self.add_eos_class,
         })
         return params
 
@@ -444,13 +478,12 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         return logits
 
     def compute_loss(self, logits_per_class: Tensor,
-                     target_directions: Tensor):
+                     target_streamlines: Tensor):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
         """
-        # Find the closest class for each target direction
-        target_idx = self.torch_sphere.find_closest(target_directions)
+        target_idx = self.prepare_targets(target_streamlines)
 
         # Create an official probability distribution from the logits
         # Applies a softmax
@@ -461,25 +494,35 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
 
         return _mean_and_weight(nll_losses)
 
+    def prepare_targets(self, target_streamlines):
+        # Find the closest class for each target direction
+        target_dirs = compute_directions(target_streamlines)
+        target_idx = self.torch_sphere.find_closest(target_dirs)
+
+        # Add EOS class
+        if self.add_eos_class:
+            raise NotImplementedError  # todo
+        return target_idx
+
     def _sample_tracking_direction_prob(self, logits_per_class: Tensor):
         """
         Sample a tracking direction on the sphere from the predicted class
-        logits (=probabilities).
+        logits (=probabilities). If class = EOS, direction is [NaN, NaN, NaN].
         """
         # Sample a direction on the sphere
         sampler = Categorical(logits=logits_per_class)
         idx = sampler.sample()
 
-        # One direction per time step per sequence
-        direction = self.vertices[idx]
-
-        return direction
+        return self.torch_sphere.vertices[idx]
 
     def _get_tracking_direction_det(self, logits_per_class: Tensor):
         """
         Get the predicted class with highest logits (=probabilities).
+        If class = EOS, direction is [NaN, NaN, NaN].
         """
-        return self.torch_sphere.vertices[logits_per_class.argmax(dim=1)]
+        idx = logits_per_class.argmax(dim=1)
+
+        return self.torch_sphere.vertices[idx]
 
 
 class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
@@ -520,7 +563,7 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         return means, sigmas
 
     def compute_loss(self, learned_gaussian_params: Tuple[Tensor, Tensor],
-                     target_directions: Tensor):
+                     target_streamlines: Tensor):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
@@ -528,6 +571,8 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         See the doc for explanation on the formulas:
         https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
+        target_dirs = self.prepare_targets(target_streamlines)
+
         means, sigmas = learned_gaussian_params
 
         # Create an official function-probability distribution from the means
@@ -537,7 +582,7 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
         # Compute the negative log-likelihood from the difference between the
         # distribution and each target.
-        nll_losses = -distribution.log_prob(target_directions)
+        nll_losses = -distribution.log_prob(target_dirs)
 
         return _mean_and_weight(nll_losses)
 
@@ -627,7 +672,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
     def compute_loss(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
-            target_directions: Tensor):
+            target_streamlines: Tensor):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
@@ -636,6 +681,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
         # Note. Shape of targets: [batch_size*seq_len, 3] or [batch_size, 3]
+        target_dirs = self.prepare_targets(target_streamlines)
 
         # Shape : [batch_size*seq_len, n_gaussians, 3] or
         #         [batch_size, n_gaussians, 3]
@@ -646,7 +692,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         mixture_probs = torch.softmax(mixture_logits, dim=-1)
 
         gaussians_log_prob = independent_gaussian_log_prob(
-            target_directions[:, None, :], means, sigmas)
+            target_dirs[:, None, :], means, sigmas)
 
         nll_losses = -torch.logsumexp(mixture_probs.log() + gaussians_log_prob,
                                       dim=-1)
@@ -764,17 +810,19 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         return means, kappas
 
     def compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
-                     target_directions: Tensor):
+                     target_streamlines: Tensor):
         """Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
 
         See the doc for explanation on the formulas:
         https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
+        target_dirs = self.prepare_targets(target_streamlines)
+
         # mu.shape : [flattened_sequences, 3]
         mu, kappa = learned_fisher_params
 
-        log_prob = fisher_von_mises_log_prob(mu, kappa, target_directions, eps)
+        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs, eps)
         nll_losses = -log_prob
 
         return _mean_and_weight(nll_losses)
@@ -864,7 +912,7 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
         raise NotImplementedError
 
     def compute_loss(self, outputs: Tuple[Tensor, Tensor],
-                     target_directions: Tensor):
+                     target_streamlines: Tensor):
         raise NotImplementedError
 
     def _sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor]):

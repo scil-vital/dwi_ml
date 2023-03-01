@@ -92,7 +92,7 @@ def init_from_args(args, sub_loggers_level):
             log_level=sub_loggers_level)
 
         logging.info("Transformer (original) model final parameters:" +
-                     format_dict_to_str(model.params_for_json_prints))
+                     format_dict_to_str(model.params_for_checkpoint))
 
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)
     batch_loader = prepare_batch_loader(dataset, model, args, sub_loggers_level)
@@ -115,7 +115,7 @@ def init_from_args(args, sub_loggers_level):
             # MEMORY
             nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
         logging.info("Trainer params : " +
-                     format_dict_to_str(trainer.params_for_json_prints))
+                     format_dict_to_str(trainer.params_for_checkpoint))
 
     return trainer
 

@@ -57,6 +57,6 @@ def prepare_batch_sampler(dataset, args, sub_loggers_level):
             rng=args.rng, log_level=sub_loggers_level)
 
         logging.info("Batch sampler's user-defined parameters: " +
-                     format_dict_to_str(batch_sampler.params))
+                     format_dict_to_str(batch_sampler.params_for_checkpoint))
 
     return batch_sampler

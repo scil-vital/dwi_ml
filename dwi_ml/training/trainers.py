@@ -330,24 +330,6 @@ class DWIMLAbstractTrainer:
         }
         return params
 
-    @property
-    def params_for_json_prints(self) -> dict:
-        params = self.params_for_checkpoint
-        params.update({
-            'experiments_path': self.experiments_path,
-            'experiment_name': self.experiment_name,
-            'patience': self.best_epoch_monitoring.patience,
-            'type': str(type(self)),
-            'comet_key': self.comet_key,
-            'computed_values': {
-                'nb_training_batches_per_epoch':
-                    self.nb_train_batches_per_epoch,
-                'nb_validation_batches_per_epoch':
-                    self.nb_valid_batches_per_epoch
-            }
-        })
-        return params
-
     def save_params_to_json(self):
         """
         Utility method to save the parameters to a json file in the same
@@ -359,10 +341,9 @@ class DWIMLAbstractTrainer:
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
-                 'Trainer params': self.params_for_json_prints,
-                 'Sampler params': self.batch_sampler.params,
-                 'Batch loader params':
-                     self.batch_loader.params_for_json_prints,
+                 'Trainer params': self.params_for_checkpoint,
+                 'Sampler params': self.batch_sampler.params_for_checkpoint,
+                 'Loader params': self.batch_loader.params_for_checkpoint,
                  },
                 indent=4, separators=(',', ': ')))
 
@@ -389,7 +370,7 @@ class DWIMLAbstractTrainer:
                     log_git_metadata=True, log_git_patch=True,
                     display_summary_level=False)
                 self.comet_exp.set_name(self.experiment_name)
-                self.comet_exp.log_parameters(self.params_for_json_prints)
+                self.comet_exp.log_parameters(self.params_for_checkpoint)
                 self.comet_key = self.comet_exp.get_key()
                 # Couldn't find how to set log level. Getting it directly.
                 comet_log = logging.getLogger("comet_ml")
@@ -961,7 +942,7 @@ class DWIMLAbstractTrainer:
             # todo Verify:
             #  batch sampler and batch loader should have the same dataset
             'dataset_params': self.batch_sampler.dataset.params,
-            'batch_sampler_params': self.batch_sampler.params,
+            'batch_sampler_params': self.batch_sampler.params_for_checkpoint,
             'batch_loader_params': self.batch_loader.params_for_checkpoint,
             'params_for_init': self.params_for_checkpoint,
             'current_states': current_states

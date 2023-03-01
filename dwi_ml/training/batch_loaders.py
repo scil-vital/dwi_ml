@@ -50,7 +50,7 @@ import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
-    add_noise_to_streamlines, reverse_streamlines, split_streamlines)
+    add_noise_to_tensor, reverse_streamlines, split_streamlines)
 from dwi_ml.models.main_models import MainModelOneInput, ModelWithNeighborhood
 from dwi_ml.utils import resample_or_compress
 
@@ -64,8 +64,6 @@ class DWIMLAbstractBatchLoader:
                  split_ratio: float = 0.,
                  noise_gaussian_size_training: float = 0.,
                  noise_gaussian_var_training: float = 0.,
-                 noise_gaussian_size_validation: float = None,
-                 noise_gaussian_var_validation: float = None,
                  reverse_ratio: float = 0., log_level=logging.root.level):
         """
         Parameters
@@ -97,20 +95,20 @@ class DWIMLAbstractBatchLoader:
         noise_gaussian_size_training : float
             DATA AUGMENTATION: Add random Gaussian noise to streamline
             coordinates with given variance. This corresponds to the std of the
-            Gaussian. If step_size is not given, make sure it is smaller than
-            your step size to avoid flipping direction. Ex, you could choose
-            0.1 * step-size. Noise is truncated to +/- 2*noise_sigma and to
-            +/- 0.5 * step-size (if given). Default = 0.
+            Gaussian. Value is given in voxel world. Noise is truncated to
+            +/- 2*noise_gaussian_size.
+            ** Suggestion. Make sure that
+            2*(noise_gaussian_size + noise_gaussian_var) < step_size/2 (in vox)
+            to avoid flipping direction. In the worst case, the starting point
+            of a segment may advance of step_size/2 while the ending point
+            rewinds of step_size/2, but not further, so the direction of the
+            segment won't flip. Suggestion, you could choose ~0.1 * step-size
+            (with var=0). Default = 0.
         noise_gaussian_var_training: float
             DATA AUGMENTATION: If this is given, a variation is applied to the
             streamline_noise_gaussian_size to have more noisy streamlines and
             less noisy streamlines. This means that the real gaussian_size will
-            be a random number between [size - var, size + var].
-            Default = 0.
-        noise_gaussian_size_validation : float or None
-            Same as training
-        noise_gaussian_var_validation: float or None
-            Same as training
+            be a random number between [size - var, size + var]. Default = 0.
         reverse_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
             the batch. You could want to reverse ALL your data and then use
@@ -153,8 +151,6 @@ class DWIMLAbstractBatchLoader:
         # Data augmentation for streamlines:
         self.noise_gaussian_size_train = noise_gaussian_size_training
         self.noise_gaussian_var_train = noise_gaussian_var_training
-        self.noise_gaussian_size_valid = noise_gaussian_size_validation
-        self.noise_gaussian_var_valid = noise_gaussian_var_validation
         self.split_ratio = split_ratio
         self.reverse_ratio = reverse_ratio
         if self.split_ratio and not 0 <= self.split_ratio <= 1:
@@ -244,16 +240,15 @@ class DWIMLAbstractBatchLoader:
         return sft
 
     def add_noise(self, batch_streamlines):
-        # Adding noise to coordinates
-        # Noise must be in voxel space.
+        # Adding noise to coordinates. Streamlines are in voxel space by now.
+        # Noise is considered in voxel space.
         if self.context_noise_size and self.context_noise_size > 0:
             logger.debug("            Adding noise {} +- {}"
                          .format(self.context_noise_size,
                                  self.context_noise_var))
-            sft.to_rasmm()
-            sft = add_noise_to_streamlines(sft, self.context_noise_size,
-                                           self.context_noise_var,
-                                           self.np_rng, self.step_size)
+            sft = add_noise_to_tensor(sft, self.context_noise_size,
+                                      self.context_noise_var,
+                                      self.np_rng, self.step_size)
             sft.to_vox()
 
     def load_batch_streamlines(

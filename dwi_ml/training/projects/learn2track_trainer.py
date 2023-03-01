@@ -141,7 +141,6 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
 
     @property
     def params_for_checkpoint(self):
-        # We do not need the model_uses_streamlines params, we know it is true
         params = super().params_for_checkpoint
         params.update({
             'clip_grad': self.clip_grad

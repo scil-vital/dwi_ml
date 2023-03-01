@@ -22,8 +22,6 @@ def test_batch_loader():
 
     batch_size = min(500, TEST_EXPECTED_NB_STREAMLINES[0])
 
-    wait_for_gpu = False  # Testing both True and False is heavier...
-
     logging.info("Unit test: batch sampler iteration")
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
@@ -62,13 +60,11 @@ def test_batch_loader():
         # Now testing.
         # 1) With resampling
         logging.info('*** Test with batch size {} + loading with '
-                     'resample, noise, split, reverse, with '
-                     'wait_for_gpu = {}'.format(batch_size, wait_for_gpu))
+                     'resample, noise, split, reverse.'.format(batch_size))
         model = MainModelOneInput(experiment_name='test')
         batch_loader = create_batch_loader(
             dataset, model, step_size=0.5, noise_size=0.2,
-            noise_variability=0.1, split_ratio=SPLIT_RATIO, reverse_ratio=0.5,
-            wait_for_gpu=True)
+            noise_variability=0.1, split_ratio=SPLIT_RATIO, reverse_ratio=0.5)
         batch_loader.set_context('training')
 
         # Using last batch from batch sampler
@@ -95,7 +91,7 @@ def _load_directly_and_verify(batch_loader, batch_idx_tuples,
         expected_nb_streamlines += len(idx)
 
     logging.info("    Loading batch directly from our load_batch method.")
-    batch_idx_tuples = batch_loader.load_batch(batch_idx_tuples)
+    batch_idx_tuples = batch_loader.load_batch_streamlines(batch_idx_tuples)
     _verify_loaded_batch(batch_idx_tuples, expected_nb_streamlines,
                          split_ratio)
 
@@ -106,7 +102,7 @@ def _load_from_torch_and_verify(
                  'in a dataLoader')
 
     dataloader = DataLoader(dataset, batch_sampler=batch_sampler,
-                            collate_fn=batch_loader.load_batch)
+                            collate_fn=batch_loader.load_batch_streamlines)
 
     batch_loader.set_context('training')
     # Iterating

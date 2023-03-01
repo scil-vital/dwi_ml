@@ -252,6 +252,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # the nb of features.
         self.instantiate_direction_getter(d_model)
 
+        assert self.loss_uses_streamlines
+        assert self.forward_uses_streamlines
+
     @property
     def params_for_json_prints(self):
         p = super().params_for_json_prints

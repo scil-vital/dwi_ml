@@ -50,7 +50,8 @@ import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
-    add_noise_to_streamlines, reverse_streamlines, split_streamlines)
+    reverse_streamlines, split_streamlines)
+from dwi_ml.data.processing.utils import add_noise_to_tensor
 from dwi_ml.models.main_models import MainModelOneInput, ModelWithNeighborhood
 from dwi_ml.utils import resample_or_compress
 
@@ -62,10 +63,8 @@ class DWIMLAbstractBatchLoader:
                  streamline_group_name: str, rng: int,
                  step_size: float = None, compress: bool = False,
                  split_ratio: float = 0.,
-                 noise_gaussian_size_training: float = 0.,
-                 noise_gaussian_var_training: float = 0.,
-                 noise_gaussian_size_validation: float = None,
-                 noise_gaussian_var_validation: float = None,
+                 noise_gaussian_size_forward: float = 0.,
+                 noise_gaussian_var_forward: float = 0.,
                  reverse_ratio: float = 0., log_level=logging.root.level):
         """
         Parameters
@@ -94,23 +93,23 @@ class DWIMLAbstractBatchLoader:
             The reason for cutting is to help the ML algorithm to track from
             the middle of WM by having already seen half-streamlines. If you
             are using interface seeding, this is not necessary.
-        noise_gaussian_size_training : float
+        noise_gaussian_size_forward : float
             DATA AUGMENTATION: Add random Gaussian noise to streamline
             coordinates with given variance. This corresponds to the std of the
-            Gaussian. If step_size is not given, make sure it is smaller than
-            your step size to avoid flipping direction. Ex, you could choose
-            0.1 * step-size. Noise is truncated to +/- 2*noise_sigma and to
-            +/- 0.5 * step-size (if given). Default = 0.
-        noise_gaussian_var_training: float
+            Gaussian. Value is given in voxel world. Noise is truncated to
+            +/- 2*noise_gaussian_size.
+            ** Suggestion. Make sure that
+            2*(noise_gaussian_size + noise_gaussian_var) < step_size/2 (in vox)
+            to avoid flipping direction. In the worst case, the starting point
+            of a segment may advance of step_size/2 while the ending point
+            rewinds of step_size/2, but not further, so the direction of the
+            segment won't flip. Suggestion, you could choose ~0.1 * step-size
+            (with var=0). Default = 0.
+        noise_gaussian_var_forward: float
             DATA AUGMENTATION: If this is given, a variation is applied to the
             streamline_noise_gaussian_size to have more noisy streamlines and
             less noisy streamlines. This means that the real gaussian_size will
-            be a random number between [size - var, size + var].
-            Default = 0.
-        noise_gaussian_size_validation : float or None
-            Same as training
-        noise_gaussian_var_validation: float or None
-            Same as training
+            be a random number between [size - var, size + var]. Default = 0.
         reverse_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
             the batch. You could want to reverse ALL your data and then use
@@ -151,10 +150,8 @@ class DWIMLAbstractBatchLoader:
         torch.manual_seed(self.rng)  # Set torch seed
 
         # Data augmentation for streamlines:
-        self.noise_gaussian_size_train = noise_gaussian_size_training
-        self.noise_gaussian_var_train = noise_gaussian_var_training
-        self.noise_gaussian_size_valid = noise_gaussian_size_validation
-        self.noise_gaussian_var_valid = noise_gaussian_var_validation
+        self.noise_gaussian_size_train = noise_gaussian_size_forward
+        self.noise_gaussian_var_train = noise_gaussian_var_forward
         self.split_ratio = split_ratio
         self.reverse_ratio = reverse_ratio
         if self.split_ratio and not 0 <= self.split_ratio <= 1:
@@ -179,10 +176,8 @@ class DWIMLAbstractBatchLoader:
         params = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'noise_gaussian_size_training': self.noise_gaussian_size_train,
-            'noise_gaussian_var_training': self.noise_gaussian_var_train,
-            'noise_gaussian_size_validation': self.noise_gaussian_size_valid,
-            'noise_gaussian_var_validation': self.noise_gaussian_var_valid,
+            'noise_gaussian_size_forward': self.noise_gaussian_size_train,
+            'noise_gaussian_var_forward': self.noise_gaussian_var_train,
             'reverse_ratio': self.reverse_ratio,
             'split_ratio': self.split_ratio,
             'step_size': self.step_size,
@@ -205,8 +200,8 @@ class DWIMLAbstractBatchLoader:
                 self.context_noise_var = self.noise_gaussian_var_train
             elif context == 'validation':
                 self.context_subset = self.dataset.validation_set
-                self.context_noise_size = self.noise_gaussian_size_valid
-                self.context_noise_var = self.noise_gaussian_var_valid
+                self.context_noise_size = 0.
+                self.context_noise_var = 0.
             else:
                 raise ValueError("Context should be either 'training' or "
                                  "'validation'.")
@@ -220,19 +215,6 @@ class DWIMLAbstractBatchLoader:
                          "the hdf5 dataset. Not resampling again.")
         else:
             sft = resample_or_compress(sft, self.step_size, self.compress)
-
-        # Adding noise to coordinates
-        # Noise is considered in mm so we need to make sure the sft is in
-        # rasmm space
-        if self.context_noise_size and self.context_noise_size > 0:
-            logger.debug("            Adding noise {} +- {}"
-                         .format(self.context_noise_size,
-                                 self.context_noise_var))
-            sft.to_rasmm()
-            sft = add_noise_to_streamlines(sft, self.context_noise_size,
-                                           self.context_noise_var,
-                                           self.np_rng, self.step_size)
-            sft.to_vox()
 
         # Splitting streamlines
         # This increases the batch size, but does not change the total
@@ -256,7 +238,22 @@ class DWIMLAbstractBatchLoader:
 
         return sft
 
-    def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]]):
+    def add_noise_streamlines(self, batch_streamlines, device):
+        # This method is called by the trainer only before the forward method.
+        # Targets are not modified for the loss computation.
+        # Adding noise to coordinates. Streamlines are in voxel space by now.
+        # Noise is considered in voxel space.
+        if self.context_noise_size is not None and self.context_noise_size > 0:
+            logger.debug("            Adding noise {} +- {}"
+                         .format(self.context_noise_size,
+                                 self.context_noise_var))
+            batch_streamlines = add_noise_to_tensor(
+                batch_streamlines, self.context_noise_size,
+                self.context_noise_var, device)
+        return batch_streamlines
+
+    def load_batch_streamlines(
+            self, streamline_ids_per_subj: List[Tuple[int, list]]):
         """
         Fetches the chosen streamlines for all subjects in batch.
         Pocesses data augmentation.
@@ -332,8 +329,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
                 (possibly with its neighborhood)
         target = the whole streamlines as sequences.
     """
-    def __init__(self, input_group_name, model: MainModelOneInput,
-                 wait_for_gpu: bool = False, **kw):
+    def __init__(self, input_group_name, model: MainModelOneInput, **kw):
         """
         Params
         ------
@@ -341,18 +337,9 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             Name of the input group in the hdf5 dataset.
         model: ModelOneInput
             The model.
-        wait_for_gpu: bool
-            If true, will not compute the inputs directly when using
-            load_batch. User can call the compute_inputs method himself later
-            on. Typically, Dataloader (who call load_batch) uses CPU.
-            Default: False
         """
         super().__init__(**kw)
 
-        # toDo. GPU: Would be more logical to send this as params when using
-        #  load_batch as collate_fn in the Dataloader during training.
-        #  Possible?
-        self.wait_for_gpu = wait_for_gpu
         self.input_group_name = input_group_name
         self.model = model
         self.use_neighborhood = isinstance(model, ModelWithNeighborhood)
@@ -366,9 +353,6 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         p = super().params_for_checkpoint
         p.update({
             'input_group_name': self.input_group_name,
-            # Sending to list to allow json dump
-            'wait_for_gpu': self.wait_for_gpu,
-            'use_gpu': self.wait_for_gpu  # Name in checkpoint.
         })
         return p
 
@@ -379,62 +363,9 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         }
         return states
 
-    def load_batch(self, streamline_ids_per_subj: List[Tuple[int, list]],
-                   save_batch_input_mask: bool = False):
-        """
-        Same as super but also interpolated the underlying inputs (if
-        wanted) for all subjects in batch.
-
-        Torch uses this function to process the data with the dataloader
-        workers. To be used as collate_fn. This part is ran on CPU.
-
-        With self.wait_for_gpu option: avoiding non-necessary operations in the
-        batch sampler, computed on cpu: compute_inputs can be called later by
-        the user.
-        >> inputs = sampler.compute_inputs(batch_streamlines,
-                                           streamline_ids_per_subj)
-
-        Additional parameters compared to super:
-        ----------
-        save_batch_input_mask: bool
-            Debugging purposes. Saves the input coordinates as a mask. Must be
-            used together with wait_for_gpu=False. The inputs will be modified
-            to a tuple containing the batch_streamlines (with wait_for_gpu set
-            to False, the directions only would be returned), to compare the
-            streamlines with masks.
-
-        Returns
-        -------
-        If self.wait_for_gpu: same as super. Else, also returns
-            batch_inputs : List of torch.Tensor
-                Inputs volume loaded from the given group name. Data is
-                flattened. Length of the list is the number of streamlines.
-                Size of tensor at index i is [N_i-1, nb_features].
-        """
-        batch = super().load_batch(streamline_ids_per_subj)
-
-        if self.wait_for_gpu:
-            # Only returning the streamlines for now.
-            # Note that this is the same as using data_preparation_cpu_step
-            logger.debug("            Not loading the input data because "
-                         "user prefers to do it later on GPU.")
-
-            return batch
-        else:
-            # At this point batch_streamlines are in voxel space with
-            # corner origin.
-            batch_streamlines, final_s_ids_per_subj = batch
-
-            # Get the inputs
-            batch_inputs = self.compute_inputs(batch_streamlines,
-                                               final_s_ids_per_subj,
-                                               save_batch_input_mask)
-
-            return batch_streamlines, final_s_ids_per_subj, batch_inputs
-
-    def compute_inputs(self, batch_streamlines: List[torch.tensor],
-                       streamline_ids_per_subj: Dict[int, slice],
-                       save_batch_input_mask: bool = False):
+    def load_batch_inputs(self, batch_streamlines: List[torch.tensor],
+                          streamline_ids_per_subj: Dict[int, slice],
+                          save_batch_input_mask: bool = False):
         """
         Get the DWI (depending on volume: as raw, SH, fODF, etc.) volume for
         each point in each streamline (+ depending on options: neighborhood,
@@ -451,11 +382,9 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             The ids corresponding to each subject (so we can load the
             associated subject's input volume).
         save_batch_input_mask: bool
-            Debugging purposes. Saves the input coordinates as a mask. Must be
-            used together with wait_for_gpu=False. The inputs will be modified
-            to a tuple containing the batch_streamlines (with wait_for_gpu set
-            to False, the directions only would be returned), to compare the
-            streamlines with masks.
+            Debugging purposes. Saves the input coordinates as a mask.
+            The inputs will be modified to a tuple containing the
+            batch_streamlines, to compare the streamlines with masks.
         device: torch device
             Torch device.
 

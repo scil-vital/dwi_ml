@@ -275,13 +275,13 @@ class DWIMLAbstractTrainer:
             dataset=self.batch_sampler.dataset.training_set,
             batch_sampler=self.batch_sampler,
             num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch,
+            collate_fn=self.batch_loader.load_batch_streamlines,
             pin_memory=self.use_gpu)
         self.valid_dataloader = DataLoader(
             dataset=self.batch_sampler.dataset.validation_set,
             batch_sampler=self.batch_sampler,
             num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch,
+            collate_fn=self.batch_loader.load_batch_streamlines,
             pin_memory=self.use_gpu)
 
         # ----------------------
@@ -796,11 +796,14 @@ class DWIMLAbstractTrainer:
 
         Parameters
         ----------
-        data : tuple of (List, dict)
-            This is the output of the AbstractBatchLoader's load_batch()
-            method. If wait_for_gpu, data is
-            (batch_streamlines, final_streamline_ids_per_subj). Else, data is
-            (batch_streamlines, final_streamline_ids_per_subj, inputs)
+        data : tuple of (List[StatefulTractogram], dict)
+            This is the output of the AbstractBatchLoader's
+            load_batch_streamlines()
+            method. data is a tuple
+            - batch_sfts: one sft per subject
+            - final_streamline_ids_per_subj: the dict of streamlines ids from
+              the list of all streamlines (if we concatenate all sfts'
+              streamlines)
 
         Returns
         -------
@@ -1037,16 +1040,16 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
 
-        If the batch_loader was instantiated with wait_for_gpu, then we need to
-        compute the inputs here; not done yet.
-
         Parameters
         ----------
-        data : tuple of (List, dict)
-            This is the output of the AbstractBatchLoader's load_batch()
-            method. If wait_for_gpu, data is
-            (batch_streamlines, final_streamline_ids_per_subj). Else, data is
-            (batch_streamlines, final_streamline_ids_per_subj, inputs)
+        data : tuple of (List[StatefulTractogram], dict)
+            This is the output of the AbstractBatchLoader's
+            load_batch_streamlines()
+            method. data is a tuple
+            - batch_sfts: one sft per subject
+            - final_streamline_ids_per_subj: the dict of streamlines ids from
+              the list of all streamlines (if we concatenate all sfts'
+              streamlines)
 
         Returns
         -------
@@ -1055,35 +1058,24 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         n: int
             Total number of points for this batch.
         """
-        if self.batch_loader.wait_for_gpu:
-            if not self.use_gpu:
-                self.logger.warning(
-                    "Batch sampler has been created with use_gpu=True, so "
-                    "some computations have been skipped to allow user to "
-                    "compute them later on GPU. Now in training, however, "
-                    "you are using CPU, so this was not really useful.\n"
-                    "Maybe this is an error in the code?")
-            # Data interpolation has not been done yet. GPU computations
-            # need to be done here in the main thread. Running final steps
-            # of data preparation.
-            self.logger.debug('Finalizing input data preparation on GPU.')
-            batch_streamlines, final_s_ids_per_subj = data
+        # Data interpolation has not been done yet. GPU computations
+        # need to be done here in the main thread. Running final steps
+        # of data preparation.
+        self.logger.debug('Finalizing input data preparation on GPU.')
+        batch_streamlines, final_s_ids_per_subj = data
 
-            # Sending to GPU
-            # Model is already on GPU
-            batch_streamlines = [s.to(self.device, non_blocking=True,
-                                      dtype=torch.float)
-                                 for s in batch_streamlines]
+        # Dataloader always works on CPU.
+        # We have the possibility to bring everything to GPU now.
+        # Sending to right device. Model should already be moved.
+        batch_streamlines = [s.to(self.device, non_blocking=True,
+                                  dtype=torch.float)
+                             for s in batch_streamlines]
 
-            # Getting the inputs points from the volumes. Usually done in
-            # load_batch but we preferred to wait here to have a chance to
-            # run things on GPU.
-            batch_inputs = self.batch_loader.compute_inputs(
-                batch_streamlines, final_s_ids_per_subj)
+        # Getting the inputs points from the volumes.
+        batch_inputs = self.batch_loader.load_batch_inputs(
+            batch_streamlines, final_s_ids_per_subj)
 
-        else:
-            # Data is already ready
-            batch_streamlines, final_s_ids_per_subj, batch_inputs = data
+        # Possibly add noise to inputs here.
 
         lengths = [len(s) - 1 for s in batch_streamlines]
         logger.debug("Loaded a batch of {} streamlines, {} inputs points"
@@ -1092,16 +1084,25 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                      .format(len(batch_inputs)))
 
         self.logger.debug('*** Computing forward propagation and loss')
-        if self.model.model_uses_streamlines:
+        if self.model.forward_uses_streamlines:
+            # Now possibly add noise to streamlines;
+            # The whole target will be noisy, even when computing the loss.
+            batch_streamlines_forward = \
+                self.batch_loader.add_noise_streamlines(batch_streamlines,
+                                                        self.device)
+
             # Possibly computing directions twice (during forward and loss)
             # but ok, shouldn't be too heavy. Easier to deal with multiple
             # project's requirements by sending whole streamlines rather
             # than only directions.
-            model_outputs = self.model(batch_inputs, batch_streamlines)
+            model_outputs = self.model(batch_inputs, batch_streamlines_forward)
+        else:
+            model_outputs = self.model(batch_inputs)
+
+        if self.model.loss_uses_streamlines:
             mean_loss, n = self.model.compute_loss(model_outputs,
                                                    batch_streamlines)
         else:
-            model_outputs = self.model(batch_inputs)
             mean_loss, n = self.model.compute_loss(model_outputs)
 
         if self.use_gpu:

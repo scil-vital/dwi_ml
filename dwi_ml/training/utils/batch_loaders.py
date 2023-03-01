@@ -13,7 +13,7 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
     bl_g = p.add_argument_group("Batch loader")
     add_resample_or_compress_arg(bl_g)
     bl_g.add_argument(
-        '--noise_gaussian_size_training', type=float, metavar='s', default=0.,
+        '--noise_gaussian_size_forward', type=float, metavar='s', default=0.,
         help="If set, add random Gaussian noise to streamline coordinates \n"
              "with given variance. This corresponds to the std of the \n"
              "Gaussian. [0]\n**Make sure noise is smaller than your step size "
@@ -23,20 +23,12 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
              "** We also limit noise to +/- 2 * noise_gaussian_size.\n"
              "Suggestion: 0.1 * step-size.")
     bl_g.add_argument(
-        '--noise_gaussian_size_validation', type=float, metavar='s',
-        default=0.,
-        help="Idem; noise added during validation.")
-    bl_g.add_argument(
-        '--noise_gaussian_var_training', type=float, metavar='v',
+        '--noise_gaussian_var_forward', type=float, metavar='v',
         default=0.,
         help="If set, a variation is applied to the noise_size to have very \n"
              "noisy streamlines and less noisy streamlines. This means that \n"
              "the real gaussian_size will be a random number in the range \n"
              "[size - variability, size + variability]. [0]")
-    bl_g.add_argument(
-        '--noise_gaussian_var_validation', type=float, metavar='v',
-        default=0.,
-        help="Idem; will be used during validation.")
     bl_g.add_argument(
         '--split_ratio', type=float, metavar='r', default=0.,
         help="Percentage of streamlines to randomly split into 2, in each \n"
@@ -61,14 +53,11 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             # STREAMLINES PREPROCESSING
             step_size=args.step_size, compress=args.compress,
             # STREAMLINES AUGMENTATION
-            noise_gaussian_size_training=args.noise_gaussian_size_training,
-            noise_gaussian_var_training=args.noise_gaussian_var_training,
-            noise_gaussian_size_validation=args.noise_gaussian_size_validation,
-            noise_gaussian_var_validation=args.noise_gaussian_var_validation,
+            noise_gaussian_size_forward=args.noise_gaussian_size_forward,
+            noise_gaussian_var_forward=args.noise_gaussian_var_forward,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # OTHER
-            rng=args.rng, wait_for_gpu=args.use_gpu,
-            log_level=sub_loggers_level)
+            rng=args.rng, log_level=sub_loggers_level)
 
         logging.info("Loader user-defined parameters: " +
                      format_dict_to_str(batch_loader.params_for_json_prints))

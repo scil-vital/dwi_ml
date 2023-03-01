@@ -184,7 +184,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # If multiple inheritance goes well, these params should be set
         # correctly
-        assert self.model_uses_streamlines
+        assert self.forward_uses_streamlines
+        assert self.loss_uses_streamlines
+        if nb_previous_dirs == 0:
+            # Then the forward method will not use the streamlines.
+            self.forward_uses_streamlines = False
 
     @property
     def params_for_json_prints(self):
@@ -217,7 +221,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         return params
 
     def forward(self, inputs: List[torch.tensor],
-                target_streamlines: List[torch.tensor],
+                target_streamlines: List[torch.tensor] = None,
                 hidden_reccurent_states: tuple = None,
                 return_state: bool = False, is_tracking: bool = False):
         """Run the model on a batch of sequences.
@@ -266,20 +270,21 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             GRU: States are tensors; h_t.
                 Size of tensors are [1, nb_streamlines, nb_neurons].
         """
-        assert len(target_streamlines) == len(inputs)
-        if is_tracking:
-            for i in range(len(target_streamlines)):
-                assert len(inputs[i]) == 1, \
-                    "During tracking, you should only be sending the input " \
-                    "for the current point (but the whole streamline to " \
-                    "allow computing the n previous dirs)."
-        else:
-            for i in range(len(target_streamlines)):
-                assert len(target_streamlines[i]) == len(inputs[i]) + 1, \
-                    "During training, we expect the streamlines to have the " \
-                    "one more point than the inputs. No need to compute the " \
-                    "input of the last point; we don't have a target " \
-                    "direction there."
+        if target_streamlines is not None:
+            assert len(target_streamlines) == len(inputs)
+            if is_tracking:
+                for i in range(len(target_streamlines)):
+                    assert len(inputs[i]) == 1, \
+                        "During tracking, you should only be sending the " \
+                        "input for the current point (but the whole " \
+                        "streamline to allow computing the n previous dirs)."
+            else:
+                for i in range(len(target_streamlines)):
+                    assert len(target_streamlines[i]) == len(inputs[i]) + 1, \
+                        "During training, we expect the streamlines to have " \
+                        "one more point than the inputs. No need to compute " \
+                        "the input of the last point; we don't have a " \
+                        "target direction there."
 
         try:
             # Apply model. This calls our model's forward function
@@ -297,7 +302,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             # consuming.
             # If it fails again, try closing terminal and opening new one to
             # empty cache better.
-            # Todo : ADDED BY PHILIPPE. SEE IF THERE ARE STILL ERRORS?
             logging.warning("There was a RunTimeError. Emptying cache and "
                             "trying again!")
 

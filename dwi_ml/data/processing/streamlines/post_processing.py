@@ -131,7 +131,6 @@ def normalize_directions(directions):
         # propagation will fail.
         directions = directions / torch.linalg.norm(directions, dim=-1,
                                                     keepdim=True)
-
     else:
         directions = [s / torch.linalg.norm(s, dim=-1, keepdim=True)
                       for s in directions]

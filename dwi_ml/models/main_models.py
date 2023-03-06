@@ -741,6 +741,11 @@ class ModelForTracking(MainModelAbstract):
         raise NotImplementedError
 
     def compute_loss(self, model_outputs, target_streamlines, **kw):
+        # Hint: Should look like:
+        #  target_dirs = self.direction_getter.prepare_targets(
+        #           target_streamlines)
+        #  loss, nb_points = self.direction_getter.compute_loss(
+        #          model_outputs, target_dirs)
         raise NotImplementedError
 
     def move_to(self, device):

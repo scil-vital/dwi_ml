@@ -3,6 +3,8 @@ import logging
 from typing import Union, List
 
 import torch
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
 from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
@@ -362,9 +364,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             The loss between the outputs and the targets, averaged across
             timesteps and sequences.
         """
+        target_dirs = self.direction_getter.prepare_targets(target_streamlines)
+
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.
-        target_dirs = pack_sequence(target_streamlines, enforce_sorted=False)
+        target_dirs = pack_sequence(target_dirs, enforce_sorted=False)
         assert torch.equal(target_dirs.sorted_indices,
                            model_outputs.sorted_indices)
 

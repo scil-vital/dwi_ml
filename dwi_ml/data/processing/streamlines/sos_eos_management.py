@@ -12,14 +12,13 @@ sos_as_class: bool
     Convert all input directions to classes on the sphere. An additional class
     is added as SOS.
 """
-import logging
-from typing import List
-
 import torch
 from torch.nn.functional import one_hot
 
+from dwi_ml.data.spheres import TorchSphere
 
-def convert_dirs_to_class(batch_dirs, sphere, smooth_label=False,
+
+def convert_dirs_to_class(batch_dirs, sphere: TorchSphere, smooth_label=False,
                           add_sos=False, add_eos=False, device=None):
     """
     Uses the points on the sphere as classes + an additional class for the

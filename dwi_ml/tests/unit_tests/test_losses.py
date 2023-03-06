@@ -105,13 +105,16 @@ def test_cosine_regression_loss():
     b = np.array([1, 0, 0])
     expected = np.array(-1)
     value = _compute_loss_tensor(a, b, model)
+    value, loss_eos = value
     assert_equal(value, expected)
+    assert_equal(loss_eos, 0)  # No EOS used.
 
     logging.debug("  - Identical vectors y: expecting -1")
     a = np.array([0, 1, 0])
     b = np.array([0, 1, 0])
     expected = np.array(-1)
     value = _compute_loss_tensor(a, b, model)
+    value, loss_eos = value
     assert_equal(value, expected)
 
     logging.debug("  - Identical vectors z: expecting -1")
@@ -119,6 +122,7 @@ def test_cosine_regression_loss():
     b = np.array([0, 0, 1])
     expected = np.array(-1)
     value = _compute_loss_tensor(a, b, model)
+    value, loss_eos = value
     assert_equal(value, expected)
 
     logging.debug("  - Vectors with same angle: expecting -1")
@@ -128,6 +132,7 @@ def test_cosine_regression_loss():
         b = a * s
         expected = np.array(-1)
         value = _compute_loss_tensor(a, b, model)
+        value, loss_eos = value
         assert_equal(value, expected)
 
     logging.debug("  - Vectors with at 90 degrees 1: expecting 0")
@@ -135,6 +140,7 @@ def test_cosine_regression_loss():
     b = np.array([0, 1, 0])
     expected = np.array(0)
     value = _compute_loss_tensor(a, b, model)
+    value, loss_eos = value
     assert_equal(value, expected)
 
     logging.debug("  - Vectors with at 90 degrees 2: expecting 0")
@@ -142,6 +148,7 @@ def test_cosine_regression_loss():
     b = np.array([0, 0, 1])
     expected = np.array(0)
     value = _compute_loss_tensor(a, b, model)
+    value, loss_eos = value
     assert_equal(value, expected)
 
     logging.debug("  - Vectors with at 90 degrees random: expecting 0")
@@ -152,10 +159,12 @@ def test_cosine_regression_loss():
         expected = np.array(0)
 
         value = _compute_loss_tensor(a, c, model)
+        value, loss_eos = value
         assert np.allclose(value, expected, atol=tol), \
             "Failed; got: {}; expected: {}".format(value, expected)
 
         value = _compute_loss_tensor(b, c, model)
+        value, loss_eos = value
         assert np.allclose(value, expected, atol=tol), \
             "Failed; got: {}; expected: {}".format(value, expected)
 
@@ -167,6 +176,7 @@ def test_cosine_regression_loss():
         expected = np.array(1)
 
         value = _compute_loss_tensor(a, b, model)
+        value, loss_eos = value
         assert np.allclose(value, expected, atol=tol), \
             "Failed; got: {}; expected: {}".format(value, expected)
 
@@ -178,6 +188,7 @@ def test_cosine_regression_loss():
         expected = cosine(a, b) - 1
 
         value = _compute_loss_tensor(a, b, model)
+        value, loss_eos = value
         assert np.allclose(value, expected, atol=tol), \
             "Failed; got: {}; expected: {}".format(value, expected)
 
@@ -193,6 +204,7 @@ def test_l2regression_loss():
     b = a
     expected = np.array(0)
     value = _compute_loss_tensor(a, b, model)
+    value, loss_eos = value
     assert np.allclose(value, expected, atol=tol),\
         "Failed; got: {}; expected: {}".format(value, expected)
 
@@ -202,6 +214,7 @@ def test_l2regression_loss():
         b = _get_random_vector(3)
         expected = euclidean(a, b)
         value = _compute_loss_tensor(a, b, model)
+        value, loss_eos = value
         assert np.allclose(value, expected, atol=tol),\
             "Failed; got: {}; expected: {}".format(value, expected)
 
@@ -222,9 +235,8 @@ def test_sphere_classification_loss():
     # probabilities, as a softmax will be applied by torch.
     logit = np.zeros((1, 724)).astype('float32')
     logit[0, 1] = 100
-    b = sphere.vertices[1]
     expected = -np.log(softmax(logit))[0, 1]
-    value = _compute_loss_tensor(logit, b, model)
+    value = _compute_loss_tensor(logit, logit, model)
     assert np.allclose(value, expected, atol=tol), \
         "Failed; got: {}; expected: {}".format(value, expected)
 

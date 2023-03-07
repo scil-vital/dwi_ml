@@ -6,7 +6,7 @@ import dipy.data
 import numpy as np
 import torch
 from torch import Tensor
-from torch.distributions import Categorical, MultivariateNormal
+from torch.distributions import Categorical, MultivariateNormal, kl_divergence
 from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
 from torch.nn.modules.distance import PairwiseDistance
 
@@ -341,7 +341,8 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
             learned_directions = learned_directions[:-1, :]
             target_dirs = target_dirs[:-1, :]
         else:
-            mean_loss_eos = torch.as_tensor(0, device=self.device)
+            mean_loss_eos = torch.as_tensor(0, dtype=torch.float32,
+                                            device=self.device)
 
         # Now the main loss
         if self.normalize_targets:
@@ -463,49 +464,44 @@ class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
         return losses
 
 
-class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
+class AbstractSphereClassificationDirectionGetter(
+    AbstractDirectionGetterModel):
     """
     Classification model.
 
     Classes: Points on the sphere.
 
     Model: We use fully-connected (linear) network converting the outputs
-    (at every step) to a 3D vector. Will use super to loop on layers, where
-    layers are:
+    (at every step) to a nD vector where n is the number of classes.
+    We will use super to loop on layers, where layers are:
         1. Linear1:  output size = ceil(input_size/2)
-        2. Linear2:  output size = 3
-
-    Loss = negative log-likelihood.
+        2. Linear2:  output size = n
     """
-    def __init__(self, input_size: int, dropout: float = None,
-                 sphere: str = 'symmetric724', add_eos_class=False,
-                 smooth_labels: bool = False):
+    def __init__(self, sphere: str, add_eos_class: bool,
+                 input_size: int, dropout: float, key: str,
+                 supports_compressed_streamlines: bool,
+                 loss_description: str = ''):
         """
         sphere: str
             An choice of dipy's Sphere.
         add_eos_class: bool
             If true, add an additional class for EOS.
-        smooth_labels: bool
-            If true, applies a Gaussian on the labels, as done in Deeptract.
         """
-        super().__init__(input_size, dropout,
-                         key='sphere-classification',
-                         supports_compressed_streamlines=False,
-                         loss_description='negative log-likelihood')
+        super().__init__(input_size, dropout, key,
+                         supports_compressed_streamlines, loss_description)
 
         # Classes
         self.sphere_name = sphere
         sphere = dipy.data.get_sphere(sphere)
         self.torch_sphere = TorchSphere(sphere)
-        self.smooth_labels = smooth_labels
+        self.nb_classes = sphere.vertices.shape[0]
 
         # EOS
         self.add_eos_class = add_eos_class
+        if add_eos_class:
+            self.nb_classes += 1
 
-        nb_classes = sphere.vertices.shape[0]
-        self.layers = init_2layer_fully_connected(input_size, nb_classes)
-
-        # Loss will be defined in compute_loss, using torch distribution
+        self.layers = init_2layer_fully_connected(input_size, self.nb_classes)
 
     def move_to(self, device):
         super().move_to(device)
@@ -518,7 +514,6 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         params.update({
             'sphere': self.sphere_name,
             'add_eos_class': self.add_eos_class,
-            'smooth_labels': self.smooth_labels
         })
         return params
 
@@ -528,38 +523,6 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         """
         logits = self.loop_on_layers(inputs, self.layers)
         return logits
-
-    def prepare_targets(self, target_streamlines):
-        # Find the closest class for each target direction
-        target_dirs = compute_directions(target_streamlines)
-
-        target_idx = convert_dirs_to_class(
-            target_dirs, self.torch_sphere, smooth_label=self.smooth_labels,
-            add_sos=False, add_eos=self.add_eos_class, device=self.device)
-        return target_idx
-
-    def compute_loss(self, logits_per_class: Tensor,
-                     target_idx: Tensor):
-        """
-        Compute the negative log-likelihood for the targets using the
-        model's logits.
-        """
-        nb_class = self.torch_sphere.vertices.shape[0]
-        if self.add_eos_class:
-            nb_class += 1
-        assert target_idx.shape[-1] == nb_class, \
-            "Expecting targets reshaped as one-hot vectors for {} classes, " \
-            "but got size {}. Use prepare_targets." \
-            .format(nb_class, target_idx.shape[-1])
-
-        # Create an official probability distribution from the logits
-        # Applies a softmax
-        distribution = Categorical(logits=logits_per_class)
-
-        # Compute loss between distribution and target vertex
-        nll_losses = -distribution.log_prob(target_idx)
-
-        return _mean_and_weight(nll_losses)
 
     def _sample_tracking_direction_prob(self, logits_per_class: Tensor):
         """
@@ -580,6 +543,111 @@ class SphereClassificationDirectionGetter(AbstractDirectionGetterModel):
         idx = logits_per_class.argmax(dim=1)
 
         return self.torch_sphere.vertices[idx]
+
+
+class SphereClassificationDirectionGetter(
+    AbstractSphereClassificationDirectionGetter):
+    """
+    Loss = negative log-likelihood.
+    """
+    def __init__(self, input_size: int, dropout: float = None,
+                 sphere: str = 'symmetric724', add_eos_class=False):
+        """
+        smooth_labels: bool
+            If true, applies a Gaussian on the labels, as done in Deeptract.
+        """
+        super().__init__(sphere, add_eos_class, input_size, dropout,
+                         key='sphere-classification',
+                         supports_compressed_streamlines=False,
+                         loss_description='negative log-likelihood')
+
+    def prepare_targets(self, target_streamlines):
+        """
+        Finds the closest class for each target direction.
+
+        returns:
+        if not smooth_labels: the index for each target.
+        if smooth_labels: the one-hot distribution of each target.
+        """
+        target_dirs = compute_directions(target_streamlines)
+
+        target_idx = convert_dirs_to_class(
+            target_dirs, self.torch_sphere, smooth_labels=False,
+            add_sos=False, add_eos=self.add_eos_class, device=self.device,
+            to_one_hot=False)
+        return target_idx
+
+    def compute_loss(self, logits_per_class: Tensor, targets: Tensor):
+        """
+        Compute the negative log-likelihood for the targets using the
+        model's logits.
+
+        logits_per_class: Tensor of shape [nb_points, nb_class]
+        """
+        # Create an official probability distribution from the logits
+        # (i.e. applies a softmax to make probabilities sum to 1).
+        # By default, done on the last dim (the classes, for each point).
+        learned_distribution = Categorical(logits=logits_per_class)
+
+        # Target is an index for each point.
+
+        # Get the logit at target's index,
+        # Gets values on the first dimension (one target per point).
+        nll_losses = -learned_distribution.log_prob(targets)
+
+        return _mean_and_weight(nll_losses)
+
+
+class SmoothSphereClassificationDirectionGetter(
+    AbstractSphereClassificationDirectionGetter):
+    """
+    Loss = KL divergence
+    """
+    def __init__(self, input_size: int, dropout: float = None,
+                 sphere: str = 'symmetric724', add_eos_class=False):
+        """
+        smooth_labels: bool
+            If true, applies a Gaussian on the labels, as done in Deeptract.
+        """
+        super().__init__(sphere, add_eos_class, input_size, dropout,
+                         key='smooth-sphere-classification',
+                         supports_compressed_streamlines=False,
+                         loss_description='negative log-likelihood')
+
+    def prepare_targets(self, target_streamlines):
+        """
+        Finds the closest class for each target direction.
+
+        returns:
+        if not smooth_labels: the index for each target.
+        if smooth_labels: the one-hot distribution of each target.
+        """
+        target_dirs = compute_directions(target_streamlines)
+
+        target_idx = convert_dirs_to_class(
+            target_dirs, self.torch_sphere, smooth_labels=True,
+            add_sos=False, add_eos=self.add_eos_class, device=self.device,
+            to_one_hot=True)
+        return target_idx
+
+    def compute_loss(self, logits_per_class: Tensor, targets: Tensor):
+        """
+        Compute the negative log-likelihood for the targets using the
+        model's logits.
+
+        logits_per_class: Tensor of shape [nb_points, nb_class]
+        """
+        # Create an official probability distribution from the logits
+        # (i.e. applies a softmax to make probabilities sum to 1).
+        # By default, done on the last dim (the classes, for each point).
+        learned_distribution = Categorical(logits=logits_per_class)
+
+        # Target is a probability distribution for each point.
+        target_distribution = Categorical(probs=targets)
+
+        nll_losses = kl_divergence(learned_distribution, target_distribution)
+
+        return _mean_and_weight(nll_losses)
 
 
 class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
@@ -977,6 +1045,7 @@ keys_to_direction_getters = \
      'l2-regression': L2RegressionDirectionGetter,
      'cosine-plus-l2-regression': CosPlusL2RegressionDirectionGetter,
      'sphere-classification': SphereClassificationDirectionGetter,
+     'smooth-sphere-classification': SmoothSphereClassificationDirectionGetter,
      'gaussian': SingleGaussianDirectionGetter,
      'gaussian-mixture': GaussianMixtureDirectionGetter,
      'fisher-von-mises': FisherVonMisesDirectionGetter,

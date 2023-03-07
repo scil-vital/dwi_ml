@@ -20,7 +20,7 @@ class TorchSphere:
 
         Parameters
         ----------
-        xyz: Tensor of shape (nb, 3).
+        xyz: Tensor of shape (nb, 3) with dtype float32.
 
         Returns
         -------

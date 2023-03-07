@@ -12,26 +12,41 @@ sos_as_class: bool
     Convert all input directions to classes on the sphere. An additional class
     is added as SOS.
 """
+from typing import List
+
 import torch
-from torch.nn.functional import one_hot
+from torch.nn.functional import one_hot, pad
 
 from dwi_ml.data.spheres import TorchSphere
 
 
-def convert_dirs_to_class(batch_dirs, sphere: TorchSphere, smooth_label=False,
-                          add_sos=False, add_eos=False, device=None):
+def convert_dirs_to_class(batch_dirs: List[torch.Tensor],
+                          sphere: TorchSphere, smooth_labels=False,
+                          add_sos=False, add_eos=False, to_one_hot=False):
     """
     Uses the points on the sphere as classes + an additional class for the
     SOS.
 
-    batch_streamlines: should be a list of 2D tensors.
+    batch_dirs: should be a list of 2D tensors.
     sphere: torch sphere.
+    smooth_label: If true, uses smoothing like in Deeptract (Benou 2019)
+    add_sos: If true, adds a class for SOS, and adds a token at the beggining
+        of the streamlines.
+    add_eos: Idem at the end of streamlines.
+    to_one_hot: If true, converts results to one-hot vectors. Needs to be true
+        with smooth_label, by default.
+
+    Returns:
+        if one_hot: Tensor of shape [nb_points, nb_class]
+        else: Tensor of shape [nb_points,]
     """
     # Find class index
-    # n classes ranging from 0 to n-1.
+    # n classes ranging from 0 to n-1 for the "real" directions.
     # We need to get a tensor of shape (0, nb_points) for each streamline.
     nb_class = sphere.vertices.shape[0]
     nb_other_classes = 0
+    sos_class = None
+    eos_class = None
     if add_sos:
         sos_class = nb_class + 1
         nb_other_classes += 1
@@ -39,8 +54,12 @@ def convert_dirs_to_class(batch_dirs, sphere: TorchSphere, smooth_label=False,
         eos_class = nb_class + nb_other_classes + 1
         nb_other_classes += 1
 
-    if smooth_label:
+    if smooth_labels:
         # See https://github.com/itaybenou/DeepTract/, in utils.train_utils.py
+
+        if not to_one_hot:
+            raise ValueError("With smooth label, we must convert to one-hot "
+                             "vectors.")
         batch_idx = []
         for s in batch_dirs:
             lens = torch.linalg.norm(s, dim=-1)
@@ -51,88 +70,81 @@ def convert_dirs_to_class(batch_dirs, sphere: TorchSphere, smooth_label=False,
             labels_smooth = torch.exp(-1 * angles / 0.1)
             labels_smooth /= torch.sum(labels_smooth)
 
-            # Equivalent of the one-hot:
-            # Add 2 classes with value 0 (EOS, SOS)
-            h = torch.zeros(len(s), nb_class + nb_other_classes)
-            h[:, 0:nb_class] = labels_smooth
+            if add_sos or add_eos:
+                # Adding n points and n classes, n = 1 or 2.
+                labels_smooth = pad(labels_smooth,
+                                    (0, nb_other_classes, add_sos, add_eos))
+                if add_sos:
+                    labels_smooth[0, sos_class - 1] = 1.0
+                if add_eos:
+                    labels_smooth[-1, eos_class - 1] = 1.0
 
-            batch_idx.append(h)
+            batch_idx.append(labels_smooth)
     else:
-        # Convert to one-hot. Already add SOS, EOS.
         batch_idx = [sphere.find_closest(s) for s in batch_dirs]
-        batch_idx = [one_hot(s.to(dtype=torch.long),
-                             num_classes=nb_class + nb_other_classes
-                             ).to(dtype=torch.float)
-                     for s in batch_idx]
 
-    if not (add_sos or add_eos):
-        return batch_idx
+        device = batch_dirs[0].device
+        if add_sos:
+            sos_class = torch.as_tensor(sos_class - 1, device=device)
+        if add_eos:
+            eos_class = torch.as_tensor(eos_class - 1, device=device)
 
-    if add_sos:
-        sos_token = torch.zeros(nb_class + nb_other_classes, device=device)
-        sos_token[sos_class] = 1
-        if not add_eos:
-            batch_idx = [torch.vstack((sos_token, s)) for s in batch_idx]
-    if add_eos:
-        eos_token = torch.zeros(nb_class + nb_other_classes, device=device)
-        eos_token[eos_class] = 1
-        if not add_sos:
-            batch_idx = [torch.vstack((s, eos_token)) for s in batch_idx]
-    if add_sos and add_eos:
-        batch_idx = [torch.vstack((sos_token, s, eos_token)) for s in batch_idx]
+        if add_sos and add_eos:
+            batch_idx = [torch.hstack((sos_class, s, eos_class)) for s in batch_idx]
+        elif add_sos:
+            batch_idx = [torch.hstack((sos_class, s)) for s in batch_idx]
+        elif add_eos:
+            batch_idx = [torch.hstack((s, eos_class)) for s in batch_idx]
+
+        if to_one_hot:
+            batch_idx = [one_hot(s.to(dtype=torch.long),
+                                 num_classes=nb_class + nb_other_classes
+                                 ).to(dtype=torch.float)
+                         for s in batch_idx]
 
     return batch_idx
 
 
-def add_label_as_last_dim(batch_dirs,
-                          add_sos=False, add_eos=False, device=None):
+def add_label_as_last_dim(batch_dirs: List[torch.Tensor],
+                          add_sos=False, add_eos=False):
     """
     batch_dirs: list of Tensors.
     """
     if not (add_sos or add_eos):
         return batch_dirs
 
-    return [_add_label_as_last_dim_2d(s, add_sos, add_eos, device)
+    return [_add_label_as_last_dim_2d(s, add_sos, add_eos)
             for s in batch_dirs]
 
 
-def _add_label_as_last_dim_2d(dirs, add_sos=False, add_eos=False, device=None):
-    nb_points, nb_features = dirs.shape
-
+def _add_label_as_last_dim_2d(dirs: torch.Tensor,
+                              add_sos=False, add_eos=False):
     nb_new_dim = 2 if (add_sos and add_sos) else 1
-    big_data = torch.zeros(nb_points + nb_new_dim, nb_features + nb_new_dim,
-                           device=device)
+    dirs = pad(dirs, (0, nb_new_dim, add_sos, add_eos))
+
     if add_sos:
         sos_dim = -2 if add_eos else -1
-        big_data[0, sos_dim] = 1  # SOS label.
-
-        big_data[1:1+nb_points, 0:nb_features] = dirs
-    else:
-        big_data[0:nb_points, 0:nb_features] = dirs
+        dirs[0, sos_dim] = 1  # SOS label.
 
     if add_eos:
-        big_data[-1, -1] = 1  # EOS label.
+        dirs[-1, -1] = 1  # EOS label.
 
-    return big_data
+    return dirs
 
 
-def add_zeros_sos_eos(batch_dirs,
-                      add_sos=False, add_eos=False, device=None):
+def add_zeros_sos_eos(batch_dirs: List[torch.Tensor],
+                      add_sos=False, add_eos=False):
     """
     This should be done on embedding data.
-    Batch streamlines is expected to be a 3D tensor.
     Careful. Adds the same token (0) in both positions SOS and EOS.
     """
     if not (add_sos or add_eos):
         return batch_dirs
 
-    batch_size, _, nb_features = batch_dirs.shape
-
-    zeros = torch.zeros(batch_size, 1, nb_features, device=device)
     if add_sos:
         if not add_eos:
-            return torch.cat((zeros, batch_dirs), dim=1)
+            return [pad(s, (0, 0, 1, 0)) for s in batch_dirs]
         else:
-            return torch.cat((zeros, batch_dirs, zeros), dim=1)
+            return [pad(s, (0, 0, 1, 1)) for s in batch_dirs]
     else:
-        return torch.cat((batch_dirs, zeros), dim=1)
+        return [pad(s, (0, 0, 0, 1)) for s in batch_dirs]

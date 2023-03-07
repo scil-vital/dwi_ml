@@ -333,14 +333,16 @@ class ModelWithStreamlines(MainModelAbstract):
 
         if self.convert_dirs_to_classes:
             batch_dirs = convert_dirs_to_class(
-                batch_dirs, self.sphere, smooth_label=self.smooth_labels,
-                add_sos=add_sos, add_eos=add_eos, device=device)
+                batch_dirs, self.sphere, smooth_labels=self.smooth_labels,
+                add_sos=add_sos, add_eos=add_eos, device=device,
+                to_one_hot=True)
         else:
-            # if add_sos, this means that sos_type if SOS_as_labels.
-            # EOS: possibly as label too.
-            batch_dirs = add_label_as_last_dim(
-                batch_dirs, add_sos=add_sos,
-                add_eos=self.eos_type == 'as_label', device=device)
+            # SOS: always as_label.
+            # EOS: either as_label or as_zeros.
+            if self.eos_type == 'as_labels':
+                batch_dirs = add_label_as_last_dim(
+                    batch_dirs, add_sos=add_sos,
+                    add_eos=self.eos_type == 'as_label', device=device)
 
             # Final choice of EOS: EOS_as_zeros
             if self.eos_type == 'as_zeros':
@@ -396,6 +398,10 @@ class ModelWithPreviousDirections(ModelWithStreamlines):
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
         self.prev_dirs_embedding_size = prev_dirs_embedding_size
         self.normalize_prev_dirs = normalize_prev_dirs
+
+        if self.eos_type == 'as_zeros' and self.normalize_prev_dirs:
+            raise ValueError("Adding EOS as zeros is not compatible with "
+                             "normalization.")
 
         if self.nb_previous_dirs > 0:
             if (prev_dirs_embedding_key is not None and

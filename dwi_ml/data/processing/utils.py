@@ -45,7 +45,8 @@ def add_noise_to_tensor(batch_data: List[torch.Tensor], gaussian_size: float,
                              size=flattened_batch.shape, device=device)
         max_noise = 2 * gaussian_size
         flattened_batch += torch.clip(noise, -max_noise, max_noise)
-        noisy_data = torch.split(flattened_batch, each_tensor_size, dim=0)
+        # Doc of split says it returns list but it returns tuple
+        noisy_data = list(torch.split(flattened_batch, each_tensor_size, dim=0))
     else:
         # Modify gaussian_size based on variability, for each tensor: adding a
         # random number between [-gaussian_variability gaussian_variability].

@@ -60,26 +60,20 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
                      "(reversed) first half.")
 
         # Must re-run the model from scratch to get the hidden states
-        # Either load all timepoints in memory and call model once.
-        # Or loop.
+        # But! Not including the last point (i.e. the seed). Else, the
+        # output + hidden state = the next point. Not the current point.
+        # First propagation step after backward will be at the seed coordinate.
+        lines = [s[:-1, :] for s in lines]
         all_inputs, _ = self.model.prepare_batch_one_input(
             lines, self.dataset, self.subj_idx, self.volume_group)
 
-        # all_inputs is a tuple of
+        # all_inputs is a List of
         # nb_streamlines x tensor[nb_points, nb_features]
 
-        # Running model. If we send is_tracking=True, will only compute the
-        # previous dirs for the last point. To mimic training, we have to
-        # add an additional fake point to the streamline, not used (during
-        # training, only used to compute the loss).
-        lines_with0 = [torch.cat((line, torch.zeros(1, 3, device=self.device)),
-                                 dim=0)
-                       for line in lines]
-
-        # Also, warning: creating a tensor from a list of np arrays is low.
+        # No hidden state given = running model on all points.
         with self.grad_context:
             _, self.hidden_recurrent_states = self.model(
-                all_inputs, lines_with0, is_tracking=False, return_state=True)
+                all_inputs, lines, context='whole', return_state=True)
 
         return super().prepare_backward(lines, forward_dir)
 
@@ -88,7 +82,7 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         with self.grad_context:
             model_outputs, self.hidden_recurrent_states = self.model(
                 inputs, lines, self.hidden_recurrent_states,
-                return_state=True, is_tracking=True)
+                return_state=True, context='tracking')
 
         return model_outputs
 

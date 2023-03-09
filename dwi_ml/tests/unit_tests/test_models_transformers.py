@@ -45,14 +45,12 @@ def test_models():
 
     logging.debug("\n\nOriginal model!\n"
                   "-----------------------------")
-    model = OriginalTransformerModel('test', nb_features=4,
+    model = OriginalTransformerModel(experiment_name='test', nb_features=4,
                                      d_model=4, max_len=5,
                                      log_level='DEBUG',
                                      # Using defaults from script
-                                     nb_previous_dirs=0,
-                                     prev_dirs_embedding_size=None,
-                                     prev_dirs_embedding_key=None,
-                                     normalize_prev_dirs=True,
+                                     sphere_to_convert_input_dirs=None,
+                                     sos_type_forward='as_label',
                                      positional_encoding_key='sinusoidal',
                                      embedding_key_x='nn_embedding',
                                      embedding_key_t='nn_embedding',
@@ -87,14 +85,12 @@ def test_models():
 
     logging.debug("\n\nSource and target model!\n"
                   "-----------------------------")
-    model = TransformerSrcAndTgtModel('test', nb_features=4,
+    model = TransformerSrcAndTgtModel(experiment_name='test', nb_features=4,
                                       d_model=4, max_len=5,
                                       log_level='DEBUG',
                                       # Using defaults from script
-                                      nb_previous_dirs=0,
-                                      prev_dirs_embedding_size=None,
-                                      prev_dirs_embedding_key=None,
-                                      normalize_prev_dirs=True,
+                                      sphere_to_convert_input_dirs=None,
+                                      sos_type_forward='as_label',
                                       positional_encoding_key='sinusoidal',
                                       embedding_key_x='nn_embedding',
                                       embedding_key_t='nn_embedding',

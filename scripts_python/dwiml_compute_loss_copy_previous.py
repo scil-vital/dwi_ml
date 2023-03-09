@@ -13,18 +13,20 @@ previous direction.
 """
 import argparse
 
+import numpy as np
 import torch.nn.functional
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import add_reference_arg, assert_inputs_exist
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions
+from dwi_ml.data.processing.streamlines.sos_eos_management import \
+    convert_dirs_to_class
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
-from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 from dwi_ml.utils import add_resample_or_compress_arg, resample_or_compress
 
-CHOICES = ['cosine-regression', 'l2-regression', 'cosine-plus-l2-regression',
-           'sphere-classification']
+CHOICES = ['cosine-regression', 'l2-regression', 'sphere-classification',
+           'smooth-sphere-classification', 'cosine-plus-l2-regression']
 
 
 def prepare_arg_parser():
@@ -32,11 +34,12 @@ def prepare_arg_parser():
                                 formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument('input_sft',
                    help="Input tractogram to use as target.")
-    add_direction_getter_args(p, dropout_arg=False, gaussian_fisher_args=False)
+    p.add_argument(
+        '--dg_key', metavar='key', default='cosine-regression',
+        choices=CHOICES,
+        help="Model for the direction getter layer. Regression or "
+             "classification only.")
 
-    p.add_argument('--use_0_for_first_dir', action='store_true',
-                   help="If set, previous direction for the first point will "
-                        "be [0,0,0]. Else, first point's loss is skipped.")
     add_resample_or_compress_arg(p)
     add_reference_arg(p)
 
@@ -48,9 +51,6 @@ def main():
     args = p.parse_args()
 
     # 1. Prepare direction getter
-    if args.dg_key not in CHOICES:
-        raise NotImplementedError("Script ot ready for this choice of "
-                                  "direction getter")
     dg_cls = keys_to_direction_getters[args.dg_key]
     input_size = 1  # Fake, we won't use the forward method.
     if 'regression' in args.dg_key:
@@ -68,26 +68,34 @@ def main():
     # To tensor
     sft.to_vox()
     sft.to_corner()
-    streamlines = [torch.as_tensor(s) for s in sft.streamlines]
-    directions = compute_directions(streamlines)
+    streamlines = [torch.as_tensor(s, dtype=torch.float32)
+                   for s in sft.streamlines]
 
-    if args.use_0_for_first_dir:
-        zeros = torch.zeros(3)
-        directions = [torch.vstack((zeros, d)) for d in directions]
+    # 3. Prepare targets and outputs: both out of directions.
+    # Similar to direction_getter.prepare_targets:
+    # A) Compute directions. Shift + add a fake first direction.
+    targets = compute_directions(streamlines)
 
-    # 3. Prepare targets and fake outputs.
-    targets = [d[1:, :] for d in directions]
-    outputs = [d[:-1, :] for d in directions]
-    outputs = torch.vstack(outputs)
-    targets = torch.vstack(targets)
+    # B) Output at each point = copy previous dir.
+    #    - No prev dir at first point = we use random.
+    #    - Last dir is not used.
+    rand = torch.as_tensor(np.random.rand(3), dtype=torch.float32)
+    outputs = [torch.vstack((rand, t[:-1, :])) for t in targets]
+
+    # 4. Format targets and outputs.
     if args.dg_key == 'sphere-classification':
+        targets = convert_dirs_to_class(targets, dg.torch_sphere)
+        outputs = convert_dirs_to_class(outputs, dg.torch_sphere)
+        targets = torch.hstack(targets)
+        outputs = torch.hstack(outputs)
+
         # Prepare logits_per_class
-        # Just the index of the class as a one-hot
-        classes = dg.torch_sphere.find_closest(outputs)
-        outputs = torch.nn.functional.one_hot(classes.to(dtype=torch.long))
+        outputs = torch.nn.functional.one_hot(outputs.to(dtype=torch.long))
     else:  # regression
+        targets = torch.vstack(targets)
         if args.normalize_outputs:
             outputs = normalize_directions(outputs) * args.normalize_outputs
+        outputs = torch.vstack(outputs)
 
     # 4. Compute loss
     with torch.no_grad():

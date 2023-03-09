@@ -218,60 +218,63 @@ class ModelWithNeighborhood(MainModelAbstract):
         return p
 
 
-class ModelWithStreamlines(MainModelAbstract):
+class ModelWithStreamlineFormattingInForward(MainModelAbstract):
     """
     Adds modifications on the streamlines, such as classification of the
-    directions, or addition of EOS / SOS.
+    directions, or addition of EOS / SOS, to be used in the forward pass.
+
+    (In the loss computation, see the direction getter args).
     """
-    def __init__(self, convert_dirs_to_classes: str = None,
-                 sos_type: str = None, eos_type: str = None, **kw):
+    def __init__(self, sphere_to_convert_input_dirs: str = None,
+                 sos_type_forward: str = None, eos_type_forward: str = None,
+                 **kw):
         """
         Params
         ------
-        convert_dirs_to_classes: str
+        sphere_to_convert_input_dirs: str
             If set, directions are converted to one-hot vectors before
             utilisation. Name of a dipy sphere.
-        
-        sos_type: str
+        sos_type_forward: str
             One of 'SOS_as_label' or 'SOS_as_class' (or None).
-        eos_type: str
-            One of 'EOS_as_label', 'EOS_as_zeros' or 'EOS_as_class' (or None).
         """
-        self.check_eos_sos_args(convert_dirs_to_classes, sos_type, eos_type)
+        self.check_eos_sos_args(sphere_to_convert_input_dirs,
+                                sos_type_forward)
 
         super().__init__(**kw)
 
-        self.convert_dirs_to_classes = convert_dirs_to_classes
-        self.sos_type = sos_type
-        self.eos_type = eos_type
+        # How to manage streamlines before the forward call.
+        self.sphere_to_convert_input_dirs = sphere_to_convert_input_dirs
+        self.sos_type_forward = sos_type_forward
+        self.eos_type_forward = eos_type_forward
 
         self.sphere = None
-        if convert_dirs_to_classes is not None:
-            dipy_sphere = get_sphere(convert_dirs_to_classes)
+        if sphere_to_convert_input_dirs is not None:
+            dipy_sphere = get_sphere(sphere_to_convert_input_dirs)
             self.sphere = TorchSphere(dipy_sphere)
+
+        self.forward_uses_streamlines = True
 
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
         p.update({
-            'convert_dirs_to_classes': self.convert_dirs_to_classes,
-            'sos_type': self.sos_type,
-            'eos_type': self.eos_type,
-            'smooth_labels': self.smooth_labels
+            'sphere_to_convert_input_dirs': self.sphere_to_convert_input_dirs,
+            'sos_type_forward': self.sos_type_forward,
+            'eos_type_forward': self.eos_type_forward,
         })
         return p
 
     @staticmethod
-    def add_target_management_arg(p, add_sos=True, add_eos=True):
+    def add_target_management_arg(p, add_sos=True):
         p.add_argument(
-            '--convert_dirs_to_classes', const='repulsion724',
+            '--sphere_to_convert_input_dirs', nargs='?', const='repulsion724',
             choices=sphere_choices,
             help="If set, converts all input directions to classes on the "
                  "sphere.")
 
         if add_sos:
             p.add_argument(
-                '--SOS_type_foward', choices=['as_label', 'as_class'],
+                '--SOS_type_forward', choices=['as_label', 'as_class'],
                 help="Choice of SOS addition (in the forward method; no "
                      "impact on the loss computation).\n"
                      "  - as_label: Adds an initial [0,0,0,1] direction "
@@ -280,44 +283,19 @@ class ModelWithStreamlines(MainModelAbstract):
                      "  - as_class: To be used with convert_dirs_to_classes.\n"
                      "    Adds an additional SOS class.")
 
-        if add_eos:
-            p.add_argument(
-                '--EOS_type_forward',
-                choices=['as_label', 'as_zeros', 'as_class'],
-                help="Choice of EOS addition (in the forward method; no "
-                     "impact on the loss computation).\n"
-                     "  - as_label: Adds an initial [0,0,0,1] direction "
-                     "as the last direction.\n"
-                     "    Other points become [x, y, z, 0].\n"
-                     "  - as_zeros: Adds a [0, 0, 0] value as last target.\n"
-                     "  - as_class: To be used with convert_dirs_to_classes.\n"
-                     "    Adds an additional SOS class.")
-
     @staticmethod
-    def check_eos_sos_args(convert_dirs_to_classes, sos_type, eos_type):
-        if sos_type == 'as_label' and convert_dirs_to_classes is not None:
+    def check_eos_sos_args(sphere_to_convert_input_dirs, sos_type):
+        convert_dirs_to_classes = sphere_to_convert_input_dirs is not None
+        if sos_type == 'as_label' and convert_dirs_to_classes:
             raise ValueError(
                 "--SOS_type_forward 'as_label' is not intented to be used "
-                "together with --convert_dirs_to_classes")
-        elif sos_type == 'as_class' and convert_dirs_to_classes is None:
+                "together with --sphere_to_convert_input_dirs")
+        elif sos_type == 'as_class' and convert_dirs_to_classes:
             raise ValueError(
                 "--SOS_type_forward 'as_class' cannot be used without "
-                "--convert_dirs_to_classes")
+                "--sphere_to_convert_input_dirs")
 
-        if eos_type == 'as_label' and convert_dirs_to_classes is not None:
-            raise ValueError(
-                "--EOS_type_forward 'as_label' is not intented to be used "
-                "together with --convert_dirs_to_classes")
-        elif eos_type == 'as_zeros' and convert_dirs_to_classes is not None:
-            raise ValueError(
-                "--EOS_type_forward 'as_zeros' is not intented to be used "
-                "together with --convert_dirs_to_classes")
-        elif eos_type == 'as_class' and convert_dirs_to_classes is None:
-            raise ValueError(
-                "--EOS_type_forward 'as_class' cannot be used without "
-                "--convert_dirs_to_classes")
-
-    def prepare_targets_forward(self, batch_streamlines, device=None):
+    def prepare_targets_forward(self, batch_streamlines):
         """
         batch_streamlines: List[Tensors]
         during_loss: bool
@@ -328,24 +306,23 @@ class ModelWithStreamlines(MainModelAbstract):
             EOS and SOS are added.
         """
         batch_dirs = compute_directions(batch_streamlines)
-        add_sos = self.sos_type is not None
-        add_eos = self.eos_type is not None
+        add_sos = self.sos_type_forward is not None
+        add_eos = self.eos_type_forward is not None
 
-        if self.convert_dirs_to_classes:
+        if self.sphere_to_convert_input_dirs:
             batch_dirs = convert_dirs_to_class(
-                batch_dirs, self.sphere, smooth_labels=self.smooth_labels,
-                add_sos=add_sos, add_eos=add_eos, device=device,
+                batch_dirs, self.sphere, add_sos=add_sos, add_eos=add_eos,
                 to_one_hot=True)
         else:
             # SOS: always as_label.
             # EOS: either as_label or as_zeros.
-            if self.eos_type == 'as_labels':
+            if self.eos_type_forward == 'as_labels':
                 batch_dirs = add_label_as_last_dim(
                     batch_dirs, add_sos=add_sos,
-                    add_eos=self.eos_type == 'as_label', device=device)
+                    add_eos=self.eos_type_forward == 'as_label')
 
             # Final choice of EOS: EOS_as_zeros
-            if self.eos_type == 'as_zeros':
+            if self.eos_type_forward == 'as_zeros':
                 batch_dirs = add_zeros_sos_eos(batch_dirs, add_sos=False,
                                                add_eos=True)
         return batch_dirs
@@ -365,7 +342,7 @@ class ModelWithStreamlines(MainModelAbstract):
         raise NotImplementedError
 
 
-class ModelWithPreviousDirections(ModelWithStreamlines):
+class ModelWithPreviousDirections(MainModelAbstract):
     """
     Adds tools to work with previous directions. Prepares a layer for previous
     directions embedding, and a tool method for direction formatting.
@@ -399,10 +376,6 @@ class ModelWithPreviousDirections(ModelWithStreamlines):
         self.prev_dirs_embedding_size = prev_dirs_embedding_size
         self.normalize_prev_dirs = normalize_prev_dirs
 
-        if self.eos_type == 'as_zeros' and self.normalize_prev_dirs:
-            raise ValueError("Adding EOS as zeros is not compatible with "
-                             "normalization.")
-
         if self.nb_previous_dirs > 0:
             if (prev_dirs_embedding_key is not None and
                     prev_dirs_embedding_size is None):
@@ -431,7 +404,8 @@ class ModelWithPreviousDirections(ModelWithStreamlines):
             self.prev_dirs_embedding = None
 
         # To tell our trainer what to send to the forward / loss methods.
-        self.forward_uses_streamlines = True
+        if nb_previous_dirs > 0:
+            self.forward_uses_streamlines = True
 
     @staticmethod
     def add_args_model_with_pd(p):
@@ -506,12 +480,9 @@ class ModelWithPreviousDirections(ModelWithStreamlines):
             dirs = normalize_directions(dirs)
 
         # Formatting the n previous dirs for all points.
-        n_prev_dirs = self.format_previous_dirs(dirs, point_idx=point_idx)
-
-        if not point_idx:
-            # Not keeping the last point: only useful to get the last
-            # direction (ex, last target), but won't be used as an input.
-            n_prev_dirs = [s[:-1] for s in n_prev_dirs]
+        n_prev_dirs = compute_n_previous_dirs(
+            dirs, self.nb_previous_dirs,
+            point_idx=point_idx, device=self.device)
 
         # Packing
         # We could loop on all lists and embed each.
@@ -526,6 +497,7 @@ class ModelWithPreviousDirections(ModelWithStreamlines):
                 n_prev_dirs, batch_sizes=batch_sizes,
                 sorted_indices=sorted_indices,
                 unsorted_indices=unsorted_indices)
+
         else:
             n_prev_dirs_packed = pack_sequence(n_prev_dirs,
                                                enforce_sorted=False)
@@ -545,20 +517,6 @@ class ModelWithPreviousDirections(ModelWithStreamlines):
         else:
             return n_prev_dirs_packed
 
-    def format_previous_dirs(self, all_streamline_dirs, point_idx=None):
-        """
-        Formats the previous dirs. See compute_n_previous_dirs for a
-        description of parameters.
-        """
-        if self.nb_previous_dirs == 0:
-            return None
-
-        n_previous_dirs = compute_n_previous_dirs(
-            all_streamline_dirs, self.nb_previous_dirs,
-            point_idx=point_idx, device=self.device)
-
-        return n_previous_dirs
-
     def forward(self, inputs, target_streamlines: List[torch.tensor], **kw):
         """
         Params
@@ -571,8 +529,7 @@ class ModelWithPreviousDirections(ModelWithStreamlines):
         """
         # Hints : Should start with:
 
-        # target_dirs = self.prepare_target(target_streamlines,
-        #                                   during_loss=False)
+        # target_dirs = compute_directions(target_streamlines)
         # n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
         #       target_dirs)
 
@@ -583,7 +540,14 @@ class ModelWithPreviousDirections(ModelWithStreamlines):
 
 class MainModelOneInput(MainModelAbstract):
     def __init__(self, **kw):
+        """
+        skip_input_as_last_point: bool
+            Change to True do skip input computation at the last coordinate of
+            the streamline. Ex: Useful if targets are directions (and there is
+            no EOS token): last point does not have a target.
+        """
         super().__init__(**kw)
+        self.skip_input_as_last_point = False
 
     def prepare_batch_one_input(self, streamlines, subset, subj,
                                 input_group_idx, prepare_mask=False):
@@ -603,7 +567,7 @@ class MainModelOneInput(MainModelAbstract):
         input_groupd_idx: int
             The volume group.
         prepare_mask: bool
-            If true, return a mask of chosen coordinates (DEBUGGING MODE).
+            If True, return a mask of chosen coordinates (DEBUGGING MODE).
 
         Returns
         -------
@@ -613,7 +577,10 @@ class MainModelOneInput(MainModelAbstract):
         input_mask: tensor or None
             In debugging mode, returns a mask of all voxels used as input.
         """
-        start_time = datetime.now()
+        if self.skip_input_as_last_point:
+            # We don't use the last coord because it is used only to
+            # compute the last target direction, it's not really an input
+            streamlines = [s[:-1, :] for s in streamlines]
 
         # Flatten = concatenate signal for all streamlines to process
         # faster.
@@ -639,10 +606,6 @@ class MainModelOneInput(MainModelAbstract):
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]
         subj_x_data = list(subj_x_data.split(lengths))
-        duration_inputs = datetime.now() - start_time
-        logger.debug("Time to prepare the inputs ({} streamlines, total {} "
-                     "points): {} s".format(len(streamlines), sum(lengths),
-                                            duration_inputs.total_seconds()))
 
         input_mask = None
         if prepare_mask:
@@ -664,7 +627,7 @@ class MainModelOneInput(MainModelAbstract):
         return subj_x_data, input_mask
 
 
-class ModelForTracking(MainModelAbstract):
+class ModelWithDirectionGetter(MainModelAbstract):
     """
     Adding typical options for models intended for learning to track.
     - Last layer should be a direction getter.
@@ -698,7 +661,6 @@ class ModelForTracking(MainModelAbstract):
                              .format(self.positional_encoding_key))
 
         # To tell our trainer what to send to the forward / loss methods.
-        self.forward_uses_streamlines = True
         self.loss_uses_streamlines = True
 
     def instantiate_direction_getter(self, dg_input_size):
@@ -718,19 +680,6 @@ class ModelForTracking(MainModelAbstract):
             'dg_args': self.dg_args,
         })
         return p
-
-    def forward(self, inputs, target_streamlines, **kw):
-        """
-        Params
-        ------
-        inputs: Any
-        target_streamlines: List[torch.tensor],
-            Batch of streamlines (only necessary to save estimated outputs,
-            if asked).
-        """
-        # Should end with:
-        # model_outputs = self.direction_getter(last_layer_output)
-        raise NotImplementedError
 
     def get_tracking_directions(self, model_outputs: Tensor, algo: str):
         """

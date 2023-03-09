@@ -299,8 +299,9 @@ class DWIMLAbstractTrainer:
         # parameters)
         list_params = [n for n, _ in self.model.named_parameters()]
         self.logger.debug("Initiating trainer: {}".format(type(self)))
-        self.logger.debug("This trainer will use Adam optimization on the "
-                          "following model.parameters: {}".format(list_params))
+        self.logger.debug("This trainer will use {} optimization on the "
+                          "following model.parameters: {}"
+                          .format(self.optimizer_key, list_params))
 
         self.current_lr = self.learning_rates[0]
         if self.optimizer_key == 'RAdam':
@@ -735,10 +736,6 @@ class DWIMLAbstractTrainer:
                                           step=epoch)
 
     def _update_gradnorm_logs_after_epoch(self, comet_context, epoch: int):
-        self.logger.info(
-            "   Mean gradient norm : {}"
-            .format(self.grad_norm_monitor.average_per_epoch[epoch]))
-
         if self.comet_exp:
             with comet_context():
                 self.comet_exp.log_metric(
@@ -1064,7 +1061,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         logger.debug("Loaded the associated {} inputs."
                      .format(len(batch_inputs)))
 
-        self.logger.debug('*** Computing forward propagation and loss')
+        self.logger.debug('*** Computing forward propagation')
         if self.model.forward_uses_streamlines:
             # Now possibly add noise to streamlines;
             # The whole target will be noisy, even when computing the loss.
@@ -1080,6 +1077,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         else:
             model_outputs = self.model(batch_inputs)
 
+        self.logger.debug('*** Computing loss')
         if self.model.loss_uses_streamlines:
             mean_loss, n = self.model.compute_loss(model_outputs,
                                                    batch_streamlines)

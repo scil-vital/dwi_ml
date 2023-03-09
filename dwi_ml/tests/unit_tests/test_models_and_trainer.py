@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import logging
 import os
+import tempfile
+
 import pytest
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
@@ -79,3 +81,8 @@ def _create_trainer(batch_sampler, batch_loader, model, experiments_path,
     # Note. toDo Test fails with nb_cpu_processes=1. Why??
 
     return trainer
+
+
+if __name__ == '__main__':
+    tmp_dir = tempfile.TemporaryDirectory()
+    test_trainer_and_models(tmp_dir.name)

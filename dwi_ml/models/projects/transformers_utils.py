@@ -25,6 +25,7 @@ def add_abstract_model_args(p):
         choices=keys_to_embeddings.keys(), metavar='key',
         help="Type of data embedding to use. One of 'no_embedding', \n"
              "'nn_embedding' (default) or 'cnn_embedding'.")
+    AbstractTransformerModel.add_target_management_arg(p, add_sos=True)
 
     gt = p.add_argument_group(title='Transformer')
     gt.add_argument(
@@ -67,9 +68,6 @@ def add_abstract_model_args(p):
              "tensor2tensor code, they suggest that learning is more robust "
              "when preprocessing each layer with the norm.\n"
              "Default: False.")
-
-    g = p.add_argument_group("Previous directions")
-    AbstractTransformerModel.add_args_model_with_pd(g)
 
     g = p.add_argument_group("Neighborhood")
     AbstractTransformerModel.add_neighborhood_args_to_parser(g)

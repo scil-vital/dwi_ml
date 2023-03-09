@@ -3,21 +3,21 @@ import logging
 from typing import Union, List
 
 import torch
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
 from torch.nn.utils.rnn import PackedSequence, pack_sequence
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
     keys_to_tensor_embeddings, NoEmbedding
 from dwi_ml.models.main_models import (
-    ModelWithPreviousDirections, ModelForTracking, ModelWithNeighborhood,
-    MainModelOneInput)
+    ModelWithPreviousDirections, ModelWithDirectionGetter,
+    ModelWithNeighborhood, MainModelOneInput)
 from dwi_ml.models.projects.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
 
-class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
+class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                        ModelWithNeighborhood, MainModelOneInput):
     """
     Recurrent tracking model.
@@ -117,10 +117,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # ---------- Instantiations
         # 1. Previous dirs embedding: prepared by super.
-            if embedding_layer is None:
-                raise ValueError(
-                    "SOS_as_zero_embedding cannot be chosen when no "
-                    "embedding layer is defined.")
 
         # 2. Input embedding
         self.input_size = nb_features * (self.nb_neighbors + 1)
@@ -153,13 +149,16 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         # 4. Direction getter:
         self.instantiate_direction_getter(self.rnn_model.output_size)
 
+        # Skipping computation of the last input point if not used for the
+        # loss.
+        if not self.direction_getter.add_eos:
+            self.skip_input_as_last_point = True
+
         # If multiple inheritance goes well, these params should be set
         # correctly
-        assert self.forward_uses_streamlines
+        if nb_previous_dirs > 0:
+            assert self.forward_uses_streamlines
         assert self.loss_uses_streamlines
-        if nb_previous_dirs == 0:
-            # Then the forward method will not use the streamlines.
-            self.forward_uses_streamlines = False
 
     @property
     def params_for_checkpoint(self):
@@ -182,8 +181,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
     def forward(self, inputs: List[torch.tensor],
                 target_streamlines: List[torch.tensor] = None,
-                hidden_reccurent_states: tuple = None,
-                return_state: bool = False, is_tracking: bool = False):
+                hidden_recurrent_states: tuple = None,
+                return_state: bool = False, context: str = 'training'):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -198,17 +197,21 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             Batch of streamlines. Only used if previous directions are added to
             the model. Used to compute directions; its last point will not be
             used.
-        hidden_reccurent_states : tuple
+        hidden_recurrent_states : tuple
             The current hidden states of the (stacked) RNN model.
         return_state: bool
             If true, return new hidden recurrent state together with the model
             outputs.
-        is_tracking: bool
-            If False, streamlines contains one more point than inputs, as their
-            point does not have a target (a direction). Else, while tracking,
-            streamlines have the same number of points as inputs (we do not use
-            the targets, so it's ok, we only need to compute the previous
-            dirs).
+        context: str
+            - 'training' (i.e. training or validation) = We compute model
+            outputs in order to get the loss. If no EOS: skipping values
+            at the last coordinate of the streamline; no target. If EOS: taking
+            all inputs, all previous dirs.
+            - 'tracking': We compute model outputs in order to get the next
+            direction. Taking only the last point, based on hidden_state.
+            - 'whole': We recompute the whole streamline, last coordinate
+            included (same as training with EOS). Ex: At the beginning of
+            backward tracking.
 
         Returns
         -------
@@ -230,13 +233,24 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             GRU: States are tensors; h_t.
                 Size of tensors are [1, nb_streamlines, nb_neurons].
         """
+        if context == 'tracking':
+            points = 'last'
+        elif context == 'training':
+            if self.direction_getter.add_eos:
+                points = 'all'
+            else:
+                points = 'all_except_last'
+        elif context == 'whole':
+            points = 'all'
+        else:
+            raise ValueError("Learn2track forward: wrong context!")
+
         try:
             # Apply model. This calls our model's forward function
             # (the hidden states are not used here, neither as input nor
             # outputs. We need them only during tracking).
             model_outputs, new_states = self._run_forward(
-                inputs, target_streamlines, hidden_reccurent_states,
-                is_tracking)
+                inputs, target_streamlines, hidden_recurrent_states, points)
         except RuntimeError:
             # Training RNNs with variable-length sequences on the GPU can
             # cause memory fragmentation in the pytorch-managed cache,
@@ -251,8 +265,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
             torch.cuda.empty_cache()
             model_outputs, new_states = self._run_forward(
-                inputs, target_streamlines, hidden_reccurent_states,
-                is_tracking)
+                inputs, target_streamlines, hidden_recurrent_states, points)
 
         if return_state:
             # Tracking
@@ -262,14 +275,16 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             return model_outputs
 
     def _run_forward(self, inputs, streamlines: List[torch.Tensor],
-                     hidden_reccurent_states, is_tracking):
+                     hidden_recurrent_states, points):
+
         # Ordering of PackedSequence for 1) inputs, 2) previous dirs and
         # 3) targets (when computing loss) may not always be the same.
         # Pack inputs now and use that information for others.
         # Shape of inputs.data: nb_pts_total * nb_features
-        if is_tracking:
-            # We are only dealing with one point per streamlines (and the
-            # hidden state). Ensure that packed_sequence has the right size.
+        if points == 'last':
+            # We should have only one input per streamline (at the last
+            # coordinate). Using vstack rather than packing directly, to
+            # supervise their order.
             nb_streamlines = len(inputs)
             inputs = torch.vstack(inputs)
             batch_sizes = torch.as_tensor([nb_streamlines])
@@ -278,7 +293,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
                                     unsorted_indices)
         else:
-            # Streamlines have different lengths. Packing.
+            # Streamlines and inputs have different lengths. Packing.
             inputs = pack_sequence(inputs, enforce_sorted=False)
             batch_sizes = inputs.batch_sizes
             sorted_indices = inputs.sorted_indices
@@ -286,23 +301,26 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
 
         # ==== 1. Previous dirs embedding ====
         if self.nb_previous_dirs > 0:
-            dirs = self.prepare_targets_forward(streamlines, during_forward=True)
+            prev_dirs = compute_directions(streamlines)
 
-            # During training, we need all the previous n directions, during
-            # tracking, the last one only.
-            point_idx = -1 if is_tracking else None
+            if points == 'last':
+                point_idx = -1
+            else:
+                point_idx = None
+                if points == 'all_except_last':
+                    prev_dirs = [s[:-1, :] for s in prev_dirs]
 
             # Result will be a packed sequence.
             n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
-                dirs, unpack_results=False, point_idx=point_idx,
+                prev_dirs, unpack_results=False, point_idx=point_idx,
                 packing_order=(batch_sizes, sorted_indices, unsorted_indices))
         else:
             n_prev_dirs_embedded = None
 
         # ==== 2. Inputs embedding ====
         # Avoiding unpacking and packing back if not needed.
-        if not isinstance(self.input_embedding, NoEmbedding) or \
-                self.nb_previous_dirs > 0:
+        if self.nb_previous_dirs > 0 or not isinstance(
+                self.input_embedding, NoEmbedding):
 
             # Embedding. Shape of inputs: nb_pts_total * embedding_size
             inputs = self.input_embedding(inputs.data)
@@ -310,7 +328,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             # ==== 3. Concat with previous dirs ====
             if n_prev_dirs_embedded is not None:
                 inputs = torch.cat((inputs, n_prev_dirs_embedded.data), dim=-1)
-                logger.debug("Concatenated shape: {}".format(inputs.shape))
 
             # Shaping again as packed sequence.
             # Shape of inputs.data: nb_pts_total * embedding_size_total
@@ -320,22 +337,24 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
         # ==== 3. Stacked RNN (on packed sequence, returns a tensor) ====
         # rnn_output shape: nb_pts_total * last_hidden_layer_size
         rnn_output, out_hidden_recurrent_states = self.rnn_model(
-            inputs, hidden_reccurent_states)
+            inputs, hidden_recurrent_states)
 
         logger.debug("*** 5. Direction getter....")
         # direction getter can't get a list of sequences.
         # output will be a tensor, but with same format as input.data.
         # we will get a direction for each point.
         model_outputs = self.direction_getter(rnn_output)
-        logger.debug("Output size: {}".format(model_outputs.shape[-1]))
 
         # Return the hidden states. Necessary for the generative
         # (tracking) part, done step by step.
 
-        # Not unpacking now; we will compute the loss point by point on this
-        # whole tensor. Sending as PackedSequence to be sure that targets will
-        # be concatenated in the same order when computing loss.
-        if not is_tracking:
+        # During training: not unpacking now; we will compute the loss point by
+        # whole tensor. But sending as PackedSequence to be sure that targets
+        # will be concatenated in the same order when computing loss.
+        # During tracking last point: keeping as one tensor.
+        # During tracking backward: ignoring output anyway. Only computing
+        # hidden state.
+        if not points == 'last':
             model_outputs = PackedSequence(model_outputs, batch_sizes,
                                            sorted_indices, unsorted_indices)
 
@@ -364,7 +383,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelForTracking,
             The loss between the outputs and the targets, averaged across
             timesteps and sequences.
         """
-        target_dirs = self.direction_getter.prepare_targets(target_streamlines)
+        target_dirs = self.direction_getter.prepare_targets_for_loss(target_streamlines)
 
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.

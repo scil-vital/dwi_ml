@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from math import ceil
 from typing import Any, Tuple, List, Union
 
@@ -113,6 +114,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         self.input_size = input_size
         self.device = None
+        self.add_eos = False
 
         # Info on this Direction Getter
         self.key = key
@@ -183,7 +185,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Will be implemented by each class
         raise NotImplementedError
 
-    def prepare_targets(self, target_streamlines: List[Tensor]):
+    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
         """
         Should be called before compute_loss, before concatenating your
         streamlines.
@@ -268,7 +270,7 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
                  loss_description: str = '',
                  normalize_targets: float = False,
                  normalize_outputs: float = False,
-                 add_eos_label: float = False):
+                 add_eos: float = False):
         """
         normalize_targets: float
             Value to which to normalize targets when computing loss.
@@ -277,20 +279,20 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         normalize_outputs: float
             Value to which to normalize the learned direction.
             Default: 0 (no normalization).
+        add_eos: bool
+            If true, add a 4th dimension to learn the SOS label.
         """
         super().__init__(input_size, dropout, key,
                          supports_compressed_streamlines, loss_description)
 
         output_size = 3  # x, y, z direction.
-        if add_eos_label:
+        if add_eos:
             output_size = 4  # + EOS choice.
         self.layers = init_2layer_fully_connected(input_size, output_size)
         self.normalize_targets = normalize_targets
         self.normalize_outputs = normalize_outputs
-        self.add_eos_label = add_eos_label
-
-        # Verify the range for the regression loss
-        self.scaling_factor_eos_loss = None
+        self.add_eos = add_eos
+        self.stopping_criteria_eos = 0.5  # sigmoid > 0.5 = we return nan.
 
     @property
     def params(self):
@@ -298,7 +300,7 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         p.update({
             'normalize_targets': self.normalize_targets,
             'normalize_outputs': self.normalize_outputs,
-            'add_eos_label': self.add_eos_label
+            'add_eos': self.add_eos
         })
         return p
 
@@ -312,34 +314,37 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
             output = normalize_directions(output) * self.normalize_outputs
         return output
 
-    def prepare_targets(self, target_streamlines: List[Tensor]):
+    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
         """
         Should be called before compute_loss, before concatenating your
         streamlines.
         """
         target_dirs = compute_directions(target_streamlines)
         return add_label_as_last_dim(target_dirs, add_sos=False,
-                                     add_eos=self.add_eos_label)
+                                     add_eos=self.add_eos)
 
     def compute_loss(self, learned_directions, target_dirs):
 
         # Divide direction loss and EOS loss.
-        if self.add_eos_label:
-            assert target_dirs.shape[-1] == 4, \
+        if self.add_eos:
+            assert learned_directions.shape[1] == 4
+            assert target_dirs.shape[1] == 4, \
                 "Don't forget to run prepare_targets before compute_loss."
 
             # Keeping last dim as EOS
             # Just zeros and ones (sum of booleans).
             # We then divide the score to have this loss similar to the
             # directions loss.
-            losses_eos = torch.sum(
-                torch.eq(learned_directions[-1, :], target_dirs[-1, :]))
-            nb_streamlines = torch.sum(target_dirs[-1, :])
-            losses_eos = losses_eos / nb_streamlines * self.scaling_factor_eos_loss
 
+            # Sigmoid = between 0 and 1.
+            # Difference = 1 - 0 --> 1 if erroneously stops.
+            #            = 0 - 1 --> -1 if erroneously continues.
+            # Pow2 = 0 if ok. 1 if error.
+            learned_eos = torch.sigmoid(learned_directions[:, -1])
+            losses_eos = torch.pow(learned_eos - target_dirs[:, -1], 2)
             mean_loss_eos, _ = _mean_and_weight(losses_eos)
-            learned_directions = learned_directions[:-1, :]
-            target_dirs = target_dirs[:-1, :]
+            learned_directions = learned_directions[:, :-1]
+            target_dirs = target_dirs[:, :-1]
         else:
             mean_loss_eos = torch.as_tensor(0, dtype=torch.float32,
                                             device=self.device)
@@ -351,7 +356,12 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         losses_dirs = self._compute_loss(learned_directions, target_dirs)
         mean_loss_dir, n = _mean_and_weight(losses_dirs)
 
-        return (mean_loss_dir, mean_loss_eos), n
+        if self.add_eos:
+            logging.warning("To be supervised the first times... "
+                            "Loss: {}. EOS loss: {}"
+                            .format(mean_loss_dir, mean_loss_eos))
+
+        return mean_loss_dir + mean_loss_eos, n
 
     def _sample_tracking_direction_prob(self, model_outputs: Tensor):
         raise ValueError("Regression models do not support probabilistic "
@@ -362,7 +372,17 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         In this case, the output is directly a 3D direction, so we can use it
         as is for the tracking.
         """
-        return model_outputs
+        if self.add_eos:
+            eos_prob = torch.sigmoid(model_outputs[:, -1])
+            eos_prob = torch.gt(eos_prob, self.stopping_criteria_eos)
+            nb_stop = torch.sum(eos_prob)
+            if nb_stop > 0:
+                logging.info("{} streamlines stopping because of learned "
+                             "criterion (EOS).".format(nb_stop))
+            return torch.masked_fill(
+                model_outputs[:, 0:3], eos_prob[:, None], torch.nan)
+        else:
+            return model_outputs
 
 
 class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
@@ -375,20 +395,17 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
     def __init__(self, input_size: int, dropout: float = None,
                  normalize_targets: float = False,
                  normalize_outputs: float = False,
-                 add_eos_label: bool = False):
+                 add_eos: bool = False):
         super().__init__(input_size, dropout,
                          key='cosine-regression',
                          supports_compressed_streamlines=False,
                          loss_description='negative cosine similarity',
                          normalize_targets=normalize_targets,
                          normalize_outputs=normalize_outputs,
-                         add_eos_label=add_eos_label)
+                         add_eos=add_eos)
 
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
-
-        # Range of the cosine: -1 and 1 = 2
-        self.scaling_factor_eos_loss = 2
 
     def _compute_loss(self, learned_directions: Tensor,
                       target_directions: Tensor):
@@ -410,7 +427,7 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
     def __init__(self, input_size: int, dropout: float = None,
                  normalize_targets: float = False,
                  normalize_outputs: float = False,
-                 add_eos_label: bool = False):
+                 add_eos: bool = False):
         # L2 Distance loss supports compressed streamlines
         super().__init__(input_size, dropout,
                          key='l2-regression',
@@ -418,17 +435,18 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
                          loss_description="torch's pairwise distance",
                          normalize_targets=normalize_targets,
                          normalize_outputs=normalize_outputs,
-                         add_eos_label=add_eos_label)
+                         add_eos=add_eos)
 
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
         self.l2_loss = PairwiseDistance()
 
         # Range of the L2: depends on the scaling of directions.
-        # sqrt(2) if directions are normalized.
+        # Worst case = sqrt(4) if directions are normalized
+        # (two vectors 100% opposed. Ex: [0, 0, 1] and [0, 0, -1]:
+        # = sqrt(0 + 0 + 2^2) = sqrt(4).
         # Generally, step size is smaller than one voxel, so smaller than
-        # sqrt(2).
-        self.scaling_factor_eos_loss = np.sqrt(2)
+        # sqrt(4).
 
     def _compute_loss(self, learned_directions: Tensor,
                       target_directions: Tensor):
@@ -440,20 +458,18 @@ class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
     def __init__(self, input_size: int, dropout: float = None,
                  normalize_targets: float = False,
                  normalize_outputs: float = False,
-                 add_eos_label: bool = False):
+                 add_eos: bool = False):
         super().__init__(input_size, dropout,
                          key='cos-plus-l2-regression',
                          supports_compressed_streamlines=False,
                          loss_description='l2 + negative cosine similarity',
                          normalize_targets=normalize_targets,
                          normalize_outputs=normalize_outputs,
-                         add_eos_label=add_eos_label)
+                         add_eos=add_eos)
 
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
         self.l2_loss = PairwiseDistance()
-
-        self.scaling_factor_eos_loss = np.sqrt(2) + 2
 
     def _compute_loss(self, learned_directions: Tensor,
                       target_directions: Tensor):
@@ -477,7 +493,7 @@ class AbstractSphereClassificationDirectionGetter(
         1. Linear1:  output size = ceil(input_size/2)
         2. Linear2:  output size = n
     """
-    def __init__(self, sphere: str, add_eos_class: bool,
+    def __init__(self, sphere: str, add_eos: bool,
                  input_size: int, dropout: float, key: str,
                  supports_compressed_streamlines: bool,
                  loss_description: str = ''):
@@ -494,14 +510,15 @@ class AbstractSphereClassificationDirectionGetter(
         self.sphere_name = sphere
         sphere = dipy.data.get_sphere(sphere)
         self.torch_sphere = TorchSphere(sphere)
-        self.nb_classes = sphere.vertices.shape[0]
+        nb_classes = sphere.vertices.shape[0]
 
         # EOS
-        self.add_eos_class = add_eos_class
-        if add_eos_class:
-            self.nb_classes += 1
+        self.add_eos = add_eos
+        if add_eos:
+            nb_classes += 1
+            self.eos_class = nb_classes
 
-        self.layers = init_2layer_fully_connected(input_size, self.nb_classes)
+        self.layers = init_2layer_fully_connected(input_size, nb_classes)
 
     def move_to(self, device):
         super().move_to(device)
@@ -513,7 +530,7 @@ class AbstractSphereClassificationDirectionGetter(
 
         params.update({
             'sphere': self.sphere_name,
-            'add_eos_class': self.add_eos_class,
+            'add_eos': self.add_eos,
         })
         return params
 
@@ -529,20 +546,42 @@ class AbstractSphereClassificationDirectionGetter(
         Sample a tracking direction on the sphere from the predicted class
         logits (=probabilities). If class = EOS, direction is [NaN, NaN, NaN].
         """
-        # Sample a direction on the sphere
-        sampler = Categorical(logits=logits_per_class)
-        idx = sampler.sample()
+        if self.add_eos:
+            # Sample a direction on the sphere
+            sampler = Categorical(logits=logits_per_class[:, :-1])
+            idx = sampler.sample()
 
-        return self.torch_sphere.vertices[idx]
+            # But stop if EOS is bigger.
+            eos_logit = logits_per_class[:, -1]
+            stop = eos_logit > logits_per_class[:, idx]
+            idx[stop] = self.eos_class
+
+        else:
+            # Sample a direction on the sphere
+            sampler = Categorical(logits=logits_per_class)
+            idx = sampler.sample()
+
+        return self.invalid_or_vertice(idx)
 
     def _get_tracking_direction_det(self, logits_per_class: Tensor):
         """
         Get the predicted class with highest logits (=probabilities).
         If class = EOS, direction is [NaN, NaN, NaN].
         """
+        # Shape: nb_points x nb_classes
         idx = logits_per_class.argmax(dim=1)
 
-        return self.torch_sphere.vertices[idx]
+        return self.invalid_or_vertice(idx)
+
+    def invalid_or_vertice(self, idx: torch.Tensor):
+        stop = idx == self.eos_class - 1
+        nb_stop = torch.sum(stop)
+        if nb_stop > 0:
+            logging.info("{} streamlines stopping because of learned "
+                         "criterion (EOS).".format(nb_stop))
+        idx[stop] = 0  # Faking any vertice for best speed. Filling to nan after.
+        return self.torch_sphere.vertices[idx].masked_fill(
+            stop[:, None], torch.nan)
 
 
 class SphereClassificationDirectionGetter(
@@ -551,17 +590,17 @@ class SphereClassificationDirectionGetter(
     Loss = negative log-likelihood.
     """
     def __init__(self, input_size: int, dropout: float = None,
-                 sphere: str = 'symmetric724', add_eos_class=False):
+                 sphere: str = 'symmetric724', add_eos=False):
         """
         smooth_labels: bool
             If true, applies a Gaussian on the labels, as done in Deeptract.
         """
-        super().__init__(sphere, add_eos_class, input_size, dropout,
+        super().__init__(sphere, add_eos, input_size, dropout,
                          key='sphere-classification',
                          supports_compressed_streamlines=False,
                          loss_description='negative log-likelihood')
 
-    def prepare_targets(self, target_streamlines):
+    def prepare_targets_for_loss(self, target_streamlines):
         """
         Finds the closest class for each target direction.
 
@@ -573,7 +612,7 @@ class SphereClassificationDirectionGetter(
 
         target_idx = convert_dirs_to_class(
             target_dirs, self.torch_sphere, smooth_labels=False,
-            add_sos=False, add_eos=self.add_eos_class, to_one_hot=False)
+            add_sos=False, add_eos=self.add_eos, to_one_hot=False)
         return target_idx
 
     def compute_loss(self, logits_per_class: Tensor, targets: Tensor):
@@ -603,17 +642,17 @@ class SmoothSphereClassificationDirectionGetter(
     Loss = KL divergence
     """
     def __init__(self, input_size: int, dropout: float = None,
-                 sphere: str = 'symmetric724', add_eos_class=False):
+                 sphere: str = 'symmetric724', add_eos=False):
         """
         smooth_labels: bool
             If true, applies a Gaussian on the labels, as done in Deeptract.
         """
-        super().__init__(sphere, add_eos_class, input_size, dropout,
+        super().__init__(sphere, add_eos, input_size, dropout,
                          key='smooth-sphere-classification',
                          supports_compressed_streamlines=False,
                          loss_description='negative log-likelihood')
 
-    def prepare_targets(self, target_streamlines):
+    def prepare_targets_for_loss(self, target_streamlines):
         """
         Finds the closest class for each target direction.
 
@@ -625,7 +664,7 @@ class SmoothSphereClassificationDirectionGetter(
 
         target_idx = convert_dirs_to_class(
             target_dirs, self.torch_sphere, smooth_labels=True,
-            add_sos=False, add_eos=self.add_eos_class, device=self.device,
+            add_sos=False, add_eos=self.add_eos, device=self.device,
             to_one_hot=True)
         return target_idx
 
@@ -672,6 +711,10 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         # Layers
         self.layers_mean = init_2layer_fully_connected(input_size, 3)
         self.layers_sigmas = init_2layer_fully_connected(input_size, 3)
+
+        # toDo:
+        # if add_eos_label:
+        #     self.layers_eos = init_2layer_fully_connected(input_size, 1)
 
         # Loss will be defined in compute_loss, using torch distribution
 

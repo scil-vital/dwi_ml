@@ -12,7 +12,7 @@ from scilpy.io.fetcher import fetch_data, get_home
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions
 from dwi_ml.models.main_models import (
-    ModelForTracking, ModelWithNeighborhood, MainModelOneInput,
+    ModelWithDirectionGetter, ModelWithNeighborhood, MainModelOneInput,
     ModelWithPreviousDirections)
 from dwi_ml.tests.utils.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
@@ -52,6 +52,11 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
                          log_level=log_level)
         self.fake_parameter = torch.nn.Parameter(torch.as_tensor(42.0))
 
+        # Not using last input; we don't have a target there.
+        # Saving computation time by skipping interpolation of the input at
+        # the last point.
+        self.skip_input_as_last_point = True
+
     def compute_loss(self, model_outputs, target_streamlines=None):
         mean = self.fake_parameter
         n = 30
@@ -64,11 +69,13 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
         return [regressed_dir for _ in x]
 
 
-class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
+class TrackingModelForTestWithPD(ModelWithPreviousDirections,
+                                 ModelWithDirectionGetter,
                                  ModelWithNeighborhood, MainModelOneInput):
     def __init__(self, experiment_name: str = 'test',
-                 neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level,
+                 # NEIGHBORHOOD
+                 neighborhood_type: str = None, neighborhood_radius=None,
                  # PREVIOUS DIRS
                  nb_previous_dirs=0, prev_dirs_embedding_size=None,
                  prev_dirs_embedding_key=None, normalize_prev_dirs=True,
@@ -77,9 +84,10 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
                  dg_input_size=4):
 
         super().__init__(
-            experiment_name=experiment_name,
+            experiment_name=experiment_name, log_level=log_level,
+            # For super ModelWithNeighborhood
             neighborhood_type=neighborhood_type,
-            neighborhood_radius=neighborhood_radius, log_level=log_level,
+            neighborhood_radius=neighborhood_radius,
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
             prev_dirs_embedding_size=prev_dirs_embedding_size,
@@ -90,18 +98,19 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
 
         # If multiple inheritance goes well, these params should be set
         # correctly
-        assert self.forward_uses_streamlines
+        if nb_previous_dirs > 0:
+            assert self.forward_uses_streamlines
         assert self.loss_uses_streamlines
 
         self.instantiate_direction_getter(dg_input_size)
 
     def compute_loss(self, model_outputs: torch.tensor,
                      target_streamlines: List[torch.Tensor], **kw):
-        target_dirs = compute_directions(target_streamlines)
+        target_dirs = self.direction_getter.prepare_targets_for_loss(target_streamlines)
 
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.
-        target_dirs = torch.cat(target_dirs)
+        target_dirs = torch.vstack(target_dirs)
 
         # Computing loss
         # Depends on model. Ex: regression: direct difference.
@@ -120,21 +129,22 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections, ModelForTracking,
             raise ValueError("'algo' should be 'det' or 'prob'.")
 
     def forward(self, inputs: List[torch.tensor],
-                target_streamlines: List[torch.tensor],
+                target_streamlines: List[torch.tensor] = None,
                 hidden_reccurent_states: tuple = None,
                 return_state: bool = False, is_tracking: bool = False,
                 ) -> List[torch.tensor]:
-        target_dirs = compute_directions(target_streamlines)
-
-        assert len(target_dirs) == len(inputs), \
-            ("Error. The target directions contain {} streamlines but the "
-             "input contains {}").format(len(target_dirs), len(inputs))
-
         # Previous dirs
-        n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
-            target_dirs)
-        if n_prev_dirs_embedded is not None:
-            assert len(n_prev_dirs_embedded) == len(target_dirs)
+        if self.nb_previous_dirs > 0:
+            target_dirs = compute_directions(target_streamlines)
+
+            assert len(target_dirs) == len(inputs), \
+                ("Error. The target directions contain {} streamlines but the "
+                 "input contains {}").format(len(target_dirs), len(inputs))
+
+            n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
+                target_dirs)
+            if n_prev_dirs_embedded is not None:
+                assert len(n_prev_dirs_embedded) == len(target_dirs)
 
         # Fake intermediate layer
         model_outputs = [torch.ones(len(s), self.direction_getter.input_size,

@@ -20,7 +20,7 @@ def add_training_args(p: argparse.ArgumentParser):
     training_group.add_argument(
         '--weight_decay', type=float, default=0.01, metavar='v',
         help="Add a weight decay penalty on the parameters (regularization "
-             "parameter) [0.01] (torch's default).")
+             "parameter)\n[0.01] (torch's default).")
     training_group.add_argument(
         '--optimizer', choices=['Adam', 'RAdam', 'SGD'], default='Adam',
         help="Choice of torch optimizer amongst ['Adam', 'RAdam', 'SGD'].\n"

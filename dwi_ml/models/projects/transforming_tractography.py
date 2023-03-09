@@ -12,8 +12,8 @@ from dwi_ml.data.processing.streamlines.post_processing import \
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
-                                       ModelForTracking,
-                                       ModelWithPreviousDirections,
+                                       ModelWithDirectionGetter,
+                                       ModelWithStreamlineFormattingInForward,
                                        ModelWithNeighborhood)
 from dwi_ml.models.projects.positional_encoding import \
     keys_to_positional_encodings
@@ -46,9 +46,9 @@ def forward_padding(data: torch.tensor, expected_length):
     return pad(data, (0, 0, 0, expected_length - len(data)))
 
 
-class AbstractTransformerModel(ModelWithPreviousDirections,
+class AbstractTransformerModel(ModelWithStreamlineFormattingInForward,
                                ModelWithNeighborhood,
-                               MainModelOneInput, ModelForTracking):
+                               MainModelOneInput, ModelWithDirectionGetter):
     """
     Prepares the parts common to our two transformer versions: embeddings,
     direction getter and some parameters for the model.
@@ -77,11 +77,9 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
 
     def __init__(self,
                  experiment_name: str, nb_features: int,
-                 # PREVIOUS DIRS
-                 nb_previous_dirs: Union[int, None],
-                 prev_dirs_embedding_size: Union[int, None],
-                 prev_dirs_embedding_key: Union[str, None],
-                 normalize_prev_dirs: bool,
+                 # FORMATTING TARGETS IN DECODER
+                 sphere_to_convert_input_dirs: Union[str, None],
+                 sos_type_forward: str,
                  # INPUTS
                  max_len: int, positional_encoding_key: str,
                  embedding_key_x: str, embedding_key_t: str,
@@ -90,7 +88,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
                  nheads: int, dropout_rate: float, activation: str,
                  norm_first: bool,
                  # DIRECTION GETTER
-                 dg_key: str, dg_args: Union[dict, None],
+                 dg_key: str, dg_args: dict,
                  # Other
                  neighborhood_type: Union[str, None],
                  neighborhood_radius: Union[int, float, List[float], None],
@@ -103,20 +101,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         nb_features: int
             This value should be known from the actual data. Number of features
             in the data (last dimension).
-        nb_previous_dirs: int
-            Number of previous direction to concatenate to each input.
-            Default: 0.
-        prev_dirs_embedding_size: int
-            Dimension of the final vector representing the previous directions
-            (no matter the number of previous directions used).
-            Default: nb_previous_dirs * 3.
-        prev_dirs_embedding_key: str,
-            Key to an embedding class (one of
-            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
-            Default: None (no previous directions added).
-        normalize_prev_dirs: bool
-            If true, direction vectors are normalized (norm=1) when computing
-            the previous direction.
         positional_encoding_key: str,
             Chosen class for the input's positional embedding. Choices:
             keys_to_positional_embeddings.keys(). Default: 'sinusoidal'.
@@ -152,31 +136,17 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             Torch default + in original paper: False. In the tensor2tensor code
             they suggest that learning is more robust when preprocessing each
             layer with the norm.
-        dg_key: str
-            Key to the chosen direction getter class. Choices:
-            keys_to_direction_getters.keys(). Default: 'cosine-regression'.
-        dg_args: dict
-            Arguments necessary for the instantiation of the chosen direction
-            getter.
-        neighborhood_type: str
-            The type of neighborhood to add. One of 'axes', 'grid' or None. If
-            None, don't add any. See
-            dwi_ml.data.processing.space.Neighborhood for more information.
-        neighborhood_radius : Union[int, float, Iterable[float]]
-            Add neighborhood points at the given distance (in voxels) in each
-            direction (nb_neighborhood_axes). (Can be none)
-                - For a grid neighborhood: type must be int.
-                - For an axes neighborhood: type must be float. If it is an
-                iterable of floats, we will use a multi-radius neighborhood.
         """
+        if sos_type_forward is None:
+            raise ValueError("The forward pass requires the addition of a SOS "
+                             "token on the target. Please specify a SOS type.")
+
         super().__init__(
             # MainAbstract
             experiment_name=experiment_name, log_level=log_level,
-            # PreviousDirs
-            nb_previous_dirs=nb_previous_dirs,
-            prev_dirs_embedding_size=prev_dirs_embedding_size,
-            prev_dirs_embedding_key=prev_dirs_embedding_key,
-            normalize_prev_dirs=normalize_prev_dirs,
+            # Target in decoder: with SOS
+            sphere_to_convert_input_dirs=sphere_to_convert_input_dirs,
+            sos_type_forward=sos_type_forward,
             # Neighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
@@ -219,38 +189,35 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         self.input_size = nb_features * (self.nb_neighbors + 1)
 
         # ----------- Instantiations
-        # 1. Previous dirs embedding: prepared by super.
-
-        # 2. x embedding
+        # 1. x embedding
         cls_x = keys_to_embeddings[self.embedding_key_x]
-        # output will be concatenated with prev_dir embedding and total must
-        # be d_model.
-        if self.nb_previous_dirs > 0:
-            embed_size = d_model - self.prev_dirs_embedding_size
-        else:
-            embed_size = d_model
-        self.embedding_layer_x = cls_x(self.input_size, embed_size)
+        self.embedding_layer_x = cls_x(self.input_size, d_model)
         # This dropout is only used in the embedding; torch's transformer
         # prepares its own dropout elsewhere.
         self.dropout = Dropout(self.dropout_rate)
 
-        # 3. positional encoding
+        # 2. positional encoding
         cls_p = keys_to_positional_encodings[self.positional_encoding_key]
         self.position_encoding_layer = cls_p(d_model, dropout_rate, max_len)
 
-        # 4. target embedding
+        # 3. target embedding
         cls_t = keys_to_embeddings[self.embedding_key_t]
         self.embedding_layer_t = cls_t(3, d_model)
 
-        # 5. Transformer: See child classes
+        # 4. Transformer: See child classes
 
-        # 6. Direction getter
+        # 5. Direction getter
         # Original paper: last layer = Linear + Softmax on nb of classes.
         # Note on parameter initialization.
         # They all use torch.nn.linear, which initializes parameters based
         # on a kaiming uniform, same as uniform(-sqrt(k), sqrt(k)) where k is
         # the nb of features.
         self.instantiate_direction_getter(d_model)
+
+        # Skipping computation of the last input point if not used for the
+        # loss.
+        if not self.direction_getter.add_eos:
+            self.skip_input_as_last_point = True
 
         assert self.loss_uses_streamlines
         assert self.forward_uses_streamlines
@@ -275,6 +242,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             'ffnn_hidden_size': self.ffnn_hidden_size,
             'norm_first': self.norm_first,
         })
+
         return p
 
     @staticmethod
@@ -422,19 +390,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         if np.any(unpadded_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
-        if is_tracking:
-            for i in range(nb_streamlines):
-                assert len(batch_streamlines[i]) == len(batch_x[i]), \
-                    "During tracking, we expect the streamlines to have the " \
-                    "same number of points as the input, but we received {} " \
-                    "input points and {} streamline points for streamline " \
-                    "#{}".format(len(batch_x[i]), len(batch_streamlines[i]), i)
-        else:
-            for i in range(nb_streamlines):
-                assert len(batch_streamlines[i]) == len(batch_x[i]) + 1, \
-                    "We expect the streamlines to have one more point " \
-                    "than the inputs. Directions will be used. No need " \
-                    "to compute the last input. (During training)."
 
         # ----------- Ok. Prepare masks and parameters
 
@@ -447,7 +402,7 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
-        batch_t = compute_directions(batch_streamlines)
+        batch_t = self.prepare_targets_forward(batch_streamlines)
 
         # ----------- Ok. Start processing
 
@@ -497,13 +452,6 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
         # Inputs
         inputs = self._stack_batch(batch_x, use_padding, batch_max_len)
         inputs = self.embedding_layer_x(inputs)
-        if self.nb_previous_dirs > 0:
-            n_prev_dirs = self.normalize_and_embed_previous_dirs(
-                batch_t, unpack_results=True)
-            n_prev_dirs = \
-                self._stack_batch(n_prev_dirs, use_padding, batch_max_len)
-            # Total input must still be of size d_model.
-            inputs = torch.cat((inputs, n_prev_dirs), dim=-1)
         inputs = self.position_encoding_layer(inputs)
 
         # Targets
@@ -544,9 +492,11 @@ class AbstractTransformerModel(ModelWithPreviousDirections,
             The loss between the outputs and the targets, averaged across
             timesteps and sequences.
         """
+        targets = self.direction_getter.prepare_targets_for_loss(streamlines)
+
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
-            model_outputs, torch.vstack(streamlines))
+            model_outputs, torch.vstack(targets))
 
     def get_tracking_directions(self, model_outputs, algo):
         return self.direction_getter.get_tracking_directions(
@@ -583,25 +533,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
                 emb_choice_x
 
     """
-    def __init__(self, experiment_name: str, nb_features: int,
-                 # PREVIOUS DIRS
-                 nb_previous_dirs: Union[int, None],
-                 prev_dirs_embedding_size: Union[int, None],
-                 prev_dirs_embedding_key: Union[str, None],
-                 normalize_prev_dirs: bool,
-                 # INPUTS
-                 max_len: int, positional_encoding_key: str,
-                 embedding_key_x: str, embedding_key_t: str,
-                 # TRANSFORMER
-                 d_model: int, ffnn_hidden_size: Union[int, None],
-                 nheads: int, dropout_rate: float, activation: str,
-                 norm_first: bool, n_layers_e: int, n_layers_d: int,
-                 # DIRECTION GETTER
-                 dg_key: str, dg_args: Union[dict, None],
-                 # Other
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, List[float], None],
-                 log_level=logging.root.level):
+    def __init__(self, n_layers_e: int, n_layers_d: int, **kw):
         """
         Args
         ----
@@ -610,14 +542,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
         n_layers_d: int
             Number of encoding layers in the decoder. [6]
         """
-        super().__init__(experiment_name, nb_features, nb_previous_dirs,
-                         prev_dirs_embedding_size, prev_dirs_embedding_key,
-                         normalize_prev_dirs,
-                         max_len, positional_encoding_key, embedding_key_x,
-                         embedding_key_t, d_model, ffnn_hidden_size, nheads,
-                         dropout_rate, activation, norm_first,
-                         dg_key, dg_args, neighborhood_type,
-                         neighborhood_radius, log_level)
+        super().__init__(**kw)
 
         # ----------- Additional params
         self.n_layers_e = n_layers_e
@@ -645,9 +570,9 @@ class OriginalTransformerModel(AbstractTransformerModel):
                                              norm=None)
 
         self.modified_torch_transformer = ModifiedTransformer(
-            d_model, nheads, n_layers_e, n_layers_d, ffnn_hidden_size,
-            dropout_rate, activation, encoder, decoder,
-            batch_first=BATCH_FIRST,
+            self.d_model, self.nheads, n_layers_e, n_layers_d,
+            self.ffnn_hidden_size, self.dropout_rate, self.activation,
+            encoder, decoder, batch_first=BATCH_FIRST,
             norm_first=self.norm_first)
 
     @property
@@ -707,39 +632,15 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
                                              [ emb_choice_x ; emb_choice_y ]
 
     """
-    def __init__(self, experiment_name: str, nb_features: int,
-                 # PREVIOUS DIRS
-                 nb_previous_dirs: Union[int, None],
-                 prev_dirs_embedding_size: Union[int, None],
-                 prev_dirs_embedding_key: Union[str, None],
-                 normalize_prev_dirs: bool,
-                 # INPUTS
-                 max_len: int, positional_encoding_key: str,
-                 embedding_key_x: str, embedding_key_t: str,
-                 # TRANSFORMER
-                 d_model: int, ffnn_hidden_size: Union[int, None],
-                 nheads: int, dropout_rate: float, activation: str,
-                 norm_first: bool, n_layers_d: int,
-                 # DIRECTION GETTER
-                 dg_key: str, dg_args: Union[dict, None],
-                 # Other
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, List[float], None],
-                 log_level=logging.root.level):
+    def __init__(self, n_layers_d: int, **kw):
         """
         Args
         ----
         n_layers_d: int
             Number of encoding layers in the decoder. [6]
         """
-        super().__init__(experiment_name, nb_features, nb_previous_dirs,
-                         prev_dirs_embedding_size, prev_dirs_embedding_key,
-                         normalize_prev_dirs,
-                         max_len, positional_encoding_key, embedding_key_x,
-                         embedding_key_t, d_model, ffnn_hidden_size, nheads,
-                         dropout_rate, activation, norm_first,
-                         dg_key, dg_args, neighborhood_type,
-                         neighborhood_radius, log_level)
+        super().__init__(**kw)
+
         # ----------- Additional params
         self.n_layers_d = n_layers_d
 

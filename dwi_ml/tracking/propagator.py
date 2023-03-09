@@ -9,7 +9,7 @@ import torch
 from scilpy.tracking.propagator import AbstractPropagator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
-from dwi_ml.models.main_models import ModelForTracking, MainModelOneInput
+from dwi_ml.models.main_models import ModelWithDirectionGetter, MainModelOneInput
 
 logger = logging.getLogger('tracker_logger')
 
@@ -34,7 +34,7 @@ class DWIMLPropagator(AbstractPropagator):
     dataset: MultisubjectSubset
 
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
-                 model: ModelForTracking, step_size: float,
+                 model: ModelWithDirectionGetter, step_size: float,
                  algo: str, theta: float, verify_opposite_direction: bool,
                  device=None, normalize_directions: bool = True):
         """
@@ -46,7 +46,7 @@ class DWIMLPropagator(AbstractPropagator):
             one subject.
         subj_idx: int
             Subject used for tracking.
-        model: ModelForTracking
+        model: ModelWithDirectionGetter
             Your torch model.
         step_size: float
             The step size for tracking, in voxel space.
@@ -225,7 +225,7 @@ class DWIMLPropagator(AbstractPropagator):
         # Equivalent of sample_next_direction_or_go_straight, but avoiding
         # loop.
         n_v_out = self._sample_next_direction(n_pos, n_v_in)
-        valid_dirs = n_v_out[:, 0] != torch.nan
+        valid_dirs = ~torch.isnan(n_v_out[:, 0])
         n_v_out[~valid_dirs, :] = n_v_in[~valid_dirs, :]
 
         n_new_pos = [n_pos[i] + self.step_size * n_v_out[i] for i in
@@ -459,6 +459,9 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             The volume group to use as input in the model.
         """
         super().__init__(**kw)
+
+        # During tracking: always computing all inputs.
+        self.model.skip_input_as_last_point = False
 
         # Find group index in the data
         self.volume_group = self.dataset.volume_groups.index(

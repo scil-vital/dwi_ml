@@ -36,7 +36,9 @@ Included utils are:
 # toDo
 #  test fisher von mises
 
-tol = 1e-5
+# Using float32, we have come accross differences of the order 1e-3 for
+# Fisher-von-Mises, depending on the random values.
+tol = 1e-3
 d = 3
 
 logging.getLogger().setLevel(level='DEBUG')
@@ -81,7 +83,7 @@ def _verify_loss(streamline, fake_model_output, expected_loss, model,
     if not isinstance(streamline, torch.Tensor):
         streamline = torch.as_tensor(np.asarray(streamline),
                                      dtype=torch.float32)
-    targets = model.prepare_targets([streamline])[0]
+    targets = model.prepare_targets_for_loss([streamline])[0]
 
     # Convert types
     if (isinstance(fake_model_output, np.ndarray) or
@@ -95,17 +97,11 @@ def _verify_loss(streamline, fake_model_output, expected_loss, model,
     # Compute loss and verify
     computed_loss, _ = model.compute_loss(fake_model_output, targets)
 
-    if isinstance(computed_loss, tuple):
-        computed_loss, loss_eos = computed_loss
-        assert torch.allclose(loss_eos, expected_eos_loss), \
-            "Expected EOS loss {} but got {}" \
-            .format(expected_eos_loss, loss_eos)
-
     assert torch.allclose(computed_loss, expected_loss, atol=tol), \
         "Expected loss {} but got {}.\n" \
         "      - Streamline: {}    ( = dir {})\n" \
         "      - Fake model output: {}\n" \
-        .format(expected_loss, computed_loss,
+        .format(expected_loss + expected_eos_loss, computed_loss,
                 streamline, streamline[1, :] - streamline[0, :],
                 fake_model_output)
 

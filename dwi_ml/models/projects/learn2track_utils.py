@@ -53,5 +53,5 @@ def add_model_args(p: argparse.ArgumentParser):
         help="Add layer normalization. Explained here: \n"
              "https://arxiv.org/pdf/1607.06450.pdf")
 
-    g = p.add_argument_group("Learn2track model: Tracking options")
+    g = p.add_argument_group("Learn2track model: Direction Getter options")
     Learn2TrackModel.add_args_tracking_model(g)

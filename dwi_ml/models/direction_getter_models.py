@@ -573,8 +573,7 @@ class SphereClassificationDirectionGetter(
 
         target_idx = convert_dirs_to_class(
             target_dirs, self.torch_sphere, smooth_labels=False,
-            add_sos=False, add_eos=self.add_eos_class, device=self.device,
-            to_one_hot=False)
+            add_sos=False, add_eos=self.add_eos_class, to_one_hot=False)
         return target_idx
 
     def compute_loss(self, logits_per_class: Tensor, targets: Tensor):
@@ -867,7 +866,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         and the dimensions (3D). i.e. [batch_size, n_gaussians] for the mixture
         logit and [batch_size, n_gaussians, 3] for the means and sigmas.
         """
-        mixture_logits = gaussian_params[0].squeeze(dim=1)
+        mixture_logits = gaussian_params[0]   # .squeeze(dim=1)
         means = gaussian_params[1].reshape((-1, self.nb_gaussians, 3))
         sigmas = gaussian_params[2].reshape((-1, self.nb_gaussians, 3))
 

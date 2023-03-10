@@ -503,11 +503,10 @@ class MainModelOneInput(MainModelAbstract):
         if isinstance(self, ModelWithNeighborhood):
             # Adding neighborhood.
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, self.neighborhood_vectors,
-                self.device)
+                data_tensor, flat_subj_x_coords, self.neighborhood_vectors)
         else:
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, None, self.device)
+                data_tensor, flat_subj_x_coords, None)
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]

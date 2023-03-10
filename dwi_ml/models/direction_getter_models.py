@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import logging
 from math import ceil
 from typing import Any, Tuple
 

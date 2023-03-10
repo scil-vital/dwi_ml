@@ -222,7 +222,7 @@ class MultisubjectSubset(Dataset):
 
         return mri_data
 
-    def load(self, hdf_handle: h5py.File, subj_id = None):
+    def load(self, hdf_handle: h5py.File, subj_id=None):
         """
         Load all subjects for this subjset (either training, validation or
         testing).

@@ -2,7 +2,6 @@
 from collections import deque
 import timeit
 from datetime import datetime
-from typing import List, Tuple
 
 import numpy as np
 

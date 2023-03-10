@@ -13,10 +13,7 @@ import logging
 import sys
 from contextlib import contextmanager
 
-try:
-    from typing import Iterator, List, Optional, Type  # pylint: disable=unused-import
-except ImportError:
-    pass
+from typing import Iterator, List, Optional, Type
 
 from tqdm.contrib.logging import _TqdmLoggingHandler
 from tqdm.std import tqdm as std_tqdm

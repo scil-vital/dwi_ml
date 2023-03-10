@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 from dwi_ml.models.projects.positional_encoding import (
-    RelationalSinusoidalPosEncoding,
     SinusoidalPositionalEncoding)
 
 

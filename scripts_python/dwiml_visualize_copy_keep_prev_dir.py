@@ -19,10 +19,6 @@ def main():
     args = p.parse_args()
 
     # Prepare stuff
-    sub_logger_level = args.logging.upper()
-    if sub_logger_level == 'DEBUG':
-        # make them info max
-        sub_logger_level = 'INFO'
     logging.getLogger().setLevel(level=args.logging)
 
     assert_inputs_exist(p, args.input_sft, args.reference)

@@ -3,7 +3,6 @@
 import logging
 import os
 import pytest
-import tempfile
 
 import torch
 

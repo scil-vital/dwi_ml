@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import logging
-
 from dipy.core.gradients import GradientTable
 from dipy.core.sphere import Sphere
 from dipy.data import get_sphere

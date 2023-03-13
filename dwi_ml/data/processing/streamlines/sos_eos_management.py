@@ -117,9 +117,10 @@ def add_label_as_last_dim(batch_dirs: List[torch.Tensor],
             for s in batch_dirs]
 
 
-def _add_label_as_last_dim_2d(dirs: torch.Tensor,
-                              add_sos=False, add_eos=False):
-    nb_new_dim = 2 if (add_sos and add_sos) else 1
+def _add_label_as_last_dim_2d(dirs: torch.Tensor, add_sos, add_eos):
+    nb_new_dim = 2 if (add_sos and add_eos) else 1
+    # Pad = (last_dim_left, last_dim_right, first_dim_left, first_dim_right)
+    #     = (   0 ,         new features,   first point, last point)
     dirs = pad(dirs, (0, nb_new_dim, add_sos, add_eos))
 
     if add_sos:

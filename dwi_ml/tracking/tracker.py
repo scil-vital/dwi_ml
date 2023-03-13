@@ -231,7 +231,7 @@ class DWIMLTracker(ScilpyTracker):
                 lines, tracking_info)
 
             # Verifying and appending
-            invalid_direction_counts[~valid_dirs.cpu()] += 1
+            invalid_direction_counts[~valid_dirs.cpu().numpy()] += 1
 
             all_lines_completed = True
             continuing_lines = np.ones(nb_streamlines_left).astype(bool)

@@ -6,6 +6,9 @@ from dwi_ml.models.projects.transforming_tractography import (
     AbstractTransformerModel)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 
+sphere_choices = ['symmetric362', 'symmetric642', 'symmetric724',
+                  'repulsion724', 'repulsion100', 'repulsion200']
+
 
 def add_abstract_model_args(p):
     """ Optional parameters for TransformingTractography"""
@@ -21,11 +24,18 @@ def add_abstract_model_args(p):
         help="Type of positional embedding to use. One of 'sinusoidal' "
              "(default)\n or 'relational'. ")
     gx.add_argument(
+        '--token_type', default='as_label',
+        choices=['as_label'] + sphere_choices,
+        help="Type of token. SOS is always added in the decoder. EOS not used "
+             "as token in the decoder. Choices are as_label (a "
+             "fourth dimension) or \nas class (directions are sent to classes "
+             "on the chosen sphere, and \nan additional class is added for "
+             "SOS.")
+    gx.add_argument(
         '--target_embedding', default='nn_embedding',
         choices=keys_to_embeddings.keys(), metavar='key',
         help="Type of data embedding to use. One of 'no_embedding', \n"
              "'nn_embedding' (default) or 'cnn_embedding'.")
-    AbstractTransformerModel.add_target_management_arg(p, add_sos=True)
 
     gt = p.add_argument_group(title='Transformer')
     gt.add_argument(
@@ -66,8 +76,7 @@ def add_abstract_model_args(p):
              "before \nother attention and feedforward operations, otherwise "
              "after.\n Torch default + in original paper: False. \nIn the "
              "tensor2tensor code, they suggest that learning is more robust "
-             "when preprocessing each layer with the norm.\n"
-             "Default: False.")
+             "when \npreprocessing each layer with the norm. Default: False.")
 
     g = p.add_argument_group("Neighborhood")
     AbstractTransformerModel.add_neighborhood_args_to_parser(g)

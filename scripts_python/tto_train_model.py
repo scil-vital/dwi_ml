@@ -70,8 +70,7 @@ def init_from_args(args, sub_loggers_level):
         model = OriginalTransformerModel(
             experiment_name=args.experiment_name, nb_features=args.nb_features,
             # Targets in decoder:
-            sphere_to_convert_input_dirs=args.sphere_to_convert_input_dirs,
-            sos_type_forward=args.SOS_type_forward,
+            token_type=args.token_type,
             # Concerning inputs:
             max_len=args.max_len,
             positional_encoding_key=args.position_encoding,

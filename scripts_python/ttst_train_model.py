@@ -73,16 +73,14 @@ def init_from_args(args, sub_loggers_level):
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = TransformerSrcAndTgtModel(
-            experiment_name=args.experiment_name, nb_features=args.nb_features,
+            experiment_name=args.experiment_name,
             # Targets in encoder:
-            sphere_to_convert_input_dirs=args.sphere_to_convert_input_dirs,
-            sos_type_forward=args.SOS_type_forward,
+            token_type=args.token_type, embedding_key_t=args.target_embedding,
             # Concerning inputs:
+            nb_features=args.nb_features, embedding_key_x=args.data_embedding,
+            # Torch's transformer parameters
             max_len=args.max_len,
             positional_encoding_key=args.position_encoding,
-            embedding_key_x=args.data_embedding,
-            embedding_key_t=args.target_embedding,
-            # Torch's transformer parameters
             d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,
             nheads=args.nheads, dropout_rate=args.dropout_rate,
             activation=args.activation,

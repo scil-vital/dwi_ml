@@ -1055,11 +1055,11 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         # Possibly add noise to inputs here.
 
-        lengths = [len(s) - 1 for s in batch_streamlines]
-        logger.debug("Loaded a batch of {} streamlines, {} inputs points"
-                     .format(len(batch_streamlines), sum(lengths)))
-        logger.debug("Loaded the associated {} inputs."
-                     .format(len(batch_inputs)))
+        logger.debug("Loaded a batch of {} streamlines, {} data points, "
+                     "{} input points."
+                     .format(len(batch_streamlines),
+                             sum([len(s) for s in batch_streamlines]),
+                             sum([len(s) for s in batch_inputs])))
 
         self.logger.debug('*** Computing forward propagation')
         if self.model.forward_uses_streamlines:

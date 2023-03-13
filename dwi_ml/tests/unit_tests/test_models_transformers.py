@@ -49,8 +49,7 @@ def test_models():
                                      d_model=4, max_len=5,
                                      log_level='DEBUG',
                                      # Using defaults from script
-                                     sphere_to_convert_input_dirs=None,
-                                     sos_type_forward='as_label',
+                                     token_type='as_label',
                                      positional_encoding_key='sinusoidal',
                                      embedding_key_x='nn_embedding',
                                      embedding_key_t='nn_embedding',
@@ -89,8 +88,7 @@ def test_models():
                                       d_model=4, max_len=5,
                                       log_level='DEBUG',
                                       # Using defaults from script
-                                      sphere_to_convert_input_dirs=None,
-                                      sos_type_forward='as_label',
+                                      token_type='as_label',
                                       positional_encoding_key='sinusoidal',
                                       embedding_key_x='nn_embedding',
                                       embedding_key_t='nn_embedding',

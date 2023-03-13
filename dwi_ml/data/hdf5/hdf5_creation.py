@@ -14,7 +14,7 @@ from nested_lookup import nested_lookup
 import nibabel as nib
 import numpy as np
 
-from scilpy.utils.streamlines import concatenate_sft
+from scilpy.tractograms.tractogram_operations import concatenate_sft
 
 from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data

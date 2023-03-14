@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from math import ceil
-from typing import Any, Tuple, List, Union
+from typing import Tuple, List
 
 import dipy.data
 import numpy as np
@@ -356,11 +356,6 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         losses_dirs = self._compute_loss(learned_directions, target_dirs)
         mean_loss_dir, n = _mean_and_weight(losses_dirs)
 
-        if self.add_eos:
-            logging.warning("To be supervised the first times... "
-                            "Loss: {}. EOS loss: {}"
-                            .format(mean_loss_dir, mean_loss_eos))
-
         return mean_loss_dir + mean_loss_eos, n
 
     def _sample_tracking_direction_prob(self, model_outputs: Tensor):
@@ -377,8 +372,8 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
             eos_prob = torch.gt(eos_prob, self.stopping_criteria_eos)
             nb_stop = torch.sum(eos_prob)
             if nb_stop > 0:
-                logging.info("{} streamlines stopping because of learned "
-                             "criterion (EOS).".format(nb_stop))
+                logging.debug("{} streamlines stopping because of learned "
+                              "criterion (EOS).".format(nb_stop))
             return torch.masked_fill(
                 model_outputs[:, 0:3], eos_prob[:, None], torch.nan)
         else:
@@ -481,7 +476,7 @@ class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
 
 
 class AbstractSphereClassificationDirectionGetter(
-    AbstractDirectionGetterModel):
+      AbstractDirectionGetterModel):
     """
     Classification model.
 
@@ -555,13 +550,13 @@ class AbstractSphereClassificationDirectionGetter(
             eos_logit = logits_per_class[:, -1]
             stop = eos_logit > logits_per_class[:, idx]
             idx[stop] = self.eos_class
-
+            return self.invalid_or_vertice(idx)
         else:
             # Sample a direction on the sphere
             sampler = Categorical(logits=logits_per_class)
             idx = sampler.sample()
 
-        return self.invalid_or_vertice(idx)
+            return self.torch_sphere.vertices[idx]
 
     def _get_tracking_direction_det(self, logits_per_class: Tensor):
         """
@@ -571,42 +566,39 @@ class AbstractSphereClassificationDirectionGetter(
         # Shape: nb_points x nb_classes
         idx = logits_per_class.argmax(dim=1)
 
-        return self.invalid_or_vertice(idx)
+        if self.add_eos:
+            return self.invalid_or_vertice(idx)
+        else:
+            return self.torch_sphere.vertices[idx]
 
     def invalid_or_vertice(self, idx: torch.Tensor):
         stop = idx == self.eos_class - 1
         nb_stop = torch.sum(stop)
         if nb_stop > 0:
-            logging.info("{} streamlines stopping because of learned "
-                         "criterion (EOS).".format(nb_stop))
+            logging.debug("{} streamlines stopping because of learned "
+                          "criterion (EOS).".format(nb_stop))
         idx[stop] = 0  # Faking any vertice for best speed. Filling to nan after.
         return self.torch_sphere.vertices[idx].masked_fill(
             stop[:, None], torch.nan)
 
 
 class SphereClassificationDirectionGetter(
-    AbstractSphereClassificationDirectionGetter):
+      AbstractSphereClassificationDirectionGetter):
     """
     Loss = negative log-likelihood.
     """
     def __init__(self, input_size: int, dropout: float = None,
                  sphere: str = 'symmetric724', add_eos=False):
-        """
-        smooth_labels: bool
-            If true, applies a Gaussian on the labels, as done in Deeptract.
-        """
         super().__init__(sphere, add_eos, input_size, dropout,
                          key='sphere-classification',
                          supports_compressed_streamlines=False,
                          loss_description='negative log-likelihood')
 
-    def prepare_targets_for_loss(self, target_streamlines):
+    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
         """
         Finds the closest class for each target direction.
 
-        returns:
-        if not smooth_labels: the index for each target.
-        if smooth_labels: the one-hot distribution of each target.
+        returns: List[Tensor], the index for each target.
         """
         target_dirs = compute_directions(target_streamlines)
 
@@ -637,7 +629,7 @@ class SphereClassificationDirectionGetter(
 
 
 class SmoothSphereClassificationDirectionGetter(
-    AbstractSphereClassificationDirectionGetter):
+      AbstractSphereClassificationDirectionGetter):
     """
     Loss = KL divergence
     """
@@ -652,20 +644,19 @@ class SmoothSphereClassificationDirectionGetter(
                          supports_compressed_streamlines=False,
                          loss_description='negative log-likelihood')
 
-    def prepare_targets_for_loss(self, target_streamlines):
+    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
         """
         Finds the closest class for each target direction.
 
         returns:
-        if not smooth_labels: the index for each target.
-        if smooth_labels: the one-hot distribution of each target.
+        List[Tensor]: the one-hot distribution of each target.
         """
         target_dirs = compute_directions(target_streamlines)
 
         target_idx = convert_dirs_to_class(
             target_dirs, self.torch_sphere, smooth_labels=True,
-            add_sos=False, add_eos=self.add_eos, device=self.device,
-            to_one_hot=True)
+            add_sos=False, add_eos=self.add_eos, to_one_hot=True)
+
         return target_idx
 
     def compute_loss(self, logits_per_class: Tensor, targets: Tensor):
@@ -674,13 +665,15 @@ class SmoothSphereClassificationDirectionGetter(
         model's logits.
 
         logits_per_class: Tensor of shape [nb_points, nb_class]
+        targets: Tensor of shape [nb_points, nb_class]
         """
         # Create an official probability distribution from the logits
         # (i.e. applies a softmax to make probabilities sum to 1).
         # By default, done on the last dim (the classes, for each point).
         learned_distribution = Categorical(logits=logits_per_class)
 
-        # Target is a probability distribution for each point.
+        # Our smoothed labels is not between 0 and 1, but Categorical will
+        # fix that.
         target_distribution = Categorical(probs=targets)
 
         nll_losses = kl_divergence(learned_distribution, target_distribution)

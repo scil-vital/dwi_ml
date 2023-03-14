@@ -27,18 +27,21 @@ def convert_dirs_to_class(batch_dirs: List[torch.Tensor],
     Uses the points on the sphere as classes + an additional class for the
     SOS.
 
+    Args
+    ----
     batch_dirs: should be a list of 2D tensors.
     sphere: torch sphere.
-    smooth_label: If true, uses smoothing like in Deeptract (Benou 2019)
+    smooth_labels: If true, uses smoothing like in Deeptract (Benou 2019)
     add_sos: If true, adds a class for SOS, and adds a token at the beggining
         of the streamlines.
     add_eos: Idem at the end of streamlines.
     to_one_hot: If true, converts results to one-hot vectors. Needs to be true
         with smooth_label, by default.
 
-    Returns:
-        if one_hot: Tensor of shape [nb_points, nb_class]
-        else: Tensor of shape [nb_points,]
+    Returns
+    -------
+    if one_hot: List[Tensor of shape [nb_points, nb_class]]
+    else: List[Tensor of shape [nb_points,]]
     """
     # Find class index
     # n classes ranging from 0 to n-1 for the "real" directions.
@@ -64,11 +67,10 @@ def convert_dirs_to_class(batch_dirs: List[torch.Tensor],
         for s in batch_dirs:
             lens = torch.linalg.norm(s, dim=-1)
             dots = torch.matmul(s, sphere.vertices.T)  # Cosine similarity
-            angles = torch.div(dots, lens[:, None])
+            angle = torch.arccos(torch.div(dots, lens[:, None]))
 
             # Labels smooth is of shape nb_points x nb_class.
-            labels_smooth = torch.exp(-1 * angles / 0.1)
-            labels_smooth /= torch.sum(labels_smooth)
+            labels_smooth = torch.exp(-1 * angle / 0.1)
 
             if add_sos or add_eos:
                 # Adding n points and n classes, n = 1 or 2.
@@ -79,6 +81,8 @@ def convert_dirs_to_class(batch_dirs: List[torch.Tensor],
                 if add_eos:
                     labels_smooth[-1, eos_class - 1] = 1.0
 
+            # To make as probabilities:
+            # labels_smooth /= torch.sum(labels_smooth, dim=1, keepdim=True)
             batch_idx.append(labels_smooth)
     else:
         batch_idx = [sphere.find_closest(s) for s in batch_dirs]

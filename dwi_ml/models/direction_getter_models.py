@@ -511,13 +511,28 @@ class AbstractSphereClassificationDirectionGetter(
         self.add_eos = add_eos
         if add_eos:
             nb_classes += 1
-            self.eos_class = nb_classes
+            self.eos_class_idx = nb_classes - 1  # Last class. Idx -1.
+            # During tracking: tried choosing EOS if it's the class with max
+            # logit. Seems to be too intense. Could be chosen even if
+            # probability is very low (ex: if all 725 classes with sphere
+            # symmetric724 are equal, probability of 0.001). Relaxing by
+            # choosing it if its probability is more than 0.5. In papers: we
+            # have seen "if more than the sum of all others". Not implemented
+            # here, probably even more strict.
+            self.choose_eos_if_max = False
 
         self.layers = init_2layer_fully_connected(input_size, nb_classes)
 
     def move_to(self, device):
         super().move_to(device)
         self.torch_sphere.move_to(device)
+
+    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
+        """
+        Needs to convert directions to classes.
+        To be defined by child classes.
+        """
+        raise NotImplementedError
 
     @property
     def params(self):
@@ -541,42 +556,45 @@ class AbstractSphereClassificationDirectionGetter(
         Sample a tracking direction on the sphere from the predicted class
         logits (=probabilities). If class = EOS, direction is [NaN, NaN, NaN].
         """
-        if self.add_eos:
+        if not self.add_eos:
             # Sample a direction on the sphere
-            sampler = Categorical(logits=logits_per_class[:, :-1])
-            idx = sampler.sample()
-
-            # But stop if EOS is bigger.
-            eos_logit = logits_per_class[:, -1]
-            stop = eos_logit > logits_per_class[:, idx]
-            idx[stop] = self.eos_class
-            return self.invalid_or_vertice(idx)
-        else:
-            # Sample a direction on the sphere
-            sampler = Categorical(logits=logits_per_class)
-            idx = sampler.sample()
+            idx = Categorical(logits=logits_per_class).sample()
 
             return self.torch_sphere.vertices[idx]
+
+        # Else, with EOS: Sample a direction on the sphere except EOS
+        idx = Categorical(logits=logits_per_class[:, :-1]).sample()
+
+        # But stop if EOS is bigger.
+        if self.choose_eos_if_max:
+            eos_chosen = logits_per_class[:, -1] > logits_per_class[:, idx]
+        else:
+            eos_chosen = torch.softmax(logits_per_class, dim=-1)[:, -1] > 0.5
+        idx[eos_chosen] = self.eos_class_idx
+
+        return self.invalid_or_vertice(idx)
 
     def _get_tracking_direction_det(self, logits_per_class: Tensor):
         """
         Get the predicted class with highest logits (=probabilities).
         If class = EOS, direction is [NaN, NaN, NaN].
         """
-        # Shape: nb_points x nb_classes
-        idx = logits_per_class.argmax(dim=1)
-
-        if self.add_eos:
+        if not self.add_eos:
+            idx = logits_per_class.argmax(dim=1)
+            return self.torch_sphere.vertices[idx]
+        elif self.choose_eos_if_max:
+            # We take the class associated to the maximal logit.
+            idx = logits_per_class.argmax(dim=1)
             return self.invalid_or_vertice(idx)
         else:
-            return self.torch_sphere.vertices[idx]
+            # We only stop if EOS prob > 0.5.
+            eos_chosen = torch.softmax(logits_per_class, dim=-1)[:, -1] > 0.5
+            idx = logits_per_class[:, :-1].argmax(dim=1)
+            idx[eos_chosen] = self.eos_class_idx
+            return self.invalid_or_vertice(idx)
 
     def invalid_or_vertice(self, idx: torch.Tensor):
-        stop = idx == self.eos_class - 1
-        nb_stop = torch.sum(stop)
-        if nb_stop > 0:
-            logging.debug("{} streamlines stopping because of learned "
-                          "criterion (EOS).".format(nb_stop))
+        stop = idx == self.eos_class_idx
         idx[stop] = 0  # Faking any vertice for best speed. Filling to nan after.
         return self.torch_sphere.vertices[idx].masked_fill(
             stop[:, None], torch.nan)

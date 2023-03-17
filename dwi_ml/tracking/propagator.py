@@ -145,6 +145,16 @@ class DWIMLPropagator(AbstractPropagator):
         # starting information. Override if your model is different.
         return [None for _ in seeding_pos]
 
+    def reject_streamlines_before_backward(self, lines):
+        """Indice of streamlines to reject before starting the backward pass.
+        """
+        # Rejecting streamlines of length 1 (= the seed only). The backward
+        # would produce the same result. Overwrite if your model can change
+        # results when called twice at the same point.
+        lengths = np.asarray([len(s) for s in lines])
+        idx, = np.where(lengths == 1)
+        return idx
+
     def prepare_backward(self, lines, forward_dir):
         """
         Preparing backward.
@@ -373,6 +383,14 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
             self.input_memory = None
             self.input_memory_for_backward = [None] * len(seeding_pos)
         return super().prepare_forward(seeding_pos)
+
+    def reject_streamlines_before_backward(self, lines):
+        idx = super().reject_streamlines_before_backward(lines)
+        if self.use_input_memory:
+            self.input_memory_for_backward = \
+                [s for i, s in enumerate(self.input_memory_for_backward)
+                 if i not in idx]
+        return idx
 
     def prepare_backward(self, lines, forward_dir):
         # No need to invert the list of coordinates. Will be done by the

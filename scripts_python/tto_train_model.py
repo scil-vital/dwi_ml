@@ -110,7 +110,8 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,
             # MEMORY
-            nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
+            nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
+            log_level=args.logging)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
 
@@ -135,7 +136,7 @@ def main():
     if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
                                    "checkpoint")):
         raise FileExistsError("This experiment already exists. Delete or use "
-                              "script resume_training_from_checkpoint.py.")
+                              "script tto_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

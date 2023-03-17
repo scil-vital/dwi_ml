@@ -250,6 +250,11 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         return p
 
+    def move_to(self, device):
+        super().move_to(device)
+        if self.token_sphere is not None:
+            self.token_sphere.move_to(device)
+
     def prepare_targets_forward(self, batch_streamlines, is_tracking):
         """
         batch_streamlines: List[Tensors]
@@ -527,7 +532,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
-            model_outputs, torch.vstack(targets))
+            model_outputs, torch.cat(targets, dim=0))
 
     def get_tracking_directions(self, model_outputs, algo):
         return self.direction_getter.get_tracking_directions(

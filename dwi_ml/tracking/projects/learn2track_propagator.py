@@ -61,7 +61,7 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
 
         # Must re-run the model from scratch to get the hidden states
         # But! Not including the last point (i.e. the seed). Else, the
-        # output + hidden state = the next point. Not the current point.
+        # output + hidden state = the next point rather than the current point.
         # First propagation step after backward will be at the seed coordinate.
         lines = [s[:-1, :] for s in lines]
         all_inputs, _ = self.model.prepare_batch_one_input(

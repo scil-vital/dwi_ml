@@ -73,18 +73,14 @@ def init_from_args(args, sub_loggers_level):
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = TransformerSrcAndTgtModel(
-            experiment_name=args.experiment_name, nb_features=args.nb_features,
-            # Previous dirs:
-            nb_previous_dirs=args.nb_previous_dirs,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
-            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            normalize_prev_dirs=args.normalize_prev_dirs,
+            experiment_name=args.experiment_name,
+            # Targets in encoder:
+            token_type=args.token_type, embedding_key_t=args.target_embedding,
             # Concerning inputs:
+            nb_features=args.nb_features, embedding_key_x=args.data_embedding,
+            # Torch's transformer parameters
             max_len=args.max_len,
             positional_encoding_key=args.position_encoding,
-            embedding_key_x=args.data_embedding,
-            embedding_key_t=args.target_embedding,
-            # Torch's transformer parameters
             d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,
             nheads=args.nheads, dropout_rate=args.dropout_rate,
             activation=args.activation,
@@ -98,7 +94,7 @@ def init_from_args(args, sub_loggers_level):
 
         logging.info("Transformer (src-tgt attention) model final "
                      "parameters:" +
-                     format_dict_to_str(model.params_for_json_prints))
+                     format_dict_to_str(model.params_for_checkpoint))
 
     # Preparing the batch sampler.
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)
@@ -120,9 +116,10 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,
             # MEMORY
-            nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
+            nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
+            log_level=args.logging)
         logging.info("Trainer params : " +
-                     format_dict_to_str(trainer.params_for_json_prints))
+                     format_dict_to_str(trainer.params_for_checkpoint))
 
     return trainer
 

@@ -134,9 +134,6 @@ class DWIMLTracker(ScilpyTracker):
             if seed_count + nb_next_seeds > self.nbr_seeds:
                 nb_next_seeds = self.nbr_seeds - seed_count
 
-            logger.info("*** Multiple GPU tracking: Tracking the next {} "
-                        "streamlines.".format(nb_next_seeds))
-
             next_seeds = np.asarray(
                 range(seed_count, seed_count + nb_next_seeds))
 
@@ -178,13 +175,19 @@ class DWIMLTracker(ScilpyTracker):
                    for s in n_seeds]
         lines = [s.clone()[None, :] for s in n_seeds]
 
-        logger.info("Multiple GPU tracking: Starting forward propagation.")
+        logger.info("Multiple GPU tracking: Starting forward propagation for "
+                    "the next {} streamlines.".format(len(lines)))
         tracking_info = self.propagator.prepare_forward(n_seeds)
         lines = self._propagate_multiple_lines(lines, tracking_info)
 
         if not self.track_forward_only:
-            logger.info("Multiple GPU tracking: Starting backward "
-                        "propagation.")
+            rej_idx = self.propagator.reject_streamlines_before_backward(lines)
+            if rej_idx is not None and len(rej_idx) > 0:
+                lines = [s for i, s in enumerate(lines) if i not in rej_idx]
+                n_seeds = [s for i, s in enumerate(n_seeds) if i not in rej_idx]
+
+            logger.info("   Starting backward propagation for the remaining "
+                        "{} streamlines.".format(len(lines)))
             # Reversing:
             lines = [torch.flip(line, (0,)) for line in lines]
 
@@ -231,7 +234,7 @@ class DWIMLTracker(ScilpyTracker):
                 lines, tracking_info)
 
             # Verifying and appending
-            invalid_direction_counts[~valid_dirs.cpu()] += 1
+            invalid_direction_counts[~valid_dirs.cpu().numpy()] += 1
 
             all_lines_completed = True
             continuing_lines = np.ones(nb_streamlines_left).astype(bool)

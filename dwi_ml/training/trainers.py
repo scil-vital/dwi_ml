@@ -299,8 +299,9 @@ class DWIMLAbstractTrainer:
         # parameters)
         list_params = [n for n, _ in self.model.named_parameters()]
         self.logger.debug("Initiating trainer: {}".format(type(self)))
-        self.logger.debug("This trainer will use Adam optimization on the "
-                          "following model.parameters: {}".format(list_params))
+        self.logger.debug("This trainer will use {} optimization on the "
+                          "following model.parameters: {}"
+                          .format(self.optimizer_key, list_params))
 
         self.current_lr = self.learning_rates[0]
         if self.optimizer_key == 'RAdam':
@@ -330,24 +331,6 @@ class DWIMLAbstractTrainer:
         }
         return params
 
-    @property
-    def params_for_json_prints(self) -> dict:
-        params = self.params_for_checkpoint
-        params.update({
-            'experiments_path': self.experiments_path,
-            'experiment_name': self.experiment_name,
-            'patience': self.best_epoch_monitoring.patience,
-            'type': str(type(self)),
-            'comet_key': self.comet_key,
-            'computed_values': {
-                'nb_training_batches_per_epoch':
-                    self.nb_train_batches_per_epoch,
-                'nb_validation_batches_per_epoch':
-                    self.nb_valid_batches_per_epoch
-            }
-        })
-        return params
-
     def save_params_to_json(self):
         """
         Utility method to save the parameters to a json file in the same
@@ -359,10 +342,9 @@ class DWIMLAbstractTrainer:
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
-                 'Trainer params': self.params_for_json_prints,
-                 'Sampler params': self.batch_sampler.params,
-                 'Batch loader params':
-                     self.batch_loader.params_for_json_prints,
+                 'Trainer params': self.params_for_checkpoint,
+                 'Sampler params': self.batch_sampler.params_for_checkpoint,
+                 'Loader params': self.batch_loader.params_for_checkpoint,
                  },
                 indent=4, separators=(',', ': ')))
 
@@ -389,7 +371,7 @@ class DWIMLAbstractTrainer:
                     log_git_metadata=True, log_git_patch=True,
                     display_summary_level=False)
                 self.comet_exp.set_name(self.experiment_name)
-                self.comet_exp.log_parameters(self.params_for_json_prints)
+                self.comet_exp.log_parameters(self.params_for_checkpoint)
                 self.comet_key = self.comet_exp.get_key()
                 # Couldn't find how to set log level. Getting it directly.
                 comet_log = logging.getLogger("comet_ml")
@@ -754,10 +736,6 @@ class DWIMLAbstractTrainer:
                                           step=epoch)
 
     def _update_gradnorm_logs_after_epoch(self, comet_context, epoch: int):
-        self.logger.info(
-            "   Mean gradient norm : {}"
-            .format(self.grad_norm_monitor.average_per_epoch[epoch]))
-
         if self.comet_exp:
             with comet_context():
                 self.comet_exp.log_metric(
@@ -961,7 +939,7 @@ class DWIMLAbstractTrainer:
             # todo Verify:
             #  batch sampler and batch loader should have the same dataset
             'dataset_params': self.batch_sampler.dataset.params,
-            'batch_sampler_params': self.batch_sampler.params,
+            'batch_sampler_params': self.batch_sampler.params_for_checkpoint,
             'batch_loader_params': self.batch_loader.params_for_checkpoint,
             'params_for_init': self.params_for_checkpoint,
             'current_states': current_states
@@ -1077,13 +1055,13 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         # Possibly add noise to inputs here.
 
-        lengths = [len(s) - 1 for s in batch_streamlines]
-        logger.debug("Loaded a batch of {} streamlines, {} inputs points"
-                     .format(len(batch_streamlines), sum(lengths)))
-        logger.debug("Loaded the associated {} inputs."
-                     .format(len(batch_inputs)))
+        logger.debug("Loaded a batch of {} streamlines, {} data points, "
+                     "{} input points."
+                     .format(len(batch_streamlines),
+                             sum([len(s) for s in batch_streamlines]),
+                             sum([len(s) for s in batch_inputs])))
 
-        self.logger.debug('*** Computing forward propagation and loss')
+        self.logger.debug('*** Computing forward propagation')
         if self.model.forward_uses_streamlines:
             # Now possibly add noise to streamlines;
             # The whole target will be noisy, even when computing the loss.
@@ -1099,6 +1077,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         else:
             model_outputs = self.model(batch_inputs)
 
+        self.logger.debug('*** Computing loss')
         if self.model.loss_uses_streamlines:
             mean_loss, n = self.model.compute_loss(model_outputs,
                                                    batch_streamlines)

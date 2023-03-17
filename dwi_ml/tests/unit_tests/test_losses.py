@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 import logging
 
-from dipy.data import get_sphere
-from nose.tools import assert_equal
 import numpy as np
+from dipy.data import get_sphere
 from scipy.spatial.distance import (cosine, euclidean, mahalanobis)
-from scipy.special import logsumexp, softmax
 import torch
+from torch import logsumexp
 from torch.nn.utils.rnn import PackedSequence
+from torch.nn.functional import softmax
 
 from dwi_ml.models.direction_getter_models import (
     CosineRegressionDirectionGetter, FisherVonMisesDirectionGetter,
@@ -36,7 +36,9 @@ Included utils are:
 # toDo
 #  test fisher von mises
 
-tol = 1e-5
+# Using float32, we have come accross differences of the order 1e-3 for
+# Fisher-von-Mises, depending on the random values.
+tol = 1e-3
 d = 3
 
 logging.getLogger().setLevel(level='DEBUG')
@@ -54,26 +56,18 @@ def _independent_gaussian_log_prob_vector(x, mus, sigmas):
     """
     # The inverse of a diagonal matrix is just inverting values on the
     # diagonal
-    cov_inv = np.eye(d) * (1 / sigmas ** 2)
+    cov_inv = torch.eye(d) * (1 / sigmas ** 2)
 
     # sum(log) = log(prod)
-    logpdf = -d / 2 * np.log(2 * np.pi) - np.log(np.prod(sigmas)) \
-             - 0.5 * mahalanobis(x[:3], mus, cov_inv) ** 2
+    logpdf = (-d / 2 * torch.log(2 * torch.as_tensor(torch.pi)) -
+              torch.log(torch.prod(sigmas))) \
+        - 0.5 * mahalanobis(x[:3], mus, cov_inv) ** 2
     return logpdf
 
 
 def _get_random_vector(size=3):
     scaling = np.random.randint(1, 9)
-    return np.array(np.random.randn(size), dtype=np.float32) * scaling
-
-
-def _prepare_tensor(a):
-    if isinstance(a, tuple):
-        a = tuple([torch.as_tensor(i[None, :], dtype=torch.float32)
-                   for i in a])
-    elif isinstance(a, np.ndarray):
-        a = torch.as_tensor(a[None, :], dtype=torch.float32)
-    return a
+    return np.random.randn(size) * scaling
 
 
 def _prepare_packedsequence(a):
@@ -84,130 +78,91 @@ def _prepare_packedsequence(a):
         return a
 
 
-def _compute_loss_tensor(outputs, targets, model):
-    outputs = _prepare_tensor(outputs)
-    targets = _prepare_tensor(targets)
+def _verify_loss(streamline, fake_model_output, expected_loss, model,
+                 expected_eos_loss=torch.as_tensor(0.)):
+    if not isinstance(streamline, torch.Tensor):
+        streamline = torch.as_tensor(np.asarray(streamline),
+                                     dtype=torch.float32)
+    targets = model.prepare_targets_for_loss([streamline])[0]
 
-    mean_loss, _ = model.compute_loss(outputs, targets)
-    # logging.debug("Means loss: {}.".format(mean_loss))
+    # Convert types
+    if (isinstance(fake_model_output, np.ndarray) or
+            isinstance(fake_model_output, list)):
+        fake_model_output = torch.as_tensor(fake_model_output,
+                                            dtype=torch.float32)
+    if (isinstance(expected_loss, np.ndarray) or
+            isinstance(expected_loss, float)):
+        expected_loss = torch.as_tensor(expected_loss, dtype=torch.float32)
 
-    return np.asarray(mean_loss)
+    # Compute loss and verify
+    computed_loss, _ = model.compute_loss(fake_model_output, targets)
+
+    assert torch.allclose(computed_loss, expected_loss, atol=tol), \
+        "Expected loss {} but got {}.\n" \
+        "      - Streamline: {}    ( = dir {})\n" \
+        "      - Fake model output: {}\n" \
+        .format(expected_loss + expected_eos_loss, computed_loss,
+                streamline, streamline[1, :] - streamline[0, :],
+                fake_model_output)
 
 
 def test_cosine_regression_loss():
     logging.debug('Testing cosine regression loss')
 
-    np.random.seed(1234)
     model = CosineRegressionDirectionGetter(3)
+    streamline = [[0., 0, 0], [1., 0, 0]]
 
     logging.debug("  - Identical vectors x: expecting -1")
-    a = np.array([1, 0, 0])
-    b = np.array([1, 0, 0])
-    expected = np.array(-1)
-    value = _compute_loss_tensor(a, b, model)
-    assert_equal(value, expected)
-
-    logging.debug("  - Identical vectors y: expecting -1")
-    a = np.array([0, 1, 0])
-    b = np.array([0, 1, 0])
-    expected = np.array(-1)
-    value = _compute_loss_tensor(a, b, model)
-    assert_equal(value, expected)
-
-    logging.debug("  - Identical vectors z: expecting -1")
-    a = np.array([0, 0, 1])
-    b = np.array([0, 0, 1])
-    expected = np.array(-1)
-    value = _compute_loss_tensor(a, b, model)
-    assert_equal(value, expected)
+    good_dir = [1., 0, 0]
+    expected_loss = -1.
+    _verify_loss(streamline, good_dir, expected_loss, model)
 
     logging.debug("  - Vectors with same angle: expecting -1")
     scales = np.random.random(20) * 20
     for s in scales:
-        a = np.array([1, 0, 0])
-        b = a * s
-        expected = np.array(-1)
-        value = _compute_loss_tensor(a, b, model)
-        assert_equal(value, expected)
+        good_dir_bad_scale = [s, 0., 0]
+        expected_loss = -1.
+        _verify_loss(streamline, good_dir_bad_scale, expected_loss, model)
 
     logging.debug("  - Vectors with at 90 degrees 1: expecting 0")
-    a = np.array([1, 0, 0])
-    b = np.array([0, 1, 0])
-    expected = np.array(0)
-    value = _compute_loss_tensor(a, b, model)
-    assert_equal(value, expected)
+    dir_90 = [0., 1, 0]
+    expected_loss = 0.
+    _verify_loss(streamline, dir_90, expected_loss, model)
 
-    logging.debug("  - Vectors with at 90 degrees 2: expecting 0")
-    a = np.array([1, 0, 0])
-    b = np.array([0, 0, 1])
-    expected = np.array(0)
-    value = _compute_loss_tensor(a, b, model)
-    assert_equal(value, expected)
-
-    logging.debug("  - Vectors with at 90 degrees random: expecting 0")
-    for _ in range(20):
-        a = _get_random_vector(3)
-        b = _get_random_vector(3)
-        c = np.cross(a, b)
-        expected = np.array(0)
-
-        value = _compute_loss_tensor(a, c, model)
-        assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
-
-        value = _compute_loss_tensor(b, c, model)
-        assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
-
-    logging.debug("  - Vectors with at 180 degrees random: expecting 1")
-    for _ in range(20):
-        a = _get_random_vector(3)
-        b = np.array(-a * (np.random.random() + 1e-3) *
-                     np.random.randint(1, 10), dtype=np.float32)
-        expected = np.array(1)
-
-        value = _compute_loss_tensor(a, b, model)
-        assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+    logging.debug("  - Vectors with at 180 degrees: expecting 1")
+    dir_90 = [-1., 0, 0]
+    expected_loss = 1.
+    _verify_loss(streamline, dir_90, expected_loss, model)
 
     logging.debug("  - Random vectors: comparing with cosine.")
-    for _ in range(200):
-        a = _get_random_vector(3)
-        b = _get_random_vector(3)
-        # model outputs -cos(a,b), but cosine computes 1-cos(a,b)
-        expected = cosine(a, b) - 1
-
-        value = _compute_loss_tensor(a, b, model)
-        assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+    for _ in range(20):
+        streamline = [[0., 0, 0], _get_random_vector(3)]
+        random_dir = _get_random_vector(3)
+        # model outputs -cos(a,b), but scipy's cosine computes 1-cos(a,b)
+        expected_loss = cosine(streamline[1], random_dir) - 1
+        _verify_loss(streamline, random_dir, expected_loss, model)
 
 
 def test_l2regression_loss():
-    logging.debug('\nTesting l2 regression loss')
+    logging.debug('Testing l2 regression loss')
 
-    np.random.seed(1234)
     model = L2RegressionDirectionGetter(1)
+    streamline = [[0., 0, 0], _get_random_vector(3)]
 
-    logging.debug("  - Identical vectors: expecting 0")
-    a = _get_random_vector(3)
-    b = a
-    expected = np.array(0)
-    value = _compute_loss_tensor(a, b, model)
-    assert np.allclose(value, expected, atol=tol),\
-        "Failed; got: {}; expected: {}".format(value, expected)
+    logging.debug("  - Identical vectors x: expecting 0")
+    good_dir = streamline[1]
+    expected_loss = 0.
+    _verify_loss(streamline, good_dir, expected_loss, model)
 
     # Test for random vector, compared to scipy's euclidean
-    for _ in range(200):
-        a = _get_random_vector(3)
-        b = _get_random_vector(3)
-        expected = euclidean(a, b)
-        value = _compute_loss_tensor(a, b, model)
-        assert np.allclose(value, expected, atol=tol),\
-            "Failed; got: {}; expected: {}".format(value, expected)
+    for _ in range(20):
+        wrong_dir = _get_random_vector(3)
+        expected_loss = euclidean(good_dir, wrong_dir)
+        _verify_loss(streamline, wrong_dir, expected_loss, model)
 
 
 def test_sphere_classification_loss():
-    logging.debug('\nTesting sphere classification loss')
+    logging.debug('Testing sphere classification loss')
 
     model = SphereClassificationDirectionGetter(1)
     sphere = get_sphere('symmetric724')
@@ -215,147 +170,133 @@ def test_sphere_classification_loss():
     logging.debug("  - Neg log likelihood, expecting -ln(softmax).")
 
     logging.debug("      - Exactly the right class.")
-    # exactly the right class (#1)
+    # exactly the right class (#4)
     # Note. To be realistic:
     # With as many classes (724), the value of the output must be very
     # high to have a low loss. The outputs (logits) don't have to be
     # probabilities, as a softmax will be applied by torch.
-    logit = np.zeros((1, 724)).astype('float32')
-    logit[0, 1] = 100
-    b = sphere.vertices[1]
-    expected = -np.log(softmax(logit))[0, 1]
-    value = _compute_loss_tensor(logit, b, model)
-    assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
-
-    logging.debug("      - With eps difference in the target: "
-                  "Should get the same class.")
-    logit = np.zeros((1, 724)).astype('float32')
-    logit[0, 1] = 1
-    eps = 1e-3
-    b = sphere.vertices[1] + eps
-    expected = -np.log(softmax(logit))[0, 1]
-    value = _compute_loss_tensor(logit, b, model)
-    assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+    streamline = [[0., 0, 0], sphere.vertices[4]]
+    good_logit = torch.zeros(724, dtype=torch.float32)
+    good_logit[4] = 100
+    expected_loss = -torch.log(softmax(good_logit, dim=-1))[4]
+    _verify_loss(streamline, good_logit, expected_loss, model)
 
     logging.debug("      - Exactly the right class test 2.")
-    logit = np.random.rand(1, 724).astype('float32')
-    logit[0, 1] = 1
-    b = sphere.vertices[1]
-    expected = -np.log(softmax(logit))[0, 1]
-    value = _compute_loss_tensor(logit, b, model)
-    assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+    logit = np.random.rand(724).astype('float32')
+    logit[4] = 1
+    expected_loss = -torch.log(softmax(good_logit, dim=-1))[4]
+    _verify_loss(streamline, good_logit, expected_loss, model)
+
+    logging.debug("      - With epsilon difference in the target: "
+                  "Should get the same class.")
+    eps = 1e-3
+    good_logit[29] = eps
+    streamline = [[0., 0, 0], sphere.vertices[4] + eps]
+    expected_loss = -torch.log(softmax(good_logit, dim=-1))[4]
+    _verify_loss(streamline, good_logit, expected_loss, model)
 
     logging.debug("      - Random")
-    logit = np.random.rand(1, 724).astype('float32')
-    b = sphere.vertices[1]
-    expected = -np.log(softmax(logit))[0, 1]
-    value = _compute_loss_tensor(logit, b, model)
-    assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+    logit = torch.as_tensor(np.random.rand(724).astype('float32'))
+    streamline = [[0., 0, 0], sphere.vertices[4]]
+    expected_loss = -torch.log(softmax(logit, dim=-1))[4]
+    _verify_loss(streamline, logit, expected_loss, model)
 
 
 def test_gaussian_loss():
-    logging.debug('\nTesting gaussian loss')
+    logging.debug('Testing gaussian loss:')
 
-    np.random.seed(1234)
     model = SingleGaussianDirectionGetter(1)
-
-    logging.debug("  - Expecting mahalanobis value")
 
     logging.debug("      - x = mu")
     for _ in range(20):
-        a_means = _get_random_vector(3)
-        a_sigmas = np.exp(_get_random_vector(3))
-        b = a_means
+        out_means = _get_random_vector(3)
+        streamline = [[0., 0, 0], out_means]
+
+        out_means = torch.as_tensor(out_means, dtype=torch.float32)
+        out_sigmas = torch.as_tensor(np.exp(_get_random_vector(3)),
+                                     dtype=torch.float32)
 
         # expected: x-mu = 0 ==> mahalanobis = 0
-        expected = -(-3 / 2 * np.log(2 * np.pi) - np.log(np.prod(a_sigmas)))
-
-        value = _compute_loss_tensor((a_means, a_sigmas), b, model)
-        assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+        expected_loss = -(-3 / 2 * torch.log(2 * torch.as_tensor(np.pi)) -
+                          torch.log(torch.prod(out_sigmas)))
+        _verify_loss(streamline, (out_means, out_sigmas), expected_loss, model)
 
     logging.debug("      - random")
-    for _ in range(200):
-        a_means = _get_random_vector(3)
-        a_sigmas = np.exp(_get_random_vector(3))
+    for _ in range(20):
+        out_means = torch.as_tensor(_get_random_vector(3), dtype=torch.float32)
+        out_sigmas = torch.as_tensor(np.exp(_get_random_vector(3)),
+                                     dtype=torch.float32)
         b = _get_random_vector(3)
+        streamline = [[0., 0, 0], b]
 
         # Manual logpdf computation
-        logpdf = _independent_gaussian_log_prob_vector(b, a_means, a_sigmas)
-        expected = -logpdf
+        b = torch.as_tensor(b, dtype=torch.float32)
+        logpdf = _independent_gaussian_log_prob_vector(b, out_means, out_sigmas)
+        expected_loss = -logpdf
 
-        value = _compute_loss_tensor((a_means, a_sigmas), b, model)
-        assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+        _verify_loss(streamline, (out_means, out_sigmas), expected_loss, model)
 
 
 def test_mixture_loss():
-    logging.debug('\nTesting mixture loss')
+    logging.debug('Testing mixture loss')
 
-    np.random.seed(1234)
     model = GaussianMixtureDirectionGetter(1)
 
-    logging.debug("  - Expecting neg logsumexp(log_mixture + logpdf)")
-
     logging.debug("      - Random")
-    for _ in range(200):
+    for _ in range(20):
         # 3 Gaussians * (1 mixture param + 3 means + 3 variances)
         # (no correlations)
-        a_mixture_logits = _get_random_vector(3)
-        a_means = _get_random_vector(3 * 3).reshape((3, 3))
-        a_sigmas = np.exp(_get_random_vector(3 * 3)).reshape((3, 3))
+        out_mixture_logits = torch.as_tensor(_get_random_vector(3),
+                                             dtype=torch.float32)
+        out_means = torch.as_tensor(_get_random_vector(3 * 3).reshape((3, 3)),
+                                    dtype=torch.float32)
+        out_sigmas = torch.as_tensor(
+            np.exp(_get_random_vector(3 * 3)).reshape((3, 3)),
+            dtype=torch.float32)
         b = _get_random_vector(3)
+        streamline = [[0., 0, 0], b]
 
         # Manual logpdf computation
-        mixture_params = softmax(a_mixture_logits)
-        logpdfs = np.array(
-            [_independent_gaussian_log_prob_vector(b, a_means[i], a_sigmas[i])
-             for i in range(3)])
-        expected = -logsumexp(np.log(mixture_params) + logpdfs)
-
-        value = _compute_loss_tensor(
-            (a_mixture_logits, a_means, a_sigmas), b, model)
-        assert np.allclose(value, expected, atol=tol), \
-            "Failed; got: {}; expected: {}".format(value, expected)
+        mixture_params = softmax(out_mixture_logits, dim=-1)
+        logpdfs = torch.as_tensor([
+            _independent_gaussian_log_prob_vector(b, out_means[i], out_sigmas[i])
+            for i in range(3)])
+        expected = -logsumexp(torch.log(mixture_params) + logpdfs, dim=-1)
+        _verify_loss(streamline, (out_mixture_logits, out_means, out_sigmas),
+                     expected, model)
 
 
 def test_fisher_von_mises():
-    logging.debug('\nTesting fisher-Von mises loss')
+    logging.debug('Testing fisher-Von mises loss')
 
     model = FisherVonMisesDirectionGetter(1)
 
     logging.debug("  - Expecting log prob.")
 
     logging.debug("      - x = mu")
-    a_means = _get_random_vector(3)
-    a_kappa = np.exp(_get_random_vector(1))
-    b = a_means
+    out_means = _get_random_vector(3)
+    streamline = [[0., 0, 0], out_means]
 
-    expected = -fisher_von_mises_log_prob_vector(a_means, a_kappa, b)
-    value = _compute_loss_tensor((a_means, a_kappa), b, model)
-    assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+    out_means = torch.as_tensor(out_means, dtype=torch.float32)
+    out_kappa = torch.as_tensor(np.exp(_get_random_vector(1)),
+                                dtype=torch.float32)
+
+    expected = -fisher_von_mises_log_prob_vector(out_means, out_kappa, out_means)
+    _verify_loss(streamline, (out_means, out_kappa), expected, model)
 
     logging.debug("      - Random")
-    a_means = _get_random_vector(3)
-    a_kappa = np.exp(_get_random_vector(1))
     b = _get_random_vector(3)
+    streamline = [[0., 0, 0], b]
 
-    expected = -fisher_von_mises_log_prob_vector(a_means, a_kappa, b)
-    value = _compute_loss_tensor((a_means, a_kappa), b, model)
-    assert np.allclose(value, expected, atol=tol), \
-        "Failed; got: {}; expected: {}".format(value, expected)
+    b = torch.as_tensor(b, dtype=torch.float32)
+    expected = -fisher_von_mises_log_prob_vector(out_means, out_kappa, b)
+    _verify_loss(streamline, (out_means, out_kappa), expected, model)
 
 
 if __name__ == '__main__':
-    np.random.seed(1234)
     test_cosine_regression_loss()
-    test_fisher_von_mises()
-    test_gaussian_loss()
     test_l2regression_loss()
-    test_mixture_loss()
     test_sphere_classification_loss()
+    test_gaussian_loss()
+    test_mixture_loss()
+    test_fisher_von_mises()

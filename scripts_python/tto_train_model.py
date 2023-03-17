@@ -69,11 +69,8 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = OriginalTransformerModel(
             experiment_name=args.experiment_name, nb_features=args.nb_features,
-            # Previous dirs:
-            nb_previous_dirs=args.nb_previous_dirs,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
-            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            normalize_prev_dirs=args.normalize_prev_dirs,
+            # Targets in decoder:
+            token_type=args.token_type,
             # Concerning inputs:
             max_len=args.max_len,
             positional_encoding_key=args.position_encoding,
@@ -92,7 +89,7 @@ def init_from_args(args, sub_loggers_level):
             log_level=sub_loggers_level)
 
         logging.info("Transformer (original) model final parameters:" +
-                     format_dict_to_str(model.params_for_json_prints))
+                     format_dict_to_str(model.params_for_checkpoint))
 
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)
     batch_loader = prepare_batch_loader(dataset, model, args, sub_loggers_level)
@@ -113,9 +110,10 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,
             # MEMORY
-            nb_cpu_processes=args.processes, use_gpu=args.use_gpu)
+            nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
+            log_level=args.logging)
         logging.info("Trainer params : " +
-                     format_dict_to_str(trainer.params_for_json_prints))
+                     format_dict_to_str(trainer.params_for_checkpoint))
 
     return trainer
 
@@ -138,7 +136,7 @@ def main():
     if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
                                    "checkpoint")):
         raise FileExistsError("This experiment already exists. Delete or use "
-                              "script resume_training_from_checkpoint.py.")
+                              "script tto_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

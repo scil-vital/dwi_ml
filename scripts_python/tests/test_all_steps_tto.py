@@ -56,6 +56,7 @@ def test_execution(script_runner, experiments_path):
                             '--nheads', '2', '--max_len', str(MAX_LEN),
                             '--d_model', '6', '--n_layers_e', '1',
                             '--n_layers_d', '1', '--ffnn_hidden_size', '3',
+                            '--token_type', 'as_label',
                             '--dropout_rate', '0', '--logging', 'INFO')
     assert ret.success
 
@@ -78,6 +79,7 @@ def test_execution(script_runner, experiments_path):
                                 '--nheads', '2', '--max_len', str(MAX_LEN),
                                 '--d_model', '6', '--n_layers_e', '1',
                                 '--n_layers_d', '1', '--ffnn_hidden_size', '3',
+                                '--token_type', 'as_label',
                                 '--dropout_rate', '0', '--logging', 'INFO',
                                 '--use_gpu')
         assert ret.success

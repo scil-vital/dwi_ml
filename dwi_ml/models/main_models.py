@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import shutil
-from datetime import datetime
 from typing import List, Union
 
 import numpy as np
@@ -35,8 +34,7 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name: str,
-                 log_level=logging.root.level):
+    def __init__(self, experiment_name: str, log_level=logging.root.level):
         """
         Params
         ------
@@ -77,13 +75,6 @@ class MainModelAbstract(torch.nn.Module):
         return {
             'experiment_name': self.experiment_name,
         }
-
-    @property
-    def params_for_json_prints(self):
-        """
-        Adding more information, if necessary, for loggings.
-        """
-        return self.params_for_checkpoint
 
     def save_params_and_state(self, model_dir):
         model_state = self.state_dict()
@@ -232,10 +223,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
         """
         Params
         ------
-        experiment_name: str
-            Name of the experiment
-        log_level: str
-            Level of the model logger.
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received. Default: 0.
@@ -286,7 +273,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
             self.prev_dirs_embedding = None
 
         # To tell our trainer what to send to the forward / loss methods.
-        self.forward_uses_streamlines = True
+        if nb_previous_dirs > 0:
+            self.forward_uses_streamlines = True
 
     @staticmethod
     def add_args_model_with_pd(p):
@@ -319,16 +307,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
             'prev_dirs_embedding_key': self.prev_dirs_embedding_key,
             'prev_dirs_embedding_size': self.prev_dirs_embedding_size,
             'normalize_prev_dirs': self.normalize_prev_dirs
-        })
-        return p
-
-    @property
-    def params_for_json_prints(self):
-        p = super().params_for_json_prints
-        p.update({
-            'prev_dirs_embedding':
-                self.prev_dirs_embedding.params if
-                self.prev_dirs_embedding else None,
         })
         return p
 
@@ -371,12 +349,9 @@ class ModelWithPreviousDirections(MainModelAbstract):
             dirs = normalize_directions(dirs)
 
         # Formatting the n previous dirs for all points.
-        n_prev_dirs = self.format_previous_dirs(dirs, point_idx=point_idx)
-
-        if not point_idx:
-            # Not keeping the last point: only useful to get the last
-            # direction (ex, last target), but won't be used as an input.
-            n_prev_dirs = [s[:-1] for s in n_prev_dirs]
+        n_prev_dirs = compute_n_previous_dirs(
+            dirs, self.nb_previous_dirs,
+            point_idx=point_idx, device=self.device)
 
         # Packing
         # We could loop on all lists and embed each.
@@ -391,6 +366,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
                 n_prev_dirs, batch_sizes=batch_sizes,
                 sorted_indices=sorted_indices,
                 unsorted_indices=unsorted_indices)
+
         else:
             n_prev_dirs_packed = pack_sequence(n_prev_dirs,
                                                enforce_sorted=False)
@@ -409,20 +385,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
             return unpack_sequence(n_prev_dirs_packed)
         else:
             return n_prev_dirs_packed
-
-    def format_previous_dirs(self, all_streamline_dirs, point_idx=None):
-        """
-        Formats the previous dirs. See compute_n_previous_dirs for a
-        description of parameters.
-        """
-        if self.nb_previous_dirs == 0:
-            return None
-
-        n_previous_dirs = compute_n_previous_dirs(
-            all_streamline_dirs, self.nb_previous_dirs,
-            point_idx=point_idx, device=self.device)
-
-        return n_previous_dirs
 
     def forward(self, inputs, target_streamlines: List[torch.tensor], **kw):
         """
@@ -448,14 +410,15 @@ class ModelWithPreviousDirections(MainModelAbstract):
 class MainModelOneInput(MainModelAbstract):
     def __init__(self, **kw):
         """
-        Params
-        ------
-        experiment_name: str
-            Name of the experiment
-        log_level: str
-            Level of the model logger.
+        skip_input_as_last_point: bool
+            Change to True do skip input computation at the last coordinate of
+            the streamline. Ex: Useful if targets are directions (and there is
+            no EOS token): last point does not have a target.
+            If this is used for tracking, the propagator will ignore this
+            value.
         """
         super().__init__(**kw)
+        self.skip_input_as_last_point = False
 
     def prepare_batch_one_input(self, streamlines, subset, subj,
                                 input_group_idx, prepare_mask=False):
@@ -475,7 +438,7 @@ class MainModelOneInput(MainModelAbstract):
         input_groupd_idx: int
             The volume group.
         prepare_mask: bool
-            If true, return a mask of chosen coordinates (DEBUGGING MODE).
+            If True, return a mask of chosen coordinates (DEBUGGING MODE).
 
         Returns
         -------
@@ -485,7 +448,10 @@ class MainModelOneInput(MainModelAbstract):
         input_mask: tensor or None
             In debugging mode, returns a mask of all voxels used as input.
         """
-        start_time = datetime.now()
+        if self.skip_input_as_last_point:
+            # We don't use the last coord because it is used only to
+            # compute the last target direction, it's not really an input
+            streamlines = [s[:-1, :] for s in streamlines]
 
         # Flatten = concatenate signal for all streamlines to process
         # faster.
@@ -511,10 +477,6 @@ class MainModelOneInput(MainModelAbstract):
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]
         subj_x_data = list(subj_x_data.split(lengths))
-        duration_inputs = datetime.now() - start_time
-        logger.debug("Time to prepare the inputs ({} streamlines, total {} "
-                     "points): {} s".format(len(streamlines), sum(lengths),
-                                            duration_inputs.total_seconds()))
 
         input_mask = None
         if prepare_mask:
@@ -536,7 +498,7 @@ class MainModelOneInput(MainModelAbstract):
         return subj_x_data, input_mask
 
 
-class ModelForTracking(MainModelAbstract):
+class ModelWithDirectionGetter(MainModelAbstract):
     """
     Adding typical options for models intended for learning to track.
     - Last layer should be a direction getter.
@@ -548,10 +510,6 @@ class ModelForTracking(MainModelAbstract):
         """
         Params
         ------
-        experiment_name: str
-            Name of the experiment
-        log_level: str
-            Level of the model logger.
         dg_key: str
             Key to a direction getter class (one of
             dwi_ml.direction_getter_models.keys_to_direction_getters).
@@ -574,7 +532,6 @@ class ModelForTracking(MainModelAbstract):
                              .format(self.positional_encoding_key))
 
         # To tell our trainer what to send to the forward / loss methods.
-        self.forward_uses_streamlines = True
         self.loss_uses_streamlines = True
 
     def instantiate_direction_getter(self, dg_input_size):
@@ -595,27 +552,6 @@ class ModelForTracking(MainModelAbstract):
         })
         return p
 
-    @property
-    def params_for_json_prints(self):
-        params = super().params_for_json_prints
-        params.update({
-            'direction_getter': self.direction_getter.params,
-        })
-        return params
-
-    def forward(self, inputs, target_streamlines, **kw):
-        """
-        Params
-        ------
-        inputs: Any
-        target_streamlines: List[torch.tensor],
-            Batch of streamlines (only necessary to save estimated outputs,
-            if asked).
-        """
-        # Should end with:
-        # model_outputs = self.direction_getter(last_layer_output)
-        raise NotImplementedError
-
     def get_tracking_directions(self, model_outputs: Tensor, algo: str):
         """
         This needs to be implemented in order to use the model for
@@ -631,8 +567,11 @@ class ModelForTracking(MainModelAbstract):
         raise NotImplementedError
 
     def compute_loss(self, model_outputs, target_streamlines, **kw):
-        # Should probably use:
-        # target_dirs = compute_directions(target_streamlines, self.device)
+        # Hint: Should look like:
+        #  target_dirs = self.direction_getter.prepare_targets(
+        #           target_streamlines)
+        #  loss, nb_points = self.direction_getter.compute_loss(
+        #          model_outputs, target_dirs)
         raise NotImplementedError
 
     def move_to(self, device):

@@ -139,7 +139,7 @@ class DWIMLBatchIDSampler(Sampler):
         self.context_batch_size = None
 
     @property
-    def params(self):
+    def params_for_checkpoint(self):
         """
         All parameters. Contains at least all parameters that would be
         necessary to create this batch sampler again (except the dataset).

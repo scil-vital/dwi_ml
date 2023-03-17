@@ -88,7 +88,7 @@ def prepare_tracker(parser, args, device,
         model = TransformerSrcAndTgtModel.load_params_and_state(
             args.experiment_path + '/best_model', log_level=sub_logger_level)
         logging.info("* Formatted model: " +
-                     format_dict_to_str(model.params_for_json_prints))
+                     format_dict_to_str(model.params_for_checkpoint))
 
         logging.debug("Instantiating propagator.")
         theta = gm.math.radians(args.theta)
@@ -137,7 +137,7 @@ def main():
     # ----- Prepare values
     max_nbr_pts = int(args.max_length / args.step_size)
     min_nbr_pts = int(args.min_length / args.step_size)
-    max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size))
+    max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size)) - 1
 
     device = torch.device('cpu')
     if args.use_gpu:

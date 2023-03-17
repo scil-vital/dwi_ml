@@ -111,9 +111,11 @@ def compute_directions(streamlines):
     ------
     batch_streamlines: list[np.array]
             The streamlines (after data augmentation)
-    device: torch device
     """
-    batch_directions = [torch.diff(s, n=1, dim=0) for s in streamlines]
+    if isinstance(streamlines, list):
+        batch_directions = [torch.diff(s, n=1, dim=0) for s in streamlines]
+    else:  # Tensor:
+        batch_directions = torch.diff(streamlines, n=1, dim=0)
 
     return batch_directions
 
@@ -129,7 +131,6 @@ def normalize_directions(directions):
         # propagation will fail.
         directions = directions / torch.linalg.norm(directions, dim=-1,
                                                     keepdim=True)
-
     else:
         directions = [s / torch.linalg.norm(s, dim=-1, keepdim=True)
                       for s in directions]

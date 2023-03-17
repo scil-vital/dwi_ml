@@ -78,7 +78,7 @@ def add_tracking_options(p):
                               "tracking \nis stopped when a direction is more "
                               "than an angle t from preceding direction")
     track_g.add_argument('--max_invalid_len', metavar='M', type=float,
-                         default=1,
+                         default=0.001,
                          help="Maximum length without valid direction, in mm. "
                               "[%(default)s]")
     track_g.add_argument('--track_forward_only', action='store_true',

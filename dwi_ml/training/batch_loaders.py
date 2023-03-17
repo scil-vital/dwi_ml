@@ -185,13 +185,6 @@ class DWIMLAbstractBatchLoader:
         }
         return params
 
-    @property
-    def params_for_json_prints(self):
-        # All params are all right.
-        p = self.params_for_checkpoint
-        p.update({'type': str(type(self))})
-        return p
-
     def set_context(self, context: str):
         if self.context != context:
             if context == 'training':
@@ -364,8 +357,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         return states
 
     def load_batch_inputs(self, batch_streamlines: List[torch.tensor],
-                          streamline_ids_per_subj: Dict[int, slice],
-                          save_batch_input_mask: bool = False):
+                          streamline_ids_per_subj: Dict[int, slice]):
         """
         Get the DWI (depending on volume: as raw, SH, fODF, etc.) volume for
         each point in each streamline (+ depending on options: neighborhood,
@@ -400,9 +392,6 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             logger.debug("            Data loader: loading input volume.")
 
             streamlines = batch_streamlines[y_ids]
-            # We don't use the last coord because it is used only to
-            # compute the last target direction, it's not really an input
-            streamlines = [s[:-1, :] for s in streamlines]
 
             # Trilinear interpolation uses origin=corner, vox space, but ok
             # because in load_batch, we use sft.to_vox and sft.to_corner
@@ -410,14 +399,8 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             subbatch_x_data, input_mask = \
                 self.model.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,
-                    self.input_group_idx, prepare_mask=save_batch_input_mask)
+                    self.input_group_idx)
 
             batch_x_data.extend(subbatch_x_data)
-
-            if save_batch_input_mask:
-                logging.warning("Batch loader: DEBUGGING MODE. Returning mask "
-                                "together with inputs. Will only return first "
-                                "subject's data.")
-                return input_mask, subbatch_x_data
 
         return batch_x_data

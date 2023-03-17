@@ -74,7 +74,7 @@ def test_learn2track():
                              neighborhood_type=None, neighborhood_radius=None)
 
     logging.info("Transformer original model final parameters:" +
-                 format_dict_to_str(model.params_for_json_prints))
+                 format_dict_to_str(model.params_for_checkpoint))
 
     # Testing forward. No previous dirs
     model(fake_x, fake_s)

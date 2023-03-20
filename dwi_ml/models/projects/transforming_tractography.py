@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+from time import time
 from typing import Union, List, Tuple
 
 from dipy.data import get_sphere
@@ -35,19 +36,22 @@ from dwi_ml.models.utils.transformers_from_torch import (
 # to keep the hidden state in-between?
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
-# Data dimensions:
-# If batch_first=True, then the input and output tensors are provided as
-# (batch, seq, feature). If False, (seq, batch, feature).
-# Here prepared code with dim (nb streamlines, max_len, d_model), which
-# corresponds to True.
-BATCH_FIRST = True
+# Trying to help with memory.
+# When running out of memory, the error message is:
+# torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate XX (GPU 0;
+# X total capacity; X already allocated; X free; X reserved in total by Torch)
+# If reserved memory is >> allocated memory try setting max_split_size_mb to
+# avoid fragmentation. Value to which to limit is unclear.
+# Tested, does not seem to improve much.
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+CLEAR_CACHE = False
 
 
 def forward_padding(data: torch.tensor, expected_length):
     return pad(data, (0, 0, 0, expected_length - len(data)))
 
 
-def pad_and_stack_batch(unpadded_data, pad_first: bool, pad_length: int):
+def pad_and_stack_batch(data, pad_first: bool, pad_length: int):
     """
     Pad the list of tensors so that all streamlines have length max_len.
     Then concatenate all streamlines.
@@ -70,12 +74,9 @@ def pad_and_stack_batch(unpadded_data, pad_first: bool, pad_length: int):
         features or d_model if embedding is already done).
     """
     if pad_first:
-        padded_data = [forward_padding(unpadded_data[i], pad_length)
-                       for i in range(len(unpadded_data))]
-    else:
-        padded_data = unpadded_data
+        data = [forward_padding(data[i], pad_length) for i in range(len(data))]
 
-    return torch.stack(padded_data)
+    return torch.stack(data)
 
 
 class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
@@ -357,14 +358,14 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         return mask_future, mask_padding
 
-    def forward(self, batch_x: List[torch.tensor],
+    def forward(self, inputs: List[torch.tensor],
                 batch_streamlines: List[torch.tensor],
                 is_tracking=False, return_weights=False,
                 average_heads=False, unpack_outputs=False):
         """
         Params
         ------
-        batch_x: list[Tensor]
+        inputs: list[Tensor]
             One tensor per streamline. Size of each tensor =
             [nb_input_points, nb_features].
         batch_streamlines: list[Tensor]
@@ -406,58 +407,49 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         """
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
-        unpadded_lengths = np.asarray([len(i) for i in batch_x])
-        nb_streamlines = len(batch_streamlines)
+        unpadded_lengths = np.asarray([len(i) for i in inputs])
 
         # ----------- Checks
         if np.any(unpadded_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
 
-        # ----------- Ok. Start processing
-        try:
-            return self._run_forward(unpadded_lengths, batch_x,
-                                     batch_streamlines, is_tracking,
-                                     return_weights, average_heads,
-                                     unpack_outputs)
-        except RuntimeError:
-            logging.warning("There was a RunTimeError. Emptying cache and "
-                            "trying again!")
-            torch.cuda.empty_cache()
-            return self._run_forward(unpadded_lengths, batch_x,
-                                     batch_streamlines, is_tracking,
-                                     return_weights, average_heads,
-                                     unpack_outputs)
-
-    def _run_forward(self, unpadded_lengths, batch_x, batch_streamlines,
-                     is_tracking, return_weights, average_heads,
-                     unpack_outputs):
-        # Prepare masks and parameters.
-        nb_streamlines = len(batch_streamlines)
-
-        # Prepare masks and parameters
-
+        # ----------- Prepare masks and parameters
         # (Skip padding if all streamlines have the same length)
         use_padding = not np.all(unpadded_lengths == unpadded_lengths[0])
         batch_max_len = np.max(unpadded_lengths)
+        if CLEAR_CACHE:
+            now = time()
+            logging.debug("Tranformer: Maximal length in batch is {}"
+                          .format(batch_max_len))
+            torch.torch.cuda.empty_cache()
+            now2 = time()
+            logging.debug("Cleared cache in {} secs.".format(now2 - now))
         masks = self._prepare_masks(unpadded_lengths, use_padding,
                                     batch_max_len)
 
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
-        batch_t = self.prepare_targets_forward(batch_streamlines, is_tracking)
+        targets = self.prepare_targets_forward(batch_streamlines, is_tracking)
+        nb_streamlines = len(targets)
+
+        # ----------- Ok. Start processing
+        # Note. Tried calling torch.cuda.empty_cache() before.
+        # Not really recommended, and does not seem to help much.
+        # See many discussions in forums, such as
+        # https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/26
 
         # 1. Embedding + position encoding.
         # Run embedding on padded data. Necessary to make the model
         # adapt for the positional encoding.
-        embed_x, embed_t = self.run_embedding(batch_x, batch_t, use_padding,
-                                              batch_max_len)
-        embed_x, embed_t = self.dropout(embed_x), self.dropout(embed_t)
+        inputs, targets = self.run_embedding(inputs, targets, use_padding,
+                                             batch_max_len)
+        inputs, targets = self.dropout(inputs), self.dropout(targets)
 
         # 2. Main transformer
         outputs, weights = self._run_main_layer_forward(
-            embed_x, embed_t, masks, return_weights, average_heads)
+            inputs, targets, masks, return_weights, average_heads)
 
         # Unpad now and combine everything for the direction getter.
         if is_tracking:
@@ -495,19 +487,19 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         return outputs
 
-    def run_embedding(self, batch_x, batch_t, use_padding, batch_max_len):
+    def run_embedding(self, inputs, targets, use_padding, batch_max_len):
         """
         Pad + concatenate.
         Embedding. (Add SOS token to target.)
         Positional encoding.
         """
         # Inputs
-        inputs = pad_and_stack_batch(batch_x, use_padding, batch_max_len)
+        inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
         inputs = self.embedding_layer_x(inputs)
         inputs = self.position_encoding_layer(inputs)
 
         # Targets
-        targets = pad_and_stack_batch(batch_t, use_padding, batch_max_len)
+        targets = pad_and_stack_batch(targets, use_padding, batch_max_len)
         targets = self.embedding_layer_t(targets)
         targets = self.position_encoding_layer(targets)
 
@@ -601,7 +593,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
         encoder_layer = ModifiedTransformerEncoderLayer(
             self.d_model, self.nheads,
             dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
-            activation=self.activation, batch_first=BATCH_FIRST,
+            activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
         encoder = ModifiedTransformerEncoder(encoder_layer, n_layers_e,
                                              norm=None)
@@ -610,7 +602,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
         decoder_layer = ModifiedTransformerDecoderLayer(
             self.d_model, self.nheads,
             dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
-            activation=self.activation, batch_first=BATCH_FIRST,
+            activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
         decoder = ModifiedTransformerDecoder(decoder_layer, n_layers_d,
                                              norm=None)
@@ -618,7 +610,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
         self.modified_torch_transformer = ModifiedTransformer(
             self.d_model, self.nheads, n_layers_e, n_layers_d,
             self.ffnn_hidden_size, self.dropout_rate, self.activation,
-            encoder, decoder, batch_first=BATCH_FIRST,
+            encoder, decoder, batch_first=True,
             norm_first=self.norm_first)
 
     @property
@@ -641,16 +633,14 @@ class OriginalTransformerModel(AbstractTransformerModel):
         masks: Tuple
             Encoder's self-attention weights: [nb_streamlines, max_batch_len]
         """
-        mask_future, mask_padding = masks
+        # mask_future, mask_padding = masks
 
         outputs, sa_weights_encoder, sa_weights_decoder, mha_weights = \
             self.modified_torch_transformer(
                 src=embed_x, tgt=embed_t,
-                src_mask=mask_future, tgt_mask=mask_future,
-                memory_mask=mask_future,
-                src_key_padding_mask=mask_padding,
-                tgt_key_padding_mask=mask_padding,
-                memory_key_padding_mask=mask_padding,
+                src_mask=masks[0], tgt_mask=masks[0], memory_mask=masks[0],
+                src_key_padding_mask=masks[1], tgt_key_padding_mask=masks[1],
+                memory_key_padding_mask=masks[1],
                 return_weights=return_weights, average_heads=average_heads)
         return outputs, (sa_weights_encoder, sa_weights_decoder, mha_weights)
 

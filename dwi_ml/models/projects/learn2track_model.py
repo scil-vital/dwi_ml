@@ -245,38 +245,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         else:
             raise ValueError("Learn2track forward: wrong context!")
 
-        try:
-            # Apply model. This calls our model's forward function
-            # (the hidden states are not used here, neither as input nor
-            # outputs. We need them only during tracking).
-            model_outputs, new_states = self._run_forward(
-                inputs, target_streamlines, hidden_recurrent_states, points)
-        except RuntimeError:
-            # Training RNNs with variable-length sequences on the GPU can
-            # cause memory fragmentation in the pytorch-managed cache,
-            # possibly leading to "random" OOM RuntimeError during
-            # training. Emptying the GPU cache seems to fix the problem for
-            # now. We don't do it every update because it can be time
-            # consuming.
-            # If it fails again, try closing terminal and opening new one to
-            # empty cache better.
-            logging.warning("There was a RunTimeError. Emptying cache and "
-                            "trying again!")
-
-            torch.cuda.empty_cache()
-            model_outputs, new_states = self._run_forward(
-                inputs, target_streamlines, hidden_recurrent_states, points)
-
-        if return_state:
-            # Tracking
-            return model_outputs, new_states
-        else:
-            # Training
-            return model_outputs
-
-    def _run_forward(self, inputs, streamlines: List[torch.Tensor],
-                     hidden_recurrent_states, points):
-
         # Ordering of PackedSequence for 1) inputs, 2) previous dirs and
         # 3) targets (when computing loss) may not always be the same.
         # Pack inputs now and use that information for others.
@@ -301,7 +269,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # ==== 1. Previous dirs embedding ====
         if self.nb_previous_dirs > 0:
-            prev_dirs = compute_directions(streamlines)
+            prev_dirs = compute_directions(target_streamlines)
 
             if points == 'last':
                 point_idx = -1
@@ -358,7 +326,10 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             model_outputs = PackedSequence(model_outputs, batch_sizes,
                                            sorted_indices, unsorted_indices)
 
-        return model_outputs, out_hidden_recurrent_states
+        if return_state:
+            return model_outputs, out_hidden_recurrent_states
+        else:
+            return model_outputs
 
     def compute_loss(self, model_outputs: PackedSequence,
                      target_streamlines: List[torch.Tensor], **kw):

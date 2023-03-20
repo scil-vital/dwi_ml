@@ -10,6 +10,7 @@ Child classes of Torch Transformers. Changes are:
 - DecoderLayer: Idem
 
 """
+import logging
 from typing import Optional
 
 import torch
@@ -18,6 +19,10 @@ from torch.nn import (Transformer,
                       TransformerDecoderLayer, TransformerDecoder,
                       TransformerEncoderLayer, TransformerEncoder,
                       MultiheadAttention, Parameter)
+
+from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
+
+logger = logging.getLogger('model_logger')
 
 
 class ModifiedTransformer(Transformer):
@@ -33,6 +38,8 @@ class ModifiedTransformer(Transformer):
         """
         Copy-pasted from torch. Now returns weights.
         """
+        logger.debug("Entering main Transformer's forward.")
+        log_gpu_memory_usage(logger)
         memory, sa_weights_encoder = self.encoder(
             src, mask=src_mask, src_key_padding_mask=src_key_padding_mask,
             return_weights=return_weights, average_heads=average_heads)
@@ -97,7 +104,7 @@ class ModifiedTransformerDecoder(TransformerDecoder):
         Layers must be TransformerDecoderLayerGetWeightsNoSOS layers.
         """
         output = tgt
-        mha_weights = [None]*len(self.layers)
+        mha_weights = [None] * len(self.layers)
         sa_weights = [None] * len(self.layers)
 
         for mod, i in zip(self.layers, range(len(self.layers))):

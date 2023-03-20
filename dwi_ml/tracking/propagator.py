@@ -6,15 +6,13 @@ from dipy.io.stateful_tractogram import Space, Origin
 import numpy as np
 import torch
 
-from scilpy.tracking.propagator import AbstractPropagator
-
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.main_models import ModelWithDirectionGetter, MainModelOneInput
 
 logger = logging.getLogger('tracker_logger')
 
 
-class DWIMLPropagator(AbstractPropagator):
+class DWIMLPropagator:
     """
     Abstract class for propagator object. Responsible for sampling the final
     direction (by running the model).
@@ -31,8 +29,6 @@ class DWIMLPropagator(AbstractPropagator):
         - theta would be very complex to include here as a cone and will rather
         be used as stopping criteria, later.
     """
-    dataset: MultisubjectSubset
-
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: ModelWithDirectionGetter, step_size: float,
                  algo: str, theta: float, verify_opposite_direction: bool,
@@ -65,12 +61,13 @@ class DWIMLPropagator(AbstractPropagator):
         normalize_directions: bool
             If true, normalize directions.
         """
-        # Dataset will be managed differently. Not a DataVolume.
         # torch trilinear interpolation uses origin='corner', space=vox.
-        super().__init__(dataset, step_size, rk_order=1,
-                         space=Space.VOX, origin=Origin('corner'))
 
         # ----- Parameters
+        self.dataset = dataset
+        self.origin = Origin('corner')
+        self.space = Space.VOX
+        self.step_size = step_size
         self.subj_idx = subj_idx
         self.model = model
         self.model.set_context('tracking')
@@ -110,7 +107,7 @@ class DWIMLPropagator(AbstractPropagator):
         self.model.move_to(device=device)
         self.device = device
 
-    def reset_data(self, reload_data: bool = True):
+    def reset_data(self):
         """
         Reset data before starting a new process during multi-processing.
 
@@ -203,10 +200,6 @@ class DWIMLPropagator(AbstractPropagator):
 
     def propagate(self, lines, n_v_in):
         """
-        Overriding super()'s propagate. We don't support rk orders.
-        We skip this and directly call _sample_next_direction_or_go_straight.
-        Also, in our case, sub-methods return tensors.
-
         Params
         ------
         line: List[Tensor]

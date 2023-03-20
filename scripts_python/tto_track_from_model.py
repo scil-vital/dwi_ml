@@ -29,6 +29,7 @@ from dwi_ml.models.projects.transforming_tractography import OriginalTransformer
 from dwi_ml.tracking.projects.transformer_propagator import \
     TransformerPropagator
 from dwi_ml.tracking.tracker import DWIMLTracker
+from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,
                                    prepare_seed_generator,
@@ -71,15 +72,21 @@ def prepare_tracker(parser, args, device,
     with Timer("\n\nLoading data and preparing tracker...",
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
-        seed_generator, nbr_seeds, seeding_mask_header = \
+        seed_generator, nbr_seeds, seeding_mask_header, ref = \
             prepare_seed_generator(parser, args, hdf_handle)
-
-        logging.info("Loading tracking mask.")
-        tracking_mask, ref = prepare_tracking_mask(args, hdf_handle)
-
-        # Comparing tracking and seeding masks
-        is_header_compatible(ref, seeding_mask_header)
         res = seeding_mask_header['pixdim'][0:3]
+        dim = ref.shape
+
+        if args.tracking_mask_group is not None:
+            logging.info("Loading tracking mask.")
+            data_volume, ref2 = prepare_tracking_mask(args, hdf_handle)
+
+            # Comparing tracking and seeding masks
+            is_header_compatible(ref2, seeding_mask_header)
+
+            tracking_mask = TrackingMask(dim, data_volume)
+        else:
+            tracking_mask = TrackingMask(dim)
 
         logging.info("Loading subject's data.")
         subset, subj_idx = prepare_dataset_one_subj(args)

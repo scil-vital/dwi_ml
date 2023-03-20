@@ -11,16 +11,16 @@ import numpy as np
 import torch
 from dipy.io.stateful_tractogram import Space, Origin
 from dipy.tracking.streamlinespeed import compress_streamlines
-from scilpy.image.datasets import DataVolume
 from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.tracking.propagator import DWIMLPropagator
+from dwi_ml.tracking.tracking_mask import TrackingMask
 
 logger = logging.getLogger('tracker_logger')
 
 
 class DWIMLTracker:
-    def __init__(self, propagator: DWIMLPropagator, mask: DataVolume,
+    def __init__(self, propagator: DWIMLPropagator, mask: TrackingMask,
                  seed_generator: SeedGenerator, nbr_seeds, min_nbr_pts,
                  max_nbr_pts, max_invalid_dirs, compression_th=0.1,
                  nbr_processes=1, save_seeds=False, rng_seed=1234,
@@ -415,14 +415,14 @@ class DWIMLTracker:
         if invalid_direction_count > self.max_invalid_dirs:
             return False
 
-        # Checking if out of bound
-        if not self.mask.is_coordinate_in_bound(
-                *last_pos, space=self.space, origin=self.origin):
+        # Checking if out of bound using seeding mask
+        if not self.mask.is_vox_corner_in_bound(*last_pos):
             return False
 
-        # Checking if out of mask
-        if self.mask.get_value_at_coordinate(
-                *last_pos, space=self.space, origin=self.origin) <= 0:
-            return False
+        if self.mask.data_volume is not None:
+            # Checking if out of mask
+            if self.mask.data_volume.get_value_at_coordinate(
+                    *last_pos, space=self.space, origin=self.origin) <= 0:
+                return False
 
         return True

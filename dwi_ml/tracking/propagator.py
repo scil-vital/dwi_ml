@@ -8,6 +8,7 @@ import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.main_models import ModelWithDirectionGetter, MainModelOneInput
+from dwi_ml.tracking.tracking_mask import TrackingMask
 
 logger = logging.getLogger('tracker_logger')
 
@@ -324,16 +325,15 @@ class DWIMLPropagator:
         return next_dirs
 
     def finalize_streamlines(self, final_lines: List[torch.Tensor],
-                             v_in: List[torch.Tensor], mask):
+                             v_in: List[torch.Tensor],
+                             mask: TrackingMask = None):
         #  Looping. It should not be heavy.
         #  toDo. Create a tensor mask?
         for i in range(len(final_lines)):
             final_pos = final_lines[i][-1, :] + self.step_size * v_in[i]
 
-            if (final_pos is not None and
-                    mask.is_coordinate_in_bound(
-                        *final_pos.cpu().numpy(),
-                        space=self.space, origin=self.origin)):
+            if (final_pos is not None and mask.is_vox_corner_in_bound(
+                        *final_pos.cpu().numpy())):
                 final_lines[i] = torch.vstack((final_lines[i], final_pos))
 
         return final_lines
@@ -419,7 +419,8 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
                                      lines_that_continue]
 
     def finalize_streamlines(self, final_lines: List[torch.Tensor],
-                             n_v_in: List[torch.Tensor], mask):
+                             n_v_in: List[torch.Tensor],
+                             mask: TrackingMask = None):
         #  Looping. It should not be heavy.
         #  toDo. Create a tensor mask?
         final_pos = [line[-1, :] + self.step_size * v_in for line, v_in in
@@ -431,10 +432,8 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
             inputs = self._prepare_inputs_at_pos(final_pos)
 
         for i in range(len(final_lines)):
-            if (final_pos is not None and
-                    mask.is_coordinate_in_bound(
-                        *final_pos[i].cpu().numpy(),
-                        space=self.space, origin=self.origin)):
+            if (final_pos is not None and mask.is_vox_corner_in_bound(
+                        *final_pos[i].cpu().numpy())):
                 final_lines[i] = torch.vstack((final_lines[i], final_pos[i]))
 
                 # Adding this input, will be used at backward

@@ -42,5 +42,5 @@ setup(
     package_data={},
     data_files=[],
     entry_points={},
-    scripts=glob.glob("scripts_python/*.py") + glob.glob("scripts_python/tests/scripts_on_test_model/*.py")
+    scripts=glob.glob("scripts_python/*.py") + glob.glob("bash_utilities/*.sh") + glob.glob("scripts_python/tests/scripts_on_test_model/*.py")
 )

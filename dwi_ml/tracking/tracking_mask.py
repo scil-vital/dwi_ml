@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import numpy as np
 import torch
 
 from dwi_ml.data.processing.volume.interpolation import \
@@ -7,7 +6,7 @@ from dwi_ml.data.processing.volume.interpolation import \
 
 
 class TrackingMask:
-    def __init__(self, dim, data=None, interp: str = None):
+    def __init__(self, dim, data=None, interp: str = 'nearest'):
         # Required dim to check if out of bounds, even with no tracking mask
         self.higher_bound = torch.as_tensor(dim[0:3])
         self.lower_bound = torch.as_tensor([0, 0, 0])[None, :]
@@ -50,4 +49,4 @@ class TrackingMask:
     def is_in_mask(self, xyz):
         return torch.greater_equal(
             self.get_value_at_vox_corner_coordinate(xyz, 'nearest'),
-            torch.zeros(1, xyz.device))
+            torch.zeros(1, device=xyz.device))

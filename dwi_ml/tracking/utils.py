@@ -198,12 +198,12 @@ def prepare_tracking_mask(args, hdf_handle):
                        .format(args.tracking_mask_group, args.subj_id,
                                hdf_handle))
     tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
-    mask_data = np.array(tm_group['data'], dtype=np.float64)
+    mask_data = np.array(tm_group['data'], dtype=np.float64).squeeze()
     # mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
     affine = np.array(tm_group.attrs['affine'], dtype=np.float32)
     ref = nib.Nifti1Image(mask_data, affine)
 
-    mask = TrackingMask(mask_data, args.mask_interp)
+    mask = TrackingMask(mask_data.shape, mask_data, args.mask_interp)
 
     return mask, ref
 

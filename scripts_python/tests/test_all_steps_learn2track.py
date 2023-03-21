@@ -85,9 +85,9 @@ def test_execution_training_tracking(script_runner, experiments_path):
     # subjectX from training set.
     ret = script_runner.run(
         'l2t_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
-        out_tractogram, seeding_mask_group, tracking_mask_group, input_group,
+        out_tractogram, seeding_mask_group, input_group,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0', '--min_length', '0',
-        '--subset', 'training')
+        '--subset', 'training', '--tracking_mask_group', tracking_mask_group)
 
     assert ret.success
 
@@ -97,9 +97,10 @@ def test_execution_training_tracking(script_runner, experiments_path):
         out_tractogram = os.path.join(experiments_path, 'test_tractogram2.trk')
         ret = script_runner.run(
             'l2t_track_from_model.py', whole_experiment_path, hdf5_file,
-            subj_id, out_tractogram, seeding_mask_group, tracking_mask_group,
+            subj_id, out_tractogram, seeding_mask_group,
             input_group, '--algo', 'det', '--nt', '20', '--rng_seed', '0',
             '--min_length', '0', '--subset', 'training',
+            '--tracking_mask_group', tracking_mask_group,
             # Additional params compared to CPU:
             '--use_gpu', '--simultaneous_tracking', '3')
 

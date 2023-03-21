@@ -2,18 +2,14 @@
 import logging
 
 import numpy as np
-import torch
 
-from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.tracking.propagator import (DWIMLPropagatorOneInput,
-                                        DWIMLPropagatorwithStreamlineMemory)
+from dwi_ml.tracking.tracker import DWIMLTrackerOneInput
 
 logger = logging.getLogger('tracker_logger')
 
 
-class RecurrentPropagator(DWIMLPropagatorOneInput,
-                          DWIMLPropagatorwithStreamlineMemory):
+class RecurrentTracker(DWIMLTrackerOneInput):
     """
     To use a RNN for a generative process, the hidden recurrent states that
     would be passed (ex, h_(t-1), C_(t-1) for LSTM) need to be kept in memory
@@ -25,16 +21,8 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
     """
     model: Learn2TrackModel
 
-    def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
-                 model: Learn2TrackModel, input_volume_group: str,
-                 step_size: float, algo: str, theta: float, device=None,
-                 normalize_directions: bool = True):
-        super().__init__(dataset=dataset,
-                         subj_idx=subj_idx, model=model,
-                         input_volume_group=input_volume_group,
-                         step_size=step_size, algo=algo, theta=theta,
-                         device=device, verify_opposite_direction=False,
-                         normalize_directions=normalize_directions)
+    def __init__(self, **kw):
+        super().__init__(verify_opposite_direction=False, **kw)
 
         # Internal state:
         # - previous_dirs, already dealt with by super.
@@ -52,7 +40,7 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
 
         return super().prepare_forward(seeding_pos)
 
-    def prepare_backward(self, lines, forward_dir):
+    def prepare_backward(self, lines, seeds, forward_dir=None):
         """
         Preparing backward. We need to recompute the hidden recurrent state
         for this half-streamline.
@@ -78,7 +66,7 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         # Back to tracking context
         self.model.set_context('tracking')
 
-        return super().prepare_backward(lines, forward_dir)
+        return super().prepare_backward(lines, seeds, forward_dir)
 
     def _call_model_forward(self, inputs, lines):
         # For RNN, we need to send the hidden state too.
@@ -88,10 +76,11 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
 
         return model_outputs
 
-    def multiple_lines_update(self, can_continue: np.ndarray,
-                              stopping_lines_raw_idx: list, batch_size):
+    def update_memory_after_removing_lines(
+            self, can_continue: np.ndarray, new_stopping_lines_raw_idx: list,
+            batch_size: int):
         """
-        Removing rejected lines from hidden states
+        Removing rejected lines from hidden states.
 
         Params
         ------

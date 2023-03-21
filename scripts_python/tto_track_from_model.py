@@ -13,7 +13,6 @@ import dipy.core.geometry as gm
 from dipy.io.utils import is_header_compatible
 import h5py
 import nibabel as nib
-import torch
 
 from scilpy.io.utils import (add_sphere_arg,
                              assert_inputs_exist, assert_outputs_exist,
@@ -26,9 +25,8 @@ from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.projects.transforming_tractography import OriginalTransformerModel
-from dwi_ml.tracking.projects.transformer_propagator import \
-    TransformerPropagator
-from dwi_ml.tracking.tracker import DWIMLTracker
+from dwi_ml.tracking.projects.transformer_tracker import \
+    TransformerTracker
 from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,
@@ -60,8 +58,7 @@ def build_argparser():
     return p
 
 
-def prepare_tracker(parser, args, device,
-                    min_nbr_pts, max_nbr_pts, max_invalid_dirs):
+def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts, max_invalid_dirs):
     hdf_handle = h5py.File(args.hdf5_file, 'r')
 
     sub_logger_level = args.logging.upper()
@@ -95,21 +92,21 @@ def prepare_tracker(parser, args, device,
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 
-        logging.debug("Instantiating propagator.")
         theta = gm.math.radians(args.theta)
         step_size_vox, normalize_directions = prepare_step_size_vox(
             args.step_size, res)
-        propagator = TransformerPropagator(
-            dataset=subset, subj_idx=subj_idx, model=model,
-            input_volume_group=args.input_group, step_size=step_size_vox,
-            algo=args.algo, theta=theta, device=device)
 
         logging.debug("Instantiating tracker.")
-        tracker = DWIMLTracker(
-            propagator, tracking_mask, seed_generator, nbr_seeds, min_nbr_pts,
-            max_nbr_pts, max_invalid_dirs, args.compress, args.nbr_processes,
-            args.save_seeds, args.rng_seed, args.track_forward_only,
-            use_gpu=args.use_gpu,
+        tracker = TransformerTracker(
+            input_volume_group=args.input_group,
+            dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
+            seed_generator=seed_generator, nbr_seeds=nbr_seeds,
+            min_nbr_pts=min_nbr_pts, max_nbr_pts=max_nbr_pts,
+            max_invalid_dirs=max_invalid_dirs, compression_th=args.compress,
+            nbr_processes=args.nbr_processes, save_seeds=args.save_seeds,
+            rng_seed=args.rng_seed, track_forward_only=args.track_forward_only,
+            step_size=step_size_vox, algo=args.algo, theta=theta,
+            normalize_directions=normalize_directions, use_gpu=args.use_gpu,
             simultanenous_tracking=args.simultaneous_tracking,
             log_level=args.logging)
 
@@ -144,16 +141,7 @@ def main():
     min_nbr_pts = int(args.min_length / args.step_size)
     max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size)) - 1
 
-    device = torch.device('cpu')
-    if args.use_gpu:
-        if args.nbr_processes > 1:
-            logging.warning("Number of processes was set to {} but you "
-                            "are using GPU. Parameter ignored."
-                            .format(args.nbr_processes))
-        if torch.cuda.is_available():
-            device = torch.device('cuda')
-
-    tracker, ref = prepare_tracker(parser, args, device,
+    tracker, ref = prepare_tracker(parser, args,
                                    min_nbr_pts, max_nbr_pts, max_invalid_dirs)
 
     # ----- Track

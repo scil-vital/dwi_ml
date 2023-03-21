@@ -327,22 +327,17 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
 
         # Divide direction loss and EOS loss.
         if self.add_eos:
-            assert learned_directions.shape[1] == 4
-            assert target_dirs.shape[1] == 4, \
-                "Don't forget to run prepare_targets before compute_loss."
-
             # Keeping last dim as EOS
             # Just zeros and ones (sum of booleans).
             # We then divide the score to have this loss similar to the
             # directions loss.
+            learned_eos = torch.sigmoid(learned_directions[:, 3])
 
-            # Sigmoid = between 0 and 1.
-            # Difference = 1 - 0 --> 1 if erroneously stops.
-            #            = 0 - 1 --> -1 if erroneously continues.
-            # Pow2 = 0 if ok. 1 if error.
-            learned_eos = torch.sigmoid(learned_directions[:, -1])
-            losses_eos = torch.pow(learned_eos - target_dirs[:, -1], 2)
-            mean_loss_eos, _ = _mean_and_weight(losses_eos)
+            # Idea 1: mean squared difference
+            # Idea 2: Binary cross-entropy
+            mean_loss_eos = torch.nn.functional.binary_cross_entropy(
+                learned_eos, target_dirs[:, 3])
+
             learned_directions = learned_directions[:, :-1]
             target_dirs = target_dirs[:, :-1]
         else:

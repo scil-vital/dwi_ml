@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 
+import numpy as np
 import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
@@ -87,7 +88,8 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
 
         return model_outputs
 
-    def multiple_lines_update(self, lines_that_continue: list):
+    def multiple_lines_update(self, can_continue: np.ndarray,
+                              stopping_lines_raw_idx: list, batch_size):
         """
         Removing rejected lines from hidden states
 
@@ -97,20 +99,16 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
             List of indexes of lines that are kept.
         """
         # Hidden states: list[states] (One value per layer).
-        nb_streamlines = len(self.current_lines)
-        all_idx = torch.zeros(nb_streamlines)
-        all_idx[lines_that_continue] = 1
-
         if self.model.rnn_model.rnn_torch_key == 'lstm':
             # LSTM: States are tuples; (h_t, C_t)
             # Size of tensors are each [1, nb_streamlines, nb_neurons]
             self.hidden_recurrent_states = [
-                (hidden_states[0][:, lines_that_continue, :],
-                 hidden_states[1][:, lines_that_continue, :]) for
+                (hidden_states[0][:, can_continue, :],
+                 hidden_states[1][:, can_continue, :]) for
                 hidden_states in self.hidden_recurrent_states]
         else:
             #   GRU: States are tensors; h_t.
             #     Size of tensors are [1, nb_streamlines, nb_neurons].
             self.hidden_recurrent_states = [
-                hidden_states[:, lines_that_continue, :] for
+                hidden_states[:, can_continue, :] for
                 hidden_states in self.hidden_recurrent_states]

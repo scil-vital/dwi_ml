@@ -8,11 +8,11 @@ import numpy as np
 from dipy.io.streamline import save_tractogram
 
 from scilpy.io.utils import add_processes_arg
-from scilpy.image.datasets import DataVolume
 from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.tracking.tracking_mask import TrackingMask
 
 
 def add_mandatory_options_tracking(p):
@@ -199,11 +199,11 @@ def prepare_tracking_mask(args, hdf_handle):
                                hdf_handle))
     tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
     mask_data = np.array(tm_group['data'], dtype=np.float64)
-    mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
+    # mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
     affine = np.array(tm_group.attrs['affine'], dtype=np.float32)
     ref = nib.Nifti1Image(mask_data, affine)
 
-    mask = DataVolume(mask_data, mask_res, args.mask_interp)
+    mask = TrackingMask(mask_data, args.mask_interp)
 
     return mask, ref
 

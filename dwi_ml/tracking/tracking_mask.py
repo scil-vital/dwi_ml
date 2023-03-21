@@ -1,22 +1,53 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from scilpy.image.datasets import DataVolume
+import torch
+
+from dwi_ml.data.processing.volume.interpolation import \
+    torch_nearest_neighbor_interpolation, torch_trilinear_interpolation
 
 
 class TrackingMask:
-    def __init__(self, dim, data_volume: DataVolume = None):
+    def __init__(self, dim, data=None, interp: str = None):
         # Required dim to check if out of bounds, even with no tracking mask
-        self.dim = dim
+        self.higher_bound = torch.as_tensor(dim[0:3])
+        self.lower_bound = torch.as_tensor([0, 0, 0])[None, :]
+        self.interp = interp
 
-        # Optional tracking mask
-        self.data_volume = data_volume
-        if data_volume is not None:
-            assert dim == data_volume.dim
+        if data is not None:
+            assert data.shape == dim
+            self.data = torch.as_tensor(data)
+        else:
+            self.data = None
 
-    def is_vox_corner_in_bound(self, x, y, z):
+        if interp is not None:
+            assert interp in ['nearest', 'trilinear']
+
+    def move_to(self, device):
+        self.higher_bound = self.higher_bound.to(device)
+        self.lower_bound = self.lower_bound.to(device)
+        if self.data is not None:
+            self.data = self.data.to(device)
+
+    def is_vox_corner_in_bound(self, xyz: torch.Tensor):
+        """
+        xyz: Tensor
+            Coordinates in voxel space, corner origin. Of shape [n, 3].
+        """
         # Uses data_volume.is_coordinate_in_bound with space=VOX,
         # origin=Corner.
-        i, j, k = np.floor((x, y, z))  # vox to idx
-        return (0 <= i < (self.dim[0]) and
-                0 <= j < (self.dim[1]) and
-                0 <= k < (self.dim[2]))
+        xyz = torch.floor(xyz)  # vox to idx
+
+        return ~torch.logical_or(
+            torch.any(torch.less(xyz, self.lower_bound), dim=-1),
+            torch.any(torch.greater_equal(xyz, self.higher_bound), dim=-1))
+
+    def get_value_at_vox_corner_coordinate(self, xyz, interpolation):
+        if interpolation == 'nearest':
+            return torch_nearest_neighbor_interpolation(self.data, xyz)
+        else:
+            return torch_trilinear_interpolation(self.data, xyz)
+
+    def is_in_mask(self, xyz):
+        return torch.greater_equal(
+            self.get_value_at_vox_corner_coordinate(xyz, 'nearest'),
+            torch.zeros(1, xyz.device))

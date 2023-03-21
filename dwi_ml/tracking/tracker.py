@@ -44,7 +44,7 @@ class DWIMLTracker:
         self.nbr_seeds = nbr_seeds
         self.min_nbr_pts = min_nbr_pts
         self.max_nbr_pts = max_nbr_pts
-        self.max_invalid_dirs = max_invalid_dirs
+        self.max_invalid_dirs = torch.as_tensor(max_invalid_dirs)
         self.compression_th = compression_th
         self.save_seeds = save_seeds
         self.mmap_mode = None
@@ -52,6 +52,7 @@ class DWIMLTracker:
         self.track_forward_only = track_forward_only
         self.skip = 0  # Not supported yet.
         self.printing_frequency = 1
+        self.device = None
 
         # Space and origin
         self.origin = self.propagator.origin
@@ -82,16 +83,21 @@ class DWIMLTracker:
         self.use_gpu = use_gpu
         if use_gpu:
             if torch.cuda.is_available():
-                self.device = torch.device('cuda')
                 logging.info("We will be using GPU!")
+                self.move_to(torch.device('cuda'))
             else:
                 raise ValueError("You chose GPU (cuda) device but it is not "
                                  "available!")
         else:
             self.device = torch.device('cpu')
-        self.propagator.move_to(self.device)  # Sends model and data to device
 
         logger.setLevel(log_level)
+
+    def move_to(self, device):
+        self.device = device
+        self.propagator.move_to(self.device)  # Sends model and data to device
+        self.mask.move_to(device)
+        self.max_invalid_dirs.to(device)
 
     def _set_nbr_processes(self, nbr_processes):
         """
@@ -260,9 +266,6 @@ class DWIMLTracker:
         """
         Creating all seeds at once and propagating all streamlines together.
         """
-        assert torch.cuda.is_available()
-        assert self.device.type == 'cuda'
-
         random_generator, indices = self.seed_generator.init_generator(
             self.rng_seed, self.skip)
 
@@ -347,7 +350,8 @@ class DWIMLTracker:
         nb_streamlines = len(lines)
 
         # Monitoring
-        invalid_direction_counts = np.zeros(nb_streamlines)
+        invalid_direction_counts = torch.zeros(nb_streamlines,
+                                               device=self.device)
         final_tracking_info = [None] * nb_streamlines  # type: List[torch.Tensor]
         continuing_lines_rawidx = np.arange(nb_streamlines)
 
@@ -360,45 +364,36 @@ class DWIMLTracker:
         current_step = 0  # This count is reset for forward and backward
         while not all_lines_completed:
             current_step += 1
-            nb_streamlines_left = len(lines)
             logging.debug("Propagation step #{}".format(current_step))
 
             n_new_pos, tracking_info, valid_dirs = self.propagator.propagate(
                 lines, tracking_info)
 
-            # Verifying and appending
-            invalid_direction_counts[~valid_dirs.cpu().numpy()] += 1
+            # Verifying
+            invalid_direction_counts[~valid_dirs] += 1
+            can_continue = self._verify_stopping_criteria(
+                invalid_direction_counts, n_new_pos, lines).cpu().numpy()
 
-            all_lines_completed = True
-            continuing_lines = np.ones(nb_streamlines_left).astype(bool)
+            # If not ok, that line is finished.
+            new_stopping_lines_raw_idx = continuing_lines_rawidx[~can_continue]
             for i in range(len(lines)):
-                # In non-simultaneous, nbr pts is verified in the loop.
-                # Here, during forward, we can do that, but during backward,
-                # all streamlines have different lengths.
-                propagation_can_continue = (
-                        self._verify_stopping_criteria(
-                            invalid_direction_counts[i],
-                            n_new_pos[i].cpu().numpy()) and
-                        len(lines[i]) <= self.max_nbr_pts)
-
-                if propagation_can_continue:
-                    all_lines_completed = False
-                    lines[i] = torch.vstack((lines[i], n_new_pos[i]))
-                else:
-                    continuing_lines[i] = False
+                if ~can_continue[i]:
                     final_lines[continuing_lines_rawidx[i]] = lines[i]
                     final_tracking_info[continuing_lines_rawidx[i]] = \
                         tracking_info[i]
 
-            # Keeping only remaining lines
-            continuing_lines_subidx, = np.where(continuing_lines)
-            continuing_lines_rawidx = continuing_lines_rawidx[continuing_lines]
-            lines = [lines[i] for i in continuing_lines_subidx]
-            tracking_info = [tracking_info[i] for i in continuing_lines_subidx]
-            invalid_direction_counts = invalid_direction_counts[continuing_lines]
+            # Keeping only remaining lines (adding last pos)
+            lines = [torch.vstack((s, n_new_pos[i]))
+                     for i, s in enumerate(lines) if can_continue[i]]
+            tracking_info = tracking_info[can_continue]
+            continuing_lines_rawidx = continuing_lines_rawidx[can_continue]
+            invalid_direction_counts = invalid_direction_counts[can_continue]
 
             # Update model if needed.
-            self.propagator.multiple_lines_update(continuing_lines_subidx)
+            self.propagator.multiple_lines_update(
+                can_continue, new_stopping_lines_raw_idx, nb_streamlines)
+
+            all_lines_completed = ~np.any(can_continue)
 
         assert len(lines) == 0
         assert len(continuing_lines_rawidx) == 0
@@ -406,23 +401,33 @@ class DWIMLTracker:
         # Possible last step.
         final_lines = self.propagator.finalize_streamlines(
             final_lines, final_tracking_info, self.mask)
+        assert len(final_lines) == nb_streamlines
 
         return final_lines
 
-    def _verify_stopping_criteria(self, invalid_direction_count, last_pos):
+    def _verify_stopping_criteria(self, invalid_direction_count, n_last_pos,
+                                  lines):
+
+        n_last_pos = torch.vstack(n_last_pos)
+
+        # Checking total length. During forward: all the same length. Not
+        # during backward.
+        can_continue = torch.as_tensor(
+            np.asarray([len(s) for s in lines]) < self.max_nbr_pts,
+            device=self.device)
 
         # Checking number of consecutive invalid directions
-        if invalid_direction_count > self.max_invalid_dirs:
-            return False
+        can_continue = torch.logical_and(
+            can_continue, torch.less_equal(invalid_direction_count,
+                                           self.max_invalid_dirs))
 
         # Checking if out of bound using seeding mask
-        if not self.mask.is_vox_corner_in_bound(*last_pos):
-            return False
+        can_continue = torch.logical_and(
+            can_continue, self.mask.is_vox_corner_in_bound(n_last_pos))
 
-        if self.mask.data_volume is not None:
+        if self.mask.data is not None:
             # Checking if out of mask
-            if self.mask.data_volume.get_value_at_coordinate(
-                    *last_pos, space=self.space, origin=self.origin) <= 0:
-                return False
+            can_continue = torch.logical_and(
+                can_continue, self.mask.is_in_mask(n_last_pos))
 
-        return True
+        return can_continue

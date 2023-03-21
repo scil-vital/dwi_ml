@@ -192,7 +192,8 @@ class DWIMLPropagator:
 
         return v_in
 
-    def multiple_lines_update(self, lines_that_continue: list):
+    def multiple_lines_update(self, can_continue: np.ndarray,
+                              continuing_lines_rawidx: list, batch_size):
         """
         This is used by the tracker with simulatenous tracking, in case you
         need to update your model's memory when removing a streamline.
@@ -400,44 +401,41 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
 
         return super().prepare_backward(lines, forward_dir)
 
-    def multiple_lines_update(self, lines_that_continue: list):
-        if self.use_input_memory:
-            if len(lines_that_continue) != len(self.input_memory):
-                # During forward tracking, saving removed inputs for later.
-                if self.input_memory_for_backward is not None:
-                    lines_stopping = set(range(len(self.input_memory))) - \
-                                     set(lines_that_continue)
-                    remaining_ids = [
-                        i for i, x in enumerate(self.input_memory_for_backward)
-                        if x is None]
-                    for i in lines_stopping:
-                        self.input_memory_for_backward[remaining_ids[i]] = \
-                            self.input_memory[i]
+    def multiple_lines_update(
+            self, can_continue: np.ndarray, stopping_lines_raw_idx: list,
+            batch_size):
 
-                # Now updating input memory
-                self.input_memory = [self.input_memory[i] for i in
-                                     lines_that_continue]
+        if self.use_input_memory and np.any(~can_continue):
+            stopping_lines_sub_idx, = np.where(~can_continue)
+
+            if self.input_memory_for_backward is not None:
+                # Forward! Saving removed inputs for later.
+                for sr, ss in zip(stopping_lines_raw_idx,
+                                  stopping_lines_sub_idx):
+                    self.input_memory_for_backward[sr] = self.input_memory[ss]
+
+            # Now updating input memory
+            self.input_memory = [self.input_memory[i] for i in
+                                 range(len(can_continue)) if can_continue[i]]
 
     def finalize_streamlines(self, final_lines: List[torch.Tensor],
                              n_v_in: List[torch.Tensor],
                              mask: TrackingMask = None):
-        #  Looping. It should not be heavy.
-        #  toDo. Create a tensor mask?
         final_pos = [line[-1, :] + self.step_size * v_in for line, v_in in
                      zip(final_lines, n_v_in)]
         if self.input_memory_for_backward is not None:
+            # Forward! Adding this position for backward.
             # Prepare once all final positions. Some won't be used if out of
             # bounds but very rare; only if mask goes close to border. So this
             # is faster than looping
             inputs = self._prepare_inputs_at_pos(final_pos)
 
         for i in range(len(final_lines)):
-            if (final_pos is not None and mask.is_vox_corner_in_bound(
-                        *final_pos[i].cpu().numpy())):
+            if mask.is_vox_corner_in_bound(final_pos[i][None, :]):
                 final_lines[i] = torch.vstack((final_lines[i], final_pos[i]))
 
-                # Adding this input, will be used at backward
                 if self.input_memory_for_backward is not None:
+                    # Forward.
                     self.input_memory_for_backward[i] = torch.cat(
                         (self.input_memory_for_backward[i], inputs[i]),
                         dim=0)

@@ -27,6 +27,30 @@ idx_box = np.array([[0, 0, 0],
                     [1, 1, 1]], dtype=float)
 
 
+def torch_nearest_neighbor_interpolation(volume: torch.Tensor,
+                                         coords_vox_corner: torch.Tensor):
+    """
+    Parameters
+    ----------
+    volume : torch.Tensor with 3D or 4D shape
+        The input volume to interpolate from
+    coords_vox_corner : torch.Tensor with shape (N,3)
+        The coordinates where to interpolate. (Origin = corner, space = vox).
+
+    Returns
+    -------
+    output : torch.Tensor with shape (N, #modalities)
+        The list of interpolated values
+    """
+    # Coord corner: First voxel is coordinates from 0 to 0.99.
+    # Using floor value.
+    coords_vox_corner = torch.floor(coords_vox_corner)
+
+    return volume[coords_vox_corner[:, 0],
+                  coords_vox_corner[:, 1],
+                  coords_vox_corner[:, 2], :]
+
+
 def torch_trilinear_interpolation(volume: torch.Tensor,
                                   coords_vox_corner: torch.Tensor):
     """Evaluates the data volume at given coordinates using trilinear
@@ -55,10 +79,6 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
     ----------
     [1] https://spie.org/samples/PM159.pdf
     """
-    # Get device, and make sure volume and coords are using the same one
-    assert volume.device == coords_vox_corner.device,\
-        "volume on device: {}; " \
-        "coords on device: {}".format(volume.device, coords_vox_corner.device)
     device = volume.device
 
     # Send data to device

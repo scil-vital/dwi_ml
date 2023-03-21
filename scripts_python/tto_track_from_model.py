@@ -79,12 +79,10 @@ def prepare_tracker(parser, args, device,
 
         if args.tracking_mask_group is not None:
             logging.info("Loading tracking mask.")
-            data_volume, ref2 = prepare_tracking_mask(args, hdf_handle)
+            tracking_mask, ref2 = prepare_tracking_mask(args, hdf_handle)
 
             # Comparing tracking and seeding masks
             is_header_compatible(ref2, seeding_mask_header)
-
-            tracking_mask = TrackingMask(dim, data_volume)
         else:
             tracking_mask = TrackingMask(dim)
 

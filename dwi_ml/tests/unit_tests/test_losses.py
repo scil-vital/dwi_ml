@@ -67,7 +67,7 @@ def _independent_gaussian_log_prob_vector(x, mus, sigmas):
 
 def _get_random_vector(size=3):
     scaling = np.random.randint(1, 9)
-    return np.random.randn(size) * scaling
+    return (np.random.randn(size) * scaling).astype(np.float32)
 
 
 def _prepare_packedsequence(a):
@@ -96,8 +96,7 @@ def _verify_loss(streamline, fake_model_output, expected_loss, model,
 
     # Compute loss and verify
     computed_loss, _ = model.compute_loss(fake_model_output, targets)
-
-    assert torch.allclose(computed_loss, expected_loss, atol=tol), \
+    assert np.allclose(computed_loss, expected_loss, atol=tol), \
         "Expected loss {} but got {}.\n" \
         "      - Streamline: {}    ( = dir {})\n" \
         "      - Fake model output: {}\n" \
@@ -281,6 +280,11 @@ def test_fisher_von_mises():
     out_kappa = torch.as_tensor(np.exp(_get_random_vector(1)),
                                 dtype=torch.float32)
 
+    expected = -fisher_von_mises_log_prob_vector(out_means, out_kappa, out_means)
+    _verify_loss(streamline, (out_means, out_kappa), expected, model)
+
+    logging.debug("      - Special case: Kappa very small")
+    out_kappa = torch.as_tensor(1e-8, dtype=torch.float32)
     expected = -fisher_von_mises_log_prob_vector(out_means, out_kappa, out_means)
     _verify_loss(streamline, (out_means, out_kappa), expected, model)
 

@@ -49,7 +49,6 @@ TARGETS: Def: The target values (real Y) for the batch
              - Sequence models: [batch_size*seq_len, 3]
              - Local models: [batch_size, 3]
 """
-eps = 1e-6
 
 
 def init_2layer_fully_connected(input_size: int, output_size: int):
@@ -988,7 +987,7 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         # mu.shape : [flattened_sequences, 3]
         mu, kappa = learned_fisher_params
 
-        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs, eps)
+        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs)
         nll_losses = -log_prob
 
         return _mean_and_weight(nll_losses)

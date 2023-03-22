@@ -23,7 +23,3 @@ class TransformerPropagator(DWIMLPropagatorOneInput,
                          # Always fixed for Transformers:
                          verify_opposite_direction=False,
                          input_memory=True)
-
-    def _call_model_forward(self, inputs, lines):
-        with self.grad_context:
-            return self.model(inputs, lines, is_tracking=True)

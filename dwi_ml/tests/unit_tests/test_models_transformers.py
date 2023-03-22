@@ -40,6 +40,7 @@ def _prepare_ttst_model():
 
 def _run_original_model(model):
     logging.debug("\n****** Training")
+    model.set_context('training')
     # Testing forward. (Batch size = 2)
     output, weights = model(batch_x_training, batch_s_training,
                             return_weights=True)
@@ -53,7 +54,8 @@ def _run_original_model(model):
 
     # Testing tracking
     logging.debug("\n****** Tracking")
-    output = model(batch_x_tracking, batch_s_tracking, is_tracking=True)
+    model.set_context('tracking')
+    output = model(batch_x_tracking, batch_s_tracking)
     assert output.shape[0] == nb_streamlines
     assert output.shape[1] == 3  # Here, regression, should output x, y, z
     assert not isnan(output[0, 0])
@@ -64,6 +66,7 @@ def _run_original_model(model):
 def _run_ttst_model(model):
     # Testing forward.
     logging.debug("\n****** Training")
+    model.set_context('training')
     output, weights = model(batch_x_training, batch_s_training,
                             return_weights=True)
     assert output.shape[0] == total_nb_points_training
@@ -75,14 +78,14 @@ def _run_ttst_model(model):
 
     # Testing tracking
     logging.debug("\n****** Tracking")
-    output = model(batch_x_tracking, batch_s_tracking, is_tracking=True)
+    model.set_context('tracking')
+    output = model(batch_x_tracking, batch_s_tracking)
     assert output.shape[0] == nb_streamlines
     assert output.shape[1] == 3  # Here, regression, should output x, y, z
     assert not isnan(output[0, 0])
 
 
 def test_models():
-
     logging.debug("\n\nOriginal model!\n"
                   "-----------------------------")
 

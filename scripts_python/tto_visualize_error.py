@@ -40,8 +40,7 @@ def main():
     model.eval()
     grad_context = torch.no_grad()
     with grad_context:
-        outputs = model(batch_input, batch_streamlines,
-                        is_tracking=False, return_weights=False,
+        outputs = model(batch_input, batch_streamlines, return_weights=False,
                         unpack_outputs=True)
 
     # Get dirs

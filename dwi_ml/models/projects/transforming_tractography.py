@@ -237,11 +237,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # the nb of features.
         self.instantiate_direction_getter(d_model)
 
-        # Skipping computation of the last input point if not used for the
-        # loss.
-        if not self.direction_getter.add_eos:
-            self.skip_input_as_last_point = True
-
         assert self.loss_uses_streamlines
         self.forward_uses_streamlines = True
 
@@ -269,12 +264,16 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         return p
 
+    def set_context(self, context):
+        assert context in ['training', 'tracking', 'visu']
+        self._context = context
+
     def move_to(self, device):
         super().move_to(device)
         if self.token_sphere is not None:
             self.token_sphere.move_to(device)
 
-    def prepare_targets_forward(self, batch_streamlines, is_tracking):
+    def prepare_targets_forward(self, batch_streamlines):
         """
         batch_streamlines: List[Tensors]
         during_loss: bool
@@ -285,10 +284,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             EOS and SOS are added.
         """
         batch_dirs = compute_directions(batch_streamlines)
-
-        # Not keeping the last direction; only used for loss computation.
-        if not is_tracking:
-            batch_dirs = [s[:-1, :] for s in batch_dirs]
 
         if self.token_type == 'as_label':
             batch_dirs = add_label_as_last_dim(batch_dirs,
@@ -324,9 +319,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         Params
         ------
         unpadded_lengths: list
-            Length of each streamline's target sequence.
-            During tracking unpadded lenghts is considered the same for x and
-            t. If is_training, input is one point longer.
+            Length of each streamline.
         use_padding: bool,
             If false, skip padding (all streamlines must have the same length).
         batch_max_len: int
@@ -359,8 +352,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         return mask_future, mask_padding
 
     def forward(self, inputs: List[torch.tensor],
-                batch_streamlines: List[torch.tensor],
-                is_tracking=False, return_weights=False,
+                batch_streamlines: List[torch.tensor], return_weights=False,
                 average_heads=False, unpack_outputs=False):
         """
         Params
@@ -379,9 +371,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             adequately masked to hide future positions. The last direction is
             not used.
             - As target during training. The whole sequence is used.
-        is_tracking: bool
-            During tracking, the input sequences contain one more point than
-            the directions sequences.
         return_weights: bool
             If true, returns the weights of the attention layers.
         average_heads: bool
@@ -405,6 +394,9 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         weights: Tuple
             If return weigts: The weights (depending on the child model)
         """
+        if self._context is None:
+            raise ValueError("Please set context before usage.")
+
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
         unpadded_lengths = np.asarray([len(i) for i in inputs])
@@ -431,7 +423,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
-        targets = self.prepare_targets_forward(batch_streamlines, is_tracking)
+        targets = self.prepare_targets_forward(batch_streamlines)
         nb_streamlines = len(targets)
 
         # ----------- Ok. Start processing
@@ -452,7 +444,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             inputs, targets, masks, return_weights, average_heads)
 
         # Unpad now and combine everything for the direction getter.
-        if is_tracking:
+        if self._context == 'tracking':
             outputs = outputs.detach()
             # No need to actually unpad, we only take the last (unpadded)
             # point, newly created. (-1 for python indexing)

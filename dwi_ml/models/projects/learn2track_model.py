@@ -149,16 +149,30 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # 4. Direction getter:
         self.instantiate_direction_getter(self.rnn_model.output_size)
 
-        # Skipping computation of the last input point if not used for the
-        # loss.
-        if not self.direction_getter.add_eos:
-            self.skip_input_as_last_point = True
-
         # If multiple inheritance goes well, these params should be set
         # correctly
         if nb_previous_dirs > 0:
             assert self.forward_uses_streamlines
         assert self.loss_uses_streamlines
+
+    def set_context(self, context):
+        assert context in ['training', 'tracking', 'preparing_backward']
+        self._context = context
+
+    def prepare_streamlines_f(self, streamlines):
+        if self._context is None:
+            raise ValueError("Please set the context before running the model."
+                             "Ex: 'training'.")
+        elif self._context == 'training' and not self.direction_getter.add_eos:
+            # We don't use the last coord because it is used only to
+            # compute the last target direction, it's not really an input
+            streamlines = [s[:-1, :] for s in streamlines]
+        elif self._context == 'preparing_backward':
+            # We don't re-run the last point (i.e. the seed) because the first
+            # propagation step after backward = at that point.
+            streamlines = [s[:-1, :] for s in streamlines]
+
+        return streamlines
 
     @property
     def params_for_checkpoint(self):
@@ -182,7 +196,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     def forward(self, inputs: List[torch.tensor],
                 target_streamlines: List[torch.tensor] = None,
                 hidden_recurrent_states: tuple = None,
-                return_state: bool = False, context: str = 'training'):
+                return_state: bool = False):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -233,23 +247,14 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             GRU: States are tensors; h_t.
                 Size of tensors are [1, nb_streamlines, nb_neurons].
         """
-        if context == 'tracking':
-            points = 'last'
-        elif context == 'training':
-            if self.direction_getter.add_eos:
-                points = 'all'
-            else:
-                points = 'all_except_last'
-        elif context == 'whole':
-            points = 'all'
-        else:
-            raise ValueError("Learn2track forward: wrong context!")
 
         # Ordering of PackedSequence for 1) inputs, 2) previous dirs and
         # 3) targets (when computing loss) may not always be the same.
         # Pack inputs now and use that information for others.
         # Shape of inputs.data: nb_pts_total * nb_features
-        if points == 'last':
+        if self._context is None:
+            raise ValueError("Please set context before usage.")
+        elif self._context == 'tracking':
             # We should have only one input per streamline (at the last
             # coordinate). Using vstack rather than packing directly, to
             # supervise their order.
@@ -261,7 +266,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
                                     unsorted_indices)
         else:
-            # Streamlines and inputs have different lengths. Packing.
+            # Streamlines have different lengths. Packing.
             inputs = pack_sequence(inputs, enforce_sorted=False)
             batch_sizes = inputs.batch_sizes
             sorted_indices = inputs.sorted_indices
@@ -270,13 +275,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # ==== 1. Previous dirs embedding ====
         if self.nb_previous_dirs > 0:
             prev_dirs = compute_directions(target_streamlines)
-
-            if points == 'last':
-                point_idx = -1
-            else:
-                point_idx = None
-                if points == 'all_except_last':
-                    prev_dirs = [s[:-1, :] for s in prev_dirs]
+            point_idx = -1 if self._context == 'tracking' else None
 
             # Result will be a packed sequence.
             n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
@@ -322,7 +321,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # During tracking last point: keeping as one tensor.
         # During tracking backward: ignoring output anyway. Only computing
         # hidden state.
-        if not points == 'last':
+        if not self._context == 'tracking':
             model_outputs = PackedSequence(model_outputs, batch_sizes,
                                            sorted_indices, unsorted_indices)
 

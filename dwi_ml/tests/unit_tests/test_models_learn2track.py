@@ -48,6 +48,7 @@ def test_learn2track():
                  format_dict_to_str(model.params_for_checkpoint))
 
     # Testing forward. No previous dirs
+    model.set_context('training')
     model(batch_x, batch_s)
 
 

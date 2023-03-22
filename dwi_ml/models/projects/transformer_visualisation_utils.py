@@ -1,24 +1,18 @@
 # -*- coding: utf-8 -*-
 import argparse
-import itertools
 import logging
-import os
 
 import numpy as np
 import torch
 
 # Ref: # https://github.com/jessevig/bertviz
 from bertviz import model_view, head_view
-from dipy.io.streamline import save_tractogram
 
 from scilpy.io.streamlines import load_tractogram_with_reference
-from scilpy.io.utils import add_reference_arg, assert_inputs_exist, \
-    add_overwrite_arg, add_bbox_arg
+from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
 from dwi_ml.experiment_utils.prints import add_logging_arg
 from dwi_ml.models.projects.transforming_tractography import \
     AbstractTransformerModel, OriginalTransformerModel
@@ -68,9 +62,14 @@ def build_argparser_transformer_visu():
                    help="If set, average heads when visualising outputs")
 
     p.add_argument(
-        '--out_dir', default='./',
-        help="Output directory where to save file tto_visualize_weights.html,"
-             " as well as a copy of the jupyter notebook and config file")
+        '--out_dir',
+        help="Output directory where to save the html file, as well as a \n"
+             "copy of the jupyter notebook and config file.\n"
+             "Default: experiment_path/visu")
+    p.add_argument(
+        '--out_prefix', default='',
+        help="Prefix of the three output files. Names are tt*_visu.html, \n"
+             "tt*_visu.ipynb and tt*_visu.config.")
     p.add_argument(
         '--run_locally', action='store_true',
         help="Run locally. Output will probably not show, but this is useful "
@@ -98,9 +97,6 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
         root_level = logging.INFO
     logging.getLogger().setLevel(level=root_level)
 
-    assert_inputs_exist(parser, [args.hdf5_file, args.input_streamlines],
-                        args.reference)
-
     # Prepare data
     args.lazy = False
     args.cache_size = None
@@ -108,18 +104,24 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
     subset, subj_idx = prepare_dataset_one_subj(args)
 
     # Load SFT
+    logging.info("Loading reference SFT.")
     sft = load_tractogram_with_reference(parser, args, args.input_streamlines)
 
     # Choosing 1 streamline
     if len(sft) > 1:
         if pick_one:
-            streamline_ids = np.random.randint(0, len(sft), size=1)
+            streamline_ids = np.random.randint(0, len(sft), size=1)[0]
             logging.info("Tractogram contained more than one streamline. "
                          "Picking any one: #{}.".format(streamline_ids))
         else:
             raise NotImplementedError
     else:
         streamline_ids = 0
+
+    # Bug in dipy. If accessing only one streamline, then sft.streamlines is
+    # not a list of streamlines anymore, but the streamline itself. Thus,
+    # len(sft) = nb_points instead of 1.
+    streamline_ids = [streamline_ids]
     sft = sft[streamline_ids]
 
     # Resampling
@@ -132,23 +134,24 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
         sft = compress_sft(sft)
 
     # To tensor
-    batch_streamlines = [torch.as_tensor(s) for s in sft.streamlines]
+    streamlines = [torch.as_tensor(s, dtype=torch.float32)
+                   for s in sft.streamlines]
+    streamlines = model.prepare_streamlines_f(streamlines)
     logging.info("Loaded and prepared {} streamlines to be averaged for visu."
-                 .format(len(batch_streamlines)))
+                 .format(len(streamlines)))
 
-    # Prepare inputs (remove the last coordinate.)
+    # Prepare inputs
     group_idx = subset.volume_groups.index(args.input_group)
-    batch_input, _ = model.prepare_batch_one_input(
-        batch_streamlines, subset, subj_idx, group_idx)
-    logging.info("Loaded and prepared associated batch input for all {} "
-                 "streamlines.".format(len(batch_input)))
+    batch_input = model.prepare_batch_one_input(
+        streamlines, subset, subj_idx, group_idx)
 
     # Run model
+    logging.info("Loaded and prepared associated batch input. Running model.")
     model.eval()
     grad_context = torch.no_grad()
     with grad_context:
         _, weights = model(
-            batch_input, batch_streamlines, is_tracking=False,
+            batch_input, streamlines,
             return_weights=True, average_heads=args.average_heads)
     return sft, weights
 
@@ -163,6 +166,7 @@ def tto_visualize_weights(args, parser):
     logging.info("Loading model.")
     model = OriginalTransformerModel.load_params_and_state(
         args.experiment_path + '/best_model', log_level=sub_logger_level)
+    model.set_context('visu')
 
     sft, weights = load_data_run_model(parser, args, model)
     sa_encoder, sa_decoder, mha_cross = weights

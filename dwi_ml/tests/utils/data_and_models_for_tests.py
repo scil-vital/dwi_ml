@@ -5,7 +5,6 @@ import os
 from typing import List
 
 import torch
-from torch import Tensor
 from torch.nn.utils.rnn import pack_sequence
 
 from scilpy.io.fetcher import fetch_data, get_home
@@ -83,11 +82,6 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
                          log_level=log_level)
         self.fake_parameter = torch.nn.Parameter(torch.as_tensor(42.0))
 
-        # Not using last input; we don't have a target there.
-        # Saving computation time by skipping interpolation of the input at
-        # the last point.
-        self.skip_input_as_last_point = True
-
     def compute_loss(self, model_outputs, target_streamlines=None):
         mean = self.fake_parameter
         n = 30
@@ -162,8 +156,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
     def forward(self, inputs: List[torch.tensor],
                 target_streamlines: List[torch.tensor] = None,
                 hidden_reccurent_states: tuple = None,
-                return_state: bool = False, is_tracking: bool = False,
-                ) -> List[torch.tensor]:
+                return_state: bool = False) -> List[torch.tensor]:
         # Previous dirs
         if self.nb_previous_dirs > 0:
             target_dirs = compute_directions(target_streamlines)

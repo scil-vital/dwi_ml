@@ -396,8 +396,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
             # Trilinear interpolation uses origin=corner, vox space, but ok
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
-            subbatch_x_data, input_mask = \
-                self.model.prepare_batch_one_input(
+            subbatch_x_data = self.model.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,
                     self.input_group_idx)
 

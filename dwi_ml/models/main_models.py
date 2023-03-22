@@ -57,6 +57,26 @@ class MainModelAbstract(torch.nn.Module):
         self.forward_uses_streamlines = False
         self.loss_uses_streamlines = False
 
+        # Adding an additional context. Most models in here act differently
+        # during training (ex: no loss at the last coordinate = we skip it)
+        # vs during tracking (only the last coordinate is important) vs during
+        # visualisation (the whole streamline is important).
+        self._context = None
+
+    def set_context(self, context):
+        assert context in ['training', 'tracking']
+        self._context = context
+
+    def prepare_streamlines_f(self, streamlines):
+        """
+        Defines how to prepare the batch of streamlines before the forward
+        call. (Streamlines for the loss computation could be different).
+
+        Hint: If using a DirectionGetter, see prepare_targets_for_loss.
+        """
+        logging.warning("USED ABSTRACT!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        return streamlines
+
     def move_to(self, device):
         """
         Careful. Calling model.to(a_device) does not influence the self.device.
@@ -386,7 +406,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
         else:
             return n_prev_dirs_packed
 
-    def forward(self, inputs, target_streamlines: List[torch.tensor], **kw):
+    def forward(self, inputs, target_streamlines: List[torch.tensor],
+                **kw):
         """
         Params
         ------
@@ -408,18 +429,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 
 class MainModelOneInput(MainModelAbstract):
-    def __init__(self, **kw):
-        """
-        skip_input_as_last_point: bool
-            Change to True do skip input computation at the last coordinate of
-            the streamline. Ex: Useful if targets are directions (and there is
-            no EOS token): last point does not have a target.
-            If this is used for tracking, the propagator will ignore this
-            value.
-        """
-        super().__init__(**kw)
-        self.skip_input_as_last_point = False
-
     def prepare_batch_one_input(self, streamlines, subset, subj,
                                 input_group_idx, prepare_mask=False):
         """
@@ -442,17 +451,10 @@ class MainModelOneInput(MainModelAbstract):
 
         Returns
         -------
-        input_data: tuple
+        input_data: List[Tensor]
             One input tensor per streamline. Each input is of shape
             [nb_point x nb_features].
-        input_mask: tensor or None
-            In debugging mode, returns a mask of all voxels used as input.
         """
-        if self.skip_input_as_last_point:
-            # We don't use the last coord because it is used only to
-            # compute the last target direction, it's not really an input
-            streamlines = [s[:-1, :] for s in streamlines]
-
         # Flatten = concatenate signal for all streamlines to process
         # faster.
         flat_subj_x_coords = torch.cat(streamlines, dim=0)
@@ -478,7 +480,6 @@ class MainModelOneInput(MainModelAbstract):
         lengths = [len(s) for s in streamlines]
         subj_x_data = list(subj_x_data.split(lengths))
 
-        input_mask = None
         if prepare_mask:
             logging.warning("Model OneInput: DEBUGGING MODE. Returning "
                             "batch_streamlines and mask together with inputs.")
@@ -495,7 +496,8 @@ class MainModelOneInput(MainModelAbstract):
             for s in range(len(coords_torch)):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
-        return subj_x_data, input_mask
+            return subj_x_data, input_mask
+        return subj_x_data
 
 
 class ModelWithDirectionGetter(MainModelAbstract):
@@ -533,6 +535,21 @@ class ModelWithDirectionGetter(MainModelAbstract):
 
         # To tell our trainer what to send to the forward / loss methods.
         self.loss_uses_streamlines = True
+
+    def set_context(self, context):
+        assert context in ['training', 'tracking']
+        self._context = context
+
+    def prepare_streamlines_f(self, streamlines):
+        if self._context is None:
+            raise ValueError("Please set the context before running the model."
+                             "Ex: 'training'.")
+        elif self._context == 'training' and not self.direction_getter.add_eos:
+            # We don't use the last coord because it is used only to
+            # compute the last target direction, it's not really an input
+            logging.warning("REACHED HERE!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            streamlines = [s[:-1, :] for s in streamlines]
+        return streamlines
 
     def instantiate_direction_getter(self, dg_input_size):
         direction_getter_cls = keys_to_direction_getters[self.dg_key]

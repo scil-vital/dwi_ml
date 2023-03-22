@@ -39,8 +39,7 @@ def main():
     model.eval()
     grad_context = torch.no_grad()
     with grad_context:
-        outputs = model(batch_input, batch_streamlines,
-                        is_tracking=False, return_state=False)
+        outputs = model(batch_input, batch_streamlines, return_state=False)
 
     # Split outputs
     outputs = unpack_sequence(outputs)

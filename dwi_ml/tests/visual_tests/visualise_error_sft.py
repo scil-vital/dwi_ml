@@ -12,6 +12,7 @@ from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 
 from dwi_ml.experiment_utils.prints import add_logging_arg
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.tracking.utils import prepare_dataset_one_subj
 from dwi_ml.utils import add_resample_or_compress_arg, resample_or_compress
 
@@ -66,7 +67,8 @@ def build_argparser_visu_error(skip_exp=False):
     return p
 
 
-def prepare_batch_visu_error(p, args, model, check_data_loader=True):
+def prepare_batch_visu_error(p, args, model: MainModelAbstract,
+                             check_data_loader=True):
     """
     Loads the batch input from one subject.
     Loads the batch streamlines from a SFT rather than from the hdf5.
@@ -103,7 +105,8 @@ def prepare_batch_visu_error(p, args, model, check_data_loader=True):
 
     sft.to_vox()
     sft.to_corner()
-    batch_streamlines = [torch.as_tensor(s) for s in sft.streamlines]
+    streamlines = [torch.as_tensor(s) for s in sft.streamlines]
+    streamlines = model.prepare_streamlines_f(streamlines)
 
     #   2) On inputs (done in dataloader / trainer)
     args.lazy = False
@@ -111,13 +114,13 @@ def prepare_batch_visu_error(p, args, model, check_data_loader=True):
     logging.info("Loading subject.")
     subset, subj_idx = prepare_dataset_one_subj(args)
     group_idx = subset.volume_groups.index(input_group)
-    streamlines_minus_one = [s[:-1, :] for s in batch_streamlines]
+    streamlines_minus_one = [s[:-1, :] for s in streamlines]
     batch_input, _ = model.prepare_batch_one_input(
         streamlines_minus_one, subset, subj_idx, group_idx)
     logging.info("Loaded and prepared associated batch input for all {} "
                  "streamlines.".format(len(batch_input)))
 
-    return sft, batch_streamlines, batch_input
+    return sft, streamlines, batch_input
 
 
 def save_output_with_ref(out_dirs, args, sft):

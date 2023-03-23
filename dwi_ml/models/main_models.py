@@ -74,7 +74,6 @@ class MainModelAbstract(torch.nn.Module):
 
         Hint: If using a DirectionGetter, see prepare_targets_for_loss.
         """
-        logging.warning("USED ABSTRACT!!!!!!!!!!!!!!!!!!!!!!!!!!")
         return streamlines
 
     def move_to(self, device):
@@ -406,8 +405,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         else:
             return n_prev_dirs_packed
 
-    def forward(self, inputs, target_streamlines: List[torch.tensor],
-                **kw):
+    def forward(self, inputs, target_streamlines: List[torch.tensor], **kw):
         """
         Params
         ------
@@ -547,7 +545,6 @@ class ModelWithDirectionGetter(MainModelAbstract):
         elif self._context == 'training' and not self.direction_getter.add_eos:
             # We don't use the last coord because it is used only to
             # compute the last target direction, it's not really an input
-            logging.warning("REACHED HERE!!!!!!!!!!!!!!!!!!!!!!!!!!")
             streamlines = [s[:-1, :] for s in streamlines]
         return streamlines
 

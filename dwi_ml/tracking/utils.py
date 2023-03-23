@@ -77,10 +77,13 @@ def add_tracking_options(p):
                               "\na stopping criterion during propagation: "
                               "tracking \nis stopped when a direction is more "
                               "than an angle t from preceding direction")
-    track_g.add_argument('--max_invalid_len', metavar='M', type=float,
-                         default=0.001,
-                         help="Maximum length without valid direction, in mm. "
-                              "[%(default)s]")
+    track_g.add_argument('--max_invalid_nb_points', metavar='MAX', type=float,
+                         default=0,
+                         help="Maximum number of steps without valid "
+                              "direction, \nex: if threshold on ODF or max "
+                              "angles are reached.\n"
+                              "Default: 0, i.e. do not add points following "
+                              "an invalid direction.")
     track_g.add_argument('--track_forward_only', action='store_true',
                          help="If set, tracks in one direction only (forward) "
                               "given the initial \nseed. The direction is "

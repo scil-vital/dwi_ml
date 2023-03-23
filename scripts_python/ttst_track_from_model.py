@@ -7,7 +7,6 @@ This script allows tracking from a trained Transformer model.
 """
 import argparse
 import logging
-import math
 
 import dipy.core.geometry as gm
 from dipy.io.utils import is_header_compatible
@@ -24,7 +23,8 @@ from scilpy.tracking.utils import (add_seeding_options,
 from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.models.projects.transforming_tractography import TransformerSrcAndTgtModel
+from dwi_ml.models.projects.transforming_tractography import \
+    TransformerSrcAndTgtModel
 from dwi_ml.tracking.projects.transformer_tracker import \
     TransformerTracker
 from dwi_ml.tracking.tracking_mask import TrackingMask
@@ -58,7 +58,7 @@ def build_argparser():
     return p
 
 
-def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts, max_invalid_dirs):
+def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
     hdf_handle = h5py.File(args.hdf5_file, 'r')
 
     sub_logger_level = args.logging.upper()
@@ -102,10 +102,11 @@ def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts, max_invalid_dirs):
             dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
             seed_generator=seed_generator, nbr_seeds=nbr_seeds,
             min_nbr_pts=min_nbr_pts, max_nbr_pts=max_nbr_pts,
-            max_invalid_dirs=max_invalid_dirs, compression_th=args.compress,
-            nbr_processes=args.nbr_processes, save_seeds=args.save_seeds,
-            rng_seed=args.rng_seed, track_forward_only=args.track_forward_only,
-            step_size=step_size_vox, algo=args.algo, theta=theta,
+            max_invalid_dirs=args.max_invalid_nb_points,
+            compression_th=args.compress, nbr_processes=args.nbr_processes,
+            save_seeds=args.save_seeds, rng_seed=args.rng_seed,
+            track_forward_only=args.track_forward_only,
+            step_size_vox=step_size_vox, algo=args.algo, theta=theta,
             normalize_directions=normalize_directions, use_gpu=args.use_gpu,
             simultanenous_tracking=args.simultaneous_tracking,
             log_level=args.logging)
@@ -138,11 +139,9 @@ def main():
 
     # ----- Prepare values
     max_nbr_pts = int(args.max_length / args.step_size)
-    min_nbr_pts = int(args.min_length / args.step_size)
-    max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size)) - 1
+    min_nbr_pts = max(int(args.min_length / args.step_size), 1)
 
-    tracker, ref = prepare_tracker(parser, args,
-                                   min_nbr_pts, max_nbr_pts, max_invalid_dirs)
+    tracker, ref = prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts)
 
     # ----- Track
     track_and_save(tracker, args, ref)

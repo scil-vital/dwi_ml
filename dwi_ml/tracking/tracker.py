@@ -33,7 +33,7 @@ class DWIMLAbstractTracker:
                  model: ModelWithDirectionGetter, mask: TrackingMask,
                  seed_generator: SeedGenerator, nbr_seeds: int,
                  min_nbr_pts: int, max_nbr_pts: int, max_invalid_dirs: int,
-                 step_size: float, algo: str, theta: float,
+                 step_size_vox: float, algo: str, theta: float,
                  verify_opposite_direction: bool,
                  normalize_directions: bool = True,
                  compression_th=0.1, nbr_processes=1, save_seeds=False,
@@ -57,10 +57,11 @@ class DWIMLAbstractTracker:
         min_nbr_pts: int, minimal streamline length.
         max_nbr_pts: int, maximal streamline length.
         max_invalid_dirs: int
-            Maximal invalid direction. If >1 and a direction is invalid (Ex: If
-            EOS is chosen in a model), the streamline will continue straight
-            until reaching the number of invalid values allowed.
-        step_size: float, the step size for tracking, in voxel space.
+            Maximal invalid direction. If >0 and a direction is invalid (Ex: If
+            EOS is chosen in a model, or if the angle is too sharp), the
+            streamline will continue straight until reaching the number of
+            invalid values allowed. Default: 0.
+        step_size_vox: float, the step size for tracking, in voxel space.
         algo: str, 'det' or 'prob'
         theta: float
             Maximum angle (radians) allowed between two steps during sampling
@@ -95,9 +96,10 @@ class DWIMLAbstractTracker:
         self.printing_frequency = 1
         self.device = None
         self.dataset = dataset
-        self.step_size = step_size
+        self.step_size = step_size_vox
         self.subj_idx = subj_idx
         self.model = model
+        self.model.set_context('tracking')
 
         self.algo = algo
         if algo not in ['det', 'prob']:
@@ -105,7 +107,7 @@ class DWIMLAbstractTracker:
 
         self.theta = theta
         self.normalize_directions = normalize_directions
-        if not normalize_directions and step_size != 1:
+        if not normalize_directions and step_size_vox != 1:
             logging.warning("Tracker not normalizing directions obtained as "
                             "output from the model. Using a step size other "
                             "than 1 does not really make sense. You probably "
@@ -468,9 +470,9 @@ class DWIMLAbstractTracker:
                     final_lines[continuing_lines_rawidx[i]] = lines[i]
 
             # Keeping only remaining lines (adding last pos)
-            lines = [torch.vstack((s, n_new_pos[i]))
+            lines = [torch.vstack((s, n_new_pos[i, :]))
                      for i, s in enumerate(lines) if can_continue[i]]
-            previous_dir = previous_dir[can_continue]
+            previous_dir = previous_dir[can_continue, :]
             continuing_lines_rawidx = continuing_lines_rawidx[can_continue]
             invalid_direction_counts = invalid_direction_counts[can_continue]
 
@@ -498,13 +500,14 @@ class DWIMLAbstractTracker:
 
         Return
         ------
-        n_new_pos: list[Tensor(3,)]
-            The new segment position.
-        next_dirs: list[Tensor(3,)]
+        n_new_pos: Tensor(n, 3)
+            The new positions.
+        next_dirs: Tensor(n, 3)
             The new segment direction. None if no valid direction
             is found. Normalized if self.normalize_directions.
-        valid_dirs: Tensor(nb_streamlines,)
-            True if new_dir is valid.
+        valid_dirs: Tensor(n, )
+            True if new_dir is valid. Invalid: if the model returns NaN or if
+            the angle is too sharp.
         """
         last_pos = [line[-1, :] for line in lines]
 
@@ -523,11 +526,13 @@ class DWIMLAbstractTracker:
 
         next_dirs = self._verify_angle(next_dirs, previous_dirs)
 
+        # Copy previous dirs for invalid directions
         valid_dirs = ~torch.isnan(next_dirs[:, 0])
         next_dirs[~valid_dirs, :] = previous_dirs[~valid_dirs, :]
 
-        n_new_pos = [last_pos[i] + self.step_size * next_dirs[i, :] for i in
-                     range(len(last_pos))]
+        # Get new positions
+        last_pos = torch.vstack(last_pos)
+        n_new_pos = last_pos + self.step_size * next_dirs
 
         return n_new_pos, next_dirs, valid_dirs
 
@@ -639,8 +644,6 @@ class DWIMLAbstractTracker:
 
     def _verify_stopping_criteria(self, invalid_direction_count, n_last_pos,
                                   lines):
-
-        n_last_pos = torch.vstack(n_last_pos)
 
         # Checking total length. During forward: all the same length. Not
         # during backward.
@@ -796,7 +799,5 @@ class DWIMLTrackerOneInput(DWIMLAbstractTracker):
             List of n "streamlines" composed of one point.
         """
         n_pos = [pos[None, :] for pos in n_pos]
-        inputs, _ = self.model.prepare_batch_one_input(
+        return self.model.prepare_batch_one_input(
             n_pos, self.dataset, self.subj_idx, self.volume_group)
-
-        return inputs

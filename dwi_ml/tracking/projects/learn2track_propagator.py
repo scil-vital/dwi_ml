@@ -60,11 +60,10 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
                      "(reversed) first half.")
 
         # Must re-run the model from scratch to get the hidden states
-        # But! Not including the last point (i.e. the seed). Else, the
-        # output + hidden state = the next point rather than the current point.
-        # First propagation step after backward will be at the seed coordinate.
-        lines = [s[:-1, :] for s in lines]
-        all_inputs, _ = self.model.prepare_batch_one_input(
+        # But! Not including the last point (i.e. the seed).
+        self.model.set_context('preparing_backward')
+        lines = self.model.prepare_streamlines_f(lines)
+        all_inputs = self.model.prepare_batch_one_input(
             lines, self.dataset, self.subj_idx, self.volume_group)
 
         # all_inputs is a List of
@@ -73,7 +72,10 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         # No hidden state given = running model on all points.
         with self.grad_context:
             _, self.hidden_recurrent_states = self.model(
-                all_inputs, lines, context='whole', return_state=True)
+                all_inputs, lines, return_state=True)
+
+        # Back to tracking context
+        self.model.set_context('tracking')
 
         return super().prepare_backward(lines, forward_dir)
 
@@ -81,8 +83,7 @@ class RecurrentPropagator(DWIMLPropagatorOneInput,
         # For RNN, we need to send the hidden state too.
         with self.grad_context:
             model_outputs, self.hidden_recurrent_states = self.model(
-                inputs, lines, self.hidden_recurrent_states,
-                return_state=True, context='tracking')
+                inputs, lines, self.hidden_recurrent_states, return_state=True)
 
         return model_outputs
 

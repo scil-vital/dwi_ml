@@ -69,3 +69,6 @@ target/
 # Vim
 *.swp
 *.swo
+
+# dwi_ml stuff
+.ipynb_config/

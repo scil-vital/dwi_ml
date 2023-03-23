@@ -5,10 +5,13 @@
 # Scilpy must be installed manually first.
 # (or run pip install -r requirements_github.txt)
 
+bertviz~=1.4.0  # For transformer's visu
 torch==1.13.*
 tqdm==4.64.*
 comet-ml==3.21.*
 contextlib2==21.6.0
+jupyterlab>=3.6.2  # For transformer's visu
+IProgress>=0.4     # For jupyter with tdqm
 nested_lookup==0.2.25
 nose==1.3.*
 sphinx_rtd_theme==0.4.* # no longer a hard dependency since version 1.4.0

@@ -42,6 +42,36 @@ def fetch_testing_data():
     return testing_data_dir
 
 
+def create_test_batch():
+    logging.debug("Creating batch: 2 streamlines, the first has 4 points "
+                  "and the second, 3. Input: 4 features per point.")
+
+    # dwi1 : data for the 3 first points
+    flattened_dwi1 = torch.as_tensor([[10., 11., 12., 13.],
+                                      [50., 51., 52., 53.],
+                                      [60., 62., 62., 63.]])
+    streamline1 = torch.as_tensor([[0.1, 0.2, 0.3],
+                                   [1.1, 11.2, 1.3],
+                                   [2.1, 2.2, 2.3],
+                                   [3.1, 3.2, 3.3]])
+
+    # dwi2 : data for the 2 first points
+    flattened_dwi2 = torch.as_tensor([[10., 11., 12., 13.],
+                                      [50., 51., 52., 53.]])
+    streamline2 = torch.as_tensor([[10.1, 10.2, 10.3],
+                                   [11.1, 11.2, 11.3],
+                                   [12.1, 12.2, 12.3]])
+
+    batch_x_training = [flattened_dwi1, flattened_dwi2]
+    batch_s_training = [streamline1, streamline2]
+
+    batch_x_tracking = [flattened_dwi1[0:2, :], flattened_dwi2[0:2, :]]
+    batch_s_tracking = [streamline1[0:2, :], streamline2[0:2, :]]
+
+    return (batch_x_training, batch_x_tracking,
+            batch_s_training, batch_s_tracking)
+
+
 class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
     def __init__(self, experiment_name: str = 'test',
                  neighborhood_type: str = None, neighborhood_radius=None,
@@ -51,11 +81,6 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
                          neighborhood_radius=neighborhood_radius,
                          log_level=log_level)
         self.fake_parameter = torch.nn.Parameter(torch.as_tensor(42.0))
-
-        # Not using last input; we don't have a target there.
-        # Saving computation time by skipping interpolation of the input at
-        # the last point.
-        self.skip_input_as_last_point = True
 
     def compute_loss(self, model_outputs, target_streamlines=None):
         mean = self.fake_parameter
@@ -131,8 +156,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
     def forward(self, inputs: List[torch.tensor],
                 target_streamlines: List[torch.tensor] = None,
                 hidden_reccurent_states: tuple = None,
-                return_state: bool = False, is_tracking: bool = False,
-                ) -> List[torch.tensor]:
+                return_state: bool = False) -> List[torch.tensor]:
         # Previous dirs
         if self.nb_previous_dirs > 0:
             target_dirs = compute_directions(target_streamlines)

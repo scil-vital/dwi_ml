@@ -1,44 +1,17 @@
 # -*- coding: utf-8 -*-
 import logging
 
-import numpy as np
-import torch
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from torch.nn.utils.rnn import pack_sequence
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.models.projects.learn2track_model import StackedRNN
+from dwi_ml.tests.utils.data_and_models_for_tests import create_test_batch
 
-
-def _create_batch():
-    logging.debug("Creating batch: 2 streamlines, the first has 4 points "
-                  "and the second, 3. Input: 4 features per point.")
-
-    # dwi1 : data for the 3 first points
-    flattened_dwi1 = [[10., 11., 12., 13.],
-                      [50., 51., 52., 53.],
-                      [60., 62., 62., 63.]]
-    streamline1 = np.asarray([[0.1, 0.2, 0.3],
-                              [1.1, 1.2, 1.3],
-                              [2.1, 2.2, 2.3],
-                              [3.1, 3.2, 3.3]])
-
-    # dwi2 : data for the 2 first points
-    flattened_dwi2 = [[10., 11., 12., 13.],
-                      [50., 51., 52., 53.]]
-    streamline2 = np.asarray([[10.1, 10.2, 10.3],
-                              [11.1, 11.2, 11.3],
-                              [12.1, 12.2, 12.3]])
-
-    batch_x = [torch.as_tensor(flattened_dwi1),
-               torch.as_tensor(flattened_dwi2)]
-    batch_s = [streamline1, streamline2]
-
-    return batch_x, batch_s
+batch_x, _, batch_s, _ = create_test_batch()
 
 
 def test_stacked_rnn():
-    batch_x, _ = _create_batch()
     batch_x_packed = pack_sequence(batch_x, enforce_sorted=False)
 
     model = StackedRNN('gru', input_size=4, layer_sizes=[3, 3],
@@ -57,8 +30,6 @@ def test_stacked_rnn():
 
 
 def test_learn2track():
-    fake_x, fake_s = _create_batch()
-
     model = Learn2TrackModel('test', nb_features=4, rnn_layer_sizes=[3, 3],
                              log_level='DEBUG',
                              # Using default from script:
@@ -77,7 +48,8 @@ def test_learn2track():
                  format_dict_to_str(model.params_for_checkpoint))
 
     # Testing forward. No previous dirs
-    model(fake_x, fake_s)
+    model.set_context('training')
+    model(batch_x, batch_s)
 
 
 if __name__ == '__main__':

@@ -6,7 +6,8 @@ import torch
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 from torch.nn.utils.rnn import unpack_sequence
 
-from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from dwi_ml.models.projects.transforming_tractography import \
+    OriginalTransformerModel
 from dwi_ml.tests.visual_tests.visualise_error_sft import \
     build_argparser_visu_error, \
     prepare_batch_visu_error, save_output_with_ref
@@ -28,7 +29,7 @@ def main():
 
     # Load model
     logging.info("Loading model.")
-    model = Learn2TrackModel.load_params_and_state(
+    model = OriginalTransformerModel.load_params_and_state(
         args.experiment_path + '/best_model', log_level=sub_logger_level)
 
     # Prepare batch
@@ -39,10 +40,10 @@ def main():
     model.eval()
     grad_context = torch.no_grad()
     with grad_context:
-        outputs = model(batch_input, batch_streamlines, return_state=False)
+        outputs = model(batch_input, batch_streamlines, return_weights=False,
+                        unpack_outputs=True)
 
-    # Split outputs
-    outputs = unpack_sequence(outputs)
+    # Get dirs
     out_dirs = [model.get_tracking_directions(s_output, algo='det')
                 for s_output in outputs]
 

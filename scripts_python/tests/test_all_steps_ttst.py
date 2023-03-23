@@ -96,3 +96,12 @@ def test_execution(script_runner, experiments_path):
         '--algo', 'det', '--nt', '2', '--rng_seed', '0',
         '--min_length', '0', '--subset', 'training')
     assert ret.success
+
+    logging.info("************ TESTING VISUALIZE WEIGHTS ************")
+    in_sft = os.path.join(data_dir, 'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
+    ret = script_runner.run(
+        'ttst_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
+        input_group, in_sft, '--step_size', '0.5',
+        '--subset', 'training', '--logging', 'INFO', '--run_locally')
+    assert ret.success
+

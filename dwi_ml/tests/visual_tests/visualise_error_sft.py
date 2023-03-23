@@ -9,9 +9,10 @@ import numpy as np
 import torch
 from dipy.io.streamline import save_tractogram
 from scilpy.io.streamlines import load_tractogram_with_reference
-from scilpy.io.utils import add_reference_arg, add_overwrite_arg
+from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 
 from dwi_ml.experiment_utils.prints import add_logging_arg
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.tracking.utils import prepare_dataset_one_subj
 from dwi_ml.utils import add_resample_or_compress_arg, resample_or_compress
 
@@ -59,20 +60,21 @@ def build_argparser_visu_error(skip_exp=False):
                         "'training' or 'validation'.")
     add_resample_or_compress_arg(p)
     add_reference_arg(p)
+    add_bbox_arg(p)
     add_overwrite_arg(p)
     add_logging_arg(p)
 
     return p
 
 
-def prepare_batch_visu_error(p, args, model, check_data_loader=True):
+def prepare_batch_visu_error(p, args, model: MainModelAbstract,
+                             check_data_loader=True):
     """
     Loads the batch input from one subject.
     Loads the batch streamlines from a SFT rather than from the hdf5.
     """
     # Load SFT, possibly pick one streamline
-    sft = load_tractogram_with_reference(p, args, args.input_sft,
-                                         bbox_check=True)
+    sft = load_tractogram_with_reference(p, args, args.input_sft)
 
     if len(sft) > 1 and args.pick_one:
         streamline_ids = np.random.randint(0, len(sft), size=1)
@@ -103,7 +105,8 @@ def prepare_batch_visu_error(p, args, model, check_data_loader=True):
 
     sft.to_vox()
     sft.to_corner()
-    batch_streamlines = [torch.as_tensor(s) for s in sft.streamlines]
+    streamlines = [torch.as_tensor(s) for s in sft.streamlines]
+    streamlines = model.prepare_streamlines_f(streamlines)
 
     #   2) On inputs (done in dataloader / trainer)
     args.lazy = False
@@ -111,13 +114,13 @@ def prepare_batch_visu_error(p, args, model, check_data_loader=True):
     logging.info("Loading subject.")
     subset, subj_idx = prepare_dataset_one_subj(args)
     group_idx = subset.volume_groups.index(input_group)
-    streamlines_minus_one = [s[:-1, :] for s in batch_streamlines]
+    streamlines_minus_one = [s[:-1, :] for s in streamlines]
     batch_input, _ = model.prepare_batch_one_input(
         streamlines_minus_one, subset, subj_idx, group_idx)
     logging.info("Loaded and prepared associated batch input for all {} "
                  "streamlines.".format(len(batch_input)))
 
-    return sft, batch_streamlines, batch_input
+    return sft, streamlines, batch_input
 
 
 def save_output_with_ref(out_dirs, args, sft):

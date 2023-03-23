@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+from time import time
 from typing import Union, List, Tuple
 
 from dipy.data import get_sphere
@@ -35,17 +36,47 @@ from dwi_ml.models.utils.transformers_from_torch import (
 # to keep the hidden state in-between?
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
-# Data dimensions:
-# If batch_first=True, then the input and output tensors are provided as
-# (batch, seq, feature). If False, (seq, batch, feature).
-# Here prepared code with dim (nb streamlines, max_len, d_model), which
-# corresponds to True.
-BATCH_FIRST = True
-SOS_TOKEN = 0.0
+# Trying to help with memory.
+# When running out of memory, the error message is:
+# torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate XX (GPU 0;
+# X total capacity; X already allocated; X free; X reserved in total by Torch)
+# If reserved memory is >> allocated memory try setting max_split_size_mb to
+# avoid fragmentation. Value to which to limit is unclear.
+# Tested, does not seem to improve much.
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+CLEAR_CACHE = False
 
 
 def forward_padding(data: torch.tensor, expected_length):
     return pad(data, (0, 0, 0, expected_length - len(data)))
+
+
+def pad_and_stack_batch(data, pad_first: bool, pad_length: int):
+    """
+    Pad the list of tensors so that all streamlines have length max_len.
+    Then concatenate all streamlines.
+
+    Params
+    ------
+    unpadded_data: list[Tensor]
+        Len: nb streamlines. Shape of each tensor: nb points x nb features.
+    pad_first: bool
+        If false, padding is skipped. (Ex: If all streamlines already
+        contain the right number of points.)
+    pad_length: int
+        Expected final lengths of streamlines.
+
+    Returns
+    -------
+    formatted_x: Tensor
+        Shape [nb_streamlines, max_len, nb_features] where nb features is
+        the size of the batch input at this point (ex, initial number of
+        features or d_model if embedding is already done).
+    """
+    if pad_first:
+        data = [forward_padding(data[i], pad_length) for i in range(len(data))]
+
+    return torch.stack(data)
 
 
 class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
@@ -64,18 +95,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
     https://kazemnejad.com/blog/transformer_architecture_positional_encoding/
     the embedding probably adapts to leave place for the positional encoding.
     """
-    # mask_sos: bool
-    #       The input to the decoder is the shifted target sequence with an
-    #       additional Start Of Sequence (SOS) token in the first position.
-    #       Considering as we do not work with a dictionary of token, this is
-    #       not straightforward here. We use (0,0,..., 0) as SOS value. We can
-    #       hope that the model will learn its signification, or hide it in the
-    #       attention.
-    # Option mask_sos does not work yet. Creates some nan in the attention.
-    # We can solve the forward propagation with nantonum (setting to 0)
-    # but the backward propagation fails.
-    mask_sos = False
-
     def __init__(self,
                  experiment_name: str,
                  # INPUTS IN ENCODER
@@ -218,11 +237,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # the nb of features.
         self.instantiate_direction_getter(d_model)
 
-        # Skipping computation of the last input point if not used for the
-        # loss.
-        if not self.direction_getter.add_eos:
-            self.skip_input_as_last_point = True
-
         assert self.loss_uses_streamlines
         self.forward_uses_streamlines = True
 
@@ -250,12 +264,16 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         return p
 
+    def set_context(self, context):
+        assert context in ['training', 'tracking', 'visu']
+        self._context = context
+
     def move_to(self, device):
         super().move_to(device)
         if self.token_sphere is not None:
             self.token_sphere.move_to(device)
 
-    def prepare_targets_forward(self, batch_streamlines, is_tracking):
+    def prepare_targets_forward(self, batch_streamlines):
         """
         batch_streamlines: List[Tensors]
         during_loss: bool
@@ -267,10 +285,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         """
         batch_dirs = compute_directions(batch_streamlines)
 
-        # Not keeping the last direction; only used for loss computation.
-        if not is_tracking:
-            batch_dirs = [s[:-1, :] for s in batch_dirs]
-
         if self.token_type == 'as_label':
             batch_dirs = add_label_as_last_dim(batch_dirs,
                                                add_sos=True, add_eos=False)
@@ -280,37 +294,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                 add_sos=True, add_eos=False, to_one_hot=True)
 
         return batch_dirs
-
-    @staticmethod
-    def _stack_batch(unpadded_data, pad_first: bool, pad_length: int):
-        """
-        Pad the batch inputs and targets so that all streamlines have lenth
-        max_len. Then concatenate all streamlines.
-
-        Params
-        ------
-        batch_x: list[Tensor]
-            Len: nb streamlines. Shape of each tensor: nb points x nb features.
-        pad_first: bool
-            If false, padding is skipped. (Ex: If all streamlines already
-            contain the right number of points.
-        pad_length: int
-            Expected final lengths of streamlines.
-
-        Returns
-        -------
-        formatted_x: Tensor
-            Shape [nb_streamlines, max_len, nb_features] where nb features is
-            the size of the batch input at this point (ex, initial number of
-            features or d_model if embedding is already done).
-        """
-        if pad_first:
-            padded_data = [forward_padding(unpadded_data[i], pad_length)
-                           for i in range(len(unpadded_data))]
-        else:
-            padded_data = unpadded_data
-
-        return torch.stack(padded_data)
 
     def _generate_future_mask(self, sz):
         """DO NOT USE FLOAT, their code had a bug (see issue #92554. Fixed in
@@ -336,9 +319,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         Params
         ------
         unpadded_lengths: list
-            Length of each streamline's target sequence.
-            During tracking unpadded lenghts is considered the same for x and
-            t. If is_training, input is one point longer.
+            Length of each streamline.
         use_padding: bool,
             If false, skip padding (all streamlines must have the same length).
         batch_max_len: int
@@ -348,7 +329,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         Returns
         -------
-        mask_future_x: Tensor
+        mask_future: Tensor
             Shape: [batch_max_len, batch_max_len]
             Masks the inputs that do not exist (useful for data generation, but
             also used during training on padded points because, why not), at
@@ -356,19 +337,11 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             = [[False, True,  True],
                [False, False, True],
                [False, False, False]]
-        mask_future_t: Tensor
-            Idem, but we can choose to hide the fake SOS token. If so, the
-            first column is set to True.
         mask_padding: Tensor
             Shape [nb_streamlines, batch_max_len]. Masks positions that do not
             exist in the sequence.
         """
-        mask_future_x = self._generate_future_mask(batch_max_len)
-        if self.mask_sos:
-            mask_future_t = self._generate_future_mask(batch_max_len)
-            mask_future_t[:, 0] = True
-        else:
-            mask_future_t = mask_future_x
+        mask_future = self._generate_future_mask(batch_max_len)
 
         if use_padding:
             mask_padding = self._generate_padding_mask(unpadded_lengths,
@@ -376,16 +349,15 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         else:
             mask_padding = None
 
-        return mask_future_x, mask_future_t, mask_padding
+        return mask_future, mask_padding
 
-    def forward(self, batch_x: List[torch.tensor],
-                batch_streamlines: List[torch.tensor],
-                is_tracking=False, return_weights=False,
-                average_heads=False, **kw):
+    def forward(self, inputs: List[torch.tensor],
+                batch_streamlines: List[torch.tensor], return_weights=False,
+                average_heads=False, unpack_outputs=False):
         """
         Params
         ------
-        batch_x: list[Tensor]
+        inputs: list[Tensor]
             One tensor per streamline. Size of each tensor =
             [nb_input_points, nb_features].
         batch_streamlines: list[Tensor]
@@ -399,103 +371,127 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             adequately masked to hide future positions. The last direction is
             not used.
             - As target during training. The whole sequence is used.
-        is_tracking: bool
-            During tracking, the input sequences contain one more point than
-            the directions sequences.
         return_weights: bool
             If true, returns the weights of the attention layers.
         average_heads: bool
             If return_weights, you may choose to average the weights from
             different heads together.
+        unpack_outputs: bool
+            During tracking, this is not used; output is one point per
+            streamline. During training, by default, output is concatenated;
+            only used to compute loss point by point. For other usages, such
+            as visualisation of outputs, you may set this to true.
 
         Returns
         -------
         output: Tensor,
             Batch output, of shape:
-                - During training: [total nb points all streamlines, out size]
+                - During training, unpack_outputs False:
+                                   [total nb points all streamlines, out size]
+                                   unpack_outputs True:
+                                   List of [nb_points, out_size]
                 - During tracking: [nb streamlines * 1, out size]
         weights: Tuple
             If return weigts: The weights (depending on the child model)
         """
+        if self._context is None:
+            raise ValueError("Please set context before usage.")
+
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
-        unpadded_lengths = np.asarray([len(i) for i in batch_x])
-        nb_streamlines = len(batch_streamlines)
+        unpadded_lengths = np.asarray([len(i) for i in inputs])
 
         # ----------- Checks
         if np.any(unpadded_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
 
-        # ----------- Ok. Prepare masks and parameters
-
+        # ----------- Prepare masks and parameters
         # (Skip padding if all streamlines have the same length)
         use_padding = not np.all(unpadded_lengths == unpadded_lengths[0])
         batch_max_len = np.max(unpadded_lengths)
+        if CLEAR_CACHE:
+            now = time()
+            logging.debug("Tranformer: Maximal length in batch is {}"
+                          .format(batch_max_len))
+            torch.torch.cuda.empty_cache()
+            now2 = time()
+            logging.debug("Cleared cache in {} secs.".format(now2 - now))
         masks = self._prepare_masks(unpadded_lengths, use_padding,
                                     batch_max_len)
 
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
-        batch_t = self.prepare_targets_forward(batch_streamlines, is_tracking)
-        logger.debug("After token management (+ SOS, -last point if "
-                     "training), batch of {} streamlines contains {} "
-                     "directions.".format(len(batch_t),
-                                          sum([len(s) for s in batch_t])))
+        targets = self.prepare_targets_forward(batch_streamlines)
+        nb_streamlines = len(targets)
 
         # ----------- Ok. Start processing
+        # Note. Tried calling torch.cuda.empty_cache() before.
+        # Not really recommended, and does not seem to help much.
+        # See many discussions in forums, such as
+        # https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/26
 
         # 1. Embedding + position encoding.
         # Run embedding on padded data. Necessary to make the model
         # adapt for the positional encoding.
-        embed_x, embed_t = self.run_embedding(batch_x, batch_t, use_padding,
-                                              batch_max_len)
-        embed_x, embed_t = self.dropout(embed_x), self.dropout(embed_t)
+        inputs, targets = self.run_embedding(inputs, targets, use_padding,
+                                             batch_max_len)
+        inputs, targets = self.dropout(inputs), self.dropout(targets)
 
         # 2. Main transformer
         outputs, weights = self._run_main_layer_forward(
-            embed_x, embed_t, masks, return_weights, average_heads)
+            inputs, targets, masks, return_weights, average_heads)
 
         # Unpad now and combine everything for the direction getter.
-        if is_tracking:
+        if self._context == 'tracking':
             outputs = outputs.detach()
             # No need to actually unpad, we only take the last (unpadded)
-            # point, newly created.
-            # (len = len(x) so that's the new point. -1 for python indexing)
-            outputs = [outputs[i, unpadded_lengths[i] - 1, :]
-                       for i in range(nb_streamlines)]
-            outputs = torch.vstack(outputs)
+            # point, newly created. (-1 for python indexing)
+            if use_padding:  # Not all the same length.
+                outputs = [outputs[i, unpadded_lengths[i] - 1, :]
+                           for i in range(nb_streamlines)]
+                outputs = torch.vstack(outputs)
+            else:  # All the same length (ex, during forward tracking)
+                outputs = outputs[:, -1, :]
         else:
+            # outputs size = [nb streamlines, max_len, d_model].
             if use_padding:
-                # outputs size = [nb streamlines, max_len, d_model].
                 # We take all (unpadded) points.
                 outputs = [outputs[i, 0:unpadded_lengths[i], :]
                            for i in range(nb_streamlines)]
-            outputs = torch.cat(outputs, dim=0)
+                outputs = torch.vstack(outputs)
+            else:
+                # We reshape the data directly. Last dimension = unchanged.
+                # First dim: -1 = nb_streamlines * nb_points.
+                outputs = torch.reshape(outputs, (-1, self.d_model))
 
         # 3. Direction getter
         # Outputs will be all streamlines merged.
         # To compute loss = ok. During tracking, we will need to split back.
         outputs = self.direction_getter(outputs)
 
+        if unpack_outputs:
+            outputs = torch.split(outputs, unpadded_lengths)
+
         if return_weights:
             return outputs, weights
+
         return outputs
 
-    def run_embedding(self, batch_x, batch_t, use_padding, batch_max_len):
+    def run_embedding(self, inputs, targets, use_padding, batch_max_len):
         """
         Pad + concatenate.
         Embedding. (Add SOS token to target.)
         Positional encoding.
         """
         # Inputs
-        inputs = self._stack_batch(batch_x, use_padding, batch_max_len)
+        inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
         inputs = self.embedding_layer_x(inputs)
         inputs = self.position_encoding_layer(inputs)
 
         # Targets
-        targets = self._stack_batch(batch_t, use_padding, batch_max_len)
+        targets = pad_and_stack_batch(targets, use_padding, batch_max_len)
         targets = self.embedding_layer_t(targets)
         targets = self.position_encoding_layer(targets)
 
@@ -516,9 +512,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         model_outputs : Any
             The model outputs for a batch of sequences. Ex: a gaussian mixture
             direction getter returns a Tuple[Tensor, Tensor, Tensor], but a
-            cosine regression direction getter return a simple Tensor. Please
-            make sure that the chosen direction_getter's output size fits with
-            the target ou the target's data if it's a PackedSequence.
+            cosine regression direction getter return a simple Tensor.
         streamlines : List
             The target values for the batch (the streamlines).
 
@@ -591,7 +585,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
         encoder_layer = ModifiedTransformerEncoderLayer(
             self.d_model, self.nheads,
             dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
-            activation=self.activation, batch_first=BATCH_FIRST,
+            activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
         encoder = ModifiedTransformerEncoder(encoder_layer, n_layers_e,
                                              norm=None)
@@ -600,7 +594,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
         decoder_layer = ModifiedTransformerDecoderLayer(
             self.d_model, self.nheads,
             dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
-            activation=self.activation, batch_first=BATCH_FIRST,
+            activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
         decoder = ModifiedTransformerDecoder(decoder_layer, n_layers_d,
                                              norm=None)
@@ -608,7 +602,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
         self.modified_torch_transformer = ModifiedTransformer(
             self.d_model, self.nheads, n_layers_e, n_layers_d,
             self.ffnn_hidden_size, self.dropout_rate, self.activation,
-            encoder, decoder, batch_first=BATCH_FIRST,
+            encoder, decoder, batch_first=True,
             norm_first=self.norm_first)
 
     @property
@@ -631,24 +625,14 @@ class OriginalTransformerModel(AbstractTransformerModel):
         masks: Tuple
             Encoder's self-attention weights: [nb_streamlines, max_batch_len]
         """
-        mask_future_x, mask_future_t, mask_padding = masks
+        # mask_future, mask_padding = masks
 
-        logging.debug("Running main transformer layer. \n"
-                      "   Input: {} (mask: {})\n"
-                      "   Target: {} (mask: {})\n"
-                      "   Mask padding: {}"
-                      .format(embed_x.shape, mask_future_x.shape,
-                              embed_t.shape, mask_future_t.shape,
-                              mask_padding.shape if mask_padding is not None
-                              else None))
         outputs, sa_weights_encoder, sa_weights_decoder, mha_weights = \
             self.modified_torch_transformer(
                 src=embed_x, tgt=embed_t,
-                src_mask=mask_future_x, tgt_mask=mask_future_t,
-                memory_mask=mask_future_x,
-                src_key_padding_mask=mask_padding,
-                tgt_key_padding_mask=mask_padding,
-                memory_key_padding_mask=mask_padding,
+                src_mask=masks[0], tgt_mask=masks[0], memory_mask=masks[0],
+                src_key_padding_mask=masks[1], tgt_key_padding_mask=masks[1],
+                memory_key_padding_mask=masks[1],
                 return_weights=return_weights, average_heads=average_heads)
         return outputs, (sa_weights_encoder, sa_weights_decoder, mha_weights)
 
@@ -714,19 +698,18 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         return p
 
     def _prepare_masks(self, unpadded_lengths, use_padding, batch_max_len):
-        mask_future_x, mask_future_t, mask_padding = super()._prepare_masks(
+        mask_future, mask_padding = super()._prepare_masks(
             unpadded_lengths, use_padding, batch_max_len)
 
         # Concatenating mask future:
-        #  - For the input: self-attention only.
+        #  - For the input: self-attention only. Do not look at target.
         all_masked = torch.full((batch_max_len, batch_max_len),
                                 fill_value=True, device=self.device)
-        mask_future_x_padded = torch.cat((mask_future_x, all_masked), dim=-1)
+        mask_future_x = torch.cat((mask_future, all_masked), dim=-1)
         #  - For the target: mixed attention.
-        mask_future_t_total = torch.cat((mask_future_x, mask_future_t), dim=-1)
+        mask_future_t = torch.cat((mask_future, mask_future), dim=-1)
         #  - Concat
-        mask_future = torch.cat((mask_future_x_padded, mask_future_t_total),
-                                dim=0)
+        mask_future = torch.cat((mask_future_x, mask_future_t), dim=0)
 
         # Concatenating mask padding:
         if use_padding:

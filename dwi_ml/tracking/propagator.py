@@ -73,6 +73,7 @@ class DWIMLPropagator(AbstractPropagator):
         # ----- Parameters
         self.subj_idx = subj_idx
         self.model = model
+        self.model.set_context('tracking')
 
         self.algo = algo
         if algo not in ['det', 'prob']:
@@ -486,7 +487,7 @@ class DWIMLPropagatorwithStreamlineMemory(DWIMLPropagator):
 
     def _call_model_forward(self, inputs, lines):
         with self.grad_context:
-            return self.model(inputs, lines, is_tracking=True)
+            return self.model(inputs, lines)
 
 
 class DWIMLPropagatorOneInput(DWIMLPropagator):
@@ -511,9 +512,6 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             The volume group to use as input in the model.
         """
         super().__init__(**kw)
-
-        # During tracking: always computing all inputs.
-        self.model.skip_input_as_last_point = False
 
         # Find group index in the data
         self.volume_group = self.dataset.volume_groups.index(
@@ -540,7 +538,5 @@ class DWIMLPropagatorOneInput(DWIMLPropagator):
             List of n "streamlines" composed of one point.
         """
         n_pos = [pos[None, :] for pos in n_pos]
-        inputs, _ = self.model.prepare_batch_one_input(
+        return self.model.prepare_batch_one_input(
             n_pos, self.dataset, self.subj_idx, self.volume_group)
-
-        return inputs

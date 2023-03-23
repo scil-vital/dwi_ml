@@ -294,6 +294,7 @@ class DWIMLAbstractTrainer:
         # NOTE: This ordering is important! The optimizer needs to use the cuda
         # Tensors if using the GPU...
         self.model.move_to(device=self.device)
+        self.model.set_context('training')
 
         # Build optimizer (Optimizer is built here since it needs the model
         # parameters)
@@ -1040,47 +1041,52 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # need to be done here in the main thread. Running final steps
         # of data preparation.
         self.logger.debug('Finalizing input data preparation on GPU.')
-        batch_streamlines, final_s_ids_per_subj = data
+        streamlines, final_s_ids_per_subj = data
 
         # Dataloader always works on CPU.
         # We have the possibility to bring everything to GPU now.
         # Sending to right device. Model should already be moved.
-        batch_streamlines = [s.to(self.device, non_blocking=True,
-                                  dtype=torch.float)
-                             for s in batch_streamlines]
+        streamlines = [s.to(self.device, non_blocking=True, dtype=torch.float)
+                       for s in streamlines]
 
         # Getting the inputs points from the volumes.
+        # Uses the model's method, with the batch_loader's data.
+        streamlines_f = self.model.prepare_streamlines_f(streamlines)
         batch_inputs = self.batch_loader.load_batch_inputs(
-            batch_streamlines, final_s_ids_per_subj)
+            streamlines_f, final_s_ids_per_subj)
 
         # Possibly add noise to inputs here.
-
-        logger.debug("Loaded a batch of {} streamlines, {} data points, "
-                     "{} input points."
-                     .format(len(batch_streamlines),
-                             sum([len(s) for s in batch_streamlines]),
-                             sum([len(s) for s in batch_inputs])))
-
         self.logger.debug('*** Computing forward propagation')
         if self.model.forward_uses_streamlines:
-            # Now possibly add noise to streamlines;
-            # The whole target will be noisy, even when computing the loss.
-            batch_streamlines_forward = \
-                self.batch_loader.add_noise_streamlines(batch_streamlines,
-                                                        self.device)
+            # Now possibly add noise to streamlines (training / valid)
+            streamlines_f = self.batch_loader.add_noise_streamlines(
+                streamlines_f, self.device)
+
+            logger.debug("Uses a batch of {} streamlines, {} coordinates, "
+                         "{} input points."
+                         .format(len(streamlines),
+                                 sum([len(s) for s in streamlines_f]),
+                                 sum([len(s) for s in batch_inputs])))
 
             # Possibly computing directions twice (during forward and loss)
             # but ok, shouldn't be too heavy. Easier to deal with multiple
             # project's requirements by sending whole streamlines rather
             # than only directions.
-            model_outputs = self.model(batch_inputs, batch_streamlines_forward)
+            model_outputs = self.model(batch_inputs, streamlines_f)
         else:
+            logger.debug("Uses a batch of {} streamlines, {} input points."
+                         .format(len(streamlines),
+                                 sum([len(s) for s in batch_inputs])))
             model_outputs = self.model(batch_inputs)
 
         self.logger.debug('*** Computing loss')
+        logger.debug("Uses a batch of {} streamlines, {} coordinates, "
+                     "{} outputs."
+                     .format(len(streamlines),
+                             sum([len(s) for s in streamlines]),
+                             len(model_outputs)))
         if self.model.loss_uses_streamlines:
-            mean_loss, n = self.model.compute_loss(model_outputs,
-                                                   batch_streamlines)
+            mean_loss, n = self.model.compute_loss(model_outputs, streamlines)
         else:
             mean_loss, n = self.model.compute_loss(model_outputs)
 

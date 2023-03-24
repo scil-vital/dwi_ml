@@ -43,7 +43,7 @@ def torch_nearest_neighbor_interpolation(volume: torch.Tensor,
         The list of interpolated values
     """
     # Coord corner: First voxel is coordinates from 0 to 0.99.
-    # Using floor value.
+    # Using floor value = becomes 0 = index.
     coords_vox_corner = torch.floor(coords_vox_corner).to(dtype=torch.long)
 
     return volume[coords_vox_corner[:, 0],

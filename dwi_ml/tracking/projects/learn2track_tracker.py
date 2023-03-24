@@ -45,15 +45,18 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         Preparing backward. We need to recompute the hidden recurrent state
         for this half-streamline.
         """
+        lines, seeds, backward_dir, rej_idx = super().prepare_backward(
+            lines, seeds, forward_dir)
+
         logger.debug("Computing hidden RNN state at backward: run model on "
                      "(reversed) first half.")
 
         # Must re-run the model from scratch to get the hidden states
         # But! Not including the last point (i.e. the seed).
         self.model.set_context('preparing_backward')
-        lines = self.model.prepare_streamlines_f(lines)
+        tmp_lines = self.model.prepare_streamlines_f(lines)
         all_inputs = self.model.prepare_batch_one_input(
-            lines, self.dataset, self.subj_idx, self.volume_group)
+            tmp_lines, self.dataset, self.subj_idx, self.volume_group)
 
         # all_inputs is a List of
         # nb_streamlines x tensor[nb_points, nb_features]
@@ -61,12 +64,12 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         # No hidden state given = running model on all points.
         with self.grad_context:
             _, self.hidden_recurrent_states = self.model(
-                all_inputs, lines, return_state=True)
+                all_inputs, tmp_lines, return_state=True)
 
         # Back to tracking context
         self.model.set_context('tracking')
 
-        return super().prepare_backward(lines, seeds, forward_dir)
+        return lines, seeds, backward_dir, rej_idx
 
     def _call_model_forward(self, inputs, lines):
         # For RNN, we need to send the hidden state too.

@@ -4,6 +4,8 @@ import torch
 from dwi_ml.data.processing.volume.interpolation import \
     torch_nearest_neighbor_interpolation, torch_trilinear_interpolation
 
+eps = 1e-6
+
 
 class TrackingMask:
     def __init__(self, dim, data=None, interp: str = 'nearest'):
@@ -47,6 +49,10 @@ class TrackingMask:
             return torch_trilinear_interpolation(self.data, xyz)
 
     def is_in_mask(self, xyz):
+        # Clipping to bound.
+        xyz = torch.maximum(xyz, self.lower_bound)
+        xyz = torch.minimum(xyz, self.higher_bound - eps)
+
         return torch.greater_equal(
-            self.get_value_at_vox_corner_coordinate(xyz, 'nearest'),
-            torch.zeros(1, device=xyz.device))
+            self.get_value_at_vox_corner_coordinate(xyz, self.interp),
+            torch.as_tensor(0.5, device=xyz.device))

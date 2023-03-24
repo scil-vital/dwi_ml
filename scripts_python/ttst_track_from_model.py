@@ -35,6 +35,11 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    prepare_dataset_one_subj,
                                    prepare_step_size_vox, track_and_save)
 
+# A decision should be made as if we should keep the last point (out of the
+# tracking mask). Currently keeping this as in Dipy, i.e. True. Could be
+# an option for the user.
+APPEND_LAST_POINT = True
+
 
 def build_argparser():
     p = argparse.ArgumentParser(
@@ -109,6 +114,7 @@ def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
             step_size_vox=step_size_vox, algo=args.algo, theta=theta,
             normalize_directions=normalize_directions, use_gpu=args.use_gpu,
             simultanenous_tracking=args.simultaneous_tracking,
+            append_last_point=APPEND_LAST_POINT,
             log_level=args.logging)
 
     return tracker, ref

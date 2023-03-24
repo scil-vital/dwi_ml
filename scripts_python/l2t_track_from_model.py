@@ -6,6 +6,7 @@ This script allows tracking from a trained Learn2track model.
 """
 import argparse
 import logging
+import os
 
 import dipy.core.geometry as gm
 from dipy.io.utils import is_header_compatible
@@ -20,17 +21,16 @@ from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
 
-from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.io_utils import add_logging_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.learn2track_tracker import RecurrentTracker
 from dwi_ml.tracking.tracking_mask import TrackingMask
-from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
-                                   add_tracking_options,
-                                   prepare_dataset_one_subj,
+from dwi_ml.tracking.utils import (add_tracking_options,
                                    prepare_seed_generator,
-                                   prepare_tracking_mask,
-                                   prepare_step_size_vox, track_and_save)
+                                   prepare_tracking_mask, track_and_save)
 
 # A decision should be made as if we should keep the last point (out of the
 # tracking mask). Currently keeping this as in Dipy, i.e. True. Could be
@@ -41,8 +41,6 @@ APPEND_LAST_POINT = True
 def build_argparser():
     p = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
                                 description=__doc__)
-
-    add_mandatory_options_tracking(p)
 
     track_g = add_tracking_options(p)
     # Sphere used if the direction_getter key is the sphere-classification.
@@ -71,7 +69,6 @@ def prepare_tracker(parser, args):
         # Vox space, corner origin
         seed_generator, nbr_seeds, seeding_mask_header, ref = \
             prepare_seed_generator(parser, args, hdf_handle)
-        res = seeding_mask_header['pixdim'][0:3]
         dim = ref.shape
 
         if args.tracking_mask_group is not None:
@@ -85,19 +82,18 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading subject's data.")
         subset, subj_idx = prepare_dataset_one_subj(
-            args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
-            subset=args.subset)
+            args.hdf5_file, args.subj_id, lazy=False, cache_size=None,
+            subset_name=args.subset, volume_groups=[args.input_group],
+            streamline_groups=[])
 
         logging.info("Loading model.")
         model = Learn2TrackModel.load_params_and_state(
-            args.experiment_path + '/best_model', log_level=sub_logger_level)
+            os.path.join(args.experiment_path, 'best_model'),
+            log_level=sub_logger_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 
         theta = gm.math.radians(args.theta)
-        step_size_vox, normalize_directions = prepare_step_size_vox(
-            args.step_size, res)
-
         logging.debug("Instantiating tracker.")
         tracker = RecurrentTracker(
             input_volume_group=args.input_group,

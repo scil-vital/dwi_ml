@@ -13,10 +13,10 @@ from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
-from dwi_ml.experiment_utils.prints import add_logging_arg
+from dwi_ml.io_utils import add_logging_arg
 from dwi_ml.models.projects.transforming_tractography import \
     AbstractTransformerModel
-from dwi_ml.tracking.utils import prepare_dataset_one_subj
+from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 # Currently, with our quite long sequences compared to their example, this
 # is a bit ugly.
@@ -99,8 +99,9 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
     # Prepare data
     logging.info("Loading subject.")
     subset, subj_idx = prepare_dataset_one_subj(
-        args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
-        subset=args.subset)
+        args.hdf5_file, args.subj_id, lazy=False, cache_size=None,
+        subset_name=args.subset, volume_groups=[args.input_group],
+        streamline_groups=[])
 
     # Load SFT
     logging.info("Loading reference SFT.")

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import logging
 import os
 from typing import List
@@ -22,7 +21,7 @@ from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 
 def fetch_testing_data():
     # Note. Data is accessible because its permission is "anyone with the link"
-    # but it can happen that github had trouble accessing it, for unclear
+    # but it can happen that GitHub had trouble accessing it, for unclear
     # reasons. Pushing a new commit (restarting the test) had a good chance to
     # help.
     home = get_home()
@@ -80,10 +79,14 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
                          log_level=log_level)
         self.fake_parameter = torch.nn.Parameter(torch.as_tensor(42.0))
 
-    def compute_loss(self, model_outputs, target_streamlines=None):
+    def compute_loss(self, model_outputs, target_streamlines=None,
+                     average_results=True):
         mean = self.fake_parameter
         n = 30
-        return mean, n
+        if average_results:
+            return mean, n
+        else:
+            return torch.zeros(n, device=self.device)
 
     def forward(self, x: list):
         _ = self.fake_parameter
@@ -127,9 +130,11 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
 
         self.instantiate_direction_getter(dg_input_size)
 
-    def compute_loss(self, model_outputs: torch.tensor,
-                     target_streamlines: List[torch.Tensor], **kw):
-        target_dirs = self.direction_getter.prepare_targets_for_loss(target_streamlines)
+    def compute_loss(self, model_outputs: torch.Tensor,
+                     target_streamlines: List[torch.Tensor],
+                     average_results=True, **kw):
+        target_dirs = self.direction_getter.prepare_targets_for_loss(
+            target_streamlines)
 
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.
@@ -139,7 +144,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
         # Depends on model. Ex: regression: direct difference.
         # Classification: log-likelihood.
         # Gaussian: difference between distribution and target.
-        return self.direction_getter.compute_loss(model_outputs, target_dirs)
+        return self.direction_getter.compute_loss(model_outputs, target_dirs,
+                                                  average_results)
 
     def get_tracking_directions(self, regressed_dirs, algo):
         if algo == 'det':

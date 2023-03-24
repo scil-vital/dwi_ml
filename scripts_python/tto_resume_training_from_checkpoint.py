@@ -92,7 +92,7 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Setting root logger with high level but we will set trainer to
+    # Setting root logger with high level, but we will set trainer to
     # user-defined level.
     logging.getLogger().setLevel(level=logging.INFO)
 

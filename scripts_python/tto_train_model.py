@@ -12,12 +12,13 @@ import os
 # See bug report here https://github.com/Lightning-AI/lightning/issues/5829
 # Importing now to solve issues later.
 import comet_ml
+
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
-from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_memory_args
+from dwi_ml.io_utils import add_memory_args, add_logging_arg
 from dwi_ml.models.projects.transforming_tractography import \
     OriginalTransformerModel
 from dwi_ml.models.projects.transformers_utils import (add_abstract_model_args,
@@ -122,7 +123,7 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Setting log level to INFO maximum for sub-loggers, else it become ugly
+    # Setting log level to INFO maximum for sub-loggers, else it becomes ugly,
     # but we will set trainer to user-defined level.
     sub_loggers_level = args.logging
     if args.logging == 'DEBUG':

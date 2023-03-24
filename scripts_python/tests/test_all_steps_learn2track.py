@@ -24,6 +24,9 @@ def test_help_option(script_runner):
     ret = script_runner.run('l2t_track_from_model.py', '--help')
     assert ret.success
 
+    ret = script_runner.run('l2t_visualize_loss.py', '--help')
+    assert ret.success
+
 
 @pytest.fixture(scope="session")
 def experiments_path(tmp_path_factory):
@@ -70,6 +73,7 @@ def test_execution_training_tracking(script_runner, experiments_path):
                                 '--batch_size_units', 'nb_streamlines',
                                 '--max_batches_per_epoch_training', '2',
                                 '--max_batches_per_epoch_validation', '1',
+                                '--dg_key', 'cosine-regression', '--add_eos',
                                 '--logging', 'INFO', '--use_gpu')
         assert ret.success
 
@@ -86,7 +90,7 @@ def test_execution_training_tracking(script_runner, experiments_path):
     # subjectX from training set.
     ret = script_runner.run(
         'l2t_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
-        out_tractogram, seeding_mask_group, input_group,
+        input_group, out_tractogram, seeding_mask_group,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0', '--min_length', '0',
         '--subset', 'training', '--tracking_mask_group', tracking_mask_group)
 
@@ -98,11 +102,22 @@ def test_execution_training_tracking(script_runner, experiments_path):
         out_tractogram = os.path.join(experiments_path, 'test_tractogram2.trk')
         ret = script_runner.run(
             'l2t_track_from_model.py', whole_experiment_path, hdf5_file,
-            subj_id, out_tractogram, seeding_mask_group,
-            input_group, '--algo', 'det', '--nt', '20', '--rng_seed', '0',
+            subj_id, input_group, out_tractogram, seeding_mask_group,
+            '--algo', 'det', '--nt', '20', '--rng_seed', '0',
             '--min_length', '0', '--subset', 'training',
             '--tracking_mask_group', tracking_mask_group,
             # Additional params compared to CPU:
             '--use_gpu', '--simultaneous_tracking', '3')
 
         assert ret.success
+
+    # Test visu loss
+    out_tractogram = os.path.join(experiments_path, 'colored_tractogram.trk')
+    out_displacement = os.path.join(experiments_path, 'displacement.trk')
+    ret = script_runner.run('l2t_visualize_loss.py', whole_experiment_path,
+                            hdf5_file, subj_id, '--subset', 'training',
+                            '--save_colored_tractogram', out_tractogram,
+                            '--save_displacement', out_displacement,
+                            '--min_range', '-1', '--max_range', '1',
+                            '--pick_at_random')
+    assert ret.success

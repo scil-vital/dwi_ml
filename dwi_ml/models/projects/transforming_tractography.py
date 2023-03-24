@@ -279,7 +279,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         if self._context is None:
             raise ValueError("Please set the context before running the model."
                              "Ex: 'training'.")
-        elif self._context == 'training' and not self.direction_getter.add_eos:
+        elif (self._context == 'training' or self._context == 'visu') and not \
+                self.direction_getter.add_eos:
             # We don't use the last coord because does not have an associated
             # target direction (except if EOS is used).
             streamlines = [s[:-1, :] for s in streamlines]
@@ -512,7 +513,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             return_weights: bool, average_heads: bool):
         raise NotImplementedError
 
-    def compute_loss(self, model_outputs, streamlines, **kw):
+    def compute_loss(self, model_outputs, streamlines,
+                     average_results=True, **kw):
         """
         Computes the loss function using the provided outputs and targets.
         Returns the mean loss (loss averaged across timesteps and sequences).
@@ -536,7 +538,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
-            model_outputs, torch.cat(targets, dim=0))
+            model_outputs, torch.cat(targets, dim=0), average_results)
 
 
 class OriginalTransformerModel(AbstractTransformerModel):

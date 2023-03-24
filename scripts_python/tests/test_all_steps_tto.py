@@ -96,12 +96,23 @@ def test_execution(script_runner, experiments_path):
 
     ret = script_runner.run(
         'tto_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
-        out_tractogram, seeding_mask_group, input_group,
+        input_group, out_tractogram, seeding_mask_group,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0',
         '--min_length', '0', '--subset', 'training', '--logging', 'DEBUG',
         '--max_length', str(MAX_LEN * 0.5), '--step', '0.5',
         '--tracking_mask_group', tracking_mask_group)
 
+    assert ret.success
+
+    # Test visu loss
+    out_tractogram = os.path.join(experiments_path, 'colored_tractogram.trk')
+    out_displacement = os.path.join(experiments_path, 'displacement.trk')
+    ret = script_runner.run('tto_visualize_loss.py', whole_experiment_path,
+                            hdf5_file, subj_id, '--subset', 'training',
+                            '--save_colored_tractogram', out_tractogram,
+                            '--save_displacement', out_displacement,
+                            '--min_range', '-1', '--max_range', '1',
+                            '--pick_at_random')
     assert ret.success
 
     logging.info("************ TESTING VISUALIZE WEIGHTS ************")

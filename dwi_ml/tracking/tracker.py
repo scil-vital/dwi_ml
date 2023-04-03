@@ -362,6 +362,11 @@ class DWIMLAbstractTracker:
             n_seeds = self.seed_generator.get_next_n_pos(
                 random_generator, indices, next_seeds)
 
+            logger.info(
+                "Starting forward propagation for the next {} streamlines. "
+                "Total: {} / {}"
+                .format(nb_next_seeds, seed_count, self.nbr_seeds))
+
             tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
                 n_seeds)
             lines.extend([line.tolist() for line in tmp_lines])
@@ -390,8 +395,6 @@ class DWIMLAbstractTracker:
                  for s in seeds]
         lines = [s.clone()[None, :] for s in seeds]
 
-        logger.info("Multiple GPU tracking: Starting forward propagation for "
-                    "the next {} streamlines.".format(len(lines)))
         initial_dirs = self.prepare_forward(seeds)
         lines = self._propagate_multiple_lines(lines, initial_dirs)
 
@@ -435,7 +438,7 @@ class DWIMLAbstractTracker:
 
     def _propagate_multiple_lines(self, lines, initial_dir):
         """
-        Equivalent of super's() _propagate_lines() for for multiple tracking at
+        Equivalent of super's() _propagate_lines() for multiple tracking at
         the same time (meant to be used on GPU).
         """
         nb_streamlines = len(lines)
@@ -490,19 +493,19 @@ class DWIMLAbstractTracker:
                 if breaking_now[i]:
                     final_lines[continuing_lines_rawidx[i]] = lines[i]
 
-            # Keeping only remaining lines.
-            if np.any(can_continue):
+            # Update model if needed.
+            if np.any(~can_continue):
                 new_stopping_lines_raw_idx = continuing_lines_rawidx[
                     ~can_continue]
+                self.update_memory_after_removing_lines(
+                    can_continue, new_stopping_lines_raw_idx, nb_streamlines)
 
+            # Keeping only remaining lines.
+            if np.any(can_continue):
                 lines = [s for i, s in enumerate(lines) if can_continue[i]]
                 previous_dir = previous_dir[can_continue, :]
                 continuing_lines_rawidx = continuing_lines_rawidx[can_continue]
                 invalid_direction_counts = invalid_direction_counts[can_continue]
-
-                # Update model if needed.
-                self.update_memory_after_removing_lines(
-                    can_continue, new_stopping_lines_raw_idx, nb_streamlines)
             else:
                 all_lines_completed = True
 
@@ -650,8 +653,8 @@ class DWIMLAbstractTracker:
 
         if len(lines) > 0:
             # 2) If forward tracking succeeded, revert streamlines
-            logger.info("   Starting backward propagation for the remaining "
-                        "{} streamlines.".format(len(lines)))
+            logger.debug("   Starting backward propagation for the remaining "
+                         "{} streamlines.".format(len(lines)))
             # Reversing:
             lines = [torch.flip(line, (0,)) for line in lines]
 
@@ -684,7 +687,6 @@ class DWIMLAbstractTracker:
             # Avoid interpolation for points that we already know can't
             # continue.
             still_on = ~stopping
-            tmp = self.mask.is_in_mask(n_last_pos[still_on])
             stopping[still_on] = ~self.mask.is_in_mask(n_last_pos[still_on])
 
         return stopping
@@ -714,7 +716,7 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
 
         # For the backward: either we recompute all inputs, or we need to
         # remember them during forward everytime a streamline is finished.
-        self.input_memory_for_backward = None
+        self.input_memory_for_backward = 'deactivated'
 
     def prepare_forward(self, seeding_pos):
         self.input_memory = []
@@ -722,38 +724,57 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
         return super().prepare_forward(seeding_pos)
 
     def prepare_backward(self, lines, seeds, forward_dir=None):
-        lines, seeds, backward_dir, idx = super().prepare_backward(
+        lines, seeds, backward_dir, rej_idx = super().prepare_backward(
             lines, seeds, forward_dir)
 
         # Reject failed inputs
+        # Not keeping the seed (input #0). Backward will start at that point
+        # and will compute it again.
         self.input_memory_for_backward = \
-            [s for i, s in enumerate(self.input_memory_for_backward)
-             if i not in idx]
+            [s[1:, :] for i, s in enumerate(self.input_memory_for_backward)
+             if i not in rej_idx]
 
-        # Not keeping the initial input point. Backward will start at
-        # that point and will compute it again.
+        # If the last direction was valid, the last point has been added to the
+        # streamline. Computing that last additional input when
+        # len(input) < len(lines)  (but we removed the seed point so:)
+        # len(input) < len(lines) - 1
+        # Streamlines are already flipped so last pos = first pos.
+        missing_one = [len(inp) < len(s) - 1 for inp, s in zip(
+            self.input_memory_for_backward, lines)]
+        idx_missing_one, = np.where(missing_one)
+        if len(idx_missing_one) > 0:
+            logging.debug("Computing last input for streamlines that had a "
+                          "last valid step.")
+            last_inputs = self._prepare_inputs_at_pos(
+                [lines[i][0, :] for i in idx_missing_one])
+            self.input_memory_for_backward = [
+                torch.vstack((self.input_memory_for_backward[i],
+                              last_inputs[where_first(idx_missing_one == i)]))
+                if missing_one[i] else self.input_memory_for_backward[i]
+                for i in range(len(missing_one))]
+
         self.input_memory = [
-            torch.flip(line_input[1:, :], dims=[0])
+            torch.flip(line_input, dims=[0])
             for line_input in self.input_memory_for_backward]
-        self.input_memory_for_backward = None
+        self.input_memory_for_backward = 'deactivated'
 
-        return lines, seeds, forward_dir, idx
+        return lines, seeds, forward_dir, rej_idx
 
     def update_memory_after_removing_lines(
             self, can_continue: np.ndarray, new_stopping_lines_raw_idx: list,
             batch_size: int):
 
+        logging.debug("Updating memory after removing lines")
         if np.any(~can_continue):
             stopping_lines_sub_idx, = np.where(~can_continue)
 
-            if self.input_memory_for_backward is not None:
+            if self.input_memory_for_backward != 'deactivated':
                 # Forward! Saving removed inputs for later.
-                for sr, ss in zip(new_stopping_lines_raw_idx,
-                                  stopping_lines_sub_idx):
-                    self.input_memory_for_backward[sr] = self.input_memory[
-                        ss]
+                for idx_r, idx_s in zip(new_stopping_lines_raw_idx,
+                                        stopping_lines_sub_idx):
+                    self.input_memory_for_backward[idx_r] = self.input_memory[idx_s]
 
-            # Now updating input memory
+            # Now removing from current inputs memory
             self.input_memory = [self.input_memory[i] for i in
                                  range(len(can_continue)) if
                                  can_continue[i]]
@@ -823,3 +844,8 @@ class DWIMLTrackerOneInput(DWIMLAbstractTracker):
         n_pos = [pos[None, :] for pos in n_pos]
         return self.model.prepare_batch_one_input(
             n_pos, self.dataset, self.subj_idx, self.volume_group)
+
+
+def where_first(array):
+    w, = np.where(array)
+    return w[0]

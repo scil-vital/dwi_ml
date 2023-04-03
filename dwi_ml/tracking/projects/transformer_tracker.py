@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import torch
-
 from dwi_ml.models.projects.transforming_tractography import AbstractTransformerModel
 from dwi_ml.tracking.tracker import (
     DWIMLTrackerOneInput, DWIMLTrackerFromWholeStreamline)

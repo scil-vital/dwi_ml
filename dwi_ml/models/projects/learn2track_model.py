@@ -199,6 +199,16 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                 return_state: bool = False):
         """Run the model on a batch of sequences.
 
+        Model's context must be set:
+        - 'training' (i.e. training or validation) = We compute model outputs
+        in order to get the loss. If no EOS: skipping values at the last
+        coordinate of the streamline; no target. If EOS: taking all inputs,
+        all previous dirs.
+        - 'tracking': We compute model outputs in order to get the next
+        direction. Taking only the last point, based on hidden_state.
+        - 'whole': We recompute the whole streamline, last coordinate included
+        (same as training with EOS). Ex: At the beginning of backward tracking.
+
         Parameters
         ----------
         inputs: List[torch.tensor]
@@ -216,16 +226,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         return_state: bool
             If true, return new hidden recurrent state together with the model
             outputs.
-        context: str
-            - 'training' (i.e. training or validation) = We compute model
-            outputs in order to get the loss. If no EOS: skipping values
-            at the last coordinate of the streamline; no target. If EOS: taking
-            all inputs, all previous dirs.
-            - 'tracking': We compute model outputs in order to get the next
-            direction. Taking only the last point, based on hidden_state.
-            - 'whole': We recompute the whole streamline, last coordinate
-            included (same as training with EOS). Ex: At the beginning of
-            backward tracking.
 
         Returns
         -------

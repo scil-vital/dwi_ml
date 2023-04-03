@@ -24,10 +24,12 @@ nibabel==4.0.*
 numpy==1.23.*
 scipy==1.9.*
 
-dipy>=1.5.*   # dipy 1.5 is installed on ComputeCanda. Scilpy works currently
-              # with 1.6.
 
-
+# dipy>=1.5.*   # dipy 1.5 is installed on ComputeCanda.
+# But scilpy works currently with :
+# -e git+https://github.com/scilus/hot_dipy@1.6.1rc1#egg=dipy
+# Not installing here. Letting the user decide which dipy version
+# See requirement_github.
 
 
 

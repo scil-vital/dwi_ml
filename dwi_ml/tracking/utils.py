@@ -8,11 +8,11 @@ import numpy as np
 from dipy.io.streamline import save_tractogram
 
 from scilpy.io.utils import add_processes_arg
-from scilpy.image.datasets import DataVolume
 from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.tracking.tracking_mask import TrackingMask
 
 
 def add_mandatory_options_tracking(p):
@@ -35,8 +35,6 @@ def add_mandatory_options_tracking(p):
                    help='Tractogram output file (must be .trk or .tck).')
     p.add_argument('seeding_mask_group',
                    help="Seeding mask's volume group in the hdf5.")
-    p.add_argument('tracking_mask_group',
-                   help="Tracking mask's volume group in the hdf5.")
     p.add_argument('input_group',
                    help="Model's input's volume group in the hdf5.")
     p.add_argument('--subset', default='testing',
@@ -66,6 +64,8 @@ def add_tracking_options(p):
                          metavar='M',
                          help='Maximum length of a streamline in mm. '
                               '[%(default)s]')
+    track_g.add_argument('--tracking_mask_group',
+                         help="Tracking mask's volume group in the hdf5.")
 
     # Additional tracking options compared to scil_compute_local_tracking:
     track_g.add_argument('--theta', metavar='t', type=float,
@@ -77,10 +77,13 @@ def add_tracking_options(p):
                               "\na stopping criterion during propagation: "
                               "tracking \nis stopped when a direction is more "
                               "than an angle t from preceding direction")
-    track_g.add_argument('--max_invalid_len', metavar='M', type=float,
-                         default=0.001,
-                         help="Maximum length without valid direction, in mm. "
-                              "[%(default)s]")
+    track_g.add_argument('--max_invalid_nb_points', metavar='MAX', type=float,
+                         default=0,
+                         help="Maximum number of steps without valid "
+                              "direction, \nex: if threshold on ODF or max "
+                              "angles are reached.\n"
+                              "Default: 0, i.e. do not add points following "
+                              "an invalid direction.")
     track_g.add_argument('--track_forward_only', action='store_true',
                          help="If set, tracks in one direction only (forward) "
                               "given the initial \nseed. The direction is "
@@ -165,6 +168,7 @@ def prepare_seed_generator(parser, args, hdf_handle):
     seed_data = np.array(seeding_group['data'], dtype=np.float32)
     seed_res = np.array(seeding_group.attrs['voxres'], dtype=np.float32)
     affine = np.array(seeding_group.attrs['affine'], dtype=np.float32)
+    ref = nib.Nifti1Image(seed_data, affine)
 
     seed_generator = SeedGenerator(seed_data, seed_res, space=Space.VOX,
                                    origin=Origin('corner'))
@@ -184,7 +188,7 @@ def prepare_seed_generator(parser, args, hdf_handle):
 
     seed_header = nib.Nifti1Image(seed_data, affine).header
 
-    return seed_generator, nbr_seeds, seed_header
+    return seed_generator, nbr_seeds, seed_header, ref
 
 
 def prepare_tracking_mask(args, hdf_handle):
@@ -197,12 +201,12 @@ def prepare_tracking_mask(args, hdf_handle):
                        .format(args.tracking_mask_group, args.subj_id,
                                hdf_handle))
     tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
-    mask_data = np.array(tm_group['data'], dtype=np.float64)
-    mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
+    mask_data = np.array(tm_group['data'], dtype=np.float64).squeeze()
+    # mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
     affine = np.array(tm_group.attrs['affine'], dtype=np.float32)
     ref = nib.Nifti1Image(mask_data, affine)
 
-    mask = DataVolume(mask_data, mask_res, args.mask_interp)
+    mask = TrackingMask(mask_data.shape, mask_data, args.mask_interp)
 
     return mask, ref
 

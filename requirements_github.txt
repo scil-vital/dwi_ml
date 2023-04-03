@@ -1,1 +1,2 @@
+git+https://github.com/scilus/hot_dipy@1.6.1rc1#egg=dipy
 git+https://github.com/scilus/scilpy.git@master#egg=scilpy

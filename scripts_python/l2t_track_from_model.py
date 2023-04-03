@@ -6,7 +6,6 @@ This script allows tracking from a trained Learn2track model.
 """
 import argparse
 import logging
-import math
 
 import dipy.core.geometry as gm
 from dipy.io.utils import is_header_compatible
@@ -25,14 +24,19 @@ from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.tracking.projects.learn2track_propagator import RecurrentPropagator
-from dwi_ml.tracking.tracker import DWIMLTracker
+from dwi_ml.tracking.projects.learn2track_tracker import RecurrentTracker
+from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,
                                    prepare_dataset_one_subj,
                                    prepare_seed_generator,
                                    prepare_tracking_mask,
                                    prepare_step_size_vox, track_and_save)
+
+# A decision should be made as if we should keep the last point (out of the
+# tracking mask). Currently keeping this as in Dipy, i.e. True. Could be
+# an option for the user.
+APPEND_LAST_POINT = True
 
 
 def build_argparser():
@@ -56,8 +60,7 @@ def build_argparser():
     return p
 
 
-def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
-                    max_invalid_dirs):
+def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
     hdf_handle = h5py.File(args.hdf5_file, 'r')
 
     sub_logger_level = args.logging.upper()
@@ -69,15 +72,19 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
         # Vox space, corner origin
-        seed_generator, nbr_seeds, seeding_mask_header = \
+        seed_generator, nbr_seeds, seeding_mask_header, ref = \
             prepare_seed_generator(parser, args, hdf_handle)
-
-        logging.info("Loading tracking mask.")
-        tracking_mask, ref = prepare_tracking_mask(args, hdf_handle)
-
-        # Comparing tracking and seeding masks
-        is_header_compatible(ref, seeding_mask_header)
         res = seeding_mask_header['pixdim'][0:3]
+        dim = ref.shape
+
+        if args.tracking_mask_group is not None:
+            logging.info("Loading tracking mask.")
+            tracking_mask, ref2 = prepare_tracking_mask(args, hdf_handle)
+
+            # Comparing tracking and seeding masks
+            is_header_compatible(ref2, seeding_mask_header)
+        else:
+            tracking_mask = TrackingMask(dim)
 
         logging.info("Loading subject's data.")
         subset, subj_idx = prepare_dataset_one_subj(args)
@@ -88,21 +95,24 @@ def prepare_tracker(parser, args, device, min_nbr_pts, max_nbr_pts,
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 
-        logging.debug("Instantiating propagator.")
         theta = gm.math.radians(args.theta)
         step_size_vox, normalize_directions = prepare_step_size_vox(
             args.step_size, res)
-        propagator = RecurrentPropagator(
-            subset, subj_idx, model, args.input_group, step_size_vox,
-            args.algo, theta, device, normalize_directions=normalize_directions)
 
         logging.debug("Instantiating tracker.")
-        tracker = DWIMLTracker(
-            propagator, tracking_mask, seed_generator, nbr_seeds, min_nbr_pts,
-            max_nbr_pts, max_invalid_dirs, args.compress, args.nbr_processes,
-            args.save_seeds, args.rng_seed, args.track_forward_only,
-            use_gpu=args.use_gpu,
+        tracker = RecurrentTracker(
+            input_volume_group=args.input_group,
+            dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
+            seed_generator=seed_generator, nbr_seeds=nbr_seeds,
+            min_nbr_pts=min_nbr_pts, max_nbr_pts=max_nbr_pts,
+            max_invalid_dirs=args.max_invalid_nb_points,
+            compression_th=args.compress, nbr_processes=args.nbr_processes,
+            save_seeds=args.save_seeds, rng_seed=args.rng_seed,
+            track_forward_only=args.track_forward_only,
+            step_size_vox=step_size_vox, algo=args.algo, theta=theta,
+            normalize_directions=normalize_directions, use_gpu=args.use_gpu,
             simultanenous_tracking=args.simultaneous_tracking,
+            append_last_point=APPEND_LAST_POINT,
             log_level=args.logging)
 
     return tracker, ref
@@ -134,20 +144,9 @@ def main():
 
     # ----- Prepare values
     max_nbr_pts = int(args.max_length / args.step_size)
-    min_nbr_pts = int(args.min_length / args.step_size)
-    max_invalid_dirs = int(math.ceil(args.max_invalid_len / args.step_size)) - 1
+    min_nbr_pts = max(int(args.min_length / args.step_size), 1)
 
-    device = torch.device('cpu')
-    if args.use_gpu:
-        if args.nbr_processes > 1:
-            logging.warning("Number of processes was set to {} but you "
-                            "are using GPU. Parameter ignored."
-                            .format(args.nbr_processes))
-        if torch.cuda.is_available():
-            device = torch.device('cuda')
-
-    tracker, ref = prepare_tracker(parser, args, device, min_nbr_pts,
-                                   max_nbr_pts, max_invalid_dirs)
+    tracker, ref = prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts)
 
     # ----- Track
     track_and_save(tracker, args, ref)

@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import logging
-
 import torch
 
 BYTES_IN_GB = 1024 ** 3

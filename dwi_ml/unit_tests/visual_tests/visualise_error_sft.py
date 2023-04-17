@@ -14,7 +14,7 @@ from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 from dwi_ml.experiment_utils.prints import add_logging_arg
 from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.tracking.utils import prepare_dataset_one_subj
-from dwi_ml.utils import add_resample_or_compress_arg, resample_or_compress
+from dwi_ml.io_utils import add_resample_or_compress_arg, resample_or_compress
 
 blue = [2., 75., 252.]
 

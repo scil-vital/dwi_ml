@@ -10,6 +10,8 @@ from dipy.io.streamline import load_tractogram, save_tractogram
 from dipy.io.utils import is_header_compatible
 from dipy.tracking.utils import length
 import h5py
+from dwi_ml.data.processing.streamlines.data_augmentation import \
+    resample_or_compress
 from nested_lookup import nested_lookup
 import nibabel as nib
 import numpy as np
@@ -18,7 +20,6 @@ from scilpy.tractograms.tractogram_operations import concatenate_sft
 
 from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data
-from dwi_ml.utils import resample_or_compress
 
 
 def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
@@ -56,7 +57,7 @@ def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
     data, affine, res, _ = load_file_to4d(data_file)
 
     if not np.allclose(affine, group_affine, atol=1e-5):
-        # Note. When keeping default options on tolerance, we have ran
+        # Note. When keeping default options on tolerance, we have run
         # into some errors in some cases, depending on how data has
         # been processed. Now accepting bigger error.
         raise ValueError(
@@ -107,7 +108,7 @@ class HDF5Creator:
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
                  std_mask: str, step_size: float, compress: bool,
-                 space: Space, enforce_files_presence: bool = True,
+                 enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
         """
@@ -150,7 +151,6 @@ class HDF5Creator:
         self.groups_config = groups_config
         self.step_size = step_size
         self.compress = compress
-        self.space = space
 
         # Optional
         self.std_mask = std_mask  # (could be None)
@@ -342,7 +342,6 @@ class HDF5Creator:
             hdf_handle.attrs['testing_subjs'] = self.testing_subjs
             hdf_handle.attrs['step_size'] = self.step_size if \
                 self.step_size is not None else 'Not defined by user'
-            hdf_handle.attrs['space'] = self.space.name
 
             # Add data one subject at the time
             nb_processed = 0
@@ -530,7 +529,7 @@ class HDF5Creator:
         (+ 'type' = 'streamlines')
 
         In short, all the nibabel's ArraySequence attributes are saved to
-        eventually recreate a SFT from the hdf5 data.
+        eventually recreate an SFT from the hdf5 data.
         """
         for group in self.streamline_groups:
 
@@ -545,44 +544,38 @@ class HDF5Creator:
                     "Hint: Create a volume group 'ref' in the config file.")
             sft, lengths = self._process_one_streamline_group(
                 subj_input_dir, group, subj_id, ref)
-            streamlines = sft.streamlines
 
-            if streamlines is None:
-                logging.warning('Careful! Total tractogram for subject {} '
-                                'contained no streamlines!'.format(subj_id))
-            else:
-                streamlines_group = subj_hdf_group.create_group(group)
-                streamlines_group.attrs['type'] = 'streamlines'
+            streamlines_group = subj_hdf_group.create_group(group)
+            streamlines_group.attrs['type'] = 'streamlines'
 
-                # The hdf5 can only store numpy arrays (it is actually the
-                # reason why it can fetch only precise streamlines from
-                # their ID). We need to deconstruct the sft and store all
-                # its data separately to allow reconstructing it later.
-                (a, d, vs, vo) = sft.space_attributes
-                streamlines_group.attrs['space'] = str(sft.space)
-                streamlines_group.attrs['affine'] = a
-                streamlines_group.attrs['dimensions'] = d
-                streamlines_group.attrs['voxel_sizes'] = vs
-                streamlines_group.attrs['voxel_order'] = vo
+            # The hdf5 can only store numpy arrays (it is actually the
+            # reason why it can fetch only precise streamlines from
+            # their ID). We need to deconstruct the sft and store all
+            # its data separately to allow reconstructing it later.
+            (a, d, vs, vo) = sft.space_attributes
+            streamlines_group.attrs['space'] = str(sft.space)
+            streamlines_group.attrs['origin'] = str(sft.origin)
+            streamlines_group.attrs['affine'] = a
+            streamlines_group.attrs['dimensions'] = d
+            streamlines_group.attrs['voxel_sizes'] = vs
+            streamlines_group.attrs['voxel_order'] = vo
 
-                if len(sft.data_per_point) > 0:
-                    logging.debug('sft contained data_per_point. Data not '
-                                  'kept.')
-                if len(sft.data_per_streamline) > 0:
-                    logging.debug('sft contained data_per_streamlines. Data '
-                                  'not kept.')
+            if len(sft.data_per_point) > 0:
+                logging.debug('sft contained data_per_point. Data not kept.')
+            if len(sft.data_per_streamline) > 0:
+                logging.debug('sft contained data_per_streamlines. Data not '
+                              'kept.')
 
-                # Accessing private Dipy values, but necessary.
-                # We need to deconstruct the streamlines into arrays with
-                # types recognizable by the hdf5.
-                streamlines_group.create_dataset('data',
-                                                 data=streamlines._data)
-                streamlines_group.create_dataset('offsets',
-                                                 data=streamlines._offsets)
-                streamlines_group.create_dataset('lengths',
-                                                 data=streamlines._lengths)
-                streamlines_group.create_dataset('euclidean_lengths',
-                                                 data=lengths)
+            # Accessing private Dipy values, but necessary.
+            # We need to deconstruct the streamlines into arrays with
+            # types recognizable by the hdf5.
+            streamlines_group.create_dataset('data',
+                                             data=sft.streamlines._data)
+            streamlines_group.create_dataset('offsets',
+                                             data=sft.streamlines._offsets)
+            streamlines_group.create_dataset('lengths',
+                                             data=sft.streamlines._lengths)
+            streamlines_group.create_dataset('euclidean_lengths', data=lengths)
 
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,
@@ -654,8 +647,9 @@ class HDF5Creator:
                     sft.to_space(Space.RASMM)
                     output_lengths.extend(length(sft.streamlines))
 
-                    # Sending to wanted space
-                    sft.to_space(self.space)
+                    # Sending to common space
+                    sft.to_vox()
+                    sft.to_corner()
 
                     # Add processed tractogram to final big tractogram
                     if final_sft is None:
@@ -710,7 +704,6 @@ class HDF5Creator:
         logging.info("       - Processing tractogram {}"
                      .format(os.path.basename(tractogram_name)))
         sft = load_tractogram(str(tractogram_file), header)
-        sft.to_center()
 
         # Resample or compress streamlines
         sft = resample_or_compress(sft, self.step_size, self.compress)

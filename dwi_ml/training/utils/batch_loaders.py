@@ -5,7 +5,7 @@ import logging
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from dwi_ml.utils import add_resample_or_compress_arg
+from dwi_ml.io_utils import add_resample_or_compress_arg
 
 
 def add_args_batch_loader(p: argparse.ArgumentParser):

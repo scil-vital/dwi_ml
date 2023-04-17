@@ -7,10 +7,8 @@ import logging
 import os
 from pathlib import Path
 
-from dipy.io.stateful_tractogram import Space
-
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
-from dwi_ml.utils import add_resample_or_compress_arg
+from dwi_ml.io_utils import add_resample_or_compress_arg
 
 
 def add_basic_args(p: ArgumentParser):
@@ -75,9 +73,6 @@ def add_mri_processing_args(p: ArgumentParser):
 def add_streamline_processing_args(p: ArgumentParser):
     g = p.add_argument_group('Streamlines processing options:')
     add_resample_or_compress_arg(g)
-    g.add_argument('--space', type=str, default='vox',
-                   choices=['rasmm', 'vox', 'voxmm'],
-                   help="Default space to bring all the stateful tractograms.")
 
 
 def _initialize_intermediate_subdir(hdf5_file, save_intermediate):
@@ -132,8 +127,7 @@ def prepare_hdf5_creator(args):
     creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
                           training_subjs, validation_subjs, testing_subjs,
                           groups_config, args.std_mask, args.step_size,
-                          args.compress, Space(args.space),
-                          args.enforce_files_presence,
+                          args.compress, args.enforce_files_presence,
                           args.save_intermediate, intermediate_subdir)
 
     return creator

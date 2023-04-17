@@ -2,7 +2,7 @@
 """
                                 Batch sampler
 
-These classes defines how to sample the streamlines available in the
+These classes define how to sample the streamlines available in the
 MultiSubjectData.
 
 AbstractBatchSampler:
@@ -13,7 +13,7 @@ AbstractBatchSampler:
     - Performs data augmentation (on-the-fly to avoid having to multiply data
      on disk) (ex: splitting, reversing, adding noise).
 
-    NOTE: Actual loaded batch size might be different than `batch_size`
+    NOTE: Actual loaded batch size might be different from `batch_size`
     depending on chosen data augmentation. This sampler takes streamline
     cutting and resampling into consideration, and as such, will return more
     (or less) points than the provided `batch_size`.
@@ -50,10 +50,10 @@ import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
-    reverse_streamlines, split_streamlines)
+    reverse_streamlines, split_streamlines, resample_or_compress)
 from dwi_ml.data.processing.utils import add_noise_to_tensor
 from dwi_ml.models.main_models import MainModelOneInput, ModelWithNeighborhood
-from dwi_ml.utils import resample_or_compress
+
 
 logger = logging.getLogger('batch_loader_logger')
 
@@ -287,7 +287,7 @@ class DWIMLAbstractBatchLoader:
 
             # No cache for the sft data. Accessing it directly.
             # Note: If this is used through the dataloader, multiprocessing
-            # is used. Each process will open an handle.
+            # is used. Each process will open a handle.
             subj_data = \
                 self.context_subset.subjs_data_list.get_subj_with_handle(subj)
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
@@ -383,7 +383,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         Returns
         -------
         batch_x_data : List[tensor]
-            The list of tensors inputs for each streamlines. Each tensor is of
+            The list of tensors inputs for each streamline. Each tensor is of
             shape [nb points, nb_features].
         """
         batch_x_data = []

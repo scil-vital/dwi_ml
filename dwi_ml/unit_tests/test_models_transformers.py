@@ -5,7 +5,7 @@ from torch import isnan, set_printoptions
 
 from dwi_ml.models.projects.transforming_tractography import (
     OriginalTransformerModel, TransformerSrcAndTgtModel)
-from dwi_ml.tests.utils.data_and_models_for_tests import create_test_batch
+from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch
 
 (batch_x_training, batch_x_tracking,
  batch_s_training, batch_s_tracking) = create_test_batch()

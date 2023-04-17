@@ -6,7 +6,7 @@ from torch.nn.utils.rnn import pack_sequence
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.models.projects.learn2track_model import StackedRNN
-from dwi_ml.tests.utils.data_and_models_for_tests import create_test_batch
+from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch
 
 batch_x, _, batch_s, _ = create_test_batch()
 

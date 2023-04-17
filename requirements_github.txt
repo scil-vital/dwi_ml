@@ -1,2 +1,6 @@
-git+https://github.com/scilus/hot_dipy@1.6.1rc1#egg=dipy
+# git+https://github.com/scilus/hot_dipy@1.6.1rc1#egg=dipy
+# Bug Cython entre les version de scilpy et dwipy.
+# On essaie d'installer cython à la main.
+# Devrait vrm être réglé! Urgent.
+Cython==0.29.*, !=0.29.29
 git+https://github.com/scilus/scilpy.git@master#egg=scilpy

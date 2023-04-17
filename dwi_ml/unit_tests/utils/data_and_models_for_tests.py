@@ -14,7 +14,7 @@ from dwi_ml.data.processing.streamlines.post_processing import \
 from dwi_ml.models.main_models import (
     ModelWithDirectionGetter, ModelWithNeighborhood, MainModelOneInput,
     ModelWithPreviousDirections)
-from dwi_ml.tests.utils.expected_values import (
+from dwi_ml.unit_tests.utils.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput

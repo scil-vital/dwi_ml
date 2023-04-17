@@ -8,7 +8,7 @@ from torch.nn.utils.rnn import unpack_sequence
 
 from dwi_ml.models.projects.transforming_tractography import \
     OriginalTransformerModel
-from dwi_ml.tests.visual_tests.visualise_error_sft import \
+from dwi_ml.unit_tests.visual_tests.visualise_error_sft import \
     build_argparser_visu_error, \
     prepare_batch_visu_error, save_output_with_ref
 

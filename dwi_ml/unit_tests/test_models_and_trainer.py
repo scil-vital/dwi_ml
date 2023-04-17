@@ -7,7 +7,7 @@ import pytest
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
-from dwi_ml.tests.utils.data_and_models_for_tests import (
+from dwi_ml.unit_tests.utils.data_and_models_for_tests import (
     create_test_batch_sampler, create_batch_loader, fetch_testing_data,
     ModelForTest, TrackingModelForTestWithPD)
 

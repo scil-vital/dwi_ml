@@ -8,7 +8,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions
 from dwi_ml.models.main_models import MainModelOneInput
-from dwi_ml.tests.visual_tests.visualise_error_sft import \
+from dwi_ml.unit_tests.visual_tests.visualise_error_sft import \
     build_argparser_visu_error, \
     prepare_batch_visu_error, save_output_with_ref
 

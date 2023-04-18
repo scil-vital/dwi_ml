@@ -17,6 +17,7 @@ from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.main_models import ModelWithDirectionGetter, \
     MainModelOneInput
 from dwi_ml.tracking.tracking_mask import TrackingMask
+from dwi_ml.tracking.utils import prepare_step_size_vox
 
 logger = logging.getLogger('tracker_logger')
 
@@ -32,10 +33,9 @@ class DWIMLAbstractTracker:
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: ModelWithDirectionGetter, mask: TrackingMask,
                  seed_generator: SeedGenerator, nbr_seeds: int,
-                 min_nbr_pts: int, max_nbr_pts: int, max_invalid_dirs: int,
-                 step_size_vox: float, algo: str, theta: float,
+                 min_len_mm: float, max_len_mm: float, max_invalid_dirs: int,
+                 step_size_mm: float, algo: str, theta: float,
                  verify_opposite_direction: bool,
-                 normalize_directions: bool = True,
                  compression_th=0.1, nbr_processes=1, save_seeds=False,
                  rng_seed=1234, track_forward_only=False,
                  simultanenous_tracking: int = 1, use_gpu: bool = False,
@@ -55,14 +55,14 @@ class DWIMLAbstractTracker:
             out of bound.
         seed_generator: SeedGenerator
         nbr_seeds: int, nb seeds total to track.
-        min_nbr_pts: int, minimal streamline length.
-        max_nbr_pts: int, maximal streamline length.
+        min_len_mm: float, minimal streamline length.
+        max_len_mm: float, maximal streamline length.
         max_invalid_dirs: int
             Maximal invalid direction. If >0 and a direction is invalid (Ex: If
             EOS is chosen in a model, or if the angle is too sharp), the
             streamline will continue straight until reaching the number of
             invalid values allowed. Default: 0.
-        step_size_vox: float, the step size for tracking, in voxel space.
+        step_size_mm: float, the step size for tracking, in millimiters.
         algo: str, 'det' or 'prob'
         theta: float
             Maximum angle (radians) allowed between two steps during sampling
@@ -72,7 +72,6 @@ class DWIMLAbstractTracker:
             direction is better aligned (i.e. data model is symmetrical).
             If false, your model should learn to guess the correct direction
             as output.
-        normalize_directions: bool, (if true, normalize directions).
         compression_th: float, compression threshold.
         nbr_processes: int, number of CPU processes.
         save_seeds: bool, wheter to save seeds in the tractogram.
@@ -85,8 +84,6 @@ class DWIMLAbstractTracker:
         self.mask = mask
         self.seed_generator = seed_generator
         self.nbr_seeds = nbr_seeds
-        self.min_nbr_pts = min_nbr_pts
-        self.max_nbr_pts = max_nbr_pts
         self.max_invalid_dirs = torch.as_tensor(max_invalid_dirs)
         self.compression_th = compression_th
         self.save_seeds = save_seeds
@@ -97,18 +94,42 @@ class DWIMLAbstractTracker:
         self.printing_frequency = 1
         self.device = None
         self.dataset = dataset
-        self.step_size = step_size_vox
         self.subj_idx = subj_idx
         self.model = model
         self.model.set_context('tracking')
         self.append_last_point = append_last_point
+
+        if model.compress:
+            logging.warning(
+                "Careful! Model was trained on compressed streamlines. "
+                "Tractography with a fixed step size could lead to weird "
+                "results")
+
+        if step_size_mm is None:
+            if model.step_size is None:
+                raise ValueError("Please specify the step_size to use with "
+                                 "this model.")
+            else:
+                step_size_mm = model.step_size
+        elif model.step_size and step_size_mm != model.step_size:
+            logging.warning(
+                "Careful! Model was trained on streamlines resampled to {}mm,"
+                "but you are now tracking with {}mm step size!"
+                .format(model.step_size, step_size_mm))
+
+        step_size_vox, normalize_directions = prepare_step_size_vox(
+            step_size_mm, seed_generator.voxres)
+
+        self.step_size = step_size_vox
+        self.max_nbr_pts = int(max_len_mm / step_size_mm)
+        self.min_nbr_pts = max(int(min_len_mm / step_size_mm), 1)
+        self.normalize_directions = normalize_directions
 
         self.algo = algo
         if algo not in ['det', 'prob']:
             raise ValueError("Propagator's algo should be 'det' or 'prob'.")
 
         self.theta = theta
-        self.normalize_directions = normalize_directions
         if not normalize_directions and step_size_vox != 1:
             logging.warning("Tracker not normalizing directions obtained as "
                             "output from the model. Using a step size other "
@@ -121,7 +142,6 @@ class DWIMLAbstractTracker:
             self.normalize_directions = False
 
         # Contrary to super: normalize direction is optional
-        self.normalize_directions = normalize_directions
         self.verify_opposite_direction = verify_opposite_direction
 
         # -------- Context

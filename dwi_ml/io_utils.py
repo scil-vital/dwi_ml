@@ -14,14 +14,3 @@ def add_resample_or_compress_arg(p):
         help="Compression ratio. Default: None. Default if set: 0.01.\n"
              "If neither step_size nor compress are chosen, streamlines "
              "will be kept \nas they are.")
-
-
-def resample_or_compress(sft, step_size, compress):
-    if step_size is not None:
-        # Note. No matter the chosen space, resampling is done in mm.
-        logging.debug("            Resampling: {}".format(step_size))
-        sft = resample_streamlines_step_size(sft, step_size=step_size)
-    if compress is not None:
-        logging.debug("            Compressing: {}".format(compress))
-        sft = compress_sft(sft, compress)
-    return sft

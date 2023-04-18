@@ -41,8 +41,8 @@ def test_execution(script_runner, experiments_path):
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]
     streamline_group_name = TEST_EXPECTED_STREAMLINE_GROUPS[0]
 
-    # Here, testing default values only. See dwi_ml.unit_tests.test_trainer for more
-    # various testing.
+    # Here, testing default values only. See dwi_ml.unit_tests.test_trainer for
+    # more various testing.
     # Max length in current testing dataset is 108. Setting max length to 115
     # for faster testing. Also decreasing other default values.
     logging.info("************ TESTING TRAINING ************")
@@ -56,7 +56,7 @@ def test_execution(script_runner, experiments_path):
                             '--nheads', '2', '--max_len', str(MAX_LEN),
                             '--d_model', '6', '--n_layers_e', '1',
                             '--n_layers_d', '1', '--ffnn_hidden_size', '3',
-                            '--token_type', 'as_label',
+                            '--token_type', 'as_label', '--step_size', '0.5',
                             '--dropout_rate', '0', '--logging', 'INFO')
     assert ret.success
 
@@ -72,7 +72,8 @@ def test_execution(script_runner, experiments_path):
         ret = script_runner.run('tto_train_model.py',
                                 experiments_path, 'tto_test', hdf5_file,
                                 input_group_name, streamline_group_name,
-                                '--max_epochs', '1', '--batch_size_training', '5',
+                                '--max_epochs', '1', '--step_size', '0.5',
+                                '--batch_size_training', '5',
                                 '--batch_size_units', 'nb_streamlines',
                                 '--max_batches_per_epoch_training', '2',
                                 '--max_batches_per_epoch_validation', '1',

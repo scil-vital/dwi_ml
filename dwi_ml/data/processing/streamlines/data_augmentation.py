@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import logging
 from collections import defaultdict
 import copy
 from typing import Union
@@ -7,6 +7,19 @@ from typing import Union
 from dipy.io.stateful_tractogram import StatefulTractogram
 from nibabel.streamlines.tractogram import (PerArrayDict, PerArraySequenceDict)
 import numpy as np
+from scilpy.tracking.tools import resample_streamlines_step_size
+from scilpy.utils.streamlines import compress_sft
+
+
+def resample_or_compress(sft, step_size: float = None, compress: float = None):
+    if step_size is not None:
+        # Note. No matter the chosen space, resampling is done in mm.
+        logging.debug("            Resampling: {}".format(step_size))
+        sft = resample_streamlines_step_size(sft, step_size=step_size)
+    if compress is not None:
+        logging.debug("            Compressing: {}".format(compress))
+        sft = compress_sft(sft, compress)
+    return sft
 
 
 def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,

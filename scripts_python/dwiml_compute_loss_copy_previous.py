@@ -18,12 +18,14 @@ import torch.nn.functional
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import add_reference_arg, assert_inputs_exist
 
+from dwi_ml.data.processing.streamlines.data_augmentation import \
+    resample_or_compress
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     convert_dirs_to_class
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
-from dwi_ml.utils import add_resample_or_compress_arg, resample_or_compress
+from dwi_ml.io_utils import add_resample_or_compress_arg
 
 CHOICES = ['cosine-regression', 'l2-regression', 'sphere-classification',
            'smooth-sphere-classification', 'cosine-plus-l2-regression']

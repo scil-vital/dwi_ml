@@ -2,7 +2,7 @@
 """
                                 Batch sampler
 
-These classes defines how to sample the streamlines available in the
+These classes define how to sample the streamlines available in the
 MultiSubjectData.
 
 AbstractBatchSampler:
@@ -13,7 +13,7 @@ AbstractBatchSampler:
     - Performs data augmentation (on-the-fly to avoid having to multiply data
      on disk) (ex: splitting, reversing, adding noise).
 
-    NOTE: Actual loaded batch size might be different than `batch_size`
+    NOTE: Actual loaded batch size might be different from `batch_size`
     depending on chosen data augmentation. This sampler takes streamline
     cutting and resampling into consideration, and as such, will return more
     (or less) points than the provided `batch_size`.
@@ -50,18 +50,17 @@ import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
-    reverse_streamlines, split_streamlines)
+    reverse_streamlines, split_streamlines, resample_or_compress)
 from dwi_ml.data.processing.utils import add_noise_to_tensor
-from dwi_ml.models.main_models import MainModelOneInput, ModelWithNeighborhood
-from dwi_ml.utils import resample_or_compress
+from dwi_ml.models.main_models import MainModelOneInput, \
+    ModelWithNeighborhood, MainModelAbstract
 
 logger = logging.getLogger('batch_loader_logger')
 
 
 class DWIMLAbstractBatchLoader:
-    def __init__(self, dataset: MultiSubjectDataset,
+    def __init__(self, dataset: MultiSubjectDataset, model: MainModelAbstract,
                  streamline_group_name: str, rng: int,
-                 step_size: float = None, compress: bool = False,
                  split_ratio: float = 0.,
                  noise_gaussian_size_forward: float = 0.,
                  noise_gaussian_var_forward: float = 0.,
@@ -76,16 +75,6 @@ class DWIMLAbstractBatchLoader:
             streamline_groups in the data_source.
         rng : int
             Seed for the random number generator.
-        step_size : float
-            Constant step size that every streamline should have between points
-            (in mm). Default: None (train on streamlines as they are).
-            Note that you probably already fixed a step size when
-            creating your dataset, but you could use a different one here if
-            you wish.
-        compress: bool
-            If true, compress streamlines. Cannot be used together with
-            step_size. Once again, the choice can be different in the batch
-            sampler than chosen when creating the hdf5. Default: False.
         split_ratio : float
             DATA AUGMENTATION: Percentage of streamlines to randomly split
             into 2, in each batch (keeping both segments as two independent
@@ -125,20 +114,8 @@ class DWIMLAbstractBatchLoader:
         """
         # Batch sampler variables
         self.dataset = dataset
+        self.model = model
         self.streamline_group_name = streamline_group_name
-        if step_size and compress:
-            raise ValueError("You may choose either resampling or compressing,"
-                             "but not both.")
-        elif step_size and step_size <= 0:
-            raise ValueError("Step size can't be 0 or less!")
-            # Note. When using
-            # scilpy.tracking.tools.resample_streamlines_step_size, a warning
-            # is shown if step_size < 0.1 or > np.max(sft.voxel_sizes), saying
-            # that the value is suspicious. Not raising the same warnings here
-            # as you may be wanting to test weird things to understand better
-            # your model.
-        self.step_size = step_size
-        self.compress = compress
 
         # Find idx of streamline group
         self.streamline_group_idx = self.dataset.streamline_groups.index(
@@ -180,8 +157,6 @@ class DWIMLAbstractBatchLoader:
             'noise_gaussian_var_forward': self.noise_gaussian_var_train,
             'reverse_ratio': self.reverse_ratio,
             'split_ratio': self.split_ratio,
-            'step_size': self.step_size,
-            'compress': self.compress,
         }
         return params
 
@@ -201,13 +176,18 @@ class DWIMLAbstractBatchLoader:
             self.context = context
         self.dataset.context = context
 
-    def data_augmentation_sft(self, sft):
-        if self.step_size is not None and \
-                self.context_subset.step_size == self.step_size:
+    def _data_augmentation_sft(self, sft):
+        if self.model.step_size is not None and \
+                self.context_subset.step_size == self.model.step_size:
             logger.debug("Step size is the same as when creating "
                          "the hdf5 dataset. Not resampling again.")
+        elif self.model.compress is not None and \
+                self.context_subset.compress == self.model.compress:
+            logger.debug("Compression rate is the same as when creating "
+                         "the hdf5 dataset. Not compressing again.")
         else:
-            sft = resample_or_compress(sft, self.step_size, self.compress)
+            sft = resample_or_compress(sft, self.model.step_size,
+                                       self.model.compress)
 
         # Splitting streamlines
         # This increases the batch size, but does not change the total
@@ -287,7 +267,7 @@ class DWIMLAbstractBatchLoader:
 
             # No cache for the sft data. Accessing it directly.
             # Note: If this is used through the dataloader, multiprocessing
-            # is used. Each process will open an handle.
+            # is used. Each process will open a handle.
             subj_data = \
                 self.context_subset.subjs_data_list.get_subj_with_handle(subj)
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
@@ -295,7 +275,7 @@ class DWIMLAbstractBatchLoader:
             # Get streamlines as sft
             logger.debug("            Loading sampled streamlines...")
             sft = subj_sft_data.as_sft(s_ids)
-            sft = self.data_augmentation_sft(sft)
+            sft = self._data_augmentation_sft(sft)
 
             # Remember the indices of this subject's (augmented) streamlines
             ids_start = len(batch_streamlines)
@@ -322,20 +302,19 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
                 (possibly with its neighborhood)
         target = the whole streamlines as sequences.
     """
-    def __init__(self, input_group_name, model: MainModelOneInput, **kw):
+    model: MainModelOneInput
+
+    def __init__(self, input_group_name, **kw):
         """
         Params
         ------
         input_group_name: str
             Name of the input group in the hdf5 dataset.
-        model: ModelOneInput
-            The model.
         """
         super().__init__(**kw)
 
         self.input_group_name = input_group_name
-        self.model = model
-        self.use_neighborhood = isinstance(model, ModelWithNeighborhood)
+        self.use_neighborhood = isinstance(self.model, ModelWithNeighborhood)
 
         # Find group index in the data_source
         idx = self.dataset.volume_groups.index(input_group_name)
@@ -383,7 +362,7 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         Returns
         -------
         batch_x_data : List[tensor]
-            The list of tensors inputs for each streamlines. Each tensor is of
+            The list of tensors inputs for each streamline. Each tensor is of
             shape [nb points, nb_features].
         """
         batch_x_data = []

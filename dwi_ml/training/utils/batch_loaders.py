@@ -5,13 +5,11 @@ import logging
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from dwi_ml.utils import add_resample_or_compress_arg
 
 
 def add_args_batch_loader(p: argparse.ArgumentParser):
     # STREAMLINES PREPROCESSING
     bl_g = p.add_argument_group("Batch loader")
-    add_resample_or_compress_arg(bl_g)
     bl_g.add_argument(
         '--noise_gaussian_size_forward', type=float, metavar='s', default=0.,
         help="If set, add random Gaussian noise to streamline coordinates \n"
@@ -50,8 +48,6 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             dataset=dataset, model=model,
             input_group_name=args.input_group_name,
             streamline_group_name=args.streamline_group_name,
-            # STREAMLINES PREPROCESSING
-            step_size=args.step_size, compress=args.compress,
             # STREAMLINES AUGMENTATION
             noise_gaussian_size_forward=args.noise_gaussian_size_forward,
             noise_gaussian_var_forward=args.noise_gaussian_var_forward,

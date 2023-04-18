@@ -29,7 +29,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     distribution parameters).
     """
 
-    def __init__(self, experiment_name, nb_features: int,
+    def __init__(self, experiment_name,
+                 step_size: Union[float, None], compress: Union[float, None],
+                 nb_features: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
                  prev_dirs_embedding_size: Union[int, None],
@@ -94,7 +96,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                                  "must be the same as the input size!")
 
         super().__init__(
-            experiment_name=experiment_name, log_level=log_level,
+            experiment_name=experiment_name, step_size=step_size,
+            compress=compress, log_level=log_level,
             # For modelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,

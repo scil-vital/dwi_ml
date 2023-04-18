@@ -4,10 +4,11 @@ We expect the classes here to be used in single_subject_containers
 
 
 """
+import logging
 from typing import Tuple, Union, List
 
 from dipy.io.stateful_tractogram import (set_sft_logger_level,
-                                         StatefulTractogram, Space)
+                                         StatefulTractogram, Space, Origin)
 import h5py
 from nibabel.streamlines import ArraySequence
 import numpy as np
@@ -26,7 +27,23 @@ def _load_space_from_hdf(hdf_group: h5py.Group):
         space_str = space_str[6:]
     space = Space(space_str)
 
-    return space_attributes, space
+    if 'origin' in hdf_group.attrs:
+        origin_str = str(hdf_group.attrs['origin']).lower()
+        if origin_str[0:7] == 'origin.':
+            # origin was Origin.something
+            origin_str = origin_str[7:]
+        if origin_str == 'trackvis':
+            origin = Origin.TRACKVIS
+        elif origin_str == 'nifti':
+            origin = Origin.NIFTI
+        else:
+            origin = Origin(origin_str)
+    else:
+        logging.warning("Using an old hdf5! No Origin information saved. "
+                        "Using dipy defaults. Make sure your SFT looks ok.")
+        origin = Origin.NIFTI
+
+    return space_attributes, space, origin
 
 
 def _load_streamlines_from_hdf(hdf_group: h5py.Group):
@@ -140,7 +157,7 @@ class SFTDataAbstract(object):
     """
     def __init__(self,
                  streamlines: Union[ArraySequence, _LazyStreamlinesGetter],
-                 space_attributes: Tuple, space: Space):
+                 space_attributes: Tuple, space: Space, origin: Origin):
         """
         Params
         ------
@@ -161,6 +178,7 @@ class SFTDataAbstract(object):
         """
         self.space_attributes = space_attributes
         self.space = space
+        self.origin = origin
         self.streamlines = streamlines
         self.is_lazy = None
 
@@ -193,7 +211,7 @@ class SFTDataAbstract(object):
         the hdf5."""
         raise NotImplementedError
 
-    def as_sft(self, streamline_ids=None):
+    def as_sft(self, streamline_ids: List = None):
         """
         Returns chosen streamlines in a StatefulTractogram format.
 
@@ -206,14 +224,15 @@ class SFTDataAbstract(object):
         streamlines = self._subset_streamlines(streamline_ids)
 
         sft = StatefulTractogram(streamlines, self.space_attributes,
-                                 self.space)
+                                 self.space, self.origin)
+
         return sft
 
 
 class SFTData(SFTDataAbstract):
     def __init__(self, streamlines: ArraySequence, space_attributes: Tuple,
-                 space: Space, lengths_mm: List):
-        super().__init__(streamlines, space_attributes, space)
+                 space: Space, origin: Origin, lengths_mm: List):
+        super().__init__(streamlines, space_attributes, space, origin)
         self._lengths_mm = lengths_mm
         self.is_lazy = False
 
@@ -231,11 +250,11 @@ class SFTData(SFTDataAbstract):
         # Adding non-hidden parameters for nicer later access
         lengths_mm = hdf_group['euclidean_lengths']
 
-        space_attributes, space = _load_space_from_hdf(hdf_group)
+        space_attributes, space, origin = _load_space_from_hdf(hdf_group)
 
         # Return an instance of SubjectMRIData instantiated through __init__
         # with this loaded data:
-        return cls(streamlines, space_attributes, space, lengths_mm)
+        return cls(streamlines, space_attributes, space, origin, lengths_mm)
 
     def _subset_streamlines(self, streamline_ids):
         if streamline_ids is not None:
@@ -247,8 +266,8 @@ class SFTData(SFTDataAbstract):
 
 class LazySFTData(SFTDataAbstract):
     def __init__(self, streamlines: _LazyStreamlinesGetter,
-                 space_attributes: Tuple, space: Space):
-        super().__init__(streamlines, space_attributes, space)
+                 space_attributes: Tuple, space: Space, origin: Origin):
+        super().__init__(streamlines, space_attributes, space, origin)
         self.is_lazy = True
 
     @property
@@ -258,11 +277,11 @@ class LazySFTData(SFTDataAbstract):
 
     @classmethod
     def init_from_hdf_info(cls, hdf_group: h5py.Group):
-        space_attributes, space = _load_space_from_hdf(hdf_group)
+        space_attributes, space, origin = _load_space_from_hdf(hdf_group)
 
         streamlines = _LazyStreamlinesGetter(hdf_group)
 
-        return cls(streamlines, space_attributes, space)
+        return cls(streamlines, space_attributes, space, origin)
 
     def _subset_streamlines(self, streamline_ids):
         streamlines = self.streamlines.get_array_sequence(streamline_ids)

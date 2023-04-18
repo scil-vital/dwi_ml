@@ -48,7 +48,7 @@ def test_execution_training_tracking(script_runner, experiments_path):
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
-                            '--logging', 'INFO',
+                            '--logging', 'INFO', '--step_size', '0.5',
                             '--nb_previous_dirs', '1')
     assert ret.success
 
@@ -64,7 +64,8 @@ def test_execution_training_tracking(script_runner, experiments_path):
         ret = script_runner.run('l2t_train_model.py',
                                 experiments_path, 'test_l2t_gpu', hdf5_file,
                                 input_group_name, streamline_group_name,
-                                '--max_epochs', '1', '--batch_size_training', '5',
+                                '--max_epochs', '1', '--step_size', '0.5',
+                                '--batch_size_training', '5',
                                 '--batch_size_validation', '5',
                                 '--batch_size_units', 'nb_streamlines',
                                 '--max_batches_per_epoch_training', '2',

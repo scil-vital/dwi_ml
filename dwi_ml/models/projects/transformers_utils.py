@@ -12,6 +12,9 @@ sphere_choices = ['symmetric362', 'symmetric642', 'symmetric724',
 
 def add_abstract_model_args(p):
     """ Optional parameters for TransformingTractography"""
+    # Step_size / compress
+    AbstractTransformerModel.add_args_main_model(p)
+
     gx = p.add_argument_group("Embedding:")
     gx.add_argument(
         '--data_embedding', default='nn_embedding',

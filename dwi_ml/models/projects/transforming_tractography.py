@@ -25,7 +25,7 @@ from dwi_ml.models.utils.transformers_from_torch import (
     ModifiedTransformerEncoder, ModifiedTransformerEncoderLayer,
     ModifiedTransformerDecoder, ModifiedTransformerDecoderLayer)
 
-# Our model needs to be auto-regressive, to allow inference / generation at
+# Our model needs to be autoregressive, to allow inference / generation at
 # tracking time.
 # => During training, we hide the future; both in the input and in the target
 # sequences.
@@ -97,6 +97,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
     """
     def __init__(self,
                  experiment_name: str,
+                 step_size: Union[float, None], compress: Union[float, None],
                  # INPUTS IN ENCODER
                  nb_features: int, embedding_key_x: str,
                  # TARGETS IN DECODER
@@ -165,7 +166,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         """
         super().__init__(
             # MainAbstract
-            experiment_name=experiment_name, log_level=log_level,
+            experiment_name=experiment_name, step_size=step_size,
+            compress=compress, log_level=log_level,
             # Neighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
@@ -297,7 +299,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
     def _generate_future_mask(self, sz):
         """DO NOT USE FLOAT, their code had a bug (see issue #92554. Fixed in
-        latest github branch. Waiting for release.) Using boolean masks.
+        latest GitHub branch. Waiting for release.) Using boolean masks.
         """
         mask = Transformer.generate_square_subsequent_mask(sz, self.device)
         return mask < 0
@@ -323,7 +325,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         use_padding: bool,
             If false, skip padding (all streamlines must have the same length).
         batch_max_len: int
-            Batch's maximum length. It it not useful to pad more than that.
+            Batch's maximum length. It is not useful to pad more than that.
             (During tracking, particularly interesting!). Should be equal or
             smaller to self.max_len.
 
@@ -366,7 +368,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             obtain targets of the same lengths. Then, directions are used for
             two things:
             - As input to the decoder. This input is generally the shifted
-            sequence, with a SOS token (start of sequence) at the first
+            sequence, with an SOS token (start of sequence) at the first
             position. In our case, there is no token, but the sequence is
             adequately masked to hide future positions. The last direction is
             not used.
@@ -732,7 +734,7 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
 
         # Take the second half of model outputs to direction getter
         # (the last skip-connection makes more sense this way. That's why it's
-        # more a "decoder" than an "encoder" in logical meaning.
+        # more a "decoder" than an "encoder" in logical meaning.)
         kept_outputs = outputs[:, -outputs.shape[1]//2:, :]
 
         return kept_outputs, (sa_weights,)

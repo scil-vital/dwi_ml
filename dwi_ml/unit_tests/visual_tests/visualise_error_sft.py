@@ -109,10 +109,10 @@ def prepare_batch_visu_error(p, args, model: MainModelAbstract,
     streamlines = model.prepare_streamlines_f(streamlines)
 
     #   2) On inputs (done in dataloader / trainer)
-    args.lazy = False
-    args.cache_size = None
     logging.info("Loading subject.")
-    subset, subj_idx = prepare_dataset_one_subj(args)
+    subset, subj_idx = prepare_dataset_one_subj(
+        args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
+        subset=args.subset)
     group_idx = subset.volume_groups.index(input_group)
     streamlines_minus_one = [s[:-1, :] for s in streamlines]
     batch_input, _ = model.prepare_batch_one_input(

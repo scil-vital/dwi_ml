@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
+import logging
+
 import torch
 import numpy as np
 
 from dwi_ml.data.processing.space.neighborhood import \
     extend_coordinates_with_neighborhood
+from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 
 B1 = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
                [-1, 0, 0, 0, 1, 0, 0, 0],
@@ -88,25 +91,23 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
     if volume.dim() <= 2 or volume.dim() >= 5:
         raise ValueError("Volume must be 3D or 4D!")
 
-    # indices are the floor of coordinates + idx, boxes with 8 corners around
-    # given coordinates. (Floor means origin = corner)
-    # coords' shape = [n_timesteps, 3]
-    # coords[:, None, :] shape = [n_timesteps, 3]
-    # coords[:, None, :] + idx_torch shape: [n_timesteps, 8, 3]
-    #   -> the box around each time step
-    # reshaped as (-1,3) = [n_timesteps*8, 3]
-    # torch needs indices to be cast to long
-    idx_box_unclipped = \
-        torch.floor(coords_vox_corner[:, None, :] + idx_box_torch
-                    ).reshape((-1, 3)).long()
-
-    # Clip indices to make sure we don't go out-of-bounds
-    # Origin = corner means the minimum is 0.
-    #                       the maximum is shape.
+    # - indices are the floor of coordinates + idx, boxes with 8 corners around
+    #   given coordinates. (Floor means origin = corner)
+    # - coords + idx_torch shape -> the box of 8 corners around each coord
+    #   reshaped as (-1,3) = [n * 8, 3]
+    # - torch needs indices to be cast to long
+    # - clip indices to make sure we don't go out-of-bounds
+    #   Origin = corner means the minimum is 0.
+    #                         the maximum is shape.
     # Ex, for shape 150, last voxel is #149, with possible coords up to 149.99.
     lower = torch.as_tensor([0, 0, 0], device=device)
     upper = torch.as_tensor(volume.shape[:3], device=device) - 1
-    idx_box_clipped = torch.min(torch.max(idx_box_unclipped, lower), upper)
+    idx_box_clipped = torch.min(
+        torch.max(
+            torch.floor(coords_vox_corner[:, None, :] + idx_box_torch
+                        ).reshape((-1, 3)).long(),
+            lower),
+        upper)
 
     # Setting Q1 such as in equation 9.9
     d = coords_vox_corner - torch.floor(coords_vox_corner)
@@ -115,7 +116,14 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
                       dx * dy, dy * dz, dx * dz,
                       dx * dy * dz], dim=0)
 
+    # As of now:
+    # B1 = 8x8
+    # Q1 = 8 x n (GROS)
+    # mult B1 * Q1 = 8 x n
+    # overwriting Q1 with mult to try and save space
     if volume.dim() == 3:
+        Q1 = torch.mm(B1_torch.t(), Q1)
+
         # Fetch volume data at indices based on equation 9.11.
         p = volume[idx_box_clipped[:, 0],
                    idx_box_clipped[:, 1],
@@ -124,10 +132,10 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
         p = p.reshape((coords_vox_corner.shape[0], -1)).t()
 
         # Finding coordinates with equation 9.12a.
-        output = torch.sum(p * torch.mm(B1_torch.t(), Q1), dim=0)
+        return torch.sum(p * Q1, dim=0)
 
-        return output
     elif volume.dim() == 4:
+        Q1 = torch.mm(B1_torch.t(), Q1).t()[:, :, None]
 
         # Fetch volume data at indices
         p = volume[idx_box_clipped[:, 0],
@@ -135,10 +143,21 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
                    idx_box_clipped[:, 2], :]
         p = p.reshape((coords_vox_corner.shape[0], 8, volume.shape[-1]))
 
-        output = \
-            torch.sum(p * torch.mm(B1_torch.t(), Q1).t()[:, :, None], dim=1)
+        # p: of shape n x 8 x features
+        # Q1: n x 8 x 1
+        # This can save a bit of space.
+        torch.cuda.empty_cache()
 
-        return output
+        # return torch.sum(p * Q1, dim=1)
+        # Able to have bigger batches by avoiding 3D matrix.
+        # Ex: With neighborhood axis [1 2] (13 neighbors), 47 features per
+        # point, we can pass from batches of 1250 streamlines to 2300!
+        total = torch.zeros(p.shape[0], p.shape[2], device=device,
+                            dtype=torch.float)
+        for corner in range(8):
+            total += p[:, corner, :] * Q1[:, corner, :]
+        return total
+
     else:
         raise ValueError("Interpolation: There was a problem with the "
                          "volume's number of dimensions!")
@@ -159,7 +178,6 @@ def interpolate_volume_in_neighborhood(
         The neighboors to add to each coord. Do not include the current point
         ([0,0,0]). Values are considered in the same space as
         coords_vox_corner, and should thus be in voxel space.
-    device: torch device.
 
     Returns
     -------
@@ -194,5 +212,19 @@ def interpolate_volume_in_neighborhood(
     else:  # No neighborhood:
         subj_x_data = torch_trilinear_interpolation(volume_as_tensor,
                                                     coords_vox_corner)
+
+    if volume_as_tensor.is_cuda:
+        logging.debug("Emptying cache now. Can be a little slow but saves A "
+                      "LOT of memory for our\n current trilinear "
+                      "interpolation. (We could improve code \na little but "
+                      "would loose a lot of readability).")
+        # Ex: with 2000 streamlines (134 000 points), with neighborhood axis
+        # [1 2] (13 neighbors), 47 features per point, we remove 6.5 GB of
+        # memory!
+        logging.debug("Torch trilinear: emptying cache. Before:")
+        log_gpu_memory_usage(logging.getLogger())
+        torch.cuda.empty_cache()
+        logging.debug("After")
+        log_gpu_memory_usage(logging.getLogger())
 
     return subj_x_data, coords_vox_corner

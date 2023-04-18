@@ -183,6 +183,18 @@ class DWIMLAbstractTrainer:
             self.learning_rates = learning_rates
         self.weight_decay = weight_decay
         self.use_radam = use_radam
+
+        # Currently, Dataloader multiprocessing is not working very well.
+        # system error: to many file handles open.
+        # toDo: Verify our datasets if it is our fault.
+        #  or update torch version and try again, maybe?
+        #  See here: https://github.com/pytorch/pytorch/issues/11201
+        #  Amongst suggested solutions: Add this for each worker
+        #  torch.multiprocessing.set_sharing_strategy('file_system')
+        # Fixing nb processes: 1 and 0 do not have the same effect on the
+        # dataloader.
+        if nb_cpu_processes == 1:
+            nb_cpu_processes = 0
         self.nb_cpu_processes = nb_cpu_processes
         self.use_gpu = use_gpu
         if self.use_radam is not None:

@@ -20,7 +20,6 @@ from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
 
-from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.projects.transforming_tractography import \
@@ -32,8 +31,7 @@ from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
                                    add_tracking_options,
                                    prepare_seed_generator,
                                    prepare_tracking_mask,
-                                   prepare_dataset_one_subj,
-                                   prepare_step_size_vox, track_and_save)
+                                   prepare_dataset_one_subj, track_and_save)
 
 # A decision should be made as if we should keep the last point (out of the
 # tracking mask). Currently keeping this as in Dipy, i.e. True. Could be
@@ -52,8 +50,6 @@ def build_argparser():
     # Sphere used if the direction_getter key is the sphere-classification.
     add_sphere_arg(track_g, symmetric_only=False)
 
-    add_dataset_args(p)
-
     # As in scilpy:
     add_seeding_options(p)
     add_out_options(p)
@@ -63,7 +59,7 @@ def build_argparser():
     return p
 
 
-def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
+def prepare_tracker(parser, args):
     hdf_handle = h5py.File(args.hdf5_file, 'r')
 
     sub_logger_level = args.logging.upper()
@@ -88,7 +84,9 @@ def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
             tracking_mask = TrackingMask(dim)
 
         logging.info("Loading subject's data.")
-        subset, subj_idx = prepare_dataset_one_subj(args)
+        subset, subj_idx = prepare_dataset_one_subj(
+            args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
+            subset=args.subset)
 
         logging.info("Loading model.")
         model = OriginalTransformerModel.load_params_and_state(
@@ -139,11 +137,7 @@ def main():
     verify_compression_th(args.compress)
     verify_seed_options(parser, args)
 
-    # ----- Prepare values
-    max_nbr_pts = int(args.max_length / args.step_size)
-    min_nbr_pts = max(int(args.min_length / args.step_size), 1)
-
-    tracker, ref = prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts)
+    tracker, ref = prepare_tracker(parser, args)
 
     # ----- Track
     track_and_save(tracker, args, ref)

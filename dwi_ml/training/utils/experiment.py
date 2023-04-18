@@ -21,23 +21,6 @@ def add_mandatory_args_training_experiment(p):
         help="Name of the streamlines group in the hdf5 dataset.")
 
 
-def add_memory_args_training_experiment(p):
-    # Memory options both for the batch sampler and the trainer:
-    m_g = p.add_argument_group("Memory options")
-    m_g.add_argument(
-        '--use_gpu', action='store_true',
-        help="If set, as much as possible, computations will be done on GPU.\n"
-             "In particular, we will avoid computations in the batch sampler,"
-             "\nwhich works on the CPU.")
-    m_g.add_argument(
-        '--processes', type=int, default=0, metavar='n',
-        help="Number of parallel CPU processes, when working on CPU. \n"
-             "Default: 0 (no parallel processes).")
-    m_g.add_argument(
-        '--rng', type=int, default=1234,
-        help="Random seed. [1234]")
-
-
 def add_args_resuming_experiment(p):
     p.add_argument('experiments_path',
                    help='Path from where to load your experiment, and where to'

@@ -97,10 +97,10 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
     logging.getLogger().setLevel(level=root_level)
 
     # Prepare data
-    args.lazy = False
-    args.cache_size = None
     logging.info("Loading subject.")
-    subset, subj_idx = prepare_dataset_one_subj(args)
+    subset, subj_idx = prepare_dataset_one_subj(
+        args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
+        subset=args.subset)
 
     # Load SFT
     logging.info("Loading reference SFT.")

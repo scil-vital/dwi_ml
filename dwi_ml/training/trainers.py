@@ -621,10 +621,15 @@ class DWIMLAbstractTrainer:
             del train_iterator
 
         # Saving epoch's information
-        all_n = self.train_loss_monitor.current_batch_weights
-        self.logger.info(
-            "Number of data points per batch: {}\u00B1{}"
-            .format(int(np.mean(all_n)), int(np.std(all_n))))
+        all_n = self.train_loss_monitor.current_epoch_batch_weights
+        if len(all_n) == 0:
+            # values not stored if loss is inf.
+            logging.info("Loss was inf for all batches in this epoch. Please "
+                         "supervise.")
+        else:
+            self.logger.info(
+                "Number of data points per batch: {}\u00B1{}"
+                .format(int(np.mean(all_n)), int(np.std(all_n))))
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
         self.training_time_monitor.end_epoch()
@@ -1085,6 +1090,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             # project's requirements by sending whole streamlines rather
             # than only directions.
             model_outputs = self.model(batch_inputs, streamlines_f)
+            del streamlines_f
         else:
             logger.debug("Uses a batch of {} streamlines, {} input points."
                          .format(len(streamlines),

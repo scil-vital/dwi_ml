@@ -46,8 +46,8 @@ class BatchHistoryMonitor(object):
         self.is_weighted = weighted
 
         # State:
-        self.current_batch_values = []
-        self.current_batch_weights = []
+        self.current_epoch_batch_values = []
+        self.current_epoch_batch_weights = []
         self.average_per_epoch = []
         self.current_epoch = -1
 
@@ -64,10 +64,10 @@ class BatchHistoryMonitor(object):
         if np.isinf(value):
             return
 
-        self.current_batch_values.append(value)
+        self.current_epoch_batch_values.append(value)
 
         if self.is_weighted:
-            self.current_batch_weights.append(weight)
+            self.current_epoch_batch_weights.append(weight)
 
     def start_new_epoch(self):
         assert len(self.average_per_epoch) == self.current_epoch + 1, \
@@ -76,19 +76,24 @@ class BatchHistoryMonitor(object):
             .format(len(self.average_per_epoch), self.current_epoch)
 
         self.current_epoch += 1
-        self.current_batch_values = []
-        self.current_batch_weights = []
+        self.current_epoch_batch_values = []
+        self.current_epoch_batch_weights = []
 
     def end_epoch(self):
         """
         Compute mean of current epoch and add it to means values.
         """
+        if len(self.current_epoch_batch_values) == 0:
+            # All batches were inf and thus not stored. Or no batch.
+            self.average_per_epoch.append(np.nan)
+            return
+
         if not self.is_weighted:
-            mean_value = np.mean(self.current_batch_values)
+            mean_value = np.mean(self.current_epoch_batch_values)
         else:
-            mean_value = sum(np.multiply(self.current_batch_values,
-                                         self.current_batch_weights))
-            mean_value /= sum(self.current_batch_weights)
+            mean_value = sum(np.multiply(self.current_epoch_batch_values,
+                                         self.current_epoch_batch_weights))
+            mean_value /= sum(self.current_epoch_batch_weights)
 
         self.average_per_epoch.append(mean_value)
 

@@ -12,6 +12,7 @@ from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.io_utils import add_memory_args
 from dwi_ml.tracking.tracking_mask import TrackingMask
 
 
@@ -48,7 +49,7 @@ def add_tracking_options(p):
     """
     Similar to scilpy.tracking.utils.add_generic_options_tracking but
     - no algo (det/prob) anymore. Rather, propagation depends on the model.
-    - no sf_threshold or sh_basis args.
+    - no sf_threshold or sh_basis 
     """
     track_g = p.add_argument_group('  Tracking options')
     track_g.add_argument('--algo', choices=['det', 'prob'], default='det',
@@ -112,14 +113,10 @@ def add_tracking_options(p):
                           "with -nt 1,000,000, \nyou can create tractogram_2 "
                           "with \n--skip 1,000,000.")
 
-    # Preparing upcoming GPU option:
-    m_g = p.add_argument_group('  Memory options')
-    ram_options = m_g.add_mutually_exclusive_group()
-    # Parallel processing or GPU processing
-    add_processes_arg(ram_options)
-    ram_options.add_argument('--use_gpu', action='store_true',
-                             help="If set, use GPU for processing. Cannot be "
-                                  "used \ntogether with --processes.")
+    # Memory options:
+    m_g = add_memory_args(p, add_lazy_options=True,
+                          add_multiprocessing_option=True,
+                          add_rng=True)
     m_g.add_argument('--simultaneous_tracking', type=int, default=1,
                      help='Track n streamlines at the same time. Intended for '
                           'GPU usage. Default = 1 (no simultaneous tracking).')
@@ -127,35 +124,36 @@ def add_tracking_options(p):
     return track_g
 
 
-def prepare_dataset_one_subj(args):
+def prepare_dataset_one_subj(hdf5_file, subj_id, lazy, cache_size,
+                             subset='testing'):
     # Right now, we con only track on one subject at the time. We could
-    # instantiate a LazySubjectData directly but we want to use the cache
+    # instantiate a LazySubjectData directly, but we want to use the cache
     # manager (suited better for multiprocessing)
-    dataset = MultiSubjectDataset(args.hdf5_file, lazy=args.lazy,
-                                  cache_size=args.cache_size,
+    dataset = MultiSubjectDataset(hdf5_file, lazy=lazy,
+                                  cache_size=cache_size,
                                   log_level=logging.WARNING)
 
-    if args.subset == 'testing':
+    if subset == 'testing':
         # Most logical choice.
         dataset.load_data(load_training=False, load_validation=False,
-                          subj_id=args.subj_id)
+                          subj_id=subj_id)
         subset = dataset.testing_set
-    elif args.subset == 'training':
+    elif subset == 'training':
         dataset.load_data(load_validation=False, load_testing=False,
-                          subj_id=args.subj_id)
+                          subj_id=subj_id)
         subset = dataset.training_set
-    elif args.subset == 'validation':
+    elif subset == 'validation':
         dataset.load_data(load_training=False, load_testing=False,
-                          subj_id=args.subj_id)
+                          subj_id=subj_id)
         subset = dataset.validation_set
     else:
         raise ValueError("Subset must be one of 'training', 'validation' "
                          "or 'testing.")
 
-    if args.subj_id not in subset.subjects:
+    if subj_id not in subset.subjects:
         raise ValueError("Subject {} does not belong in hdf5's {} set."
-                         .format(args.subj_id, args.subset))
-    subj_idx = subset.subjects.index(args.subj_id)  # Should be 0.
+                         .format(subj_id, subset))
+    subj_idx = subset.subjects.index(subj_id)  # Should be 0.
 
     return subset, subj_idx
 

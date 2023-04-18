@@ -20,7 +20,6 @@ from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
 
-from dwi_ml.data.dataset.utils import add_dataset_args
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
@@ -48,8 +47,6 @@ def build_argparser():
     track_g = add_tracking_options(p)
     # Sphere used if the direction_getter key is the sphere-classification.
     add_sphere_arg(track_g, symmetric_only=False)
-
-    add_dataset_args(p)
 
     # As in scilpy:
     add_seeding_options(p)
@@ -87,7 +84,9 @@ def prepare_tracker(parser, args):
             tracking_mask = TrackingMask(dim)
 
         logging.info("Loading subject's data.")
-        subset, subj_idx = prepare_dataset_one_subj(args)
+        subset, subj_idx = prepare_dataset_one_subj(
+            args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
+            subset=args.subset)
 
         logging.info("Loading model.")
         model = Learn2TrackModel.load_params_and_state(

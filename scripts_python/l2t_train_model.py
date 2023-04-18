@@ -14,10 +14,10 @@ import os
 import comet_ml
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.data.dataset.utils import (
-    add_dataset_args, prepare_multisubjectdataset)
+from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import add_logging_arg, format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.io_utils import add_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.models.projects.learn2track_utils import add_model_args
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
@@ -27,8 +27,7 @@ from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
                                                  prepare_batch_loader)
 from dwi_ml.training.utils.experiment import (
-    add_mandatory_args_training_experiment,
-    add_memory_args_training_experiment)
+    add_mandatory_args_training_experiment)
 from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
     format_lr
 
@@ -37,11 +36,10 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_mandatory_args_training_experiment(p)
-    add_memory_args_training_experiment(p)
-    add_dataset_args(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     training_group = add_training_args(p)
+    add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_logging_arg(p)
 
     # Additional arg for projects
@@ -121,7 +119,7 @@ def init_from_args(args, sub_loggers_level):
             patience=args.patience, from_checkpoint=False,
             clip_grad=args.clip_grad,
             # MEMORY
-            nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
+            nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
             log_level=args.logging)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))

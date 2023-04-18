@@ -14,10 +14,10 @@ import os
 import comet_ml
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.data.dataset.utils import (add_dataset_args,
-                                       prepare_multisubjectdataset)
+from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.io_utils import add_memory_args
 from dwi_ml.models.projects.transforming_tractography import \
     OriginalTransformerModel
 from dwi_ml.models.projects.transformers_utils import (add_abstract_model_args,
@@ -29,8 +29,7 @@ from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
                                                  prepare_batch_loader)
 from dwi_ml.training.utils.experiment import (
-    add_mandatory_args_training_experiment,
-    add_memory_args_training_experiment)
+    add_mandatory_args_training_experiment)
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment, \
     format_lr
 
@@ -40,8 +39,6 @@ def prepare_arg_parser():
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_mandatory_args_training_experiment(p)
     add_logging_arg(p)
-    add_memory_args_training_experiment(p)
-    add_dataset_args(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     add_training_args(p)
@@ -49,6 +46,8 @@ def prepare_arg_parser():
     # Specific to Transformers:
     gt = add_abstract_model_args(p)
     add_tto_model_args(gt)
+
+    add_memory_args(p, add_lazy_options=True, add_rng=True)
 
     return p
 
@@ -111,7 +110,7 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, from_checkpoint=False,
             # MEMORY
-            nb_cpu_processes=args.processes, use_gpu=args.use_gpu,
+            nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
             log_level=args.logging)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))

@@ -94,6 +94,11 @@ def _verify_loss(streamline, fake_model_output, expected_loss, model,
             isinstance(expected_loss, float)):
         expected_loss = torch.as_tensor(expected_loss, dtype=torch.float32)
 
+    # Verify 2D
+    if isinstance(fake_model_output, torch.Tensor) and \
+            len(fake_model_output.shape) < 2:
+        fake_model_output = fake_model_output[None, :]
+
     # Compute loss and verify
     computed_loss, _ = model.compute_loss(fake_model_output, targets)
     assert np.allclose(computed_loss, expected_loss, atol=tol), \

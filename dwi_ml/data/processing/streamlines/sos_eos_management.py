@@ -65,9 +65,15 @@ def convert_dirs_to_class(batch_dirs: List[torch.Tensor],
                              "vectors.")
         batch_idx = []
         for s in batch_dirs:
+            # toDo. See if we can skip loop.
             lens = torch.linalg.norm(s, dim=-1)
             dots = torch.matmul(s, sphere.vertices.T)  # Cosine similarity
-            angle = torch.arccos(torch.div(dots, lens[:, None]))
+
+            # Fixing numerical instabilities
+            one = torch.as_tensor(1, dtype=torch.float32, device=s.device)
+            tmp = torch.maximum(
+                torch.minimum(torch.div(dots, lens[:, None]), one), -one)
+            angle = torch.arccos(tmp)
 
             # Labels smooth is of shape nb_points x nb_class.
             labels_smooth = torch.exp(-1 * angle / 0.1)
@@ -82,7 +88,7 @@ def convert_dirs_to_class(batch_dirs: List[torch.Tensor],
                     labels_smooth[-1, eos_class - 1] = 1.0
 
             # To make as probabilities:
-            # labels_smooth /= torch.sum(labels_smooth, dim=1, keepdim=True)
+            labels_smooth /= torch.sum(labels_smooth, dim=1, keepdim=True)
             batch_idx.append(labels_smooth)
     else:
         batch_idx = [sphere.find_closest(s) for s in batch_dirs]

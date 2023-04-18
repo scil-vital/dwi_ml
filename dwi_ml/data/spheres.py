@@ -31,7 +31,7 @@ class TorchSphere:
         #       cos_sim = np.dot(self.vertices, xyz)
         #       return np.argmax(cos_sim)
 
-        # We will use cosine similarity to find nearest vertex
+        # We will use cosine similarity to find the nearest vertex
         # No need to normalize first to find argmax (if all compared vectors
         # have the same length).
         # similarity = x1 * x2 / |x1| * |x2|

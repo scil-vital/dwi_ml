@@ -89,7 +89,7 @@ def _verify_sft_data(sft_data, group_number):
     expected_nb = TEST_EXPECTED_NB_STREAMLINES[group_number]
     assert len(sft_data.streamlines) == expected_nb
 
-    # First streamlines's first coordinate:
+    # First streamline's first coordinate:
     assert len(sft_data.streamlines[0][0]) == 3  # a x, y, z coordinate
 
     # As sft:

@@ -7,8 +7,9 @@ import dipy.data
 import numpy as np
 import torch
 from torch import Tensor
-from torch.distributions import Categorical, MultivariateNormal, kl_divergence
-from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU)
+from torch.distributions import Categorical, MultivariateNormal
+from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU,
+                      KLDivLoss)
 from torch.nn.modules.distance import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
@@ -83,7 +84,7 @@ def _mean_and_weight(losses):
 
 class AbstractDirectionGetterModel(torch.nn.Module):
     """
-    Default static class attribute, to be redefined by sub-classes.
+    Default static class attribute, to be redefined by subclasses.
 
     Prepares the main functions. All models will be similar in the way that
     they all define layers. Then, we always apply self.loop_on_layers()
@@ -322,35 +323,32 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         return add_label_as_last_dim(target_dirs, add_sos=False,
                                      add_eos=self.add_eos)
 
+    def _compute_loss_dir(self, learned_directions: Tensor,
+                          target_directions: Tensor):
+        raise NotImplementedError
+    
     def compute_loss(self, learned_directions, target_dirs):
 
-        # Divide direction loss and EOS loss.
+        # 1. Main loss:
+        if self.normalize_targets:
+            target_dirs = normalize_directions(
+                target_dirs) * self.normalize_targets
+        losses_dirs = self._compute_loss_dir(learned_directions[:, 0:3],
+                                             target_dirs[:, 0:3])
+
+        # 2. EOS loss:
         if self.add_eos:
-            # Keeping last dim as EOS
-            # Just zeros and ones (sum of booleans).
-            # We then divide the score to have this loss similar to the
-            # directions loss.
+            # Using last dim as EOS
             learned_eos = torch.sigmoid(learned_directions[:, 3])
 
             # Idea 1: mean squared difference
-            # Idea 2: Binary cross-entropy
+            # Idea 2: binary cross-entropy
             mean_loss_eos = torch.nn.functional.binary_cross_entropy(
                 learned_eos, target_dirs[:, 3])
+            mean_loss_dir, n = _mean_and_weight(losses_dirs)
+            return mean_loss_dir + mean_loss_eos, n
 
-            learned_directions = learned_directions[:, :-1]
-            target_dirs = target_dirs[:, :-1]
-        else:
-            mean_loss_eos = torch.as_tensor(0, dtype=torch.float32,
-                                            device=self.device)
-
-        # Now the main loss
-        if self.normalize_targets:
-            target_dirs = normalize_directions(target_dirs) * self.normalize_targets
-
-        losses_dirs = self._compute_loss(learned_directions, target_dirs)
-        mean_loss_dir, n = _mean_and_weight(losses_dirs)
-
-        return mean_loss_dir + mean_loss_eos, n
+        return _mean_and_weight(losses_dirs)
 
     def _sample_tracking_direction_prob(self, model_outputs: Tensor):
         raise ValueError("Regression models do not support probabilistic "
@@ -376,7 +374,7 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
 
 class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
     """
-    Regression model.
+    Regression model. Loss = negative cosine similarity.
 
     Loss = negative cosine similarity.
     * If sequence: averaged on time steps and sequences.
@@ -396,8 +394,8 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
 
-    def _compute_loss(self, learned_directions: Tensor,
-                      target_directions: Tensor):
+    def _compute_loss_dir(self, learned_directions: Tensor,
+                          target_directions: Tensor):
         # A reminder: a cosine of -1 = aligned but wrong direction!
         #             a cosine of 0 = 90 degrees apart.
         #             a cosine of 1 = small angle
@@ -431,14 +429,21 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
         self.l2_loss = PairwiseDistance()
 
         # Range of the L2: depends on the scaling of directions.
-        # Worst case = sqrt(4) if directions are normalized
-        # (two vectors 100% opposed. Ex: [0, 0, 1] and [0, 0, -1]:
-        # = sqrt(0 + 0 + 2^2) = sqrt(4).
-        # Generally, step size is smaller than one voxel, so smaller than
-        # sqrt(4).
+        # Ex if directions are normalized:
+        # 180 degree = [0, 0, 1] and [0, 0, -1]:
+        #            = sqrt(0 + 0 + 2^2) = sqrt(4) = 2
+        #                 = sqrt((2*step_size)^2)
+        #                 = sqrt(4*step_size^2)
+        #                 = 2 * step_size.
+        # 90 degree  = [0, 0, 1] and [0, 1, 0]:
+        #            = sqrt(0 + 1^2 + 1^2) = sqrt(2)
+        #                 = sqrt(2*step_size^2)
+        #                 = sqrt(2) * step_size
+        # Generally, step size is smaller than one voxel, so smaller than 2.
+        # Minimum = 0.
 
-    def _compute_loss(self, learned_directions: Tensor,
-                      target_directions: Tensor):
+    def _compute_loss_dir(self, learned_directions: Tensor,
+                          target_directions: Tensor):
         losses = self.l2_loss(learned_directions, target_directions)
         return losses
 
@@ -460,8 +465,8 @@ class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
         self.cos_loss = CosineSimilarity(dim=-1)
         self.l2_loss = PairwiseDistance()
 
-    def _compute_loss(self, learned_directions: Tensor,
-                      target_directions: Tensor):
+    def _compute_loss_dir(self, learned_directions: Tensor,
+                          target_directions: Tensor):
         l2_losses = self.l2_loss(learned_directions, target_directions)
         cos_losses = -self.cos_loss(learned_directions, target_directions)
         losses = l2_losses + cos_losses
@@ -490,7 +495,7 @@ class AbstractSphereClassificationDirectionGetter(
         sphere: str
             An choice of dipy's Sphere.
         add_eos_class: bool
-            If true, add an additional class for EOS.
+            If true, adds a class for EOS.
         """
         super().__init__(input_size, dropout, key,
                          supports_compressed_streamlines, loss_description)
@@ -573,6 +578,7 @@ class AbstractSphereClassificationDirectionGetter(
         Get the predicted class with highest logits (=probabilities).
         If class = EOS, direction is [NaN, NaN, NaN].
         """
+        # Could apply a log_softmax to logits but maximum is the same.
         if not self.add_eos:
             idx = logits_per_class.argmax(dim=1)
             return self.torch_sphere.vertices[idx]
@@ -589,7 +595,7 @@ class AbstractSphereClassificationDirectionGetter(
 
     def invalid_or_vertice(self, idx: torch.Tensor):
         stop = idx == self.eos_class_idx
-        idx[stop] = 0  # Faking any vertice for best speed. Filling to nan after.
+        idx[stop] = 0  # Faking any vertex for best speed. Filling to nan after.
         return self.torch_sphere.vertices[idx].masked_fill(
             stop[:, None], torch.nan)
 
@@ -619,7 +625,7 @@ class SphereClassificationDirectionGetter(
             add_sos=False, add_eos=self.add_eos, to_one_hot=False)
         return target_idx
 
-    def compute_loss(self, logits_per_class: Tensor, targets: Tensor):
+    def compute_loss(self, logits_per_class: Tensor, targets_idx: Tensor):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
@@ -627,7 +633,7 @@ class SphereClassificationDirectionGetter(
         logits_per_class: Tensor of shape [nb_points, nb_class]
         """
         # Create an official probability distribution from the logits
-        # (i.e. applies a softmax to make probabilities sum to 1).
+        # (i.e. applies a log-softmax).
         # By default, done on the last dim (the classes, for each point).
         learned_distribution = Categorical(logits=logits_per_class)
 
@@ -635,7 +641,7 @@ class SphereClassificationDirectionGetter(
 
         # Get the logit at target's index,
         # Gets values on the first dimension (one target per point).
-        nll_losses = -learned_distribution.log_prob(targets)
+        nll_losses = -learned_distribution.log_prob(targets_idx)
 
         return _mean_and_weight(nll_losses)
 
@@ -671,31 +677,51 @@ class SmoothSphereClassificationDirectionGetter(
 
         return target_idx
 
-    def compute_loss(self, logits_per_class: Tensor, targets: Tensor):
+    def compute_loss(self, logits_per_class: Tensor, targets_probs: Tensor):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
 
         logits_per_class: Tensor of shape [nb_points, nb_class]
-        targets: Tensor of shape [nb_points, nb_class]
+        targets_probs: Tensor of shape [nb_points, nb_class], the class indices
+            as one hot vectors.
         """
+        # Choice 1.
+        # Careful with the order. Not the same as KLDivLoss
         # Create an official probability distribution from the logits
-        # (i.e. applies a softmax to make probabilities sum to 1).
+        # (i.e. applies a log_softmax first). What they actually do is:
+        # self.logits = logits - logits.logsumexp(dim=-1, keepdim=True)
+        # which is mathematically the same.
         # By default, done on the last dim (the classes, for each point).
-        learned_distribution = Categorical(logits=logits_per_class)
+        # learned_distribution = Categorical(logits=logits_per_class)
+        # target_distribution = Categorical(probs=targets_probs)
+        # nll_losses = kl_divergence(target_distribution, learned_distribution)
 
-        # Our smoothed labels is not between 0 and 1, but Categorical will
-        # fix that.
-        target_distribution = Categorical(probs=targets)
+        # Choice 2. kl_div and KLDivLoss (both equivalent but kl_div is
+        # buggy: reduction is supposed to be a str but if I send 'none', it
+        # says that it expects an int.)
+        # Gives the same result as above, but averaged instead of summed.
+        # The real definition is integral (i.e. sum). Typically for our
+        # data (724 classes), that's a big difference: from values ~7 to values
+        # around 0.04. Nicer for visu with sum.
+        # So, avoiding torch's 'mean' reduction; reducing ourselves.
 
-        nll_losses = kl_divergence(learned_distribution, target_distribution)
+        # Making sure our logits really are logits.
+        logits_per_class = torch.log_softmax(logits_per_class, dim=-1)
+        # Our targets are already probabilities after prepare_targets_for_loss.
+        # Else, we could use:
+        # targets_probs = torch.softmax(targets_probs, dim=-1)
+
+        # Integral over classes per point.
+        kl_loss = KLDivLoss(reduction='none', log_target=False)
+        nll_losses = torch.sum(kl_loss(logits_per_class, targets_probs), dim=-1)
 
         return _mean_and_weight(nll_losses)
 
 
 class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
     """
-    Regression model. The output is not a x,y,z value but the learned
+    Regression model. The output is not an x,y,z value but the learned
     parameters of the gaussian representing the local direction.
 
     Not to be counfounded with the 3D Gaussian representing a tensor (means
@@ -783,7 +809,7 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
 class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
     """
-    Regression model. The output is not a x,y,z value but the learned
+    Regression model. The output is not an x,y,z value but the learned
     parameters of the distribution representing the local direction.
 
     Same as SingleGaussian but with more than one Gaussian. This should account
@@ -923,7 +949,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
 class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
     """
-    Regression model. The output is not a x,y,z value but the learned
+    Regression model. The output is not an x,y,z value but the learned
     parameters of the distribution representing the local direction.
 
     This model provides probabilistic outputs using the Fisher - von Mises

@@ -275,6 +275,21 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         if self.token_sphere is not None:
             self.token_sphere.move_to(device)
 
+    def prepare_streamlines_f(self, streamlines):
+        if self._context is None:
+            raise ValueError("Please set the context before running the model."
+                             "Ex: 'training'.")
+        elif self._context == 'training' and not self.direction_getter.add_eos:
+            # We don't use the last coord because does not have an associated
+            # target direction (except if EOS is used).
+            streamlines = [s[:-1, :] for s in streamlines]
+        elif self._context == 'preparing_backward':
+            # We don't re-run the last point (i.e. the seed) because the first
+            # propagation step after backward = at that point.
+            streamlines = [s[:-1, :] for s in streamlines]
+
+        return streamlines
+
     def prepare_targets_forward(self, batch_streamlines):
         """
         batch_streamlines: List[Tensors]
@@ -355,7 +370,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
     def forward(self, inputs: List[torch.tensor],
                 batch_streamlines: List[torch.tensor], return_weights=False,
-                average_heads=False, unpack_outputs=False):
+                average_heads=False):
         """
         Params
         ------
@@ -378,20 +393,13 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         average_heads: bool
             If return_weights, you may choose to average the weights from
             different heads together.
-        unpack_outputs: bool
-            During tracking, this is not used; output is one point per
-            streamline. During training, by default, output is concatenated;
-            only used to compute loss point by point. For other usages, such
-            as visualisation of outputs, you may set this to true.
 
         Returns
         -------
         output: Tensor,
-            Batch output, of shape:
-                - During training, unpack_outputs False:
-                                   [total nb points all streamlines, out size]
-                                   unpack_outputs True:
-                                   List of [nb_points, out_size]
+            Batch output, formatted differently based on context:
+                - During training/visu:
+                    [total nb points all streamlines, out size]
                 - During tracking: [nb streamlines * 1, out size]
         weights: Tuple
             If return weigts: The weights (depending on the child model)
@@ -401,7 +409,10 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         # Remember lengths to unpad outputs later. During tracking, the
         # targets contain one less point.
-        unpadded_lengths = np.asarray([len(i) for i in inputs])
+        if self.direction_getter.add_eos:
+            unpadded_lengths = np.asarray([len(i) + 1 for i in inputs])
+        else:
+            unpadded_lengths = np.asarray([len(i) for i in inputs])
 
         # ----------- Checks
         if np.any(unpadded_lengths > self.max_len):
@@ -473,9 +484,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # To compute loss = ok. During tracking, we will need to split back.
         outputs = self.direction_getter(outputs)
 
-        if unpack_outputs:
-            outputs = torch.split(outputs, unpadded_lengths)
-
         if return_weights:
             return outputs, weights
 
@@ -529,10 +537,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
             model_outputs, torch.cat(targets, dim=0))
-
-    def get_tracking_directions(self, model_outputs, algo):
-        return self.direction_getter.get_tracking_directions(
-            model_outputs, algo)
 
 
 class OriginalTransformerModel(AbstractTransformerModel):

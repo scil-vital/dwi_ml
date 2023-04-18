@@ -100,7 +100,8 @@ def iterate_on_sampler_and_verify(
                 .format(nb_streamlines_sampled, computed_size,
                         batch_size, nb_subjs, batch_size / nb_subjs))
 
-            allowed_error = 200  # Usually, biggest streamline length is 200mm
+            # Usually, the biggest streamline length is 200mm
+            allowed_error = 200
             assert batch_size - computed_size < allowed_error
         break
 

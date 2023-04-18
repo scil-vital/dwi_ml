@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from dwi_ml.experiment_utils.prints import format_dict_to_str
 from torch.nn.utils.rnn import pack_sequence
 
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.models.projects.learn2track_model import StackedRNN
+from dwi_ml.models.projects.stacked_rnn import StackedRNN, ADD_SKIP_TO_OUTPUT
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch
 
 batch_x, _, batch_s, _ = create_test_batch()
@@ -26,7 +26,11 @@ def test_stacked_rnn():
     output, _hidden_state = model(batch_x_packed)
 
     assert len(output) == 5  # Total number of points.
-    assert output.shape[1] == 6  # 3 + 3 with skip connections
+
+    if ADD_SKIP_TO_OUTPUT:
+        assert output.shape[1] == 10  # 4 + 3 + 3 with skip connections
+    else:
+        assert output.shape[1] == 6  # 3 + 3 with skip connections
 
 
 def test_learn2track():

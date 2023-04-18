@@ -11,7 +11,7 @@ logger = logging.getLogger('tracker_logger')
 
 class RecurrentTracker(DWIMLTrackerOneInput):
     """
-    To use a RNN for a generative process, the hidden recurrent states that
+    To use an RNN for a generative process, the hidden recurrent states that
     would be passed (ex, h_(t-1), C_(t-1) for LSTM) need to be kept in memory
     as an additional input.
 

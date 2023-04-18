@@ -9,9 +9,15 @@ from torch.nn.utils.rnn import PackedSequence
 keys_to_rnn_class = {'lstm': torch.nn.LSTM,
                      'gru': torch.nn.GRU}
 
-# Note. This logger's logging level can be modified trough the main model,
+# Note. This logger's logging level can be modified through the main model,
 # Learn2trackModel.
 logger = logging.getLogger('model_logger')  # Same logger as main dwi_ml.
+
+# Skip connection: In https://arxiv.org/pdf/1308.0850v5.pdf they don't add a
+# skip connection to the output. We want to test differently. Ex: With
+# previous dirs: should at least learn to reproduce the last dir, and then
+# improve from there.
+ADD_SKIP_TO_OUTPUT = True
 
 
 class StackedRNN(torch.nn.Module):
@@ -62,6 +68,10 @@ class StackedRNN(torch.nn.Module):
                             "num_layers greater than 1, but got dropout={} "
                             "and  len(layer_sizes)={}"
                             .format(dropout, len(layer_sizes)))
+        if (use_skip_connection and len(layer_sizes) == 1 and not
+                ADD_SKIP_TO_OUTPUT):
+            logging.warning("With only one layer, the skip connection has "
+                            "no effect with current architecture.")
         super().__init__()
 
         self.rnn_torch_key = rnn_torch_key
@@ -129,7 +139,10 @@ class StackedRNN(torch.nn.Module):
         """Returns the size of the last layer. If using skip connections, it is
         the sum of all layers' sizes."""
         if self.use_skip_connection:
-            return sum(self.layer_sizes)
+            if ADD_SKIP_TO_OUTPUT:
+                return sum(self.layer_sizes) + self.input_size
+            else:
+                return sum(self.layer_sizes)
         else:
             return self.layer_sizes[-1]
 
@@ -261,6 +274,8 @@ class StackedRNN(torch.nn.Module):
         # Final last_output
         if self.use_skip_connection:
             last_output = torch.cat(outputs, dim=-1)
+            if ADD_SKIP_TO_OUTPUT:
+                last_output = torch.cat((last_output, init_inputs), dim=-1)
 
             logger.debug(
                 'Final skip connection: concatenating all outputs but not '

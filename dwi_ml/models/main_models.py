@@ -368,7 +368,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         return p
 
     def normalize_and_embed_previous_dirs(
-            self, dirs: List, packing_order=None, unpack_results: bool = True,
+            self, dirs: List, sorted_indices=None, unpack_results: bool = True,
             point_idx=None):
         """
         Runs the self.prev_dirs_embedding layer, if instantiated, and returns
@@ -380,7 +380,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         dirs: List
             Batch all streamline directions. Length of the list is the number
             of streamlines in the batch. Each tensor is of size [nb_points, 3].
-            The batch will be packed and embedding will be ran on resulting
+            The batch will be packed and embedding will be run on resulting
             tensor.
         packing_order: Tuple,
             Packing information (batch_sizes, sorted_indices, unsorted_indices)
@@ -415,14 +415,9 @@ class ModelWithPreviousDirections(MainModelAbstract):
         # Probably faster to pack result, run model once on all points
         # and unpack later.
         # Packing to the same order as inputs.
-        if packing_order is not None:
-            batch_sizes, sorted_indices, unsorted_indices = packing_order
+        if sorted_indices is not None:
             n_prev_dirs = [n_prev_dirs[i] for i in sorted_indices]
-            n_prev_dirs = torch.cat(n_prev_dirs, dim=0)
-            n_prev_dirs_packed = PackedSequence(
-                n_prev_dirs, batch_sizes=batch_sizes,
-                sorted_indices=sorted_indices,
-                unsorted_indices=unsorted_indices)
+            n_prev_dirs_packed = pack_sequence(n_prev_dirs, enforce_sorted=True)
 
         else:
             n_prev_dirs_packed = pack_sequence(n_prev_dirs,
@@ -606,17 +601,20 @@ class ModelWithDirectionGetter(MainModelAbstract):
 
     def get_tracking_directions(self, model_outputs: Tensor, algo: str):
         """
-        This needs to be implemented in order to use the model for
-        generative tracking, as in dwi_ml.tracking.tracker_abstract.
-
-        Probably calls a directionGetter.get_tracking_directions
+        Params
+        ------
+        model_outputs: Tensor
+            Our model's previous layer's output.
+        algo: str
+            'det' or 'prob'.
 
         Returns
         -------
-        next_dir: Tensor(nb_streamlines, 3)
-            Tensors with x,y,z value, one per streamline data point.
+        next_dir: list[array(3,)]
+            Numpy arrays with x,y,z value, one per streamline data point.
         """
-        raise NotImplementedError
+        return self.direction_getter.get_tracking_directions(
+            model_outputs, algo)
 
     def compute_loss(self, model_outputs, target_streamlines, **kw):
         # Hint: Should look like:

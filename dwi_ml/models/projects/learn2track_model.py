@@ -3,7 +3,7 @@ import logging
 from typing import Union, List
 
 import torch
-from torch.nn.utils.rnn import PackedSequence, pack_sequence
+from torch.nn.utils.rnn import PackedSequence, pack_sequence, unpack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions
@@ -23,7 +23,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     Recurrent tracking model.
 
     Composed of an embedding for the imaging data's input + for the previous
-    direction's input, a RNN model to process the sequences, and a direction
+    direction's input, an RNN model to process the sequences, and a direction
     getter model to convert the RNN outputs to the right structure, e.g.
     deterministic (3D vectors) or probabilistic (based on probability
     distribution parameters).
@@ -134,6 +134,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             self.input_embedding_size = input_embedding_size
         else:
             self.input_embedding_size = self.input_size
+        self.embedding_dropout = torch.nn.Dropout(self.dropout)
 
         input_embedding_cls = keys_to_tensor_embeddings[input_embedding_key]
         self.input_embedding = input_embedding_cls(
@@ -143,6 +144,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         rnn_input_size = self.input_embedding_size
         if self.nb_previous_dirs > 0:
             rnn_input_size += self.prev_dirs_embedding_size
+        if len(rnn_layer_sizes) == 1:
+            dropout = 0.0  # Not used in RNN. Avoiding the warning.
         self.rnn_model = StackedRNN(
             rnn_key, rnn_input_size, rnn_layer_sizes,
             use_skip_connection=use_skip_connection,
@@ -167,8 +170,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             raise ValueError("Please set the context before running the model."
                              "Ex: 'training'.")
         elif self._context == 'training' and not self.direction_getter.add_eos:
-            # We don't use the last coord because it is used only to
-            # compute the last target direction, it's not really an input
+            # We don't use the last coord because it does not have an
+            # associated target direction (except if EOS is used).
             streamlines = [s[:-1, :] for s in streamlines]
         elif self._context == 'preparing_backward':
             # We don't re-run the last point (i.e. the seed) because the first
@@ -209,8 +212,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         all previous dirs.
         - 'tracking': We compute model outputs in order to get the next
         direction. Taking only the last point, based on hidden_state.
-        - 'whole': We recompute the whole streamline, last coordinate included
-        (same as training with EOS). Ex: At the beginning of backward tracking.
+        - 'preparing_backward': We recompute the whole streamline, last
+        coordinate included (same as training with EOS). Ex: At the beginning
+        of backward tracking.
 
         Parameters
         ----------
@@ -283,7 +287,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             # Result will be a packed sequence.
             n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
                 prev_dirs, unpack_results=False, point_idx=point_idx,
-                packing_order=(batch_sizes, sorted_indices, unsorted_indices))
+                sorted_indices=sorted_indices)
+            n_prev_dirs_embedded = self.embedding_dropout(
+                n_prev_dirs_embedded.data)
         else:
             n_prev_dirs_embedded = None
 
@@ -294,10 +300,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
             # Embedding. Shape of inputs: nb_pts_total * embedding_size
             inputs = self.input_embedding(inputs.data)
+            inputs = self.embedding_dropout(inputs)
 
             # ==== 3. Concat with previous dirs ====
             if n_prev_dirs_embedded is not None:
-                inputs = torch.cat((inputs, n_prev_dirs_embedded.data), dim=-1)
+                inputs = torch.cat((inputs, n_prev_dirs_embedded), dim=-1)
 
             # Shaping again as packed sequence.
             # Shape of inputs.data: nb_pts_total * embedding_size_total
@@ -318,8 +325,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # Return the hidden states. Necessary for the generative
         # (tracking) part, done step by step.
 
-        # During training: not unpacking now; we will compute the loss point by
-        # whole tensor. But sending as PackedSequence to be sure that targets
+        # During training / visu: not unpacking now; we will compute the loss
+        # point by whole tensor.
+        # But sending as PackedSequence to be sure that targets
         # will be concatenated in the same order when computing loss.
         # During tracking last point: keeping as one tensor.
         # During tracking backward: ignoring output anyway. Only computing
@@ -335,28 +343,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
     def compute_loss(self, model_outputs: PackedSequence,
                      target_streamlines: List[torch.Tensor], **kw):
-        """
-        Computes the loss function using the provided outputs and targets.
-        Returns the mean loss (loss averaged across timesteps and sequences).
-
-        Parameters
-        ----------
-        model_outputs : PackedSequence
-            The model outputs for a batch of sequences. Ex: a gaussian mixture
-            direction getter returns a Tuple[Tensor, Tensor, Tensor], but a
-            cosine regression direction getter return a simple Tensor. Please
-            make sure that the chosen direction_getter's output size fits with
-            the target ou the target's data if it's a PackedSequence.
-        target_streamlines : List[tensor]
-            The target streamlines for the batch.
-
-        Returns
-        -------
-        mean_loss : torch.Tensor
-            The loss between the outputs and the targets, averaged across
-            timesteps and sequences.
-        """
-        target_dirs = self.direction_getter.prepare_targets_for_loss(target_streamlines)
+        # Prepare targets to the correct format.
+        target_dirs = self.direction_getter.prepare_targets_for_loss(
+            target_streamlines)
 
         # Packing dirs and using the .data instead of looping on streamlines.
         # Anyway, loss is computed point by point.
@@ -365,22 +354,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                            model_outputs.sorted_indices)
 
         # Computing loss
-        return self.direction_getter.compute_loss(model_outputs.data,
-                                                  target_dirs.data)
+        loss = self.direction_getter.compute_loss(
+            model_outputs.data, target_dirs.data)
 
-    def get_tracking_directions(self, model_outputs, algo):
-        """
-        Params
-        ------
-        model_outputs: Tensor
-            Our model's previous layer's output.
-        algo: str
-            'det' or 'prob'.
-
-        Returns
-        -------
-        next_dir: list[array(3,)]
-            Numpy arrays with x,y,z value, one per streamline data point.
-        """
-        return self.direction_getter.get_tracking_directions(
-            model_outputs, algo)
+        return loss

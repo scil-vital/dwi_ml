@@ -6,6 +6,9 @@ from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 
 
 def add_model_args(p: argparse.ArgumentParser):
+    # Step_size / compress
+    Learn2TrackModel.add_args_main_model(p)
+    
     prev_dirs_g = p.add_argument_group(
         "Learn2track model: Previous directions embedding layer")
     Learn2TrackModel.add_args_model_with_pd(prev_dirs_g)

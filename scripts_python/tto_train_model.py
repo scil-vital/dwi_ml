@@ -68,11 +68,12 @@ def init_from_args(args, sub_loggers_level):
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = OriginalTransformerModel(
-            experiment_name=args.experiment_name, nb_features=args.nb_features,
+            experiment_name=args.experiment_name,
+            step_size=args.step_size, compress=args.compress,
             # Targets in decoder:
             token_type=args.token_type,
             # Concerning inputs:
-            max_len=args.max_len,
+            max_len=args.max_len, nb_features=args.nb_features,
             positional_encoding_key=args.position_encoding,
             embedding_key_x=args.data_embedding,
             embedding_key_t=args.target_embedding,

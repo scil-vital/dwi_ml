@@ -11,7 +11,7 @@ from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
 
-def resample_or_compress(sft, step_size, compress):
+def resample_or_compress(sft, step_size: float = None, compress: float = None):
     if step_size is not None:
         # Note. No matter the chosen space, resampling is done in mm.
         logging.debug("            Resampling: {}".format(step_size))

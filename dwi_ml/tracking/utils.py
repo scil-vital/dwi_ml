@@ -54,8 +54,9 @@ def add_tracking_options(p):
     track_g.add_argument('--algo', choices=['det', 'prob'], default='det',
                          help="Tracking algorithm (det or prob). Must be "
                               "implemented in the chosen model. [det]")
-    track_g.add_argument('--step', dest='step_size', type=float, default=0.5,
-                         help='Step size in mm. [%(default)s]')
+    track_g.add_argument('--step_size', type=float,
+                         help='Step size in mm. Default: using the step size '
+                              'saved in the model parameters.')
     track_g.add_argument('--min_length', type=float, default=10.,
                          metavar='m',
                          help='Minimum length of a streamline in mm. '

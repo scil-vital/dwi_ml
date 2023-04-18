@@ -102,13 +102,11 @@ class HDF5Creator:
     See the doc for an example of config file.
     https://dwi-ml.readthedocs.io/en/latest/config_file.html
     """
-    HDF_DATABASE_VERSION = 2
-
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
-                 std_mask: str, step_size: float, compress: bool,
-                 enforce_files_presence: bool = True,
+                 std_mask: str, step_size: float = None,
+                 compress: float = None, enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
         """
@@ -128,11 +126,9 @@ class HDF5Creator:
         std_mask: str
             Name of the standardization mask inside each subject's folder.
         step_size: float
-            Step size to resample streamlines.
-        compress: bool
-            Compress streamlines.
-        space: Space
-            Space to place the tractograms.
+            Step size to resample streamlines. Default: None.
+        compress: float
+            Compress streamlines. Default: None.
         enforce_files_presence: bool
             If true, will stop if some files are not available for a subject.
             Default: True.
@@ -331,8 +327,7 @@ class HDF5Creator:
         If wished, all intermediate steps are saved on disk in the hdf5 folder.
         """
         with h5py.File(self.out_hdf_filename, 'w') as hdf_handle:
-            # Save version and configuration
-            hdf_handle.attrs['version'] = self.HDF_DATABASE_VERSION
+            # Save configuration
             now = datetime.datetime.now()
             hdf_handle.attrs['data_and_time'] = now.strftime('%d %B %Y %X')
             hdf_handle.attrs['chosen_subjs'] = self.all_subjs
@@ -342,6 +337,8 @@ class HDF5Creator:
             hdf_handle.attrs['testing_subjs'] = self.testing_subjs
             hdf_handle.attrs['step_size'] = self.step_size if \
                 self.step_size is not None else 'Not defined by user'
+            hdf_handle.attrs['compress'] = self.compress if \
+                self.compress is not None else 'Not defined by user'
 
             # Add data one subject at the time
             nb_processed = 0

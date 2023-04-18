@@ -76,7 +76,6 @@ def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
         logging.info("Loading seeding mask + preparing seed generator.")
         seed_generator, nbr_seeds, seeding_mask_header, ref = \
             prepare_seed_generator(parser, args, hdf_handle)
-        res = seeding_mask_header['pixdim'][0:3]
         dim = ref.shape
 
         if args.tracking_mask_group is not None:
@@ -98,21 +97,18 @@ def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
                      format_dict_to_str(model.params_for_checkpoint))
 
         theta = gm.math.radians(args.theta)
-        step_size_vox, normalize_directions = prepare_step_size_vox(
-            args.step_size, res)
-
         logging.debug("Instantiating tracker.")
         tracker = TransformerTracker(
             input_volume_group=args.input_group,
             dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
             seed_generator=seed_generator, nbr_seeds=nbr_seeds,
-            min_nbr_pts=min_nbr_pts, max_nbr_pts=max_nbr_pts,
+            min_len_mm=args.min_length, max_len_mm=args.max_length,
             max_invalid_dirs=args.max_invalid_nb_points,
             compression_th=args.compress, nbr_processes=args.nbr_processes,
             save_seeds=args.save_seeds, rng_seed=args.rng_seed,
             track_forward_only=args.track_forward_only,
-            step_size_vox=step_size_vox, algo=args.algo, theta=theta,
-            normalize_directions=normalize_directions, use_gpu=args.use_gpu,
+            step_size_mm=args.step_size, algo=args.algo, theta=theta,
+            use_gpu=args.use_gpu,
             simultanenous_tracking=args.simultaneous_tracking,
             append_last_point=APPEND_LAST_POINT,
             log_level=args.logging)

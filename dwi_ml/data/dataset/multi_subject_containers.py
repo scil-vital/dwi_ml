@@ -63,14 +63,15 @@ class MultisubjectSubset(Dataset):
         # having to loop on all subjects (again) later.
         # One np.array per subject per group.
         # - lengths: in number of timepoints.
-        # - lengths_mm: euclidean length (will help to compute the new number
+        # - lengths_mm: Euclidean length (will help to compute the new number
         # of timepoints if we intend to resample the streamlines or guess the
         # streamline heaviness with compressed streamlines).
         self.streamline_lengths_mm = []  # type: List[List[int]]
         self.streamline_lengths = []  # type: List[List[int]]
 
-        # If data has been resampled in the hdf5, step_size is set, else None
+        # Preprocessing information will be found in the hdf5 later.
         self.step_size = None
+        self.compress = None
 
         self.is_lazy = lazy
 
@@ -89,11 +90,12 @@ class MultisubjectSubset(Dataset):
                 s.hdf_handle = None
 
     def set_subset_info(self, volume_groups, nb_features, streamline_groups,
-                        step_size):
+                        step_size, compress):
         self.volume_groups = volume_groups
         self.streamline_groups = streamline_groups
         self.nb_features = nb_features
         self.step_size = step_size
+        self.compress = compress
 
     @property
     def params(self) -> Dict[str, Any]:
@@ -418,13 +420,23 @@ class MultiSubjectDataset:
         with h5py.File(self.hdf5_file, 'r') as hdf_handle:
             # Load main attributes from hdf file, but each process calling
             # the collate_fn must open its own hdf_file
-            if hdf_handle.attrs["version"] < 2:
-                logger.warning(
-                    "Current dwi_ml version should work with hdf database "
-                    "version >= 2. This could fail. database version: {}"
-                    .format(hdf_handle.attrs["version"]))
 
             step_size = hdf_handle.attrs['step_size']
+            if 'compress' in hdf_handle.attrs:
+                compress = hdf_handle.attrs['compress']
+            else:
+                logging.warning(
+                    "Using an old version of hdf database. Compression rate "
+                    "information was not saved. This only means that if you "
+                    "use --compress option anywhere, we will perform it "
+                    "again.")
+                compress = None
+
+            # Can't save None in hdf5, saved a string instead. Converting.
+            if step_size == 'Not defined by user':
+                step_size = None
+            if compress == 'Not defined by user':
+                compress = None
 
             # Loading the first training subject's group information.
             # Others should fit.
@@ -440,9 +452,9 @@ class MultiSubjectDataset:
             logger.debug("        Streamline groups are: {}"
                          .format(self.streamline_groups))
 
-            self.training_set.set_subset_info(*group_info, step_size)
-            self.validation_set.set_subset_info(*group_info, step_size)
-            self.testing_set.set_subset_info(*group_info, step_size)
+            self.training_set.set_subset_info(*group_info, step_size, compress)
+            self.validation_set.set_subset_info(*group_info, step_size, compress)
+            self.testing_set.set_subset_info(*group_info, step_size, compress)
 
             # LOADING
             if load_training:

@@ -60,7 +60,7 @@ def build_argparser():
     return p
 
 
-def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
+def prepare_tracker(parser, args):
     hdf_handle = h5py.File(args.hdf5_file, 'r')
 
     sub_logger_level = args.logging.upper()
@@ -104,13 +104,13 @@ def prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts):
             input_volume_group=args.input_group,
             dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
             seed_generator=seed_generator, nbr_seeds=nbr_seeds,
-            min_nbr_pts=min_nbr_pts, max_nbr_pts=max_nbr_pts,
+            min_len_mm=args.min_length, max_len_mm=args.max_length,
             max_invalid_dirs=args.max_invalid_nb_points,
             compression_th=args.compress, nbr_processes=args.nbr_processes,
             save_seeds=args.save_seeds, rng_seed=args.rng_seed,
             track_forward_only=args.track_forward_only,
-            step_size_vox=step_size_vox, algo=args.algo, theta=theta,
-            normalize_directions=normalize_directions, use_gpu=args.use_gpu,
+            step_size_mm=args.step_size, algo=args.algo, theta=theta,
+            use_gpu=args.use_gpu,
             simultanenous_tracking=args.simultaneous_tracking,
             append_last_point=APPEND_LAST_POINT,
             log_level=args.logging)
@@ -142,11 +142,7 @@ def main():
     verify_compression_th(args.compress)
     verify_seed_options(parser, args)
 
-    # ----- Prepare values
-    max_nbr_pts = int(args.max_length / args.step_size)
-    min_nbr_pts = max(int(args.min_length / args.step_size), 1)
-
-    tracker, ref = prepare_tracker(parser, args, min_nbr_pts, max_nbr_pts)
+    tracker, ref = prepare_tracker(parser, args)
 
     # ----- Track
     track_and_save(tracker, args, ref)

@@ -30,7 +30,8 @@ def test_stacked_rnn():
 
 
 def test_learn2track():
-    model = Learn2TrackModel('test', nb_features=4, rnn_layer_sizes=[3, 3],
+    model = Learn2TrackModel('test', step_size=0.5, compress=False,
+                             nb_features=4, rnn_layer_sizes=[3, 3],
                              log_level='DEBUG',
                              # Using default from script:
                              nb_previous_dirs=0, prev_dirs_embedding_size=None,

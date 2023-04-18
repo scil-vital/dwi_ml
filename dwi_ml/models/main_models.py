@@ -19,6 +19,7 @@ from dwi_ml.data.processing.space.neighborhood import \
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_n_previous_dirs, normalize_directions
 from dwi_ml.experiment_utils.prints import format_dict_to_str
+from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
@@ -34,12 +35,27 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name: str, log_level=logging.root.level):
+    def __init__(self, experiment_name: str,
+                 step_size: float = None, compress: float = False,
+                 log_level=logging.root.level):
         """
         Params
         ------
         experiment_name: str
             Name of the experiment
+        step_size : float
+            Constant step size that every streamline should have between points
+            (in mm). Default: None.
+            Note that you probably already fixed a step size when
+            creating your dataset, but you could use a different one here if
+            you wish. Training / testing / tracking will be performed on
+            resampled streamlined. When using an existing model in various
+            scripts, you will often have the option to modify this value, but
+            it is probably not recommanded.
+        compress: float
+            If set, compress streamlines to that tolerance error. Cannot be
+            used together with step_size. Once again, the choice can be
+            different here than chosen when creating the hdf5. Default: False.
         log_level: str
             Level of the model logger. Default: root's level.
         """
@@ -56,12 +72,32 @@ class MainModelAbstract(torch.nn.Module):
         # To tell our trainer what to send to the forward / loss methods.
         self.forward_uses_streamlines = False
         self.loss_uses_streamlines = False
+        
+        # To tell our batch loader how to resample streamlines during training
+        # (should also be the step size during tractography).
+        if step_size and compress:
+            raise ValueError("You may choose either resampling or compressing,"
+                             "but not both.")
+        elif step_size and step_size <= 0:
+            raise ValueError("Step size can't be 0 or less!")
+            # Note. When using
+            # scilpy.tracking.tools.resample_streamlines_step_size, a warning
+            # is shown if step_size < 0.1 or > np.max(sft.voxel_sizes), saying
+            # that the value is suspicious. Not raising the same warnings here
+            # as you may be wanting to test weird things to understand better
+            # your model.
+        self.step_size = step_size
+        self.compress = compress
 
-        # Adding an additional context. Most models in here act differently
+        # Adding a context. Most models in here act differently
         # during training (ex: no loss at the last coordinate = we skip it)
         # vs during tracking (only the last coordinate is important) vs during
         # visualisation (the whole streamline is important).
         self._context = None
+
+    @staticmethod
+    def add_args_main_model(p):
+        add_resample_or_compress_arg(p)
 
     def set_context(self, context):
         assert context in ['training', 'tracking']
@@ -93,6 +129,8 @@ class MainModelAbstract(torch.nn.Module):
         model with those params."""
         return {
             'experiment_name': self.experiment_name,
+            'step_size': self.step_size,
+            'compress': self.compress,
         }
 
     def save_params_and_state(self, model_dir):

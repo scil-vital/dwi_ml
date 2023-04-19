@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from math import ceil
-from typing import Tuple, List
+from typing import Tuple, List, Union
 
 import dipy.data
 import numpy as np
@@ -213,38 +213,45 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def _sample_tracking_direction_prob(self, outputs: Tensor) -> Tensor:
+    def _sample_tracking_direction_prob(
+            self, outputs, eos_stopping_thresh: Union[float, str]) -> Tensor:
         """
         Params:
         -------
         outputs: Any
             The output of the model after running its forward method.
+        eos_stopping_thresh: float or 'max'
 
-        Returns a direction, sampled following the model's distribution.
+        Returns a direction per point, sampled following the model's
+        distribution.
         """
         # Will be implemented by each class
         raise NotImplementedError
 
-    def _get_tracking_direction_det(self, outputs: Tensor) -> Tensor:
+    def _get_tracking_direction_det(
+            self, outputs, eos_stopping_thresh: Union[float, str]) -> Tensor:
         """
         Params:
         -------
         outputs: Any
             The output of the model after running its forward method.
+        eos_stopping_thresh: float or 'max'
 
-        Returns a direction, chosen deterministically.
+        Returns a direction per point, chosen deterministically.
         """
         # Will be implemented by each class
         raise NotImplementedError
 
-    def get_tracking_directions(self, outputs: Tensor, algo: str):
+    def get_tracking_directions(self, outputs, algo: str,
+                                eos_stopping_thresh: Union[float, str]):
         """
         Parameters
         ----------
-        outputs: Tensor
+        outputs: Any
             The model's outputs
         algo: str
             Either 'det' or 'prob'
+        eos_stopping_thresh: float or 'max'
 
         Returns
         -------
@@ -253,9 +260,11 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             the three coordinates of the next direction's vector.
         """
         if algo == 'det':
-            next_dirs = self._get_tracking_direction_det(outputs)
+            next_dirs = self._get_tracking_direction_det(
+                outputs, eos_stopping_thresh)
         else:
-            next_dirs = self._sample_tracking_direction_prob(outputs)
+            next_dirs = self._sample_tracking_direction_prob(
+                outputs, eos_stopping_thresh)
         return next_dirs.detach()
 
 
@@ -296,7 +305,6 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         self.normalize_targets = normalize_targets
         self.normalize_outputs = normalize_outputs
         self.add_eos = add_eos
-        self.stopping_criteria_eos = 0.5  # sigmoid > 0.5 = we return nan.
 
     @property
     def params(self):
@@ -364,18 +372,19 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         else:
             return losses_dirs
 
-    def _sample_tracking_direction_prob(self, model_outputs: Tensor):
+    def _sample_tracking_direction_prob(self, *arg, **kwargs):
         raise ValueError("Regression models do not support probabilistic "
                          "tractography.")
 
-    def _get_tracking_direction_det(self, model_outputs: Tensor):
+    def _get_tracking_direction_det(
+            self, model_outputs: Tensor, eos_stopping_thresh: float):
         """
         In this case, the output is directly a 3D direction, so we can use it
         as is for the tracking.
         """
         if self.add_eos:
             eos_prob = torch.sigmoid(model_outputs[:, -1])
-            eos_prob = torch.gt(eos_prob, self.stopping_criteria_eos)
+            eos_prob = torch.gt(eos_prob, eos_stopping_thresh)
             nb_stop = torch.sum(eos_prob)
             if nb_stop > 0:
                 logging.debug("{} streamlines stopping because of learned "
@@ -529,8 +538,6 @@ class AbstractSphereClassificationDirectionGetter(
             # choosing it if its probability is more than 0.5. In papers: we
             # have seen "if more than the sum of all others". Not implemented
             # here, probably even more strict.
-            self.choose_eos_if_max = False
-            self.eos_tracking_threshold = 0.75
 
         self.layers = init_2layer_fully_connected(input_size, nb_classes)
 
@@ -562,54 +569,54 @@ class AbstractSphereClassificationDirectionGetter(
         logits = self.loop_on_layers(inputs, self.layers)
         return logits
 
-    def _sample_tracking_direction_prob(self, logits_per_class: Tensor):
+    def _sample_tracking_direction_prob(
+            self, logits_per_class: Tensor, eos_stopping_thresh):
         """
         Sample a tracking direction on the sphere from the predicted class
         logits (=probabilities). If class = EOS, direction is [NaN, NaN, NaN].
         """
-        if not self.add_eos:
-            # Sample a direction on the sphere
-            idx = Categorical(logits=logits_per_class).sample()
+        # Sample a direction on the sphere
+        idx = Categorical(logits=logits_per_class).sample()
 
-            return self.torch_sphere.vertices[idx]
+        return idx
 
-        # Else, with EOS: 
-        # Sample a direction on the sphere except EOS
-        idx = Categorical(logits=logits_per_class[:, :-1]).sample()
-
-        # But stop if EOS is bigger.
-        if self.choose_eos_if_max:
-            eos_chosen = logits_per_class[:, -1] > logits_per_class[:, idx]
-        else:
-            eos_probs = torch.softmax(logits_per_class, dim=-1)[:, -1]
-            eos_chosen = eos_probs > 0.5
-        idx[eos_chosen] = self.eos_class_idx
-
-        return self.invalid_or_vertice(idx)
-
-    def _get_tracking_direction_det(self, logits_per_class: Tensor):
+    def _get_tracking_direction_det(
+            self, logits_per_class: Tensor, eos_stopping_thresh):
         """
         Get the predicted class with highest logits (=probabilities).
         If class = EOS, direction is [NaN, NaN, NaN].
         """
-        # Could apply a log_softmax to logits but maximum is the same.
+        idx = logits_per_class.argmax(dim=1)
+        return idx
+
+    def get_tracking_directions(self, logits_per_class, algo: str,
+                                eos_stopping_thresh: Union[float, str]):
         if not self.add_eos:
-            idx = logits_per_class.argmax(dim=1)
+            idx = super().get_tracking_directions(
+                logits_per_class, algo, eos_stopping_thresh)
             return self.torch_sphere.vertices[idx]
-        elif self.choose_eos_if_max:
-            # We take the class associated to the maximal logit.
-            idx = logits_per_class.argmax(dim=1)
-            return self.invalid_or_vertice(idx)
         else:
-            # We only stop if EOS prob > 0.5.
-            eos_chosen = torch.softmax(logits_per_class, dim=-1)[:, -1] > 0.5
-            idx = logits_per_class[:, :-1].argmax(dim=1)
+            # Get directions
+            idx = super().get_tracking_directions(
+                 logits_per_class[:, :-1], algo, eos_stopping_thresh)
+
+            # But stop if EOS is bigger.
+            if eos_stopping_thresh == 'max':
+                # No need for the softmax: max will stay max.
+                eos_chosen = logits_per_class[:, -1] > logits_per_class[:, idx]
+            else:
+                # In all our classification models, a softmax was used when
+                # computing loss (or a log-softmax). Creating probabilities the
+                # same way here.
+                eos_probs = torch.softmax(logits_per_class, dim=-1)[:, -1]
+                eos_chosen = eos_probs > eos_stopping_thresh
             idx[eos_chosen] = self.eos_class_idx
             return self.invalid_or_vertice(idx)
 
-    def invalid_or_vertice(self, idx: torch.Tensor):
+    def invalid_or_vertice(self, idx):
         stop = idx == self.eos_class_idx
-        idx[stop] = 0  # Faking any vertex for best speed. Filling to nan after.
+        # Faking any vertex for best speed. Filling to nan after.
+        idx[stop] = 0
         return self.torch_sphere.vertices[idx].masked_fill(
             stop[:, None], torch.nan)
 
@@ -811,10 +818,14 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
             return nll_losses
 
     def _sample_tracking_direction_prob(
-            self, learned_gaussian_params: Tuple[Tensor, Tensor]):
+            self, learned_gaussian_params: Tuple[Tensor, Tensor],
+            eos_stopping_thresh):
         """
         From the gaussian parameters, sample a direction.
         """
+        if self.add_eos:
+            raise NotImplementedError
+
         means, sigmas = learned_gaussian_params
 
         # Sample a final function in the chosen Gaussian
@@ -825,10 +836,14 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
         return direction
 
-    def _get_tracking_direction_det(self, learned_gaussian_params: Tensor):
+    def _get_tracking_direction_det(self, learned_gaussian_params: Tensor,
+                                    eos_stopping_thresh):
         """
         Get the predicted class with highest logits (=probabilities).
         """
+        if self.add_eos:
+            raise NotImplementedError
+
         # Returns the direction of the max of the Gaussian = the mean.
         means, sigmas = learned_gaussian_params
 
@@ -924,12 +939,16 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
             return nll_losses
 
     def _sample_tracking_direction_prob(
-            self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor]):
+            self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
+            eos_stopping_thresh):
         """
         From the gaussian mixture parameters, sample one of the gaussians
         using the mixture probabilities, then sample a direction from the
         selected gaussian.
         """
+        if self.add_eos:
+            raise NotImplementedError
+
         mixture_logits, means, sigmas = \
             self._get_gaussian_parameters(learned_gaussian_params)
 
@@ -954,7 +973,11 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         return direction
 
     def _get_tracking_direction_det(
-            self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor]):
+            self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
+            eos_stopping_thresh):
+        if self.add_eos:
+            raise NotImplementedError
+
         mixture_logits, means, sigmas = \
             self._get_gaussian_parameters(learned_gaussian_params)
 
@@ -1053,9 +1076,13 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
             return nll_losses
 
     def _sample_tracking_direction_prob(
-            self, learned_fisher_params: Tuple[Tensor, Tensor]):
+            self, learned_fisher_params: Tuple[Tensor, Tensor],
+            eos_stopping_thresh):
         """Sample directions from a fisher von mises distribution.
         """
+        if self.add_eos:
+            raise NotImplementedError
+
         # mu.shape : [flattened_sequences, 3]
         mus, kappas = learned_fisher_params
 
@@ -1080,8 +1107,8 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
 
         return direction
 
-    def _get_tracking_direction_det(self, learned_fisher_params: Tensor):
-        # toDo. ?
+    def _get_tracking_direction_det(self, learned_fisher_params: Tensor,
+                                    eos_stopping_thresh):
         raise NotImplementedError
 
     @staticmethod
@@ -1140,10 +1167,12 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
                      target_dirs: Tensor, average_results=True):
         raise NotImplementedError
 
-    def _sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor]):
+    def _sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor],
+                                        eos_stopping_thresh):
         raise NotImplementedError
 
-    def _get_tracking_direction_det(self, learned_fisher_params: Tensor):
+    def _get_tracking_direction_det(self, learned_fisher_params: Tensor,
+                                    eos_stopping_thresh):
         raise NotImplementedError
 
 

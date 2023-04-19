@@ -139,9 +139,11 @@ def main():
                 args.pick_best_and_worst, args.pick_idx)
             outputs = [outputs[i] for i in idx]
 
-        # Either concat, run, split or:
+        # Either concat, run, split or (chosen:) loop
+        # Use eos_thresh of 1 to be sure we don't output a NaN
         out_dirs = [
-            model.get_tracking_directions(s_output, algo='det').numpy()
+            model.get_tracking_directions(
+                s_output, algo='det', eos_stopping_thresh=1.0).numpy()
             for s_output in outputs]
 
         # Save error together with ref

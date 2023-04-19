@@ -568,7 +568,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
         self.loss_uses_streamlines = True
 
     def set_context(self, context):
-        assert context in ['training', 'tracking']
+        assert context in ['training', 'tracking', 'visu']
         self._context = context
 
     def prepare_streamlines_f(self, streamlines):
@@ -616,12 +616,13 @@ class ModelWithDirectionGetter(MainModelAbstract):
         return self.direction_getter.get_tracking_directions(
             model_outputs, algo)
 
-    def compute_loss(self, model_outputs, target_streamlines, **kw):
+    def compute_loss(self, model_outputs, target_streamlines,
+                     average_results=True, **kw):
         # Hint: Should look like:
         #  target_dirs = self.direction_getter.prepare_targets(
         #           target_streamlines)
         #  loss, nb_points = self.direction_getter.compute_loss(
-        #          model_outputs, target_dirs)
+        #          model_outputs, target_dirs, average_results)
         raise NotImplementedError
 
     def move_to(self, device):

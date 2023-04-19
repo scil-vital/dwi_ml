@@ -20,18 +20,18 @@ from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
 
-from dwi_ml.experiment_utils.prints import format_dict_to_str, add_logging_arg
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.io_utils import add_logging_arg
 from dwi_ml.models.projects.transforming_tractography import \
     OriginalTransformerModel
+from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.transformer_tracker import \
     TransformerTracker
 from dwi_ml.tracking.tracking_mask import TrackingMask
-from dwi_ml.tracking.utils import (add_mandatory_options_tracking,
-                                   add_tracking_options,
+from dwi_ml.tracking.utils import (add_tracking_options,
                                    prepare_seed_generator,
-                                   prepare_tracking_mask,
-                                   prepare_dataset_one_subj, track_and_save)
+                                   prepare_tracking_mask, track_and_save)
 
 # A decision should be made as if we should keep the last point (out of the
 # tracking mask). Currently keeping this as in Dipy, i.e. True. Could be
@@ -43,8 +43,6 @@ def build_argparser():
     p = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter,
         description=__doc__)
-
-    add_mandatory_options_tracking(p)
 
     track_g = add_tracking_options(p)
     # Sphere used if the direction_getter key is the sphere-classification.
@@ -85,8 +83,9 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading subject's data.")
         subset, subj_idx = prepare_dataset_one_subj(
-            args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
-            subset=args.subset)
+            args.hdf5_file, args.subj_id, lazy=False, cache_size=None,
+            subset_name=args.subset, volume_groups=[args.input_group],
+            streamline_groups=[])
 
         logging.info("Loading model.")
         model = OriginalTransformerModel.load_params_and_state(

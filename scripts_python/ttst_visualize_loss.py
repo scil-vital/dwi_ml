@@ -1,60 +1,39 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-One difficulty of choosing a good loss function for tractography is that
-streamlines have the particularity of being smooth.
-
-Printing the average loss function for a given dataset when we simply copy the
-previous direction.
-
-    Target :=  SFT.streamlines's directions[1:]
-    Y := Previous directions.
-    loss = DirectionGetter(Target, Y)
-"""
 import argparse
 import logging
-import os
+import os.path
 
-import torch.nn.functional
 from dipy.io.streamline import save_tractogram
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
+import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.io_utils import add_resample_or_compress_arg
-from dwi_ml.models.projects.copy_previous_dirs import CopyPrevDirModel
-from dwi_ml.models.utils.direction_getters import add_direction_getter_args, \
-    check_args_direction_getter
-from dwi_ml.testing.projects.copy_prev_dirs_tester import TesterCopyPrevDir
+from dwi_ml.models.projects.transforming_tractography import \
+    TransformerSrcAndTgtModel
+from dwi_ml.testing.testers import TesterOneInput
+
 from dwi_ml.visu.visu_loss import prepare_colors_from_loss, \
     prepare_args_visu_loss, combine_displacement_with_ref, pick_a_few, \
     separate_best_and_worst
 
-CHOICES = ['cosine-regression', 'l2-regression', 'sphere-classification',
-           'smooth-sphere-classification', 'cosine-plus-l2-regression']
-
-
-def prepare_arg_parser():
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawTextHelpFormatter)
-    prepare_args_visu_loss(p, use_existing_experiment=False)
-    p.add_argument('streamlines_group',
-                   help="Streamline group to use as SFT for the given "
-                        "subject in the hdf5.")
-    p.add_argument('--skip_first_point', action='store_true',
-                   help="If set, do not compute the loss at the first point "
-                        "of the streamline. \nElse (default) compute it with "
-                        "previous dir = 0.")
-    add_resample_or_compress_arg(p)
-
-    add_direction_getter_args(p)
-
-    return p
-
 
 def main():
-    p = prepare_arg_parser()
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawTextHelpFormatter)
+    prepare_args_visu_loss(p)
     args = p.parse_args()
+
+    if not (args.pick_at_random or args.pick_best_and_worst or
+            args.pick_idx):
+        p.error("You must select at least one of 'pick_at_random', "
+                "'pick_best_and_worst' and 'pick_idx'.")
+
+    # Loggers
+    sub_logger_level = args.logging.upper()
+    if sub_logger_level == 'DEBUG':
+        sub_logger_level = 'INFO'
     logging.getLogger().setLevel(level=args.logging)
 
     # Verify output names
@@ -78,16 +57,16 @@ def main():
     device = (torch.device('cuda') if torch.cuda.is_available() and
               args.use_gpu else None)
 
-    # 1. Prepare fake model
-    dg_args = check_args_direction_getter(args)
-    model = CopyPrevDirModel(args.dg_key, dg_args, args.skip_first_point,
-                             args.step_size, args.compress)
+    # 1. Load model
+    logging.debug("Loading model.")
+    model = TransformerSrcAndTgtModel.load_params_and_state(
+        args.experiment_path + '/best_model', log_level=sub_logger_level)
 
     # 2. Compute loss
-    tester = TesterCopyPrevDir(model, args.streamlines_group,
-                               args.batch_size, device)
+    tester = TesterOneInput(args.experiment_path, model, args.batch_size,
+                            device)
     sft = tester.load_and_format_data(args.subj_id, args.hdf5_file,
-                                      args.subset, None, None)
+                                      args.subset)
 
     if (args.out_displacement_sft and not args.out_colored_sft and
             not args.pick_best_and_worst):
@@ -104,8 +83,7 @@ def main():
         logging.info("Preparing colored sft")
         sft, colorbar_fig = prepare_colors_from_loss(
             losses, model.direction_getter.add_eos, sft,
-            args.colormap, args.min_range, args.max_range,
-            skip_first_point=args.skip_first_point)
+            args.colormap, args.min_range, args.max_range)
         print("Saving colored SFT as {}".format(args.out_colored_sft))
         save_tractogram(sft, args.out_colored_sft)
 
@@ -130,7 +108,10 @@ def main():
 
     # 4. Save displacement
     if args.out_displacement_sft:
-        outputs = torch.split(outputs, [len(s) - 1 for s in sft.streamlines])
+        if model.direction_getter.add_eos:
+            outputs = torch.split(outputs, [len(s) for s in sft.streamlines])
+        else:
+            outputs = torch.split(outputs, [len(s) - 1 for s in sft.streamlines])
 
         if args.out_colored_sft:
             # We have run model on all streamlines. Picking a few now.
@@ -140,12 +121,11 @@ def main():
             outputs = [outputs[i] for i in idx]
 
         # Either concat, run, split or:
-        out_dirs = [
-            model.get_tracking_directions(s_output, algo='det').numpy()
-            for s_output in outputs]
+        out_dirs = [model.get_tracking_directions(s_output, algo='det').numpy()
+                    for s_output in outputs]
 
         # Save error together with ref
-        sft = combine_displacement_with_ref(out_dirs, sft, args.step_size)
+        sft = combine_displacement_with_ref(out_dirs, sft, model.step_size)
 
         save_tractogram(sft, args.out_displacement_sft, bbox_valid_check=False)
 

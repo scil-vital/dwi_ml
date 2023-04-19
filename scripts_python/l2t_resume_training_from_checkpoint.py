@@ -10,8 +10,8 @@ import os
 import comet_ml
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
-from dwi_ml.experiment_utils.prints import add_logging_arg
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.io_utils import add_logging_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
@@ -75,7 +75,7 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Setting root logger with high level but we will set trainer to
+    # Setting root logger with high level, but we will set trainer to
     # user-defined level.
     logging.getLogger().setLevel(level=logging.INFO)
 

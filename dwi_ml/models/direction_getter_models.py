@@ -67,7 +67,7 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
 
 def _mean_and_weight(losses):
     # Mean:
-    # Average on all timesteps (all sequences) in batch
+    # Average on all time steps (all sequences) in batch
     # Keeping the gradients attached to allow backward propagation.
     mean = losses.mean()
 
@@ -189,24 +189,28 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         """
         Should be called before compute_loss, before concatenating your
         streamlines.
+
+        Returns: List[Tensor], the directions
+        User is responsible for stacking the batch before computing loss.
         """
         return compute_directions(target_streamlines)
 
-    def compute_loss(self, outputs: Tensor, target_dirs: Tensor) -> Tuple:
+    def compute_loss(self, outputs: Tensor, target_dirs: Tensor,
+                     average_results=True):
         """
         Expecting a single tensor. Hint: either concatenate all streamlines'
         tensors, or loop on streamlines.
 
         Returns
         -------
-        mean_loss: Tensor
-            Our direction getters' forward models output a single tensor, from
-            concatenated streamlines.
-        n: int, Total number of data points in this batch.
+        if average_results: Tuple
+            mean_loss: Tensor
+                Our direction getters' forward models output a single tensor,
+                from concatenated streamlines.
+            n: int, Total number of data points in this batch.
+        else:
+            losses: Tensor of shape (n, )
         """
-        # Will be implemented by each class
-        # Should start with
-        # target_dirs = self.prepare_targets(target_streamlines)
         raise NotImplementedError
 
     def _sample_tracking_direction_prob(self, outputs: Tensor) -> Tensor:
@@ -318,6 +322,9 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         """
         Should be called before compute_loss, before concatenating your
         streamlines.
+
+        Returns: list[Tensors], the directions.
+        User is responsible for stacking the batch before computing loss.
         """
         target_dirs = compute_directions(target_streamlines)
         return add_label_as_last_dim(target_dirs, add_sos=False,
@@ -326,13 +333,13 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
     def _compute_loss_dir(self, learned_directions: Tensor,
                           target_directions: Tensor):
         raise NotImplementedError
-    
-    def compute_loss(self, learned_directions, target_dirs):
+
+    def compute_loss(self, learned_directions: Tensor, target_dirs: Tensor,
+                     average_results=True):
 
         # 1. Main loss:
         if self.normalize_targets:
-            target_dirs = normalize_directions(
-                target_dirs) * self.normalize_targets
+            target_dirs = normalize_directions(target_dirs) * self.normalize_targets
         losses_dirs = self._compute_loss_dir(learned_directions[:, 0:3],
                                              target_dirs[:, 0:3])
 
@@ -343,12 +350,19 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
 
             # Idea 1: mean squared difference
             # Idea 2: binary cross-entropy
-            mean_loss_eos = torch.nn.functional.binary_cross_entropy(
-                learned_eos, target_dirs[:, 3])
-            mean_loss_dir, n = _mean_and_weight(losses_dirs)
-            return mean_loss_dir + mean_loss_eos, n
-
-        return _mean_and_weight(losses_dirs)
+            if average_results:
+                mean_loss_eos = torch.nn.functional.binary_cross_entropy(
+                    learned_eos, target_dirs[:, 3])
+                mean_loss_dir, n = _mean_and_weight(losses_dirs)
+                return mean_loss_dir + mean_loss_eos, n
+            else:
+                losses_eos = torch.nn.functional.binary_cross_entropy(
+                    learned_eos, target_dirs[:, 3], reduction='none')
+                return losses_eos + losses_dirs
+        elif average_results:
+            return _mean_and_weight(losses_dirs)
+        else:
+            return losses_dirs
 
     def _sample_tracking_direction_prob(self, model_outputs: Tensor):
         raise ValueError("Regression models do not support probabilistic "
@@ -375,9 +389,6 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
 class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
     """
     Regression model. Loss = negative cosine similarity.
-
-    Loss = negative cosine similarity.
-    * If sequence: averaged on time steps and sequences.
     """
     def __init__(self, input_size: int, dropout: float = None,
                  normalize_targets: float = False,
@@ -519,6 +530,7 @@ class AbstractSphereClassificationDirectionGetter(
             # have seen "if more than the sum of all others". Not implemented
             # here, probably even more strict.
             self.choose_eos_if_max = False
+            self.eos_tracking_threshold = 0.75
 
         self.layers = init_2layer_fully_connected(input_size, nb_classes)
 
@@ -561,14 +573,16 @@ class AbstractSphereClassificationDirectionGetter(
 
             return self.torch_sphere.vertices[idx]
 
-        # Else, with EOS: Sample a direction on the sphere except EOS
+        # Else, with EOS: 
+        # Sample a direction on the sphere except EOS
         idx = Categorical(logits=logits_per_class[:, :-1]).sample()
 
         # But stop if EOS is bigger.
         if self.choose_eos_if_max:
             eos_chosen = logits_per_class[:, -1] > logits_per_class[:, idx]
         else:
-            eos_chosen = torch.softmax(logits_per_class, dim=-1)[:, -1] > 0.5
+            eos_probs = torch.softmax(logits_per_class, dim=-1)[:, -1]
+            eos_chosen = eos_probs > 0.5
         idx[eos_chosen] = self.eos_class_idx
 
         return self.invalid_or_vertice(idx)
@@ -617,6 +631,7 @@ class SphereClassificationDirectionGetter(
         Finds the closest class for each target direction.
 
         returns: List[Tensor], the index for each target.
+        User is responsible for stacking the batch before computing loss.
         """
         target_dirs = compute_directions(target_streamlines)
 
@@ -625,12 +640,14 @@ class SphereClassificationDirectionGetter(
             add_sos=False, add_eos=self.add_eos, to_one_hot=False)
         return target_idx
 
-    def compute_loss(self, logits_per_class: Tensor, targets_idx: Tensor):
+    def compute_loss(self, logits_per_class: Tensor, targets_idx: Tensor,
+                     average_results=True):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
 
         logits_per_class: Tensor of shape [nb_points, nb_class]
+        targets_idx: Tensor of shape[nb_points], the target class indices.
         """
         # Create an official probability distribution from the logits
         # (i.e. applies a log-softmax).
@@ -643,7 +660,10 @@ class SphereClassificationDirectionGetter(
         # Gets values on the first dimension (one target per point).
         nll_losses = -learned_distribution.log_prob(targets_idx)
 
-        return _mean_and_weight(nll_losses)
+        if average_results:
+            return _mean_and_weight(nll_losses)
+        else:
+            return nll_losses
 
 
 class SmoothSphereClassificationDirectionGetter(
@@ -668,6 +688,7 @@ class SmoothSphereClassificationDirectionGetter(
 
         returns:
         List[Tensor]: the one-hot distribution of each target.
+            User is responsible for stacking the batch before computing loss.
         """
         target_dirs = compute_directions(target_streamlines)
 
@@ -677,7 +698,8 @@ class SmoothSphereClassificationDirectionGetter(
 
         return target_idx
 
-    def compute_loss(self, logits_per_class: Tensor, targets_probs: Tensor):
+    def compute_loss(self, logits_per_class: Tensor, targets_probs: Tensor,
+                     average_results=True):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
@@ -716,7 +738,10 @@ class SmoothSphereClassificationDirectionGetter(
         kl_loss = KLDivLoss(reduction='none', log_target=False)
         nll_losses = torch.sum(kl_loss(logits_per_class, targets_probs), dim=-1)
 
-        return _mean_and_weight(nll_losses)
+        if average_results:
+            return _mean_and_weight(nll_losses)
+        else:
+            return nll_losses
 
 
 class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
@@ -761,7 +786,7 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         return means, sigmas
 
     def compute_loss(self, learned_gaussian_params: Tuple[Tensor, Tensor],
-                     target_dirs: Tensor):
+                     target_dirs: Tensor, average_results=True):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
@@ -780,7 +805,10 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         # distribution and each target.
         nll_losses = -distribution.log_prob(target_dirs)
 
-        return _mean_and_weight(nll_losses)
+        if average_results:
+            return _mean_and_weight(nll_losses)
+        else:
+            return nll_losses
 
     def _sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor]):
@@ -868,7 +896,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
     def compute_loss(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
-            target_dirs):
+            target_dirs, average_results=True):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
@@ -890,7 +918,10 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         nll_losses = -torch.logsumexp(mixture_probs.log() + gaussians_log_prob,
                                       dim=-1)
 
-        return _mean_and_weight(nll_losses)
+        if average_results:
+            return _mean_and_weight(nll_losses)
+        else:
+            return nll_losses
 
     def _sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor]):
@@ -1003,7 +1034,7 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         return means, kappas
 
     def compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
-                     target_dirs):
+                     target_dirs, average_results=True):
         """Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
 
@@ -1016,7 +1047,10 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs)
         nll_losses = -log_prob
 
-        return _mean_and_weight(nll_losses)
+        if average_results:
+            return _mean_and_weight(nll_losses)
+        else:
+            return nll_losses
 
     def _sample_tracking_direction_prob(
             self, learned_fisher_params: Tuple[Tensor, Tensor]):
@@ -1103,7 +1137,7 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
         raise NotImplementedError
 
     def compute_loss(self, outputs: Tuple[Tensor, Tensor],
-                     target_dirs: Tensor):
+                     target_dirs: Tensor, average_results=True):
         raise NotImplementedError
 
     def _sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor]):

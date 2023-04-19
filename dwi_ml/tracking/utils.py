@@ -3,54 +3,28 @@ import logging
 
 from dipy.io.stateful_tractogram import (Space, Origin, set_sft_logger_level,
                                          StatefulTractogram)
+from dipy.io.streamline import save_tractogram
 import nibabel as nib
 import numpy as np
-from dipy.io.streamline import save_tractogram
 
-from scilpy.io.utils import add_processes_arg
 from scilpy.tracking.seed import SeedGenerator
 
-from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_memory_args
+from dwi_ml.io_utils import add_arg_existing_experiment_path, add_memory_args
+from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 from dwi_ml.tracking.tracking_mask import TrackingMask
 
 
-def add_mandatory_options_tracking(p):
-    """
-    Similar to scilpy.tracking.utils.add_generic_options_tracking but the
-    sh are not used for tracking. Rather, the learned model must be loaded
-    together with the according input.
-    """
-    p.add_argument('experiment_path',
-                   help='Path to the directory containing the experiment.\n'
-                        '(Should contain a model subdir with a file \n'
-                        'parameters.json and a file best_model_state.pkl.)')
-    p.add_argument('hdf5_file',
-                   help="Path to the hdf5 file.")
-    p.add_argument('subj_id',
-                   help="Subject id to use for tractography.\n"
-                        "Will also be added as prefix to add to the "
-                        "out_tractogram name.")
+def add_tracking_options(p):
+
+    add_arg_existing_experiment_path(p)
+    add_args_testing_subj_hdf5(p, ask_input_group=True)
+
     p.add_argument('out_tractogram',
                    help='Tractogram output file (must be .trk or .tck).')
     p.add_argument('seeding_mask_group',
                    help="Seeding mask's volume group in the hdf5.")
-    p.add_argument('input_group',
-                   help="Model's input's volume group in the hdf5.")
-    p.add_argument('--subset', default='testing',
-                   choices=['training', 'validation', 'testing'],
-                   help="Subject id should probably come come the "
-                        "'testing' set but you can\n modify this to "
-                        "'training' or 'validation'.")
 
-
-def add_tracking_options(p):
-    """
-    Similar to scilpy.tracking.utils.add_generic_options_tracking but
-    - no algo (det/prob) anymore. Rather, propagation depends on the model.
-    - no sf_threshold or sh_basis 
-    """
     track_g = p.add_argument_group('  Tracking options')
     track_g.add_argument('--algo', choices=['det', 'prob'], default='det',
                          help="Tracking algorithm (det or prob). Must be "
@@ -68,8 +42,6 @@ def add_tracking_options(p):
                               '[%(default)s]')
     track_g.add_argument('--tracking_mask_group',
                          help="Tracking mask's volume group in the hdf5.")
-
-    # Additional tracking options compared to scil_compute_local_tracking:
     track_g.add_argument('--theta', metavar='t', type=float,
                          default=90,
                          help="The tracking direction at each step being "
@@ -122,40 +94,6 @@ def add_tracking_options(p):
                           'GPU usage. Default = 1 (no simultaneous tracking).')
 
     return track_g
-
-
-def prepare_dataset_one_subj(hdf5_file, subj_id, lazy, cache_size,
-                             subset='testing'):
-    # Right now, we con only track on one subject at the time. We could
-    # instantiate a LazySubjectData directly, but we want to use the cache
-    # manager (suited better for multiprocessing)
-    dataset = MultiSubjectDataset(hdf5_file, lazy=lazy,
-                                  cache_size=cache_size,
-                                  log_level=logging.WARNING)
-
-    if subset == 'testing':
-        # Most logical choice.
-        dataset.load_data(load_training=False, load_validation=False,
-                          subj_id=subj_id)
-        subset = dataset.testing_set
-    elif subset == 'training':
-        dataset.load_data(load_validation=False, load_testing=False,
-                          subj_id=subj_id)
-        subset = dataset.training_set
-    elif subset == 'validation':
-        dataset.load_data(load_training=False, load_testing=False,
-                          subj_id=subj_id)
-        subset = dataset.validation_set
-    else:
-        raise ValueError("Subset must be one of 'training', 'validation' "
-                         "or 'testing.")
-
-    if subj_id not in subset.subjects:
-        raise ValueError("Subject {} does not belong in hdf5's {} set."
-                         .format(subj_id, subset))
-    subj_idx = subset.subjects.index(subj_id)  # Should be 0.
-
-    return subset, subj_idx
 
 
 def prepare_seed_generator(parser, args, hdf_handle):

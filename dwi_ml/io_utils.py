@@ -3,8 +3,15 @@ from argparse import ArgumentParser
 
 from scilpy.io.utils import add_processes_arg
 
+def add_logging_arg(p):
+    p.add_argument(
+        '--logging', default='WARNING', metavar='level',
+        choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
+        help="Logging level. Note that, for readability, not all debug logs \n"
+             "are printed in DEBUG mode, only the main ones.")
 
-def add_resample_or_compress_arg(p):
+
+def add_resample_or_compress_arg(p: ArgumentParser):
     g = p.add_mutually_exclusive_group()
     g.add_argument(
         '--step_size', type=float, metavar='s',
@@ -14,6 +21,13 @@ def add_resample_or_compress_arg(p):
         help="Compression ratio. Default: None. Default if set: 0.01.\n"
              "If neither step_size nor compress are chosen, streamlines "
              "will be kept \nas they are.")
+
+
+def add_arg_existing_experiment_path(p: ArgumentParser):
+    p.add_argument('experiment_path',
+                   help='Path to the directory containing the experiment.\n'
+                        '(Should contain a model subdir with a file \n'
+                        'parameters.json and a file best_model_state.pkl.)')
 
 
 def add_memory_args(p: ArgumentParser, add_lazy_options=False,

@@ -162,14 +162,16 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         assert self.loss_uses_streamlines
 
     def set_context(self, context):
-        assert context in ['training', 'tracking', 'preparing_backward']
+        assert context in ['training', 'tracking', 'visu',
+                           'preparing_backward']
         self._context = context
 
     def prepare_streamlines_f(self, streamlines):
         if self._context is None:
             raise ValueError("Please set the context before running the model."
                              "Ex: 'training'.")
-        elif self._context == 'training' and not self.direction_getter.add_eos:
+        elif (self._context == 'training' or self._context == 'visu') and not \
+                self.direction_getter.add_eos:
             # We don't use the last coord because it does not have an
             # associated target direction (except if EOS is used).
             streamlines = [s[:-1, :] for s in streamlines]
@@ -342,7 +344,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             return model_outputs
 
     def compute_loss(self, model_outputs: PackedSequence,
-                     target_streamlines: List[torch.Tensor], **kw):
+                     target_streamlines: List[torch.Tensor],
+                     average_results=True, **kw):
         # Prepare targets to the correct format.
         target_dirs = self.direction_getter.prepare_targets_for_loss(
             target_streamlines)
@@ -355,6 +358,15 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # Computing loss
         loss = self.direction_getter.compute_loss(
-            model_outputs.data, target_dirs.data)
+            model_outputs.data, target_dirs.data, average_results)
 
+        if not average_results:
+            # Will be easier to manage if streamlines are stacked rather than
+            # packed. Will be like other models.
+            loss_packed = PackedSequence(
+                loss, batch_sizes=model_outputs.batch_sizes,
+                sorted_indices=model_outputs.sorted_indices,
+                unsorted_indices=model_outputs.unsorted_indices)
+            loss = unpack_sequence(loss_packed)
+            loss = torch.hstack(loss)
         return loss

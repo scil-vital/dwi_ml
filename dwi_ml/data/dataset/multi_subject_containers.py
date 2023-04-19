@@ -410,12 +410,21 @@ class MultiSubjectDataset:
         return all_params
 
     def load_data(self, load_training=True, load_validation=True,
-                  load_testing=True, subj_id: str = None):
+                  load_testing=True, subj_id: str = None,
+                  volume_groups: List = None,
+                  streamline_groups: List = None):
         """
         Load raw dataset into memory.
 
         If `subj_id` is given, loads only this subject. Useful at
         tractography time, for instance.
+
+        If streamline_groups is given, only counts streamlines for this group.
+        With non-lazy data: only loads streamlines for this group. None means
+        all. Use [] to have no volume.
+
+        If volume_groups is given, with non-lazy data: only loads volumes for
+        this group.
         """
         with h5py.File(self.hdf5_file, 'r') as hdf_handle:
             # Load main attributes from hdf file, but each process calling
@@ -443,14 +452,45 @@ class MultiSubjectDataset:
             one_subj = hdf_handle.attrs['training_subjs'][0]
             group_info = \
                 prepare_groups_info(one_subj, hdf_handle, group_info=None)
-            (self.volume_groups, self.nb_features,
-             self.streamline_groups) = group_info
-            logger.debug("        Volume groups are: {}"
-                         .format(self.volume_groups))
-            logger.debug("        Number of features in each of these groups: "
-                         "{}".format(self.nb_features))
-            logger.debug("        Streamline groups are: {}"
-                         .format(self.streamline_groups))
+            (poss_volume_groups, nb_features, poss_strea_groups) = group_info
+            logger.info("        Possible volume groups are: {}"
+                        .format(poss_volume_groups))
+            logger.info("        Number of features in each of these groups: "
+                        "{}".format(nb_features))
+            logger.info("        Possible streamline groups are: {}"
+                        .format(poss_strea_groups))
+
+            # Verifying groups of interest
+            if volume_groups is not None:
+                missing_vol = np.setdiff1d(volume_groups, poss_volume_groups)
+                if len(missing_vol) > 0:
+                    raise ValueError("Volumes {} were not found in the first "
+                                     "subject of your hdf5 file."
+                                     .format(missing_vol))
+                vol, indv, indposs = np.intersect1d(
+                    volume_groups, poss_volume_groups, return_indices=True)
+                self.volume_groups = vol
+                self.nb_features = [nb_features[i] for i in indposs]
+                logger.info("Chosen volume groups are: {}"
+                            .format(self.volume_groups))
+            else:
+                logger.info("Using all volume groups.")
+                self.volume_groups = poss_volume_groups
+                self.nb_features = nb_features
+
+            if streamline_groups is not None:
+                missing_str = np.setdiff1d(streamline_groups, poss_strea_groups)
+                if len(missing_str) > 0:
+                    raise ValueError("Streamlines {} were not found in the "
+                                     "first subject of your hdf5 file."
+                                     .format(missing_str))
+                self.streamline_groups = np.intersect1d(streamline_groups,
+                                                        poss_strea_groups)
+                logger.info("Chosen streamline groups are: {}"
+                            .format(self.streamline_groups))
+            else:
+                logger.info("Using all streamline groups.")
+                self.streamline_groups = poss_strea_groups
 
             self.training_set.set_subset_info(*group_info, step_size, compress)
             self.validation_set.set_subset_info(*group_info, step_size, compress)

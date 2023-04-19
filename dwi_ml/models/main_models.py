@@ -599,7 +599,8 @@ class ModelWithDirectionGetter(MainModelAbstract):
         })
         return p
 
-    def get_tracking_directions(self, model_outputs: Tensor, algo: str):
+    def get_tracking_directions(self, model_outputs: Tensor, algo: str,
+                                eos_stopping_thresh: Union[float, str]):
         """
         Params
         ------
@@ -607,6 +608,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
             Our model's previous layer's output.
         algo: str
             'det' or 'prob'.
+        eos_stopping_thresh: float or 'max'
 
         Returns
         -------
@@ -614,7 +616,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
             Numpy arrays with x,y,z value, one per streamline data point.
         """
         return self.direction_getter.get_tracking_directions(
-            model_outputs, algo)
+            model_outputs, algo, eos_stopping_thresh)
 
     def compute_loss(self, model_outputs, target_streamlines,
                      average_results=True, **kw):

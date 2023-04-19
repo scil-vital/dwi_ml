@@ -14,6 +14,8 @@ from dipy.tracking.streamlinespeed import compress_streamlines
 from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
+from dwi_ml.models.direction_getter_models import \
+    AbstractRegressionDirectionGetter
 from dwi_ml.models.main_models import ModelWithDirectionGetter, \
     MainModelOneInput
 from dwi_ml.tracking.tracking_mask import TrackingMask
@@ -39,7 +41,7 @@ class DWIMLAbstractTracker:
                  compression_th=0.1, nbr_processes=1, save_seeds=False,
                  rng_seed=1234, track_forward_only=False,
                  simultanenous_tracking: int = 1, use_gpu: bool = False,
-                 append_last_point=True,
+                 append_last_point=True, eos_stopping_thresh=None,
                  log_level=logging.WARNING):
         """
         Parameters
@@ -80,6 +82,13 @@ class DWIMLAbstractTracker:
         simultanenous_tracking: bool,
             If true, track multiple lines at the same time. Intended for GPU.
         use_gpu: bool
+        append_last_point: bool
+            If true, keep the last point (the one out of the tracking mask
+            that triggered the stopping criteria). Default in scilpy: true.
+            Default in dipy: true. But this should be carefully thought.
+        eos_stopping_thresh: float or 'max'
+            Threshold for the EOS value to trigger a stopping criteria (if
+            your model supports EOS). Default: 0.5
         """
         self.mask = mask
         self.seed_generator = seed_generator
@@ -98,12 +107,31 @@ class DWIMLAbstractTracker:
         self.model = model
         self.model.set_context('tracking')
         self.append_last_point = append_last_point
+        self.eos_stopping_thresh = eos_stopping_thresh
 
         if model.compress:
             logging.warning(
                 "Careful! Model was trained on compressed streamlines. "
                 "Tractography with a fixed step size could lead to weird "
                 "results")
+        if eos_stopping_thresh:
+            if not model.direction_getter.add_eos:
+                logging.warning("You have added a threshold for the EOS "
+                                "stopping criterion, but your model does not "
+                                "support EOS.")
+            if isinstance(eos_stopping_thresh, str):
+                if not eos_stopping_thresh == 'max':
+                    raise ValueError("eos stopping criteria should be either "
+                                     "a float or the string 'max', but we got "
+                                     "{}".format(eos_stopping_thresh))
+                elif isinstance(model.direction_getter,
+                                AbstractRegressionDirectionGetter):
+                    raise ValueError("Regression's EOS is a tag, not a class. "
+                                     "It does not support the criterion "
+                                     "'max'.")
+        elif model.direction_getter.add_eos:
+            # Using default 0.5
+            self.eos_stopping_thresh = 0.5
 
         if step_size_mm is None:
             if model.step_size is None:
@@ -562,8 +590,8 @@ class DWIMLAbstractTracker:
 
         # Input to model is a list of streamlines but output should be
         # next_dirs = a tensor of shape [nb_streamlines, 3].
-        next_dirs = self.model.get_tracking_directions(model_outputs,
-                                                       self.algo)
+        next_dirs = self.model.get_tracking_directions(
+            model_outputs, self.algo, self.eos_stopping_thresh)
 
         if self.normalize_directions:
             # Will divide along correct axis.

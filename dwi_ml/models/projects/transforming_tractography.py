@@ -51,14 +51,15 @@ def forward_padding(data: torch.tensor, expected_length):
     return pad(data, (0, 0, 0, expected_length - len(data)))
 
 
-def pad_and_stack_batch(data, pad_first: bool, pad_length: int):
+def pad_and_stack_batch(data: List[torch.Tensor], pad_first: bool,
+                        pad_length: int):
     """
     Pad the list of tensors so that all streamlines have length max_len.
     Then concatenate all streamlines.
 
     Params
     ------
-    unpadded_data: list[Tensor]
+    data: list[Tensor]
         Len: nb streamlines. Shape of each tensor: nb points x nb features.
     pad_first: bool
         If false, padding is skipped. (Ex: If all streamlines already
@@ -496,6 +497,11 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         Embedding. (Add SOS token to target.)
         Positional encoding.
         """
+        # toDo: Test faster:
+        #   1) stack (2D), embed, destack, pad_and_stack (3D)
+        #   2) loop on streamline to embed, pad_and_stack
+        #   3) pad_and_stack, then embed (but we might embed many zeros that
+        #      will be masked in attention anyway)
         # Inputs
         inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
         inputs = self.embedding_layer_x(inputs)

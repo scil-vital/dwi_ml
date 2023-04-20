@@ -40,7 +40,7 @@ class DWIMLAbstractTracker:
                  verify_opposite_direction: bool,
                  compression_th=0.1, nbr_processes=1, save_seeds=False,
                  rng_seed=1234, track_forward_only=False,
-                 simultanenous_tracking: int = 1, use_gpu: bool = False,
+                 simultaneous_tracking: int = 1, use_gpu: bool = False,
                  append_last_point=True, eos_stopping_thresh=None,
                  log_level=logging.WARNING):
         """
@@ -76,10 +76,10 @@ class DWIMLAbstractTracker:
             as output.
         compression_th: float, compression threshold.
         nbr_processes: int, number of CPU processes.
-        save_seeds: bool, wheter to save seeds in the tractogram.
+        save_seeds: bool, whether to save seeds in the tractogram.
         rng_seed: float, random seed.
         track_forward_only: bool.
-        simultanenous_tracking: bool,
+        simultaneous_tracking: bool,
             If true, track multiple lines at the same time. Intended for GPU.
         use_gpu: bool
         append_last_point: bool
@@ -197,7 +197,7 @@ class DWIMLAbstractTracker:
                 raise ValueError("You cannot use both multi-processes and "
                                  "gpu.")
 
-        self.simultanenous_tracking = simultanenous_tracking
+        self.simultaneous_tracking = simultaneous_tracking
         self.use_gpu = use_gpu
         if use_gpu:
             if torch.cuda.is_available():
@@ -249,7 +249,7 @@ class DWIMLAbstractTracker:
         Here adding the GPU usage. Other changes for dwi_ml will be reflected
         in _cpu_tracking.
         """
-        if self.simultanenous_tracking > 1:
+        if self.simultaneous_tracking > 1:
             return self._gpu_simultanenous_tracking()
         else:
             # On CPU, with possibility of parallel processing.
@@ -400,7 +400,7 @@ class DWIMLAbstractTracker:
         lines = []
         seeds = []
         while seed_count < self.nbr_seeds:
-            nb_next_seeds = self.simultanenous_tracking
+            nb_next_seeds = self.simultaneous_tracking
             if seed_count + nb_next_seeds > self.nbr_seeds:
                 nb_next_seeds = self.nbr_seeds - seed_count
 

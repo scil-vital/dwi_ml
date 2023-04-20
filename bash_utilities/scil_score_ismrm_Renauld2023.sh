@@ -1,12 +1,21 @@
 #!/bin/sh
 
+if [ $# -eq 0 ] || [ $1 = '-h' ] || [ $1 = '--help' ]
+then
+    echo "-----"
+    echo "Usage: "
+    echo ">> scil_score_ismrm_Renauld2023.sh tractogram out_dir ref scoring_data"
+    echo "-----"
+    exit
+fi
+
 tractogram=$1
 out_dir=$2
-ref=$3
-scoring_data=$4
+scoring_data=$3
 
 config_file_segmentation=$scoring_data/config_file_segmentation.json
 config_file_tractometry=$scoring_data/config_file_tractometry.json
+ref=$scoring_data/ROI/all_masks/CA.nii.gz
 
 if [ ! -f $tractogram ]
 then
@@ -22,7 +31,7 @@ fi
 
 
 echo '------------- SEGMENTATION ------------'
-scil_score_tractogram.py -v $tractogram $config_file_segmentation $out_dir --no_empty \
+scil_score_tractogram.py $tractogram $config_file_segmentation $out_dir --no_empty \
     --gt_dir $scoring_data --reference $ref --json_prefix tmp_ --no_bbox_check;
 
 echo '------------- Merging CC sub-bundles ------------'

@@ -47,7 +47,21 @@ class Tester:
         self.subj_idx = None
         self.experiment_params = None
         self.input_info = None
-        self.params = None
+        self._params = None
+
+    @property
+    def params(self):
+        if self._params is None:
+            logging.info("Loading information from checkpoint")
+            params_filename = os.path.join(self.experiment_path,
+                                           "parameters.json")
+            with open(params_filename, 'r') as json_file:
+                self._params = json.load(json_file)
+        return self._params
+
+    @property
+    def streamlines_group(self):
+        return self.params["Loader params"]["streamline_group_name"]
 
     def load_and_format_data(self, subj_id, hdf5_file, subset_name):
         """
@@ -56,28 +70,20 @@ class Tester:
 
         Returns: SFT, all streamlines for this subject.
         """
-        # 1. Loading checkpoint params
-        logging.info("Loading information from checkpoint")
-        params_filename = os.path.join(self.experiment_path, "parameters.json")
-        with open(params_filename, 'r') as json_file:
-            self.params = json.load(json_file)
-
-        streamline_group = \
-            self.params["Loader params"]["streamline_group_name"]
-
-        # 2. Load subject
+        # 1. Load subject
         logging.info("Loading subject {} from hdf5.".format(subj_id))
         self.subset, self.subj_idx = prepare_dataset_one_subj(
             hdf5_file, subj_id, subset_name=subset_name,
             volume_groups=self._volume_groups,
-            streamline_groups=[streamline_group], lazy=False, cache_size=None)
+            streamline_groups=[self.streamlines_group],
+            lazy=False, cache_size=None)
 
-        # 3. Load SFT as in dataloader, except we don't loop on many subject,
+        # 2. Load SFT as in dataloader, except we don't loop on many subject,
         # we don't verify streamline ids (loading all), and we don't split /
         # reverse streamlines. But we resample / compress.
         logging.info("Loading its streamlines as SFT.")
         streamline_group_idx = self.subset.streamline_groups.index(
-            streamline_group)
+            self.streamlines_group)
         subj_data = self.subset.subjs_data_list.get_subj_with_handle(
             self.subj_idx)
         subj_sft_data = subj_data.sft_data_list[streamline_group_idx]

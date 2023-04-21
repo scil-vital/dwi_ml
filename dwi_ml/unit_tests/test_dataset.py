@@ -122,7 +122,7 @@ def _non_lazy_version(hdf5_filename):
     mri_data = subj0.mri_data_list[0]
     assert isinstance(mri_data, MRIData)
     # Non-lazy: the _data should already be loaded.
-    assert isinstance(mri_data._data, np.ndarray)
+    assert isinstance(mri_data._data, torch.Tensor)
     _verify_mri(mri_data, training_set, group_number=0)
 
     logging.debug("    Testing properties of his first SFTData.")

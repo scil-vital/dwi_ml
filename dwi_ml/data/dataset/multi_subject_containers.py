@@ -136,8 +136,7 @@ class MultisubjectSubset(Dataset):
         return idx
 
     def get_volume_verify_cache(self, subj_idx: int, group_idx: int,
-                                device: torch.device = torch.device('cpu'),
-                                as_tensor: bool = True):
+                                device: torch.device = torch.device('cpu')):
         """
         Get a volume from a specific subject. For lazy data, load it (if not
         already in the cache, or get it from the cache).
@@ -150,8 +149,6 @@ class MultisubjectSubset(Dataset):
             Index of the volume to load.
         device:
             Torch device. Used when loading as tensor.
-        as_tensor: bool
-            If true, loads volume as a tensor. Else, as a DatasetVolume.
 
         Returns
         -------
@@ -162,10 +159,15 @@ class MultisubjectSubset(Dataset):
         # the MultiSubjectDatasetAbstract to have only one cache but easier to
         # deal with here.
 
-        # First verify cache (if lazy)
+        # First verify cache
+        if device is not None and device.type == 'cuda' and \
+                not self.cache_size:
+            raise ValueError("Cache size 0 is never recommended with GPU! "
+                             "Moving data to GPU everytime!")
+
         cache_key = str(subj_idx) + '.' + str(group_idx)
         was_cached = False
-        if self.subjs_data_list.is_lazy and self.cache_size > 0:
+        if self.cache_size:
             # Initialize the cache if not done
             # Parallel workers each build a local cache
             # (data is duplicated across workers, but there is no need to
@@ -176,35 +178,30 @@ class MultisubjectSubset(Dataset):
 
             # Access the cache
             if cache_key in self.volume_cache_manager:
-                # General case: Data is already cached
-                mri_data = self.volume_cache_manager[cache_key]
+                mri_data_tensor = self.volume_cache_manager[cache_key]
                 was_cached = True
+
+                # User should not change device between calls but just checking
+                mri_data_tensor = mri_data_tensor.to(device)
 
         if not was_cached:
             # Either non-lazy or if lazy, data was not cached.
-            # Non-lazy: direct acces. Lazy: this loads the data.
+            # Non-lazy: direct access. Lazy: this loads the data.
             logger.debug("Getting a new volume from the dataset.")
-            mri_data = self.get_volume(subj_idx, group_idx)
+            mri_data = self.get_mri_data(subj_idx, group_idx)
+            mri_data_tensor = mri_data.convert_to_tensor(device)
 
-            # Add to cache
-            # Saving the data as a non-lazy data to also have in memory its
-            # other attributes.
-            if self.subjs_data_list.is_lazy and self.cache_size > 0:
+            # Add to cache the tensor (on correct device)
+            if self.cache_size:
                 logger.debug("PROCESS ID {}. Adding volume to cache"
                              .format(os.getpid()))
                 # Send volume_data on cache
-                mri_data = mri_data.as_non_lazy
-                self.volume_cache_manager[cache_key] = mri_data
+                self.volume_cache_manager[cache_key] = mri_data_tensor
 
-        # Casting as wanted. If was cached: non-lazy. Direct access.
-        # If was not cached: depends on self.is_lazy.
-        if as_tensor:
-            return mri_data.convert_to_tensor(device)
-        else:
-            return mri_data.as_data_volume
+        return mri_data_tensor
 
-    def get_volume(self, subj_idx: int, group_idx: int,
-                   load_it: bool = True) -> MRIDataAbstract:
+    def get_mri_data(self, subj_idx: int, group_idx: int,
+                     load_it: bool = True) -> MRIDataAbstract:
         """
         Loads volume as a MRIDataAbstract (lazy or non-lazy class instance).
 

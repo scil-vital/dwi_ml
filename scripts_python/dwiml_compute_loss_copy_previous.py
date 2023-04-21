@@ -57,6 +57,12 @@ def main():
     args = p.parse_args()
     logging.getLogger().setLevel(level=args.logging)
 
+    if args.out_displacement_sft and \
+            not (args.pick_at_random or args.pick_best_and_worst or
+                 args.pick_idx):
+        p.error("You must select at least one of 'pick_at_random', "
+                "'pick_best_and_worst' and 'pick_idx'.")
+
     # Verify output names
     out_files = [args.out_colored_sft]
     if args.out_colored_sft is not None:
@@ -87,7 +93,7 @@ def main():
     tester = TesterCopyPrevDir(model, args.streamlines_group,
                                args.batch_size, device)
     sft = tester.load_and_format_data(args.subj_id, args.hdf5_file,
-                                      args.subset, None, None)
+                                      args.subset)
 
     if (args.out_displacement_sft and not args.out_colored_sft and
             not args.pick_best_and_worst):
@@ -118,9 +124,9 @@ def main():
     if args.save_best_and_worst is not None or args.pick_best_and_worst:
         best_idx, worst_idx = separate_best_and_worst(
             args.save_best_and_worst, model.direction_getter.add_eos,
-            losses, sft)
+            losses, sft, skip_first_point=args.skip_first_point)
 
-        if args.out_colored is not None:
+        if args.out_colored_sft is not None:
             best_sft = sft[best_idx]
             worst_sft = sft[worst_idx]
             print("Saving best and worst streamlines as {} \nand {}"

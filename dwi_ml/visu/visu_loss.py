@@ -103,21 +103,16 @@ def prepare_colors_from_loss(
 
     # Splitting back into streamlines to add a 0 loss at last position
     # (if no EOS was used).
-    diff_length = 0 if contains_eos else 1
-    if skip_first_point:
-        diff_length += 1
-    lengths = [len(s) - diff_length for s in sft.streamlines]
-    losses = torch.split(losses, lengths)
-    losses = [s_losses.tolist() for s_losses in losses]
+    losses = split_losses(contains_eos, losses, sft, skip_first_point)
 
     # Add 0 loss for the last point and merge back
     if skip_first_point:
-        logging.info("Loss unkown at first point of the streamlines. Set to {}"
-                     .format(nan_value))
+        logging.info("Loss unknown at first point of the streamlines. Set to "
+                     "{}".format(nan_value))
         losses = [[nan_value] + s_losses for s_losses in losses]
 
     if not contains_eos:
-        logging.info("Loss unkown at last point of the streamlines. Set to {}"
+        logging.info("Loss unknown at last point of the streamlines. Set to {}"
                      .format(nan_value))
         losses = [s_losses + [nan_value] for s_losses in losses]
 
@@ -137,10 +132,9 @@ def prepare_colors_from_loss(
     return sft, colorbar_fig
 
 
-def separate_best_and_worst(percent, contains_eos, losses, sft):
-    diff_length = 0 if contains_eos else 1
-    lengths = [len(s) - diff_length for s in sft.streamlines]
-    losses = torch.split(losses, lengths)
+def separate_best_and_worst(percent, contains_eos, losses, sft,
+                            skip_first_point=False):
+    losses = split_losses(contains_eos, losses, sft, skip_first_point)
     losses = [np.mean(s_losses) for s_losses in losses]
 
     percent = int(percent / 100 * len(sft))
@@ -149,8 +143,30 @@ def separate_best_and_worst(percent, contains_eos, losses, sft):
     worst_idx = idx[-percent:]
 
     print("Best / worst streamline's loss: \n"
-          "      Worst : {}\n"
-          "      Best: {}".format(losses[best_idx[0]], losses[worst_idx[-1]]))
+          "      Best : {}\n"
+          "      Worst: {}".format(losses[best_idx[0]], losses[worst_idx[-1]]))
+    return best_idx, worst_idx
+
+
+def split_losses(contains_eos, losses, sft, skip_first_point=False):
+    diff_length = 0 if contains_eos else 1
+    if skip_first_point:
+        diff_length += 1
+    lengths = [len(s) - diff_length for s in sft.streamlines]
+
+    # If this fails, torch's warning is really ugly. Verifying ourselves.
+    msg = "Can't split loss... Please verify the code. There are {} values " \
+        "of losses but {} points (total in {} streamlines)"\
+        .format(len(losses), sum(lengths), len(lengths))
+    if not contains_eos:
+        msg += "(minus 1 because we have no EOS loss at the last point)"
+    if skip_first_point:
+        msg += "(minus 1 because we don't look the loss at the first point, "
+        ", probably because this was called with the copy_previous_dir script."
+    assert len(losses) == sum(lengths), msg
+    losses = torch.split(losses, lengths)
+    losses = [s_losses.tolist() for s_losses in losses]
+    return losses
 
 
 def pick_a_few(sft, ids_best, ids_worst,

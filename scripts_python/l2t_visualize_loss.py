@@ -24,8 +24,9 @@ def main():
     prepare_args_visu_loss(p)
     args = p.parse_args()
 
-    if not (args.pick_at_random or args.pick_best_and_worst or
-            args.pick_idx):
+    if args.out_displacement_sft and \
+            not (args.pick_at_random or args.pick_best_and_worst or
+                 args.pick_idx):
         p.error("You must select at least one of 'pick_at_random', "
                 "'pick_best_and_worst' and 'pick_idx'.")
 

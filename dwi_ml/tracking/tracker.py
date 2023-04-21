@@ -93,7 +93,7 @@ class DWIMLAbstractTracker:
         self.mask = mask
         self.seed_generator = seed_generator
         self.nbr_seeds = nbr_seeds
-        self.max_invalid_dirs = torch.as_tensor(max_invalid_dirs)
+        self.max_invalid_dirs = max_invalid_dirs
         self.compression_th = compression_th
         self.save_seeds = save_seeds
         self.mmap_mode = None
@@ -214,9 +214,8 @@ class DWIMLAbstractTracker:
 
     def move_to(self, device):
         self.device = device
-        self.model.move_to(device=device)
+        self.model.move_to(device)
         self.mask.move_to(device)
-        self.max_invalid_dirs.to(device)
 
     def _set_nbr_processes(self, nbr_processes):
         """
@@ -250,7 +249,7 @@ class DWIMLAbstractTracker:
         in _cpu_tracking.
         """
         if self.simultaneous_tracking > 1:
-            return self._gpu_simultanenous_tracking()
+            return self._gpu_simultaneous_tracking()
         else:
             # On CPU, with possibility of parallel processing.
             # Copied from scilpy's tracker.
@@ -389,7 +388,7 @@ class DWIMLAbstractTracker:
 
         return streamlines, seeds
         
-    def _gpu_simultanenous_tracking(self):
+    def _gpu_simultaneous_tracking(self):
         """
         Creating all seeds at once and propagating all streamlines together.
         """
@@ -404,8 +403,7 @@ class DWIMLAbstractTracker:
             if seed_count + nb_next_seeds > self.nbr_seeds:
                 nb_next_seeds = self.nbr_seeds - seed_count
 
-            next_seeds = np.asarray(
-                range(seed_count, seed_count + nb_next_seeds))
+            next_seeds = np.arange(seed_count, seed_count + nb_next_seeds)
 
             n_seeds = self.seed_generator.get_next_n_pos(
                 random_generator, indices, next_seeds)
@@ -492,8 +490,7 @@ class DWIMLAbstractTracker:
         nb_streamlines = len(lines)
 
         # Monitoring
-        invalid_direction_counts = torch.zeros(nb_streamlines,
-                                               device=self.device)
+        invalid_direction_counts = np.zeros(nb_streamlines)
         continuing_lines_rawidx = np.arange(nb_streamlines)
 
         # Will get the final lines when they are done.
@@ -502,19 +499,14 @@ class DWIMLAbstractTracker:
         # `lines` will be updated at each loop to only contain the remaining
         # lines.
         all_lines_completed = False
-        current_step = 0  # This count is reset for forward and backward
         previous_dir = initial_dir
         while not all_lines_completed:
-            current_step += 1
-            logging.debug("Propagation step #{}".format(current_step))
-
-            n_new_pos, previous_dir, valid_dirs = \
+            n_new_pos, previous_dir, invalid_dirs = \
                 self.take_one_step_or_go_straight(lines, previous_dir)
 
             # If invalid direction (ex: angle or EOS), stop now.
-            invalid_direction_counts[~valid_dirs] += 1
-            breaking_now = torch.greater(invalid_direction_counts,
-                                         self.max_invalid_dirs)
+            invalid_direction_counts[invalid_dirs] += 1
+            breaking_now = invalid_direction_counts > self.max_invalid_dirs
 
             # For other streamlines: verifying but appending only if option is
             # chosen.
@@ -523,26 +515,28 @@ class DWIMLAbstractTracker:
 
             if self.append_last_point:
                 # Appending last point only to streamlines not breaking now.
+                # (i.e. wrong angle or NaN direction) more than
+                # max invalid dirs.
                 lines = [torch.vstack((s, n_new_pos[i, :])) if ~breaking_now[i]
                          else s for i, s in enumerate(lines)]
-                breaking_now = torch.logical_or(
-                    break_with_appending, breaking_now)
-                can_continue = ~breaking_now.cpu().numpy()
+                breaking_now = np.logical_or(break_with_appending,
+                                             breaking_now)
+                can_continue = ~breaking_now
             else:
                 # Appending last point only to continuing streamlines
-                breaking_now = torch.logical_or(
-                    break_with_appending, breaking_now)
-                can_continue = ~breaking_now.cpu().numpy()
+                breaking_now = np.logical_or(break_with_appending,
+                                             breaking_now)
+                can_continue = ~breaking_now
                 lines = [torch.vstack((s, n_new_pos[i, :])) if can_continue[i]
                          else s for i, s in enumerate(lines)]
 
             # Saving finished streamlines
-            for i in range(len(lines)):
-                if breaking_now[i]:
-                    final_lines[continuing_lines_rawidx[i]] = lines[i]
+            idx_stop, = np.where(breaking_now)
+            for i in idx_stop:
+                final_lines[continuing_lines_rawidx[i]] = lines[i]
 
             # Update model if needed.
-            if np.any(~can_continue):
+            if np.any(breaking_now):
                 new_stopping_lines_raw_idx = continuing_lines_rawidx[
                     ~can_continue]
                 self.update_memory_after_removing_lines(
@@ -563,6 +557,11 @@ class DWIMLAbstractTracker:
 
     def take_one_step_or_go_straight(self, lines, previous_dirs):
         """
+        Finds the next direction. If no valid direction is found (invalid = if
+        the model returns NaN, ex if EOS is used, or if the angle is too
+        sharp). Then, the previous direction is copied but the list of invalid
+        directions is returned.
+
         Params
         ------
         line: List[Tensor]
@@ -576,11 +575,10 @@ class DWIMLAbstractTracker:
         n_new_pos: Tensor(n, 3)
             The new positions.
         next_dirs: Tensor(n, 3)
-            The new segment direction. None if no valid direction
-            is found. Normalized if self.normalize_directions.
-        valid_dirs: Tensor(n, )
-            True if new_dir is valid. Invalid: if the model returns NaN or if
-            the angle is too sharp.
+            The new segment direction. The previous direction is copied if no
+            valid direction is found. Normalized if self.normalize_directions.
+        invalid_dirs: ndarray(n, )
+            True if new_dir is invalid.
         """
         last_pos = [line[-1, :] for line in lines]
 
@@ -600,14 +598,14 @@ class DWIMLAbstractTracker:
         next_dirs = self._verify_angle(next_dirs, previous_dirs)
 
         # Copy previous dirs for invalid directions
-        valid_dirs = ~torch.isnan(next_dirs[:, 0])
-        next_dirs[~valid_dirs, :] = previous_dirs[~valid_dirs, :]
+        invalid_dirs = torch.isnan(next_dirs[:, 0])
+        next_dirs[invalid_dirs, :] = previous_dirs[invalid_dirs, :]
 
         # Get new positions
         last_pos = torch.vstack(last_pos)
         n_new_pos = last_pos + self.step_size * next_dirs
 
-        return n_new_pos, next_dirs, valid_dirs
+        return n_new_pos, next_dirs, invalid_dirs.cpu().numpy()
 
     def _prepare_inputs_at_pos(self, last_pos):
         raise NotImplementedError
@@ -722,20 +720,20 @@ class DWIMLAbstractTracker:
 
         # Checking total length. During forward: all the same length. Not
         # during backward.
-        stopping = torch.as_tensor(
-            np.asarray([len(s) for s in lines]) == self.max_nbr_pts,
-            device=self.device)
+        stopping = np.asarray([len(s) for s in lines]) == self.max_nbr_pts
 
         # Checking if out of bound using seeding mask
-        stopping = torch.logical_or(
-            stopping, ~self.mask.is_vox_corner_in_bound(n_last_pos))
+        stopping = np.logical_or(
+            stopping,
+            ~self.mask.is_vox_corner_in_bound(n_last_pos).cpu().numpy())
 
-        if self.mask.data is not None and not torch.all(stopping):
+        if self.mask.data is not None and not np.all(stopping):
             # Checking if out of mask
             # Avoid interpolation for points that we already know can't
             # continue.
             still_on = ~stopping
-            stopping[still_on] = ~self.mask.is_in_mask(n_last_pos[still_on])
+            stopping[still_on] = ~self.mask.is_in_mask(
+                n_last_pos[still_on]).cpu().numpy()
 
         return stopping
 

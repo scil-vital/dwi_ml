@@ -83,7 +83,8 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading subject's data.")
         subset, subj_idx = prepare_dataset_one_subj(
-            args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
+            args.hdf5_file, args.subj_id, lazy=False,
+            cache_size=args.cache_size,
             subset_name=args.subset, volume_groups=[args.input_group],
             streamline_groups=[])
 
@@ -106,7 +107,7 @@ def prepare_tracker(parser, args):
             track_forward_only=args.track_forward_only,
             step_size_mm=args.step_size, algo=args.algo, theta=theta,
             use_gpu=args.use_gpu,
-            simultanenous_tracking=args.simultaneous_tracking,
+            simultaneous_tracking=args.simultaneous_tracking,
             append_last_point=APPEND_LAST_POINT,
             log_level=args.logging)
 

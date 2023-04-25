@@ -12,6 +12,7 @@ import torch
 from dipy.io.stateful_tractogram import Space, Origin
 from dipy.tracking.streamlinespeed import compress_streamlines
 from scilpy.tracking.seed import SeedGenerator
+from tqdm import tqdm
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.direction_getter_models import \
@@ -398,27 +399,24 @@ class DWIMLAbstractTracker:
         seed_count = 0
         lines = []
         seeds = []
-        while seed_count < self.nbr_seeds:
-            nb_next_seeds = self.simultaneous_tracking
-            if seed_count + nb_next_seeds > self.nbr_seeds:
-                nb_next_seeds = self.nbr_seeds - seed_count
+        with tqdm(total=self.nbr_seeds, ncols=100) as pbar:
+            while seed_count < self.nbr_seeds:
+                nb_next_seeds = self.simultaneous_tracking
+                if seed_count + nb_next_seeds > self.nbr_seeds:
+                    nb_next_seeds = self.nbr_seeds - seed_count
 
-            next_seeds = np.arange(seed_count, seed_count + nb_next_seeds)
+                next_seeds = np.arange(seed_count, seed_count + nb_next_seeds)
 
-            n_seeds = self.seed_generator.get_next_n_pos(
-                random_generator, indices, next_seeds)
+                n_seeds = self.seed_generator.get_next_n_pos(
+                    random_generator, indices, next_seeds)
 
-            logger.info(
-                "Starting forward propagation for the next {} streamlines. "
-                "Total: {} / {}"
-                .format(nb_next_seeds, seed_count, self.nbr_seeds))
+                tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
+                    n_seeds)
+                pbar.update(nb_next_seeds)
+                lines.extend([line.tolist() for line in tmp_lines])
+                seeds.extend([s.tolist() for s in tmp_seeds])
 
-            tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
-                n_seeds)
-            lines.extend([line.tolist() for line in tmp_lines])
-            seeds.extend([s.tolist() for s in tmp_seeds])
-
-            seed_count += nb_next_seeds
+                seed_count += nb_next_seeds
 
         return lines, seeds
 

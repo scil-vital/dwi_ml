@@ -259,7 +259,8 @@ class MultisubjectSubset(Dataset):
 
         # Using tqdm progress bar, load all subjects from hdf_file
         with logging_redirect_tqdm(loggers=[logging.root], tqdm_class=tqdm):
-            for subj_id in tqdm(subject_keys, ncols=100):
+            for subj_id in tqdm(subject_keys, ncols=100,
+                                total=self.nb_subjects):
                 # Create subject's container
                 # Uses SubjectData or LazySubjectData based on the class
                 # calling this method.

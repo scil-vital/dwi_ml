@@ -19,6 +19,7 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
     :maxdepth: 1
     :caption: How to use DWI_ML
 
+    pages/tutorial
     preprocessing
     data_organization
     config_file
@@ -30,14 +31,14 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
 
 .. toctree::
     :maxdepth: 1
-    :caption: Creating your own project
+    :caption: Create your own project
 
     adapting_dwiml
     data_containers
 
 .. toctree::
     :maxdepth: 1
-    :caption: Contributing
+    :caption: Contribute
 
     devel/contributing_link
     devel/coding_style_guideline

@@ -11,7 +11,7 @@ You should make your model a child class of our **MainModelAbstract** to keep so
 
 The compute_loss method should be implemented to be used with our trainer.
 
-For generative models, the get_tracking_directions should be implemented to be used with our tracker.
+For generative models, the get_tracking_direction_det and sample_tracking_direction_prob methods should be implemented to be used with our tracker.
 
 We have also prepared child classes to help formatting previous directions, useful both for training and tracking.
 

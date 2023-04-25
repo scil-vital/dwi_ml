@@ -404,17 +404,26 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                     [total nb points all streamlines, out size]
                 - During tracking: [nb streamlines * 1, out size]
         weights: Tuple
-            If return weigts: The weights (depending on the child model)
+            If return_weights: The weights (depending on the child model)
         """
         if self._context is None:
             raise ValueError("Please set context before usage.")
 
-        # Remember lengths to unpad outputs later. During tracking, the
-        # targets contain one less point.
-        if self.direction_getter.add_eos:
-            unpadded_lengths = np.asarray([len(i) + 1 for i in inputs])
+        # Remember lengths to unpad outputs later.
+        # (expect during tracking, we only keep the last output, but still
+        # verifying if any length exceeds the max allowed).
+        if self._context == 'tracking':
+            assert np.all([len(i) == len(s) for i, s in
+                           zip(inputs, batch_streamlines)])
         else:
-            unpadded_lengths = np.asarray([len(i) for i in inputs])
+            # We skipped interpolation at last input point if not necessary.
+            if self.direction_getter.add_eos:
+                assert np.all([len(i) == len(s) for i, s in
+                               zip(inputs, batch_streamlines)])
+            else:
+                assert np.all([len(i) == len(s) - 1 for i, s in
+                               zip(inputs, batch_streamlines)])
+        unpadded_lengths = np.asarray([len(i) for i in inputs])
 
         # ----------- Checks
         if np.any(unpadded_lengths > self.max_len):
@@ -427,7 +436,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         batch_max_len = np.max(unpadded_lengths)
         if CLEAR_CACHE:
             now = time()
-            logging.debug("Tranformer: Maximal length in batch is {}"
+            logging.debug("Transformer: Maximal length in batch is {}"
                           .format(batch_max_len))
             torch.torch.cuda.empty_cache()
             now2 = time()
@@ -519,11 +528,10 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             return_weights: bool, average_heads: bool):
         raise NotImplementedError
 
-    def compute_loss(self, model_outputs, streamlines,
+    def compute_loss(self, model_outputs, target_streamlines,
                      average_results=True, **kw):
         """
         Computes the loss function using the provided outputs and targets.
-        Returns the mean loss (loss averaged across timesteps and sequences).
 
         Parameters
         ----------
@@ -531,20 +539,19 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             The model outputs for a batch of sequences. Ex: a gaussian mixture
             direction getter returns a Tuple[Tensor, Tensor, Tensor], but a
             cosine regression direction getter return a simple Tensor.
-        streamlines : List
+        target_streamlines : List
             The target values for the batch (the streamlines).
-
-        Returns
-        -------
-        mean_loss : torch.Tensor
-            The loss between the outputs and the targets, averaged across
-            timesteps and sequences.
+        average_results: bool
+            If true, returns results averaged over timepoints (with the number
+            of points). Else, returns all losses.
         """
-        targets = self.direction_getter.prepare_targets_for_loss(streamlines)
+        target_streamlines = self.direction_getter.prepare_targets_for_loss(
+            target_streamlines)
+        target_streamlines = torch.cat(target_streamlines, dim=0)
 
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
-            model_outputs, torch.cat(targets, dim=0), average_results)
+            model_outputs, target_streamlines, average_results)
 
 
 class OriginalTransformerModel(AbstractTransformerModel):

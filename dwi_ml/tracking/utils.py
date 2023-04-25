@@ -73,7 +73,7 @@ def add_tracking_options(p):
                              "\na stopping criterion during propagation: "
                              "tracking \nis stopped when a direction is more "
                              "than an angle t from preceding direction")
-    stop_g.add_argument('--eos_stop', metavar='prob', type=Union[float, str],
+    stop_g.add_argument('--eos_stop', metavar='prob',
                         help="Stopping criterion if a EOS value was learned "
                              "during training. \nCan either be a probability "
                              "(default 0.5) or the string 'max', which will "

@@ -404,7 +404,6 @@ class DWIMLAbstractTracker:
         seed_count = 0
         lines = []
         seeds = []
-        self.nbr_seeds = 20
         with tqdm_logging_redirect(total=self.nbr_seeds, ncols=100) as pbar:
             while seed_count < self.nbr_seeds:
                 nb_next_seeds = self.simultaneous_tracking
@@ -415,7 +414,6 @@ class DWIMLAbstractTracker:
 
                 n_seeds = self.seed_generator.get_next_n_pos(
                     random_generator, indices, next_seeds)
-                n_seeds = [np.asarray([65., 70., 66]) + np.random.rand(3) for _ in range(nb_next_seeds)]
 
                 tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
                     n_seeds)

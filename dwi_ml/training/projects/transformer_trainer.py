@@ -20,10 +20,10 @@ class TransformerTrainer(DWIMLTrainerOneInput):
                  optimizer='Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: int = 1000,
-                 patience: int = None, nb_cpu_processes: int = 0,
-                 use_gpu: bool = False, comet_workspace: str = None,
-                 comet_project: str = None, from_checkpoint: bool = False,
-                 log_level=logging.root.level):
+                 patience: int = None, patience_delta: float = 1e-6,
+                 nb_cpu_processes: int = 0, use_gpu: bool = False,
+                 comet_workspace: str = None, comet_project: str = None,
+                 from_checkpoint: bool = False, log_level=logging.root.level):
         """
         See Super for parameter description. No additional parameters here.
         """
@@ -33,7 +33,7 @@ class TransformerTrainer(DWIMLTrainerOneInput):
                          optimizer, max_epochs,
                          max_batches_per_epoch_training,
                          max_batches_per_epoch_validation,
-                         patience, nb_cpu_processes, use_gpu,
+                         patience, patience_delta, nb_cpu_processes, use_gpu,
                          comet_workspace, comet_project,
                          from_checkpoint, log_level)
 

@@ -2,6 +2,7 @@
 import logging
 from typing import Union, List
 
+import numpy as np
 import torch
 from torch.nn.utils.rnn import PackedSequence, pack_sequence, unpack_sequence
 
@@ -167,18 +168,35 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self._context = context
 
     def prepare_streamlines_f(self, streamlines):
+        """
+        - 'training' (i.e. training or validation) = We compute model outputs
+        in order to get the loss. If no EOS: removing values at the last
+        coordinate of the streamline; no target. If EOS: taking all inputs,
+        all previous dirs.
+        - 'tracking': We compute model outputs in order to get the next
+        direction. Using only the last point, based on hidden_state.
+        - 'preparing_backward': We recompute the whole streamline, last
+        coordinate included. Ex: At the beginning of backward tracking.
+        """
         if self._context is None:
             raise ValueError("Please set the context before running the model."
                              "Ex: 'training'.")
-        elif (self._context == 'training' or self._context == 'visu') and not \
-                self.direction_getter.add_eos:
-            # We don't use the last coord because it does not have an
-            # associated target direction (except if EOS is used).
-            streamlines = [s[:-1, :] for s in streamlines]
+        elif self._context == 'training' or self._context == 'visu':
+            if not self.direction_getter.add_eos:
+                # We don't use the last coord because it does not have an
+                # associated target direction (except if EOS is used).
+                streamlines = [s[:-1, :] for s in streamlines]
         elif self._context == 'preparing_backward':
             # We don't re-run the last point (i.e. the seed) because the first
             # propagation step after backward = at that point.
             streamlines = [s[:-1, :] for s in streamlines]
+        else:
+            assert self._context == 'tracking', "Unkown context {}".format(
+                self._context)
+            # Reminder: during tracking, we have only one point per streamline.
+            raise NotImplementedError("Streamline preparation for tracking "
+                                      "is managed by the tracker!"
+                                      "Code error!")
 
         return streamlines
 
@@ -206,17 +224,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                 hidden_recurrent_states: tuple = None,
                 return_state: bool = False):
         """Run the model on a batch of sequences.
-
-        Model's context must be set:
-        - 'training' (i.e. training or validation) = We compute model outputs
-        in order to get the loss. If no EOS: skipping values at the last
-        coordinate of the streamline; no target. If EOS: taking all inputs,
-        all previous dirs.
-        - 'tracking': We compute model outputs in order to get the next
-        direction. Taking only the last point, based on hidden_state.
-        - 'preparing_backward': We recompute the whole streamline, last
-        coordinate included (same as training with EOS). Ex: At the beginning
-        of backward tracking.
 
         Parameters
         ----------
@@ -256,17 +263,23 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             GRU: States are tensors; h_t.
                 Size of tensors are [1, nb_streamlines, nb_neurons].
         """
+        # Reminder.
+        # Correct interpolation and management of points should be done
+        # before. (Ex: by calling prepare_streamlines_f).
+        if self._context is None:
+            raise ValueError("Please set context before usage.")
 
         # Ordering of PackedSequence for 1) inputs, 2) previous dirs and
         # 3) targets (when computing loss) may not always be the same.
         # Pack inputs now and use that information for others.
         # Shape of inputs.data: nb_pts_total * nb_features
-        if self._context is None:
-            raise ValueError("Please set context before usage.")
-        elif self._context == 'tracking':
+        if self._context == 'tracking':
             # We should have only one input per streamline (at the last
-            # coordinate). Using vstack rather than packing directly, to
-            # supervise their order.
+            # coordinate).
+            assert np.all([len(i) == 1] for i in inputs)
+
+            # Using vstack rather than packing directly, to supervise their
+            # order.
             nb_streamlines = len(inputs)
             inputs = torch.vstack(inputs)
             batch_sizes = torch.as_tensor([nb_streamlines])
@@ -275,6 +288,17 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
                                     unsorted_indices)
         else:
+            # In all other cases, len(each input) == len(each streamline),
+            # if any (only used with previous dirs).
+            if target_streamlines is not None:
+                assert np.all([len(i) == len(s) for i, s in
+                               zip(inputs, target_streamlines)]), \
+                    "Expecting same nb of inputs and streamlines... " \
+                    "Got {} vs {} \n(p.s. context is: {})" \
+                    .format([len(i) for i in inputs],
+                            [len(s) for s in target_streamlines],
+                            self._context)
+
             # Streamlines have different lengths. Packing.
             inputs = pack_sequence(inputs, enforce_sorted=False)
             batch_sizes = inputs.batch_sizes

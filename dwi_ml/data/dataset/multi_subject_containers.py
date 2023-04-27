@@ -432,7 +432,7 @@ class MultiSubjectDataset:
             if 'compress' in hdf_handle.attrs:
                 compress = hdf_handle.attrs['compress']
             else:
-                logging.warning(
+                logger.warning(
                     "Using an old version of hdf database. Compression rate "
                     "information was not saved. This only means that if you "
                     "use --compress option anywhere, we will perform it "

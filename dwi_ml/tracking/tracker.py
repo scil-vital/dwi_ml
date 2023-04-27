@@ -709,14 +709,13 @@ class DWIMLAbstractTracker:
             seeds = [s for i, s in enumerate(seeds) if i not in rej_idx]
 
         if len(lines) > 0:
-            # 2) If forward tracking succeeded, revert streamlines
             logger.debug("   Starting backward propagation for the remaining "
                          "{} streamlines.".format(len(lines)))
-            # Reversing:
+
+            # 2) If forward tracking succeeded, revert streamlines
             lines = [torch.flip(line, (0,)) for line in lines]
 
             # 3) New v_in = last direction
-            # Could be the foward_dir inverted, but in our case: always None.
             # (normalized if self.normalize_directions)
             backward_dir = [s[-1, :] - s[-2, :] for s in lines]
             backward_dir = torch.vstack(backward_dir)
@@ -790,21 +789,25 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
         return super().prepare_forward(seeding_pos)
 
     def prepare_backward(self, lines, seeds, forward_dir=None):
+
+        # Reminder. Super:
+        #  - Rejects lines that contain only the seed.
+        #  - Reverts lines
         lines, seeds, backward_dir, rej_idx = super().prepare_backward(
             lines, seeds, forward_dir)
 
-        # Reject failed inputs
-        # Not keeping the seed (input #0). Backward will start at that point
-        # and will compute it again.
+        # Not keeping the seed (input #0). Backward will start at that point,
+        # and we will compute it again at _prepare_inputs_at_pos.
+        # Also rejects failed inputs. They are already rejected in lines.
         self.input_memory_for_backward = \
             [s[1:, :] for i, s in enumerate(self.input_memory_for_backward)
              if i not in rej_idx]
 
-        # If the last direction was valid, the last point has been added to the
-        # streamline. Computing that last additional input when
+        # If the last direction was valid (i.e. not EOS), the last point has
+        # been added to the streamline, but we never computed its input.
+        # Computing that last additional input when
         # len(input) < len(lines)  (but we removed the seed point so:)
         # len(input) < len(lines) - 1
-        # Streamlines are already flipped so last pos = first pos.
         missing_one = [len(inp) < len(s) - 1 for inp, s in zip(
             self.input_memory_for_backward, lines)]
         idx_missing_one, = np.where(missing_one)
@@ -814,11 +817,12 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
             last_inputs = self._prepare_inputs_at_pos(
                 [lines[i][0, :] for i in idx_missing_one])
             self.input_memory_for_backward = [
-                torch.vstack((self.input_memory_for_backward[i],
-                              last_inputs[where_first(idx_missing_one == i)]))
+                torch.vstack([self.input_memory_for_backward[i],
+                              last_inputs[where_first(idx_missing_one == i)]])
                 if missing_one[i] else self.input_memory_for_backward[i]
                 for i in range(len(missing_one))]
 
+        # Reverting.
         self.input_memory = [
             torch.flip(line_input, dims=[0])
             for line_input in self.input_memory_for_backward]

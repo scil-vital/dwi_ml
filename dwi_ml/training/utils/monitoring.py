@@ -116,18 +116,18 @@ class BestEpochMonitoring(object):
     number of epochs ("patience").
     """
 
-    def __init__(self, patience: int, min_eps: float = 1e-6):
+    def __init__(self, patience: int, patience_delta: float = 1e-6):
         """
         Parameters
         -----------
         patience: int
             Maximal number of bad epochs we allow.
-        min_eps: float, optional
+        patience_delta: float, optional
             Precision term to define what we consider as "improving": when the
             loss is at least min_eps smaller than the previous best loss.
         """
         self.patience = patience
-        self.min_eps = min_eps
+        self.min_eps = patience_delta
 
         self.best_value = None
         self.best_epoch = None

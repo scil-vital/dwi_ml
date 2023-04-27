@@ -57,8 +57,8 @@ class DWIMLAbstractTrainer:
                  optimizer: str = 'Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
-                 patience: int = None, nb_cpu_processes: int = 0,
-                 use_gpu: bool = False,
+                 patience: int = None, patience_delta: float = 1e-6,
+                 nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, log_level=logging.root.level,
                  # To be deprecated
@@ -67,7 +67,7 @@ class DWIMLAbstractTrainer:
         Parameters
         ----------
         model: MainModelAbstract
-            Instatiated class containing your model.
+            Instantiated class containing your model.
         experiments_path: str
             Path where to save this experiment's results and checkpoints.
             Will be saved in experiments_path/experiment_name.
@@ -104,6 +104,9 @@ class DWIMLAbstractTrainer:
             Use early stopping. Defines the number of epochs after which the
             model should stop if the loss hasn't improved. Default: None (i.e.
             no early stopping).
+        patience_delta: float
+            Limit difference between two validation losses to consider that the
+            model improved between the two epochs.
         nb_cpu_processes: int
             Number of parallel CPU workers. Use 0 to avoid parallel threads.
             Default : 0.
@@ -242,12 +245,12 @@ class DWIMLAbstractTrainer:
         # initialization.
         # ----------------------
         if patience:
-            self.best_epoch_monitoring = BestEpochMonitoring(patience)
+            self.best_epoch_monitoring = BestEpochMonitoring(patience,
+                                                             patience_delta)
         else:
             # We won't use early stopping to stop the epoch, but we will use
             # it as monitor of the best epochs.
-            self.best_epoch_monitoring = BestEpochMonitoring(
-                patience=self.max_epochs + 1)
+            self.best_epoch_monitoring = BestEpochMonitoring(patience=np.inf)
 
         self.current_epoch = 0
 
@@ -1001,7 +1004,7 @@ class DWIMLAbstractTrainer:
                     .format(best_monitoring_state['patience'],
                             current_epoch))
         elif bad_epochs >= new_patience:
-            # New patience: checking if will be able to continue
+            # New patience: checking if we will be able to continue
             raise EarlyStoppingError(
                 "In resumed experiment, we had reach {} bad epochs (i.e. with "
                 "no improvement). You have now overriden patience to {} but "

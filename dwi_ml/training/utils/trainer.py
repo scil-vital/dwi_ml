@@ -34,6 +34,10 @@ def add_training_args(p: argparse.ArgumentParser):
              "the model should stop if the loss hasn't improved. \n"
              "Default: same as max_epochs.")
     training_group.add_argument(
+        '--patience_delta', type=float, default=1e-6, metavar='eps',
+        help="Limit difference between two validation losses to consider that "
+             "\nthe model improved between the two epochs.")
+    training_group.add_argument(
         '--max_batches_per_epoch_training', type=int, default=1000,
         metavar='n',
         help="Maximum number of batches per epoch. This will help avoid long\n"

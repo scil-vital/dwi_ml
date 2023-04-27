@@ -32,7 +32,7 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
                  optimizer='Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
-                 patience: int = None,
+                 patience: int = None, patience_delta: float = 1e-6,
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, clip_grad: float = None,
@@ -41,7 +41,7 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
         """
         Init trainer.
 
-        Additionnal values compared to super:
+        Additional values compared to super:
         clip_grad : float
             The value to which to clip gradients after the backward pass.
             There is no good value here. Default: 1000.
@@ -54,9 +54,10 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
             use_radam=use_radam, max_epochs=max_epochs,
             max_batches_per_epoch_training=max_batches_per_epoch_training,
             max_batches_per_epoch_validation=max_batches_per_epoch_validation,
-            patience=patience, nb_cpu_processes=nb_cpu_processes,
-            use_gpu=use_gpu, comet_workspace=comet_workspace,
-            comet_project=comet_project, from_checkpoint=from_checkpoint,
+            patience=patience, patience_delta=patience_delta,
+            nb_cpu_processes=nb_cpu_processes, use_gpu=use_gpu,
+            comet_workspace=comet_workspace, comet_project=comet_project,
+            from_checkpoint=from_checkpoint,
             log_level=log_level, learning_rate=learning_rate)
 
         self.clip_grad = clip_grad

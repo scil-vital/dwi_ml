@@ -117,8 +117,8 @@ def init_from_args(args, sub_loggers_level):
             optimizer=args.optimizer, max_epochs=args.max_epochs,
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
-            patience=args.patience, from_checkpoint=False,
-            clip_grad=args.clip_grad,
+            patience=args.patience, patience_delta=args.patience_delta,
+            from_checkpoint=False, clip_grad=args.clip_grad,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
             log_level=args.logging)

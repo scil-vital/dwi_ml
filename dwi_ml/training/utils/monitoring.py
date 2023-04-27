@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from collections import deque
 import timeit
 from datetime import datetime
@@ -84,6 +85,9 @@ class BatchHistoryMonitor(object):
         Compute mean of current epoch and add it to means values.
         """
         if len(self.current_epoch_batch_values) == 0:
+            logging.info(
+                "No batch in monitor, or was inf for all batches in this "
+                "epoch. Please supervise.")
             # All batches were inf and thus not stored. Or no batch.
             self.average_per_epoch.append(np.nan)
             return

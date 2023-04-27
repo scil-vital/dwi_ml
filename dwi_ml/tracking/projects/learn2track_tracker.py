@@ -52,7 +52,9 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         # Must re-run the model from scratch to get the hidden states
         # But! Not including the last point (i.e. the seed).
         self.model.set_context('preparing_backward')
-        tmp_lines = self.model.prepare_streamlines_f(lines)
+        # We don't re-run the last point (i.e. the seed) because the first
+        # propagation step after backward = at that point.
+        tmp_lines = [s[:-1, :] for s in lines]
         all_inputs = self.model.prepare_batch_one_input(
             tmp_lines, self.dataset, self.subj_idx, self.volume_group)
 

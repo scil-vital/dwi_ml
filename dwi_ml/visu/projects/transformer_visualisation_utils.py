@@ -136,7 +136,10 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
     # To tensor
     streamlines = [torch.as_tensor(s, dtype=torch.float32)
                    for s in sft.streamlines]
-    streamlines = model.prepare_streamlines_f(streamlines)
+    if not model.direction_getter.add_eos:
+        # We don't use the last coord because it does not have an
+        # associated target direction.
+        streamlines = [s[:-1, :] for s in streamlines]
     logging.info("Loaded and prepared {} streamlines to be averaged for visu."
                  .format(len(streamlines)))
 

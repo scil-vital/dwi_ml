@@ -543,6 +543,32 @@ class DWIMLAbstractTrainer:
                             self.best_epoch_monitoring.best_epoch))
                 break
 
+    def _clear_handles(self):
+        # Make sure there are no existing HDF handles if using parallel workers
+        if (self.nb_cpu_processes > 0 and
+                self.batch_sampler.context_subset.is_lazy):
+            self.batch_sampler.context_subset.close_all_handles()
+            self.batch_sampler.context_subset.volume_cache_manager = None
+
+    def back_propagation(self, loss):
+        logger.debug('*** Computing back propagation')
+        loss.backward()
+
+        self.fix_parameters()  # Ex: clip gradients
+        grad_norm = compute_gradient_norm(self.model.parameters())
+
+        # Update parameters
+        # toDo. We could update only every n steps.
+        #  Effective batch size is n time bigger.
+        #  See here https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
+        self.optimizer.step()
+
+        # Reset parameter gradients to zero or to None before the next
+        # forward pass
+        self.optimizer.zero_grad(set_to_none=True)
+
+        return grad_norm
+
     def train_one_epoch(self, epoch):
         """
         Train one epoch of the model: loop on all batches (forward + backward).
@@ -555,17 +581,9 @@ class DWIMLAbstractTrainer:
         self.batch_loader.set_context('training')
         self.batch_sampler.set_context('training')
         comet_context = self.comet_exp.train if self.comet_exp else None
-
-        # Make sure there are no existing HDF handles if using parallel workers
-        if (self.nb_cpu_processes > 0 and
-                self.batch_sampler.context_subset.is_lazy):
-            self.batch_sampler.context_subset.close_all_handles()
-            self.batch_sampler.context_subset.volume_cache_manager = None
+        self._clear_handles()
 
         # Training all batches
-        logger.debug("Training one epoch: iterating on batches using tqdm on "
-                     "the dataloader...")
-
         # Note: loggers = [logging.root] only.
         # If we add our sub-loggers there, they duplicate.
         # A handler is added in the root logger, and sub-loggers propagate
@@ -577,7 +595,7 @@ class DWIMLAbstractTrainer:
 
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
-                # Break if maximum number of epochs has been reached
+                # Break if maximum number of batches has been reached
                 if batch_id == self.nb_train_batches_per_epoch:
                     # Explicitly close tqdm's progress bar to fix possible bugs
                     # when breaking the loop
@@ -592,46 +610,18 @@ class DWIMLAbstractTrainer:
                 with grad_context():
                     mean_loss, n = self.run_one_batch(data)
 
-                logger.debug('*** Computing back propagation')
-                mean_loss.backward()
-
-                self.fix_parameters()  # Ex: clip gradients
-                grad_norm = compute_gradient_norm(self.model.parameters())
-
-                # Update parameters
-                # toDo. We could update only every n steps.
-                #  Effective batch size is n time bigger.
-                #  See here https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
-                self.optimizer.step()
-
-                # Reset parameter gradients to zero or to None before the next
-                # forward pass
-                self.optimizer.zero_grad(set_to_none=True)
+                grad_norm = self.back_propagation(mean_loss)
 
                 # Update information and logs
                 mean_loss = mean_loss.cpu().item()
                 self.train_loss_monitor.update(mean_loss, weight=n)
                 self.grad_norm_monitor.update(grad_norm)
-                if self.save_logs_per_batch:
-                    self._update_loss_logs_after_batch(comet_context, epoch,
-                                                       batch_id, mean_loss)
-                    self._update_gradnorm_logs_after_batch(epoch, batch_id,
-                                                           grad_norm)
 
             # Explicitly delete iterator to kill threads and free memory before
             # running validation
             del train_iterator
 
         # Saving epoch's information
-        all_n = self.train_loss_monitor.current_epoch_batch_weights
-        if len(all_n) == 0:
-            # values not stored if loss is inf.
-            logger.info("Loss was inf for all batches in this epoch. Please "
-                        "supervise.")
-        else:
-            logger.info(
-                "Number of data points per batch: {}\u00B1{}"
-                .format(int(np.mean(all_n)), int(np.std(all_n))))
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
         self.training_time_monitor.end_epoch()
@@ -639,6 +629,11 @@ class DWIMLAbstractTrainer:
             comet_context, epoch,
             self.train_loss_monitor.average_per_epoch[-1])
         self._update_gradnorm_logs_after_epoch(comet_context, epoch)
+
+        all_n = self.train_loss_monitor.current_epoch_batch_weights
+        logger.info(
+            "Number of data points per batch: {}\u00B1{}"
+            .format(int(np.mean(all_n)), int(np.std(all_n))))
 
     def validate_one_epoch(self, epoch):
         """
@@ -683,9 +678,6 @@ class DWIMLAbstractTrainer:
 
                 mean_loss = mean_loss.cpu().item()
                 self.valid_loss_monitor.update(mean_loss, weight=n)
-                if self.save_logs_per_batch:
-                    self._update_loss_logs_after_batch(comet_context, epoch,
-                                                       batch_id, mean_loss)
 
             # Explicitly delete iterator to kill threads and free memory before
             # running training again
@@ -697,40 +689,6 @@ class DWIMLAbstractTrainer:
         self._update_loss_logs_after_epoch(
             comet_context, epoch,
             self.valid_loss_monitor.average_per_epoch[-1])
-
-    def _update_loss_logs_after_batch(self, comet_context, epoch: int,
-                                      batch_id: int, mean_loss: float):
-        """
-        Update logs:
-            - logging to user
-            - save values to monitors
-            - send data to comet
-        """
-        logger.info("Epoch {} (i.e. #{}): Batch loss = {}"
-                    .format(epoch, epoch + 1, mean_loss))
-
-        if self.comet_exp and batch_id % COMET_UPDATE_FREQUENCY == 0:
-            with comet_context():
-                # ??? epoch does not seem to show... So in fact, it only
-                # saves the current epoch. Cheating and changing the metric
-                # name at each epoch.
-                self.comet_exp.log_metric(
-                    "loss_per_batch_epoch" + str(epoch), mean_loss,
-                    step=batch_id, epoch=0)
-
-    def _update_gradnorm_logs_after_batch(self, epoch: int, batch_id: int,
-                                          grad_norm: float):
-        """
-        Update logs:
-            - save values to monitors
-            - send data to comet
-
-        Should only be done during training
-        """
-        if self.comet_exp and batch_id % COMET_UPDATE_FREQUENCY == 0:
-            self.comet_exp.log_metric(
-                "gradient_norm_per_batch_epoch" + str(epoch),
-                grad_norm, step=batch_id, epoch=epoch)
 
     def _update_loss_logs_after_epoch(self, comet_context, epoch: int,
                                       loss: float):
@@ -1059,27 +1017,29 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # Data interpolation has not been done yet. GPU computations
         # need to be done here in the main thread. Running final steps
         # of data preparation.
-        logger.debug('Finalizing input data preparation on GPU.')
-        streamlines, final_s_ids_per_subj = data
+        streamlines, ids_per_subj = data
 
-        # Dataloader always works on CPU.
-        # We have the possibility to bring everything to GPU now.
-        # Sending to right device. Model should already be moved.
+        # Dataloader always works on CPU. Sending to right device.
+        # (model is already moved).
         streamlines = [s.to(self.device, non_blocking=True, dtype=torch.float)
                        for s in streamlines]
+        targets = streamlines
+        if not self.model.direction_getter.add_eos:
+            # We don't use the last coord because it does not have an
+            # associated target direction.
+            streamlines = [s[:-1, :] for s in streamlines]
 
         # Getting the inputs points from the volumes.
         # Uses the model's method, with the batch_loader's data.
-        streamlines_f = self.model.prepare_streamlines_f(streamlines)
-        batch_inputs = self.batch_loader.load_batch_inputs(
-            streamlines_f, final_s_ids_per_subj)
+        batch_inputs = self.batch_loader.load_batch_inputs(streamlines,
+                                                           ids_per_subj)
 
         # Possibly add noise to inputs here.
         logger.debug('*** Computing forward propagation')
         if self.model.forward_uses_streamlines:
             # Now possibly add noise to streamlines (training / valid)
-            streamlines_f = self.batch_loader.add_noise_streamlines(
-                streamlines_f, self.device)
+            streamlines = self.batch_loader.add_noise_streamlines(
+                streamlines, self.device)
 
             logger.debug("Uses a batch of {} streamlines, {} coordinates, "
                          "{} input points."

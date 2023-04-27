@@ -103,15 +103,6 @@ class MainModelAbstract(torch.nn.Module):
         assert context in ['training', 'tracking']
         self._context = context
 
-    def prepare_streamlines_f(self, streamlines):
-        """
-        Defines how to prepare the batch of streamlines before the forward
-        call. (Streamlines for the loss computation could be different).
-
-        Hint: If using a DirectionGetter, see prepare_targets_for_loss.
-        """
-        return streamlines
-
     def move_to(self, device):
         """
         Careful. Calling model.to(a_device) does not influence the self.device.
@@ -577,16 +568,6 @@ class ModelWithDirectionGetter(MainModelAbstract):
     def set_context(self, context):
         assert context in ['training', 'tracking', 'visu']
         self._context = context
-
-    def prepare_streamlines_f(self, streamlines):
-        if self._context is None:
-            raise ValueError("Please set the context before running the model."
-                             "Ex: 'training'.")
-        elif self._context == 'training' and not self.direction_getter.add_eos:
-            # We don't use the last coord because it is used only to
-            # compute the last target direction, it's not really an input
-            streamlines = [s[:-1, :] for s in streamlines]
-        return streamlines
 
     def instantiate_direction_getter(self, dg_input_size):
         direction_getter_cls = keys_to_direction_getters[self.dg_key]

@@ -120,7 +120,12 @@ class Tester:
                     torch.as_tensor(s, dtype=torch.float32, device=self.device)
                     for s in sft.streamlines[batch_start:batch_end]]
 
-                streamlines_f = self.model.prepare_streamlines_f(streamlines)
+                if not self.model.direction_getter.add_eos:
+                    # We don't use the last coord because it does not have an
+                    # associated target direction.
+                    streamlines_f = [s[:-1, :] for s in streamlines]
+                else:
+                    streamlines_f = streamlines
                 inputs = self._prepare_inputs_at_pos(streamlines_f)
 
                 # 2. Run forward

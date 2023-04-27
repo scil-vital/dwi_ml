@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import logging
 from math import ceil
 from typing import Tuple, List, Union
 
@@ -385,10 +384,6 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         if self.add_eos:
             eos_prob = torch.sigmoid(model_outputs[:, -1])
             eos_prob = torch.gt(eos_prob, eos_stopping_thresh)
-            nb_stop = torch.sum(eos_prob)
-            if nb_stop > 0:
-                logging.debug("{} streamlines stopping because of learned "
-                              "criterion (EOS).".format(nb_stop))
             return torch.masked_fill(
                 model_outputs[:, 0:3], eos_prob[:, None], torch.nan)
         else:

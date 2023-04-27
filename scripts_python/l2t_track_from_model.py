@@ -106,10 +106,10 @@ def prepare_tracker(parser, args):
             save_seeds=args.save_seeds, rng_seed=args.rng_seed,
             track_forward_only=args.track_forward_only,
             step_size_mm=args.step_size, algo=args.algo, theta=theta,
-            use_gpu=args.use_gpu,
+            use_gpu=args.use_gpu, eos_stopping_thresh=args.eos_stop,
             simultaneous_tracking=args.simultaneous_tracking,
             append_last_point=APPEND_LAST_POINT,
-            log_level=args.logging)
+            log_level=args.logging.upper())
 
     return tracker, ref
 
@@ -121,9 +121,9 @@ def main():
 
     # Setting root logger to high level to max info, not debug, prints way too
     # much stuff. (but we can set our tracker's logger to debug)
-    root_level = args.logging
-    if root_level == logging.DEBUG:
-        root_level = logging.INFO
+    root_level = args.logging.upper()
+    if root_level == 'DEBUG':
+        root_level = 'INFO'
     logging.getLogger().setLevel(level=root_level)
 
     # ----- Checks

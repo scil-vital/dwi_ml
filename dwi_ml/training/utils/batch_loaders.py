@@ -21,13 +21,6 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
              "** We also limit noise to +/- 2 * noise_gaussian_size.\n"
              "Suggestion: 0.1 * step-size.")
     bl_g.add_argument(
-        '--noise_gaussian_var_forward', type=float, metavar='v',
-        default=0.,
-        help="If set, a variation is applied to the noise_size to have very \n"
-             "noisy streamlines and less noisy streamlines. This means that \n"
-             "the real gaussian_size will be a random number in the range \n"
-             "[size - variability, size + variability]. [0]")
-    bl_g.add_argument(
         '--split_ratio', type=float, metavar='r', default=0.,
         help="Percentage of streamlines to randomly split into 2, in each \n"
              "batch (keeping both segments as two independent streamlines). \n"
@@ -50,7 +43,6 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             streamline_group_name=args.streamline_group_name,
             # STREAMLINES AUGMENTATION
             noise_gaussian_size_forward=args.noise_gaussian_size_forward,
-            noise_gaussian_var_forward=args.noise_gaussian_var_forward,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # OTHER
             rng=args.rng, log_level=sub_loggers_level)

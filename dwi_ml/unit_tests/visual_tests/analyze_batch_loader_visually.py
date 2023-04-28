@@ -42,15 +42,14 @@ def save_loaded_batch_for_visual_assessment(dataset, ref):
     logging.info("*********")
     logging.info("Split + reverse:")
     batch_loader = create_batch_loader(
-        dataset, model, step_size=0.5, noise_size=0.2, noise_variability=0.1,
-        split_ratio=1, reverse_ratio=0.5)
+        dataset, model, noise_size=0.2, split_ratio=1, reverse_ratio=0.5)
     batch_loader.set_context('training')
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'split')
 
     # 2) With compressing
     logging.info("*********")
     logging.info("Compressed:")
-    batch_loader = create_batch_loader(dataset, model, compress=True)
+    batch_loader = create_batch_loader(dataset, model)
     batch_loader.set_context('training')
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'compress')
 
@@ -77,7 +76,7 @@ def _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, suffix):
     batch_streamlines, ids = batch_loader.load_batch_streamlines(
         batch_idx_tuples)
 
-    inputs_tuple  = batch_loader.load_batch_inputs(
+    inputs_tuple = batch_loader.load_batch_inputs(
         batch_streamlines, ids, save_batch_input_mask=True)
 
     # Saving input coordinates as mask. You can open the mask and verify that

@@ -63,8 +63,8 @@ def test_batch_loader():
                      'resample, noise, split, reverse.'.format(batch_size))
         model = MainModelOneInput(experiment_name='test', step_size=0.5)
         batch_loader = create_batch_loader(
-            dataset, model, noise_size=0.2,
-            noise_variability=0.1, split_ratio=SPLIT_RATIO, reverse_ratio=0.5)
+            dataset, model, noise_size=0.2, split_ratio=SPLIT_RATIO,
+            reverse_ratio=0.5)
         batch_loader.set_context('training')
 
         # Using last batch from batch sampler

@@ -72,13 +72,11 @@ def main():
     sft.to_vox()
     sft.to_corner()
 
-    print("            Adding noise {} +- {}"
-          .format(args.noise_gaussian_size_forward,
-                  args.noise_gaussian_var_forward))
+    logging.debug("            Adding noise {}"
+                  .format(args.noise_gaussian_size_forward))
     streamlines = [torch.as_tensor(s) for s in sft.streamlines]
     streamlines = add_noise_to_tensor(streamlines,
                                       args.noise_gaussian_size_forward,
-                                      args.noise_gaussian_var_forward,
                                       device=None)
     streamlines = [s.tolist() for s in streamlines]
     sft = sft.from_sft(streamlines, sft,

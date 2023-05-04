@@ -180,6 +180,13 @@ class MainModelAbstract(torch.nn.Module):
         model_state = torch.load(model_state_file)
 
         params.update(log_level=log_level)
+
+        if 'step_size' not in params:
+            logging.warning("Deprecated model. Created using a previous "
+                            "dwi_ml version. Step_size parameter not saved."
+                            "Guessing 0.5.")
+            params['step_size'] = 0.5
+            params['compress'] = None
         model = cls(**params)
         model.load_state_dict(model_state)  # using torch's method
 

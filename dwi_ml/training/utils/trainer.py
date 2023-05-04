@@ -34,6 +34,10 @@ def add_training_args(p: argparse.ArgumentParser):
              "the model should stop if the loss hasn't improved. \n"
              "Default: same as max_epochs.")
     training_group.add_argument(
+        '--patience_delta', type=float, default=1e-6, metavar='eps',
+        help="Limit difference between two validation losses to consider that "
+             "\nthe model improved between the two epochs.")
+    training_group.add_argument(
         '--max_batches_per_epoch_training', type=int, default=1000,
         metavar='n',
         help="Maximum number of batches per epoch. This will help avoid long\n"
@@ -96,12 +100,10 @@ def run_experiment(trainer):
     # Model already saved in the last checkpoint, but we could save it again.
     # trainer.model.save(trainer.saving_path)
 
-    trainer.logger.info("Script terminated successfully. \n"
-                        "Saved experiment in folder : {}"
-                        .format(trainer.saving_path))
-    trainer.logger.info("Summary: ran {} epochs (out of max {}). \n"
-                        "Best loss was {} at epoch #{}"
-                        .format(trainer.current_epoch + 1,
-                                trainer.max_epochs,
-                                trainer.best_epoch_monitoring.best_value,
-                                trainer.best_epoch_monitoring.best_epoch + 1))
+    logger.info("Script terminated successfully. \n"
+                "Saved experiment in folder : {}".format(trainer.saving_path))
+    logger.info("Summary: ran {} epochs (out of max {}). \n"
+                "Best loss was {} at epoch #{}.\n"
+                .format(trainer.current_epoch + 1, trainer.max_epochs,
+                        trainer.best_epoch_monitoring.best_value,
+                        trainer.best_epoch_monitoring.best_epoch + 1))

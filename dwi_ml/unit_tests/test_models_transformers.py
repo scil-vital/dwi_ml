@@ -9,7 +9,7 @@ from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch
 
 (batch_x_training, batch_x_tracking,
  batch_s_training, batch_s_tracking) = create_test_batch()
-total_nb_points_training = sum([len(s) - 1 for s in batch_s_training])
+total_nb_points_training = sum([len(s) for s in batch_s_training])
 nb_streamlines = len(batch_x_training)
 
 

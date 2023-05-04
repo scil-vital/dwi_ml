@@ -28,6 +28,9 @@ def test_help_option(script_runner):
     ret = script_runner.run('ttst_track_from_model.py', '--help')
     assert ret.success
 
+    ret = script_runner.run('ttst_visualize_loss.py', '--help')
+    assert ret.success
+
 
 @pytest.fixture(scope="session")
 def experiments_path(tmp_path_factory):

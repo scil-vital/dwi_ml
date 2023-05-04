@@ -40,8 +40,8 @@ def fetch_testing_data():
 
 
 def create_test_batch():
-    logging.debug("Creating batch: 2 streamlines, the first has 4 points "
-                  "and the second, 3. Input: 4 features per point.")
+    logging.debug("Creating batch: 2 streamlines, the first has 3 points "
+                  "and the second, 2. Input: 4 features per point.")
 
     # dwi1 : data for the 3 first points
     flattened_dwi1 = torch.as_tensor([[10., 11., 12., 13.],
@@ -49,15 +49,13 @@ def create_test_batch():
                                       [60., 62., 62., 63.]])
     streamline1 = torch.as_tensor([[0.1, 0.2, 0.3],
                                    [1.1, 11.2, 1.3],
-                                   [2.1, 2.2, 2.3],
-                                   [3.1, 3.2, 3.3]])
+                                   [2.1, 2.2, 2.3]])
 
     # dwi2 : data for the 2 first points
     flattened_dwi2 = torch.as_tensor([[10., 11., 12., 13.],
                                       [50., 51., 52., 53.]])
     streamline2 = torch.as_tensor([[10.1, 10.2, 10.3],
-                                   [11.1, 11.2, 11.3],
-                                   [12.1, 12.2, 12.3]])
+                                   [11.1, 11.2, 11.3]])
 
     batch_x_training = [flattened_dwi1, flattened_dwi2]
     batch_s_training = [streamline1, streamline2]

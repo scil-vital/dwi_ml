@@ -4,7 +4,7 @@ if [ $# -eq 0 ] || [ $1 = '-h' ] || [ $1 = '--help' ]
 then
     echo "-----"
     echo "Usage: "
-    echo ">> scil_score_ismrm_Renauld2023.sh tractogram out_dir ref scoring_data"
+    echo ">> scil_score_ismrm_Renauld2023.sh tractogram out_dir scoring_data"
     echo "-----"
     exit
 fi

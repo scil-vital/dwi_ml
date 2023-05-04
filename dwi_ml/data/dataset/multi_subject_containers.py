@@ -259,7 +259,8 @@ class MultisubjectSubset(Dataset):
 
         # Using tqdm progress bar, load all subjects from hdf_file
         with logging_redirect_tqdm(loggers=[logging.root], tqdm_class=tqdm):
-            for subj_id in tqdm(subject_keys, ncols=100):
+            for subj_id in tqdm(subject_keys, ncols=100,
+                                total=self.nb_subjects):
                 # Create subject's container
                 # Uses SubjectData or LazySubjectData based on the class
                 # calling this method.
@@ -431,7 +432,7 @@ class MultiSubjectDataset:
             if 'compress' in hdf_handle.attrs:
                 compress = hdf_handle.attrs['compress']
             else:
-                logging.warning(
+                logger.warning(
                     "Using an old version of hdf database. Compression rate "
                     "information was not saved. This only means that if you "
                     "use --compress option anywhere, we will perform it "

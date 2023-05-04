@@ -285,14 +285,18 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             # We don't use the last coord because does not have an associated
             # target direction (except if EOS is used).
             streamlines = [s[:-1, :] for s in streamlines]
-        elif self._context == 'preparing_backward':
-            # We don't re-run the last point (i.e. the seed) because the first
-            # propagation step after backward = at that point.
-            streamlines = [s[:-1, :] for s in streamlines]
+        else:
+            assert self._context in ['tracking', 'preparing_backward']
+            # Reminder: during tracking, we keep all points.
+            # For backward, we don't keep the last point (i.e. the seed)
+            # because we will start from there.
+            raise NotImplementedError("Streamline preparation for tracking "
+                                      "is managed by the tracker!"
+                                      "Code error!")
 
         return streamlines
 
-    def prepare_targets_forward(self, batch_streamlines):
+    def _prepare_targets_forward(self, batch_streamlines):
         """
         batch_streamlines: List[Tensors]
         during_loss: bool
@@ -404,17 +408,25 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                     [total nb points all streamlines, out size]
                 - During tracking: [nb streamlines * 1, out size]
         weights: Tuple
-            If return weigts: The weights (depending on the child model)
+            If return_weights: The weights (depending on the child model)
         """
+        # Reminder.
+        # Correct interpolation and management of points should be done
+        # before. (Ex: by calling prepare_streamlines_f).
+
         if self._context is None:
             raise ValueError("Please set context before usage.")
 
-        # Remember lengths to unpad outputs later. During tracking, the
-        # targets contain one less point.
-        if self.direction_getter.add_eos:
-            unpadded_lengths = np.asarray([len(i) + 1 for i in inputs])
-        else:
-            unpadded_lengths = np.asarray([len(i) for i in inputs])
+        # Reminder. In all cases, len(each input) == len(each streamline).
+        # Correct interpolation and management of points should be done
+        # before. (Ex: by calling prepare_streamlines_f).
+        assert np.all([len(i) == len(s) for i, s in
+                       zip(inputs, batch_streamlines)])
+
+        # Remember lengths to unpad outputs later.
+        # (except during tracking, we only keep the last output, but still
+        # verifying if any length exceeds the max allowed).
+        unpadded_lengths = np.asarray([len(i) for i in inputs])
 
         # ----------- Checks
         if np.any(unpadded_lengths > self.max_len):
@@ -427,7 +439,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         batch_max_len = np.max(unpadded_lengths)
         if CLEAR_CACHE:
             now = time()
-            logging.debug("Tranformer: Maximal length in batch is {}"
+            logging.debug("Transformer: Maximal length in batch is {}"
                           .format(batch_max_len))
             torch.torch.cuda.empty_cache()
             now2 = time()
@@ -438,7 +450,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # Compute targets (= directions).
         # Will be computed again later for loss computation, but ok, should not
         # be too heavy.
-        targets = self.prepare_targets_forward(batch_streamlines)
+        targets = self._prepare_targets_forward(batch_streamlines)
         nb_streamlines = len(targets)
 
         # ----------- Ok. Start processing
@@ -519,11 +531,10 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             return_weights: bool, average_heads: bool):
         raise NotImplementedError
 
-    def compute_loss(self, model_outputs, streamlines,
+    def compute_loss(self, model_outputs, target_streamlines,
                      average_results=True, **kw):
         """
         Computes the loss function using the provided outputs and targets.
-        Returns the mean loss (loss averaged across timesteps and sequences).
 
         Parameters
         ----------
@@ -531,20 +542,19 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             The model outputs for a batch of sequences. Ex: a gaussian mixture
             direction getter returns a Tuple[Tensor, Tensor, Tensor], but a
             cosine regression direction getter return a simple Tensor.
-        streamlines : List
+        target_streamlines : List
             The target values for the batch (the streamlines).
-
-        Returns
-        -------
-        mean_loss : torch.Tensor
-            The loss between the outputs and the targets, averaged across
-            timesteps and sequences.
+        average_results: bool
+            If true, returns results averaged over timepoints (with the number
+            of points). Else, returns all losses.
         """
-        targets = self.direction_getter.prepare_targets_for_loss(streamlines)
+        target_streamlines = self.direction_getter.prepare_targets_for_loss(
+            target_streamlines)
+        target_streamlines = torch.cat(target_streamlines, dim=0)
 
         # Concatenating all points together to compute loss.
         return self.direction_getter.compute_loss(
-            model_outputs, torch.cat(targets, dim=0), average_results)
+            model_outputs, target_streamlines, average_results)
 
 
 class OriginalTransformerModel(AbstractTransformerModel):

@@ -12,6 +12,7 @@ import torch
 from dipy.io.stateful_tractogram import Space, Origin
 from dipy.tracking.streamlinespeed import compress_streamlines
 from scilpy.tracking.seed import SeedGenerator
+from tqdm.contrib.logging import tqdm_logging_redirect
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.direction_getter_models import \
@@ -110,22 +111,27 @@ class DWIMLAbstractTracker:
         self.eos_stopping_thresh = eos_stopping_thresh
 
         if model.compress:
-            logging.warning(
+            logger.warning(
                 "Careful! Model was trained on compressed streamlines. "
                 "Tractography with a fixed step size could lead to weird "
                 "results")
-        if eos_stopping_thresh:
+        if self.eos_stopping_thresh:
             if not model.direction_getter.add_eos:
-                logging.warning("You have added a threshold for the EOS "
-                                "stopping criterion, but your model does not "
-                                "support EOS.")
-            if isinstance(eos_stopping_thresh, str):
-                if not eos_stopping_thresh == 'max':
-                    raise ValueError("eos stopping criteria should be either "
-                                     "a float or the string 'max', but we got "
-                                     "{}".format(eos_stopping_thresh))
-                elif isinstance(model.direction_getter,
-                                AbstractRegressionDirectionGetter):
+                logger.warning("You have added a threshold for the EOS "
+                               "stopping criterion, but your model does not "
+                               "support EOS.")
+            else:
+                try:
+                    self.eos_stopping_thresh = float(self.eos_stopping_thresh)
+                except ValueError:
+                    if not self.eos_stopping_thresh == 'max':
+                        raise ValueError(
+                            "eos stopping criteria should be either a float "
+                            "or the string 'max', but we got {}"
+                            .format(self.eos_stopping_thresh))
+                if self.eos_stopping_thresh == 'max' and isinstance(
+                        model.direction_getter,
+                        AbstractRegressionDirectionGetter):
                     raise ValueError("Regression's EOS is a tag, not a class. "
                                      "It does not support the criterion "
                                      "'max'.")
@@ -140,7 +146,7 @@ class DWIMLAbstractTracker:
             else:
                 step_size_mm = model.step_size
         elif model.step_size and step_size_mm != model.step_size:
-            logging.warning(
+            logger.warning(
                 "Careful! Model was trained on streamlines resampled to {}mm,"
                 "but you are now tracking with {}mm step size!"
                 .format(model.step_size, step_size_mm))
@@ -155,14 +161,14 @@ class DWIMLAbstractTracker:
 
         self.algo = algo
         if algo not in ['det', 'prob']:
-            raise ValueError("Propagator's algo should be 'det' or 'prob'.")
+            raise ValueError("Tracker's algo should be 'det' or 'prob'.")
 
         self.theta = theta
         if not normalize_directions and step_size_vox != 1:
-            logging.warning("Tracker not normalizing directions obtained as "
-                            "output from the model. Using a step size other "
-                            "than 1 does not really make sense. You probably "
-                            "want to advance of exactly 1 * output.")
+            logger.warning("Tracker not normalizing directions obtained as "
+                           "output from the model. Using a step size other "
+                           "than 1 does not really make sense. You probably "
+                           "want to advance of exactly 1 * output.")
 
         # If output is already normalized, no need to do it again.
         if 'regression' in self.model.direction_getter.key and \
@@ -184,8 +190,8 @@ class DWIMLAbstractTracker:
 
         # Nb points
         if self.min_nbr_pts <= 0:
-            logging.warning("Minimum number of points cannot be 0. Changed to "
-                            "1.")
+            logger.warning("Minimum number of points cannot be 0. Changed to "
+                           "1.")
             self.min_nbr_pts = 1
 
         # Either GPU or multi-processes
@@ -201,7 +207,7 @@ class DWIMLAbstractTracker:
         self.use_gpu = use_gpu
         if use_gpu:
             if torch.cuda.is_available():
-                logging.info("We will be using GPU!")
+                logger.info("We will be using GPU!")
                 device = torch.device('cuda')
             else:
                 raise ValueError("You chose GPU (cuda) device but it is not "
@@ -228,14 +234,14 @@ class DWIMLAbstractTracker:
             try:
                 nbr_processes = multiprocessing.cpu_count()
             except NotImplementedError:
-                logging.warning("Cannot determine number of cpus: "
-                                "nbr_processes set to 1.")
+                logger.warning("Cannot determine number of cpus: "
+                               "nbr_processes set to 1.")
                 nbr_processes = 1
 
         if nbr_processes > self.nbr_seeds:
             nbr_processes = self.nbr_seeds
-            logging.debug("Setting number of processes to {} since there were "
-                          "less seeds than processes.".format(nbr_processes))
+            logger.debug("Setting number of processes to {} since there were "
+                         "less seeds than processes.".format(nbr_processes))
         return nbr_processes
 
     def track(self):
@@ -319,7 +325,7 @@ class DWIMLAbstractTracker:
             streamlines, seeds = self._cpu_tracking(chunk_id)
             return streamlines, seeds
         except Exception as e:
-            logging.error("Operation _cpu_tracking_sub() failed.")
+            logger.error("Operation _cpu_tracking_sub() failed.")
             traceback.print_exception(*sys.exc_info(), file=sys.stderr)
             raise e
 
@@ -358,8 +364,8 @@ class DWIMLAbstractTracker:
         # Getting streamlines
         for s in range(chunk_size):
             if s % self.printing_frequency == 0:
-                logging.info("Process {} (id {}): {} / {}"
-                             .format(chunk_id, os.getpid(), s, chunk_size))
+                logger.info("Process {} (id {}): {} / {}"
+                            .format(chunk_id, os.getpid(), s, chunk_size))
 
             seed = self.seed_generator.get_next_pos(
                 random_generator, indices, first_seed_of_chunk + s)
@@ -398,27 +404,24 @@ class DWIMLAbstractTracker:
         seed_count = 0
         lines = []
         seeds = []
-        while seed_count < self.nbr_seeds:
-            nb_next_seeds = self.simultaneous_tracking
-            if seed_count + nb_next_seeds > self.nbr_seeds:
-                nb_next_seeds = self.nbr_seeds - seed_count
+        with tqdm_logging_redirect(total=self.nbr_seeds, ncols=100) as pbar:
+            while seed_count < self.nbr_seeds:
+                nb_next_seeds = self.simultaneous_tracking
+                if seed_count + nb_next_seeds > self.nbr_seeds:
+                    nb_next_seeds = self.nbr_seeds - seed_count
 
-            next_seeds = np.arange(seed_count, seed_count + nb_next_seeds)
+                next_seeds = np.arange(seed_count, seed_count + nb_next_seeds)
 
-            n_seeds = self.seed_generator.get_next_n_pos(
-                random_generator, indices, next_seeds)
+                n_seeds = self.seed_generator.get_next_n_pos(
+                    random_generator, indices, next_seeds)
 
-            logger.info(
-                "Starting forward propagation for the next {} streamlines. "
-                "Total: {} / {}"
-                .format(nb_next_seeds, seed_count, self.nbr_seeds))
+                tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
+                    n_seeds)
+                pbar.update(nb_next_seeds)
+                lines.extend([line.tolist() for line in tmp_lines])
+                seeds.extend([s.tolist() for s in tmp_seeds])
 
-            tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
-                n_seeds)
-            lines.extend([line.tolist() for line in tmp_lines])
-            seeds.extend([s.tolist() for s in tmp_seeds])
-
-            seed_count += nb_next_seeds
+                seed_count += nb_next_seeds
 
         return lines, seeds
 
@@ -441,10 +444,12 @@ class DWIMLAbstractTracker:
                  for s in seeds]
         lines = [s.clone()[None, :] for s in seeds]
 
+        logger.debug("Starting forward")
         initial_dirs = self.prepare_forward(seeds)
         lines = self._propagate_multiple_lines(lines, initial_dirs)
 
         if not self.track_forward_only:
+            logger.debug("Starting backward")
             lines, seeds, backward_dir, _ = self.prepare_backward(
                 lines, seeds, initial_dirs)
 
@@ -507,6 +512,10 @@ class DWIMLAbstractTracker:
             # If invalid direction (ex: angle or EOS), stop now.
             invalid_direction_counts[invalid_dirs] += 1
             breaking_now = invalid_direction_counts > self.max_invalid_dirs
+            if sum(breaking_now) > 0:
+                logger.debug("{} streamlines with invalid directions for more "
+                             "than allowed {} points."
+                             .format(sum(breaking_now), self.max_invalid_dirs))
 
             # For other streamlines: verifying but appending only if option is
             # chosen.
@@ -698,14 +707,13 @@ class DWIMLAbstractTracker:
             seeds = [s for i, s in enumerate(seeds) if i not in rej_idx]
 
         if len(lines) > 0:
-            # 2) If forward tracking succeeded, revert streamlines
             logger.debug("   Starting backward propagation for the remaining "
                          "{} streamlines.".format(len(lines)))
-            # Reversing:
+
+            # 2) If forward tracking succeeded, revert streamlines
             lines = [torch.flip(line, (0,)) for line in lines]
 
             # 3) New v_in = last direction
-            # Could be the foward_dir inverted, but in our case: always None.
             # (normalized if self.normalize_directions)
             backward_dir = [s[-1, :] - s[-2, :] for s in lines]
             backward_dir = torch.vstack(backward_dir)
@@ -721,19 +729,28 @@ class DWIMLAbstractTracker:
         # Checking total length. During forward: all the same length. Not
         # during backward.
         stopping = np.asarray([len(s) for s in lines]) == self.max_nbr_pts
+        if sum(stopping) > 0:
+            logger.debug("{} streamlines stopping after reaching max nb "
+                         "points ({})".format(sum(stopping), self.max_nbr_pts))
 
         # Checking if out of bound using seeding mask
-        stopping = np.logical_or(
-            stopping,
-            ~self.mask.is_vox_corner_in_bound(n_last_pos).cpu().numpy())
+        out_of_mask = ~self.mask.is_vox_corner_in_bound(n_last_pos).cpu().numpy()
+        if sum(out_of_mask) > 0:
+            logger.debug("{} streamlines stopping out of bounds."
+                         .format(sum(out_of_mask)))
+        stopping = np.logical_or(stopping, out_of_mask)
 
         if self.mask.data is not None and not np.all(stopping):
             # Checking if out of mask
             # Avoid interpolation for points that we already know can't
             # continue.
             still_on = ~stopping
-            stopping[still_on] = ~self.mask.is_in_mask(
-                n_last_pos[still_on]).cpu().numpy()
+
+            out_of_mask = ~self.mask.is_in_mask(n_last_pos[still_on]).cpu().numpy()
+            if sum(out_of_mask) > 0:
+                logger.debug("{} streamlines stopping out of mask."
+                             .format(sum(out_of_mask)))
+            stopping[still_on] = out_of_mask
 
         return stopping
 
@@ -770,35 +787,40 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
         return super().prepare_forward(seeding_pos)
 
     def prepare_backward(self, lines, seeds, forward_dir=None):
+
+        # Reminder. Super:
+        #  - Rejects lines that contain only the seed.
+        #  - Reverts lines
         lines, seeds, backward_dir, rej_idx = super().prepare_backward(
             lines, seeds, forward_dir)
 
-        # Reject failed inputs
-        # Not keeping the seed (input #0). Backward will start at that point
-        # and will compute it again.
+        # Not keeping the seed (input #0). Backward will start at that point,
+        # and we will compute it again at _prepare_inputs_at_pos.
+        # Also rejects failed inputs. They are already rejected in lines.
         self.input_memory_for_backward = \
             [s[1:, :] for i, s in enumerate(self.input_memory_for_backward)
              if i not in rej_idx]
 
-        # If the last direction was valid, the last point has been added to the
-        # streamline. Computing that last additional input when
+        # If the last direction was valid (i.e. not EOS), the last point has
+        # been added to the streamline, but we never computed its input.
+        # Computing that last additional input when
         # len(input) < len(lines)  (but we removed the seed point so:)
         # len(input) < len(lines) - 1
-        # Streamlines are already flipped so last pos = first pos.
         missing_one = [len(inp) < len(s) - 1 for inp, s in zip(
             self.input_memory_for_backward, lines)]
         idx_missing_one, = np.where(missing_one)
         if len(idx_missing_one) > 0:
-            logging.debug("Computing last input for streamlines that had a "
-                          "last valid step.")
+            logger.debug("Computing last input for streamlines that had a "
+                         "last valid step.")
             last_inputs = self._prepare_inputs_at_pos(
                 [lines[i][0, :] for i in idx_missing_one])
             self.input_memory_for_backward = [
-                torch.vstack((self.input_memory_for_backward[i],
-                              last_inputs[where_first(idx_missing_one == i)]))
+                torch.vstack([self.input_memory_for_backward[i],
+                              last_inputs[where_first(idx_missing_one == i)]])
                 if missing_one[i] else self.input_memory_for_backward[i]
                 for i in range(len(missing_one))]
 
+        # Reverting.
         self.input_memory = [
             torch.flip(line_input, dims=[0])
             for line_input in self.input_memory_for_backward]
@@ -810,7 +832,7 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
             self, can_continue: np.ndarray, new_stopping_lines_raw_idx: list,
             batch_size: int):
 
-        logging.debug("Updating memory after removing lines")
+        logger.debug("Updating memory after removing lines")
         if np.any(~can_continue):
             stopping_lines_sub_idx, = np.where(~can_continue)
 

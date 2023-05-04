@@ -34,8 +34,6 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         Additionnally to usual preparation, we need to reset the recurrent
         hidden state.
         """
-        logger.debug("Learn2track: Resetting propagator for new "
-                     "streamline(s).")
         self.hidden_recurrent_states = None
 
         return super().prepare_forward(seeding_pos)

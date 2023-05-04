@@ -57,8 +57,8 @@ class DWIMLAbstractTrainer:
                  optimizer: str = 'Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
-                 patience: int = None, nb_cpu_processes: int = 0,
-                 use_gpu: bool = False,
+                 patience: int = None, patience_delta: float = 1e-6,
+                 nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, log_level=logging.root.level,
                  # To be deprecated
@@ -67,7 +67,7 @@ class DWIMLAbstractTrainer:
         Parameters
         ----------
         model: MainModelAbstract
-            Instatiated class containing your model.
+            Instantiated class containing your model.
         experiments_path: str
             Path where to save this experiment's results and checkpoints.
             Will be saved in experiments_path/experiment_name.
@@ -104,6 +104,9 @@ class DWIMLAbstractTrainer:
             Use early stopping. Defines the number of epochs after which the
             model should stop if the loss hasn't improved. Default: None (i.e.
             no early stopping).
+        patience_delta: float
+            Limit difference between two validation losses to consider that the
+            model improved between the two epochs.
         nb_cpu_processes: int
             Number of parallel CPU workers. Use 0 to avoid parallel threads.
             Default : 0.
@@ -132,8 +135,7 @@ class DWIMLAbstractTrainer:
 
         # Trainer's logging level can be changed separately from main
         # scripts.
-        self.logger = logger
-        self.logger.setLevel(log_level)
+        logger.setLevel(log_level)
 
         # Experiment
         self.experiments_path = experiments_path
@@ -150,7 +152,7 @@ class DWIMLAbstractTrainer:
                                       "exist... Use run from checkpoint to "
                                       "continue training.")
             else:
-                logging.info('Creating directory {}'.format(self.saving_path))
+                logger.info('Creating directory {}'.format(self.saving_path))
                 os.mkdir(self.saving_path)
                 os.mkdir(self.log_dir)
 
@@ -159,7 +161,7 @@ class DWIMLAbstractTrainer:
         self.batch_sampler = batch_sampler
         if self.batch_sampler.dataset.validation_set.nb_subjects == 0:
             self.use_validation = False
-            self.logger.warning(
+            logger.warning(
                 "WARNING! There is no validation set. Loss for best epoch "
                 "monitoring will be the training loss. \n"
                 "Best practice is to have a validation set.")
@@ -171,8 +173,8 @@ class DWIMLAbstractTrainer:
         self.max_batches_per_epochs_train = max_batches_per_epoch_training
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
         if learning_rate is not None:
-            logging.warning("Deprecated use of learning rate. Should now "
-                            "be learning_rates.")
+            logger.warning("Deprecated use of learning rate. Should now be "
+                           "learning_rates.")
             self.learning_rates = [learning_rate]
         elif learning_rates is None:
             self.learning_rates = [0.001]
@@ -198,8 +200,8 @@ class DWIMLAbstractTrainer:
         self.nb_cpu_processes = nb_cpu_processes
         self.use_gpu = use_gpu
         if self.use_radam is not None:
-            logging.warning("Option --use_radam will be removed. Use option "
-                            "--optimizer instead.")
+            logger.warning("Option --use_radam will be removed. Use option "
+                           "--optimizer instead.")
             optimizer = 'RAdam' if self.use_radam else 'Adam'
         if optimizer not in ['SGD', 'Adam', 'RAdam']:
             raise ValueError("Optimizer choice {} not recognized."
@@ -224,7 +226,7 @@ class DWIMLAbstractTrainer:
                 # If you see a hint error below in code editor, upgrade torch.
                 torch.cuda.manual_seed(self.batch_sampler.rng)
 
-                logging.info("We will be using GPU!")
+                logger.info("We will be using GPU!")
             else:
                 raise ValueError("You chose GPU (cuda) device but it is not "
                                  "available!")
@@ -242,12 +244,12 @@ class DWIMLAbstractTrainer:
         # initialization.
         # ----------------------
         if patience:
-            self.best_epoch_monitoring = BestEpochMonitoring(patience)
+            self.best_epoch_monitoring = BestEpochMonitoring(patience,
+                                                             patience_delta)
         else:
             # We won't use early stopping to stop the epoch, but we will use
             # it as monitor of the best epochs.
-            self.best_epoch_monitoring = BestEpochMonitoring(
-                patience=self.max_epochs + 1)
+            self.best_epoch_monitoring = BestEpochMonitoring(patience=np.inf)
 
         self.current_epoch = 0
 
@@ -282,7 +284,7 @@ class DWIMLAbstractTrainer:
         #     dataloader output is on GPU, ready to be fed to the model.
         #     Otherwise, dataloader output is kept on CPU, and the main thread
         #     sends volumes and coords on GPU for interpolation.
-        self.logger.debug("- Instantiating dataloaders...")
+        logger.debug("- Instantiating dataloaders...")
         self.train_dataloader = DataLoader(
             dataset=self.batch_sampler.dataset.training_set,
             batch_sampler=self.batch_sampler,
@@ -311,10 +313,10 @@ class DWIMLAbstractTrainer:
         # Build optimizer (Optimizer is built here since it needs the model
         # parameters)
         list_params = [n for n, _ in self.model.named_parameters()]
-        self.logger.debug("Initiating trainer: {}".format(type(self)))
-        self.logger.debug("This trainer will use {} optimization on the "
-                          "following model.parameters: {}"
-                          .format(self.optimizer_key, list_params))
+        logger.debug("Initiating trainer: {}".format(type(self)))
+        logger.debug("This trainer will use {} optimization on the "
+                     "following model.parameters: {}"
+                     .format(self.optimizer_key, list_params))
 
         self.current_lr = self.learning_rates[0]
         if self.optimizer_key == 'RAdam':
@@ -396,7 +398,7 @@ class DWIMLAbstractTrainer:
                 raise ValueError("You have provided a comet project, "
                                  "but no comet workspace!")
         except ConnectionError:
-            self.logger.warning(
+            logger.warning(
                 "Could not connect to Comet.ml, metrics will not be logged "
                 "online...")
             self.comet_exp = None
@@ -449,14 +451,14 @@ class DWIMLAbstractTrainer:
         - Checks if allowed training time is exceeded.
 
         """
-        self.logger.debug("Trainer {}: \n"
-                          "Running the model {}.\n\n"
-                          .format(type(self), type(self.model)))
+        logger.debug("Trainer {}: \n"
+                     "Running the model {}.\n\n"
+                     .format(type(self), type(self.model)))
         self.save_params_to_json()
 
         # If data comes from checkpoint, this is already computed
         if self.nb_train_batches_per_epoch is None:
-            self.logger.info("Estimating batch sizes.")
+            logger.info("Estimating batch sizes.")
             (self.nb_train_batches_per_epoch,
              self.nb_valid_batches_per_epoch) = \
                 self.estimate_nb_batches_per_epoch()
@@ -478,23 +480,23 @@ class DWIMLAbstractTrainer:
             if self.comet_exp:
                 self.comet_exp.set_epoch(epoch)
 
-            self.logger.info("******* STARTING : Epoch {} (i.e. #{}) *******"
-                             .format(epoch, epoch + 1))
+            logger.info("******* STARTING : Epoch {} (i.e. #{}) *******"
+                        .format(epoch, epoch + 1))
 
             # Set learning rate to either current value or last value
             self.current_lr = self.learning_rates[
                 min(self.current_epoch, len(self.learning_rates) - 1)]
-            self.logger.info("Learning rate = {}".format(self.current_lr))
+            logger.info("Learning rate = {}".format(self.current_lr))
             for g in self.optimizer.param_groups:
                 g['lr'] = self.current_lr
 
             # Training
-            self.logger.info("*** TRAINING")
+            logger.info("*** TRAINING")
             self.train_one_epoch(epoch)
 
             # Validation
             if self.use_validation:
-                self.logger.info("*** VALIDATION")
+                logger.info("*** VALIDATION")
                 self.validate_one_epoch(epoch)
 
                 mean_epoch_loss = self.valid_loss_monitor.average_per_epoch[-1]
@@ -511,7 +513,7 @@ class DWIMLAbstractTrainer:
                     "best_epoch",
                     self.best_epoch_monitoring.best_epoch)
             if is_bad:
-                self.logger.info(
+                logger.info(
                     "** This is the {}th bad epoch (patience = {})"
                     .format(self.best_epoch_monitoring.n_bad_epochs,
                             self.best_epoch_monitoring.patience))
@@ -561,8 +563,8 @@ class DWIMLAbstractTrainer:
             self.batch_sampler.context_subset.volume_cache_manager = None
 
         # Training all batches
-        self.logger.debug("Training one epoch: iterating on batches using "
-                          "tqdm on the dataloader...")
+        logger.debug("Training one epoch: iterating on batches using tqdm on "
+                     "the dataloader...")
 
         # Note: loggers = [logging.root] only.
         # If we add our sub-loggers there, they duplicate.
@@ -590,7 +592,7 @@ class DWIMLAbstractTrainer:
                 with grad_context():
                     mean_loss, n = self.run_one_batch(data)
 
-                self.logger.debug('*** Computing back propagation')
+                logger.debug('*** Computing back propagation')
                 mean_loss.backward()
 
                 self.fix_parameters()  # Ex: clip gradients
@@ -624,10 +626,10 @@ class DWIMLAbstractTrainer:
         all_n = self.train_loss_monitor.current_epoch_batch_weights
         if len(all_n) == 0:
             # values not stored if loss is inf.
-            logging.info("Loss was inf for all batches in this epoch. Please "
-                         "supervise.")
+            logger.info("Loss was inf for all batches in this epoch. Please "
+                        "supervise.")
         else:
-            self.logger.info(
+            logger.info(
                 "Number of data points per batch: {}\u00B1{}"
                 .format(int(np.mean(all_n)), int(np.std(all_n))))
         self.train_loss_monitor.end_epoch()
@@ -704,8 +706,8 @@ class DWIMLAbstractTrainer:
             - save values to monitors
             - send data to comet
         """
-        self.logger.info("Epoch {} (i.e. #{}): Batch loss = {}"
-                         .format(epoch, epoch + 1, mean_loss))
+        logger.info("Epoch {} (i.e. #{}): Batch loss = {}"
+                    .format(epoch, epoch + 1, mean_loss))
 
         if self.comet_exp and batch_id % COMET_UPDATE_FREQUENCY == 0:
             with comet_context():
@@ -741,7 +743,7 @@ class DWIMLAbstractTrainer:
         local_context: prefix when saving log. Training_ or Validate_ for
         instance.
         """
-        self.logger.info("   Mean loss for this epoch: {}".format(loss))
+        logger.info("   Mean loss for this epoch: {}".format(loss))
 
         if self.comet_exp:
             with comet_context():
@@ -762,7 +764,7 @@ class DWIMLAbstractTrainer:
                     epoch=epoch, step=None)
 
     def _save_info_best_epoch(self):
-        self.logger.info("   Best epoch yet! Saving model and loss history.")
+        logger.info("   Best epoch yet! Saving model and loss history.")
 
         # Save model
         self.model.save_params_and_state(
@@ -891,13 +893,13 @@ class DWIMLAbstractTrainer:
         trainer.optimizer.load_state_dict(current_states['optimizer_state'])
         if new_patience:
             trainer.best_epoch_monitoring.patience = new_patience
-        logging.info("Starting from checkpoint! Starting from epoch #{}.\n"
-                     "Previous best model was discovered at epoch #{}.\n"
-                     "When finishing previously, we were counting {} epochs "
-                     "with no improvement."
-                     .format(trainer.current_epoch,
-                             trainer.best_epoch_monitoring.best_epoch,
-                             trainer.best_epoch_monitoring.n_bad_epochs))
+        logger.info("Starting from checkpoint! Starting from epoch #{}.\n"
+                    "Previous best model was discovered at epoch #{}.\n"
+                    "When finishing previously, we were counting {} epochs "
+                    "with no improvement."
+                    .format(trainer.current_epoch,
+                            trainer.best_epoch_monitoring.best_epoch,
+                            trainer.best_epoch_monitoring.n_bad_epochs))
 
         return trainer
 
@@ -905,7 +907,7 @@ class DWIMLAbstractTrainer:
         """
         Save an experiment checkpoint that can be resumed from.
         """
-        self.logger.debug("Saving checkpoint...")
+        logger.debug("Saving checkpoint...")
 
         # Make checkpoint directory
         checkpoint_dir = os.path.join(self.saving_path, "checkpoint")
@@ -1001,7 +1003,7 @@ class DWIMLAbstractTrainer:
                     .format(best_monitoring_state['patience'],
                             current_epoch))
         elif bad_epochs >= new_patience:
-            # New patience: checking if will be able to continue
+            # New patience: checking if we will be able to continue
             raise EarlyStoppingError(
                 "In resumed experiment, we had reach {} bad epochs (i.e. with "
                 "no improvement). You have now overriden patience to {} but "
@@ -1057,7 +1059,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # Data interpolation has not been done yet. GPU computations
         # need to be done here in the main thread. Running final steps
         # of data preparation.
-        self.logger.debug('Finalizing input data preparation on GPU.')
+        logger.debug('Finalizing input data preparation on GPU.')
         streamlines, final_s_ids_per_subj = data
 
         # Dataloader always works on CPU.
@@ -1073,7 +1075,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             streamlines_f, final_s_ids_per_subj)
 
         # Possibly add noise to inputs here.
-        self.logger.debug('*** Computing forward propagation')
+        logger.debug('*** Computing forward propagation')
         if self.model.forward_uses_streamlines:
             # Now possibly add noise to streamlines (training / valid)
             streamlines_f = self.batch_loader.add_noise_streamlines(
@@ -1097,7 +1099,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                                  sum([len(s) for s in batch_inputs])))
             model_outputs = self.model(batch_inputs)
 
-        self.logger.debug('*** Computing loss')
+        logger.debug('*** Computing loss')
         logger.debug("Uses a batch of {} streamlines, {} coordinates, "
                      "{} outputs."
                      .format(len(streamlines),
@@ -1109,7 +1111,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             mean_loss, n = self.model.compute_loss(model_outputs)
 
         if self.use_gpu:
-            log_gpu_memory_usage(self.logger)
+            log_gpu_memory_usage(logger)
 
         # The mean tensor is a single value. Converting to float using item().
         return mean_loss, n

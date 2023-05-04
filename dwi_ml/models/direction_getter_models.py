@@ -186,16 +186,27 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
     def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
         """
-        Should be called before compute_loss, before concatenating your
-        streamlines.
-
         Returns: List[Tensor], the directions
         User is responsible for stacking the batch before computing loss.
         """
         return compute_directions(target_streamlines)
 
-    def compute_loss(self, outputs: Tensor, target_dirs: Tensor,
-                     average_results=True):
+    def compute_loss(self, outputs: List[Tensor],
+                     target_streamlines: List[Tensor], average_results=True):
+        target_dirs = self.prepare_targets_for_loss(target_streamlines)
+        lengths = [len(t) for t in target_dirs]
+
+        target_dirs = torch.vstack(target_dirs)
+        outputs = torch.vstack(outputs)
+        loss = self._compute_loss(outputs, target_dirs, average_results)
+
+        if average_results:
+            return loss
+
+        return torch.split(loss, lengths)
+
+    def _compute_loss(self, outputs: Tensor, target_dirs: Tensor,
+                      average_results=True):
         """
         Expecting a single tensor. Hint: either concatenate all streamlines'
         tensors, or loop on streamlines.
@@ -327,7 +338,7 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
 
     def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
         """
-        Should be called before compute_loss, before concatenating your
+        Should be called before _compute_loss, before concatenating your
         streamlines.
 
         Returns: list[Tensors], the directions.
@@ -341,8 +352,8 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
                           target_directions: Tensor):
         raise NotImplementedError
 
-    def compute_loss(self, learned_directions: Tensor, target_dirs: Tensor,
-                     average_results=True):
+    def _compute_loss(self, learned_directions: Tensor, target_dirs: Tensor,
+                      average_results=True):
 
         # 1. Main loss:
         if self.normalize_targets:
@@ -642,8 +653,8 @@ class SphereClassificationDirectionGetter(
             add_sos=False, add_eos=self.add_eos, to_one_hot=False)
         return target_idx
 
-    def compute_loss(self, logits_per_class: Tensor, targets_idx: Tensor,
-                     average_results=True):
+    def _compute_loss(self, logits_per_class: Tensor, targets_idx: Tensor,
+                      average_results=True):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
@@ -700,8 +711,8 @@ class SmoothSphereClassificationDirectionGetter(
 
         return target_idx
 
-    def compute_loss(self, logits_per_class: Tensor, targets_probs: Tensor,
-                     average_results=True):
+    def _compute_loss(self, logits_per_class: Tensor, targets_probs: Tensor,
+                      average_results=True):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
@@ -774,7 +785,7 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         # if add_eos_label:
         #     self.layers_eos = init_2layer_fully_connected(input_size, 1)
 
-        # Loss will be defined in compute_loss, using torch distribution
+        # Loss will be defined in _compute_loss, using torch distribution
 
     def forward(self, inputs: Tensor):
         """
@@ -787,8 +798,8 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
         return means, sigmas
 
-    def compute_loss(self, learned_gaussian_params: Tuple[Tensor, Tensor],
-                     target_dirs: Tensor, average_results=True):
+    def _compute_loss(self, learned_gaussian_params: Tuple[Tensor, Tensor],
+                      target_dirs: Tensor, average_results=True):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
@@ -881,7 +892,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         self.layers_sigmas = init_2layer_fully_connected(
             input_size, 3 * self.nb_gaussians)
 
-        # Loss will be defined in compute_loss, using torch distribution
+        # Loss will be defined in _compute_loss, using torch distribution
 
     @property
     def params(self):
@@ -904,7 +915,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
         return mixture_logits, means, sigmas
 
-    def compute_loss(
+    def _compute_loss(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
             target_dirs, average_results=True):
         """
@@ -1026,7 +1037,7 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         self.layers_mean = init_2layer_fully_connected(input_size, 3)
         self.layers_kappa = init_2layer_fully_connected(input_size, 1)
 
-        # Loss will be defined in compute_loss, using torch distribution
+        # Loss will be defined in _compute_loss, using torch distribution
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         """Run the inputs through the fully-connected layer.
@@ -1051,8 +1062,8 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
 
         return means, kappas
 
-    def compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
-                     target_dirs, average_results=True):
+    def _compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
+                      target_dirs, average_results=True):
         """Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
 
@@ -1158,8 +1169,8 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         raise NotImplementedError
 
-    def compute_loss(self, outputs: Tuple[Tensor, Tensor],
-                     target_dirs: Tensor, average_results=True):
+    def _compute_loss(self, outputs: Tuple[Tensor, Tensor],
+                      target_dirs: Tensor, average_results=True):
         raise NotImplementedError
 
     def _sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor],

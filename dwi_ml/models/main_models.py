@@ -9,15 +9,11 @@ from typing import List, Union
 import numpy as np
 import torch
 from torch import Tensor
-from torch.nn.utils.rnn import pack_sequence, PackedSequence, \
-    unpack_sequence
 
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_n_previous_dirs, normalize_directions
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
@@ -365,77 +361,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
         })
         return p
 
-    def normalize_and_embed_previous_dirs(
-            self, dirs: List, sorted_indices=None, unpack_results: bool = True,
-            point_idx=None):
-        """
-        Runs the self.prev_dirs_embedding layer, if instantiated, and returns
-        the model's output. Else, returns the data as is. Should be used in
-        your forward method.
-
-        Params
-        ------
-        dirs: List
-            Batch all streamline directions. Length of the list is the number
-            of streamlines in the batch. Each tensor is of size [nb_points, 3].
-            The batch will be packed and embedding will be run on resulting
-            tensor.
-        packing_order: Tuple,
-            Packing information (batch_sizes, sorted_indices, unsorted_indices)
-            to enforce. If not given, will use default.
-        unpack_results: bool
-            If true, unpack the model's outputs before returning.
-            Default: True. Hint: skipping unpacking can be useful if you want
-            to concatenate this embedding to your input's packed sequence's
-            embedding.
-        point_idx: int
-            Point of the streamline for which to compute the previous dirs.
-
-        Returns
-        -------
-        n_prev_dirs_embedded: Union[List[Tensor], PackedSequence, None]
-            The previous dirs, as list of tensors (or as PackedSequence if
-            unpack_result is False). Returns None if nb_previous_dirs is 0.
-        """
-        if self.nb_previous_dirs == 0:
-            return None
-
-        if self.normalize_prev_dirs:
-            dirs = normalize_directions(dirs)
-
-        # Formatting the n previous dirs for all points.
-        n_prev_dirs = compute_n_previous_dirs(
-            dirs, self.nb_previous_dirs,
-            point_idx=point_idx, device=self.device)
-
-        # Packing
-        # We could loop on all lists and embed each.
-        # Probably faster to pack result, run model once on all points
-        # and unpack later.
-        # Packing to the same order as inputs.
-        if sorted_indices is not None:
-            n_prev_dirs = [n_prev_dirs[i] for i in sorted_indices]
-            n_prev_dirs_packed = pack_sequence(n_prev_dirs, enforce_sorted=True)
-
-        else:
-            n_prev_dirs_packed = pack_sequence(n_prev_dirs,
-                                               enforce_sorted=False)
-
-        if self.prev_dirs_embedding is None:
-            return n_prev_dirs_packed
-
-        data = self.prev_dirs_embedding(n_prev_dirs_packed.data)
-        n_prev_dirs_packed = \
-            PackedSequence(data,
-                           n_prev_dirs_packed.batch_sizes,
-                           n_prev_dirs_packed.sorted_indices,
-                           n_prev_dirs_packed.unsorted_indices)
-
-        if unpack_results:
-            return unpack_sequence(n_prev_dirs_packed)
-        else:
-            return n_prev_dirs_packed
-
     def forward(self, inputs, target_streamlines: List[torch.tensor], **kw):
         """
         Params
@@ -606,14 +531,10 @@ class ModelWithDirectionGetter(MainModelAbstract):
         return self.direction_getter.get_tracking_directions(
             model_outputs, algo, eos_stopping_thresh)
 
-    def compute_loss(self, model_outputs, target_streamlines,
+    def compute_loss(self, model_outputs: List[Tensor], target_streamlines,
                      average_results=True, **kw):
-        # Hint: Should look like:
-        #  target_dirs = self.direction_getter.prepare_targets(
-        #           target_streamlines)
-        #  loss, nb_points = self.direction_getter.compute_loss(
-        #          model_outputs, target_dirs, average_results)
-        raise NotImplementedError
+        return self.direction_getter.compute_loss(
+            model_outputs, target_streamlines, average_results)
 
     def move_to(self, device):
         super().move_to(device)

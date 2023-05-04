@@ -167,7 +167,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
                 ("Error. The target directions contain {} streamlines but the "
                  "input contains {}").format(len(target_dirs), len(inputs))
 
-            n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
+            n_prev_dirs_embedded = self.compute_and_normalize_previous_dirs(
                 target_dirs)
             if n_prev_dirs_embedded is not None:
                 assert len(n_prev_dirs_embedded) == len(target_dirs)

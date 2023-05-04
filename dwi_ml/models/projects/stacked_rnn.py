@@ -146,16 +146,15 @@ class StackedRNN(torch.nn.Module):
         else:
             return self.layer_sizes[-1]
 
-    def forward(self, inputs: Union[Tensor, PackedSequence],
+    def forward(self, inputs: PackedSequence,
                 hidden_states: Tuple[Tensor, ...] = None):
         """
         Parameters
         ----------
-        inputs : torch.Tensor or PackedSequence
-            Batch of input sequences. Size (seq, features).
+        inputs : PackedSequence
             Current implementation of the learn2track model calls this using
             packed sequence. We run the RNN on the packed data, but the
-            normalization and dropout of their tensor version.
+            normalization and dropout on their tensor version.
         hidden_states : list[states]
             One value per layer.
             LSTM: States are tuples; (h_t, C_t)
@@ -166,9 +165,8 @@ class StackedRNN(torch.nn.Module):
         Returns
         -------
         last_output : Tensor
-            The results. Shape is [nb_points, last layer size], or
-            [nb_points, sum of layer sizes] if skip_connections.
-            * If inputs was a PackedSequence, you can get the packed results:
+            The PackedSequence.data output, modified through the RNN.
+            * You can get the packed results:
             last_output = PackedSequence(last_output,
                                          inputs.batch_sizes,
                                          inputs.sorted_indices,
@@ -179,22 +177,11 @@ class StackedRNN(torch.nn.Module):
             The last step hidden states (h_(t-1), C_(t-1) for LSTM) for each
             layer.
         """
-
         # If input is a tensor: RNN simply runs on it.
         # Else: RNN knows what to do.
 
         # We need to concatenate initial inputs with skip connections.
-        if isinstance(inputs, Tensor):
-            was_packed = False
-            init_inputs = inputs
-        elif isinstance(inputs, list):
-            raise TypeError("Unexpected input type! Data should not be a list."
-                            "You could try using PackedSequences.")
-        elif isinstance(inputs, PackedSequence):
-            was_packed = True
-            init_inputs = inputs.data
-        else:
-            raise TypeError("Unexpected input type!")
+        init_inputs = inputs.data
 
         # Arranging states
         if hidden_states is None:
@@ -214,7 +201,7 @@ class StackedRNN(torch.nn.Module):
             logger.debug('Applying StackedRnn layer #{}. Layer is: {}'
                          .format(i, self.rnn_layers[i]))
 
-            if i > 0 and was_packed:
+            if i > 0:
                 # Packing back the output tensor from previous layer;
                 # only the .data was kept for the direction getter.
                 last_output = PackedSequence(last_output, inputs.batch_sizes,
@@ -231,18 +218,11 @@ class StackedRNN(torch.nn.Module):
             # Forward functions for layer_norm, dropout and skip take tensors
             # Does not matter if order of datapoints is not kept, applied on
             # each data point separately
-            if was_packed:
-                last_output = last_output.data
-
-            logger.debug('   Output size after main sub-layer: {}'
-                         .format(last_output.shape))
+            last_output = last_output.data
 
             # Apply layer normalization
             if self.use_layer_normalization:
                 last_output = self.layer_norm_layers[i](last_output)
-
-            logger.debug('   Output size after normalization: {}'
-                         .format(last_output.shape))
 
             if i < len(self.rnn_layers) - 1:
                 # Apply dropout except on last layer

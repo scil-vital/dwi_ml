@@ -107,14 +107,14 @@ class Tester:
         batch_size = self.batch_size or len(sft)
         nb_batches = int(np.ceil(len(sft) / batch_size))
 
-        losses = [[]] * nb_batches
-        outputs = [[]] * nb_batches
+        losses = [torch.Tensor] * nb_batches
+        outputs = [torch.Tensor] * nb_batches
         batch_start = 0
         batch_end = batch_size
         with torch.no_grad():
-            for b in range(nb_batches):
+            for batch in range(nb_batches):
                 logging.info("  Batch #{}:  {} - {}"
-                             .format(b + 1, batch_start, batch_end))
+                             .format(batch + 1, batch_start, batch_end))
                 # 1. Prepare batch
                 streamlines = [
                     torch.as_tensor(s, dtype=torch.float32, device=self.device)
@@ -129,19 +129,19 @@ class Tester:
                 inputs = self._prepare_inputs_at_pos(streamlines_f)
 
                 # 2. Run forward
-                outputs[b] = self.model(inputs, streamlines_f)
+                tmp_outputs = self.model(inputs, streamlines_f)
                 del streamlines_f
 
                 if compute_loss:
                     # 3. Compute loss
-                    losses[b] = self.model.compute_loss(
-                        outputs[b], streamlines, average_results=False)
+                    tmp_losses = self.model.compute_loss(
+                        tmp_outputs, streamlines, average_results=False)
 
                 batch_start = batch_end
                 batch_end = min(batch_start + batch_size, len(sft))
 
-                outputs[b].cpu()
-                losses[b].cpu()
+                outputs[batch_start:batch_end] = [o.cpu() for o in tmp_outputs]
+                losses[batch_start:batch_end] = [l.cpu() for l in tmp_losses]
 
             losses, outputs = self.combine_batches(losses, outputs)
 

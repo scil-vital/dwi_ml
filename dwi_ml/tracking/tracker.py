@@ -415,8 +415,8 @@ class DWIMLAbstractTracker:
                 n_seeds = self.seed_generator.get_next_n_pos(
                     random_generator, indices, next_seeds)
 
-                tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
-                    n_seeds)
+                tmp_lines, tmp_seeds = \
+                    self._get_multiple_lines_both_directions(n_seeds)
                 pbar.update(nb_next_seeds)
                 lines.extend([line.tolist() for line in tmp_lines])
                 seeds.extend([s.tolist() for s in tmp_seeds])
@@ -647,7 +647,8 @@ class DWIMLAbstractTracker:
         # (Converts angle to numpy)
         # Torch does not have a min() for tensor vs scalar. Using np. Ok,
         # small step.
-        cos_angle = np.minimum(np.maximum(-1.0, cos_angle.cpu()), 1.0)
+        one = torch.ones(1, device=self.device)
+        cos_angle = torch.minimum(torch.maximum(-one, cos_angle), one)
         angle = torch.arccos(cos_angle)
 
         if self.verify_opposite_direction:

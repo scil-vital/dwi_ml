@@ -7,6 +7,7 @@ This script allows tracking from a trained Transformer model.
 """
 import argparse
 import logging
+import os
 
 import dipy.core.geometry as gm
 from dipy.io.utils import is_header_compatible
@@ -40,9 +41,8 @@ APPEND_LAST_POINT = True
 
 
 def build_argparser():
-    p = argparse.ArgumentParser(
-        formatter_class=argparse.RawTextHelpFormatter,
-        description=__doc__)
+    p = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
+                                description=__doc__)
 
     track_g = add_tracking_options(p)
     # Sphere used if the direction_getter key is the sphere-classification.
@@ -65,9 +65,10 @@ def prepare_tracker(parser, args):
         # make them info max
         sub_logger_level = 'INFO'
 
-    with Timer("\n\nLoading data and preparing tracker...",
+    with Timer("\nLoading data and preparing tracker...",
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
+        # Vox space, corner origin
         seed_generator, nbr_seeds, seeding_mask_header, ref = \
             prepare_seed_generator(parser, args, hdf_handle)
         dim = ref.shape
@@ -90,7 +91,8 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading model.")
         model = TransformerSrcAndTgtModel.load_params_and_state(
-            args.experiment_path + '/best_model', log_level=sub_logger_level)
+            os.path.join(args.experiment_path, 'best_model'),
+            log_level=sub_logger_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 
@@ -121,8 +123,8 @@ def main():
     # Setting root logger to high level to max info, not debug, prints way too
     # much stuff. (but we can set our tracker's logger to debug)
     root_level = args.logging
-    if root_level == logging.DEBUG:
-        root_level = logging.INFO
+    if root_level == 'DEBUG':
+        root_level = 'INFO'
     logging.getLogger().setLevel(level=root_level)
 
     # ----- Checks
@@ -136,10 +138,6 @@ def main():
     verify_streamline_length_options(parser, args)
     verify_compression_th(args.compress)
     verify_seed_options(parser, args)
-
-    # ----- Prepare values
-    max_nbr_pts = int(args.max_length / args.step_size)
-    min_nbr_pts = max(int(args.min_length / args.step_size), 1)
 
     tracker, ref = prepare_tracker(parser, args)
 

@@ -14,7 +14,7 @@ from dwi_ml.models.projects.transforming_tractography import \
     OriginalTransformerModel
 from dwi_ml.testing.testers import TesterOneInput
 
-from dwi_ml.visu.visu_loss import prepare_colors_from_loss, \
+from dwi_ml.testing.visu.visu_loss import prepare_colors_from_loss, \
     prepare_args_visu_loss, combine_displacement_with_ref, pick_a_few, \
     separate_best_and_worst
 

@@ -80,6 +80,9 @@ def add_abstract_model_args(p):
              "after.\n Torch default + in original paper: False. \nIn the "
              "tensor2tensor code, they suggest that learning is more robust "
              "when \npreprocessing each layer with the norm. Default: False.")
+    gt.add_argument(
+        "--start_from_copy_prev", action='store_true',
+        help="If set, final_output = previous_dir + model_output.")
 
     g = p.add_argument_group("Neighborhood")
     AbstractTransformerModel.add_neighborhood_args_to_parser(g)
@@ -92,19 +95,22 @@ def add_abstract_model_args(p):
 
 def add_tto_model_args(gt):
     gt.add_argument(
-        '--n_layers_e', type=int, default=6,
+        '--n_layers_e', type=int, default=6,  metavar='n',
         help="Number of encoding layers. [%(default)s]")
     gt.add_argument(
-        '--n_layers_d', type=int, default=6,
+        '--n_layers_d', type=int, default=6,  metavar='n',
         help="Number of decoding layers. [%(default)s]")
 
 
 def add_ttst_model_args(gt):
     gt.add_argument(
-        '--n_layers_d', type=int, default=14,
+        '--n_layers_d', type=int, default=14, metavar='n',
         help="Number of 'decoding' layers. Value in [3]; 14. "
              "Default: [%(default)s].\n"
              "[3]: https://arxiv.org/pdf/1905.06596.pdf")
+    gt.add_argument(
+        '--embedding_size_x', type=int, metavar='n',
+        help="Embedding size for x. Default = 80%% of d_model.")
 
 
 def perform_checks(args):

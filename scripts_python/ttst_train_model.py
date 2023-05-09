@@ -13,6 +13,7 @@ import os
 # See bug report here https://github.com/Lightning-AI/lightning/issues/5829
 # Importing now to solve issues later.
 import comet_ml
+import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
@@ -59,6 +60,7 @@ def prepare_arg_parser():
 
 
 def init_from_args(args, sub_loggers_level):
+    torch.manual_seed(args.rng)  # Set torch seed
 
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args, load_testing=False,
@@ -79,6 +81,7 @@ def init_from_args(args, sub_loggers_level):
             token_type=args.token_type, embedding_key_t=args.target_embedding,
             # Concerning inputs:
             nb_features=args.nb_features, embedding_key_x=args.data_embedding,
+            embedding_size_x=args.embedding_size_x,
             # Torch's transformer parameters
             max_len=args.max_len,
             positional_encoding_key=args.position_encoding,
@@ -86,6 +89,7 @@ def init_from_args(args, sub_loggers_level):
             nheads=args.nheads, dropout_rate=args.dropout_rate,
             activation=args.activation,
             norm_first=args.norm_first, n_layers_d=args.n_layers_d,
+            start_from_copy_prev=args.start_from_copy_prev,
             # Direction getter
             dg_key=args.dg_key, dg_args=dg_args,
             # Other
@@ -135,6 +139,7 @@ def main():
     sub_loggers_level = args.logging
     if args.logging == 'DEBUG':
         sub_loggers_level = 'INFO'
+    logging.getLogger().setLevel(level=args.logging)
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])

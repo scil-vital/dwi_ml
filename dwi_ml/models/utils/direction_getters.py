@@ -17,6 +17,13 @@ def add_direction_getter_args(p, gaussian_fisher_args=True):
     p.add_argument(
         '--dg_dropout', type=float, metavar='r', default=0.,
         help="Dropout ratio for the direction getter. Default: 0.")
+    p.add_argument(
+        '--compress_loss', metavar='eps', nargs='?', const=1e-3,
+        help="If true, compress the loss. \nCan be used independently from "
+             "options on the input streamlines such as --compress.\n"
+             "Compression ratio (eps) can be given: as long as the angle is \n"
+             "smaller than eps (in rad), the next points' loss are averaged "
+             "together.")
 
     # Gaussian models, Fisher-von-Mises models
     if gaussian_fisher_args:
@@ -30,10 +37,12 @@ def add_direction_getter_args(p, gaussian_fisher_args=True):
                  "Mixture model for the direction \ngetter. [3].")
     p.add_argument(
         '--normalize_targets', const=1., nargs='?', type=float,
+        metavar='norm',
         help="For REGRESSION models:  If set, target directions will be "
              "normalized before \ncomputing the loss. Default norm: 1.")
     p.add_argument(
         '--normalize_outputs', const=1., nargs='?', type=float,
+        metavar='norm',
         help="For REGRESSION models:  If set, model outputs will be "
              "normalized. Default norm: 1.")
 
@@ -50,7 +59,10 @@ def add_direction_getter_args(p, gaussian_fisher_args=True):
 
 def check_args_direction_getter(args):
     dg_args = {'dropout': args.dg_dropout,
-               'add_eos': args.add_eos}
+               'add_eos': args.add_eos,
+               'compress_loss': args.compress_loss is not None,
+               'compress_eps': args.compress_loss
+               }
 
     # Gaussian additional arg = nb_gaussians.
     if args.dg_key == 'gaussian-mixture':

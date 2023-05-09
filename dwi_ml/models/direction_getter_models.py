@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from math import ceil
 from typing import Tuple, List, Union
 
@@ -92,28 +93,34 @@ class AbstractDirectionGetterModel(torch.nn.Module):
                   |                     |
                   -----------------------
     """
-    def __init__(self, input_size, dropout: float, key: str,
+    def __init__(self, input_size: int, dropout: float, key: str,
                  supports_compressed_streamlines: bool,
-                 loss_description: str = ''):
+                 compress_loss: bool = False, compress_eps: float = 1e-3,
+                 loss_description: str = '', add_eos: bool = False):
         """
         Parameters
         ----------
-        input_size: Any
+        input_size: int
             Should be computed directly. Probably the output size of the first
             layers of your main model.
         dropout: float
             Dropout rate.
         supports_compressed_streamlines: bool
             Whether this model supports compressed streamlines.
-        loss_description: str
-            Will be added to params to help user remember the direction getter
-            version (when printing params).
+        compress_loss: bool
+            If set, compress the loss. This is used idependently of the state
+            of the streamlines received (compressed or resampled).
+        compress_eps: float
+            Compression threshold. As long as the angle is smaller than eps
+            (in rad), the next points' loss are averaged together.
         """
         super().__init__()
 
         self.input_size = input_size
         self.device = None
-        self.add_eos = False
+        self.add_eos = add_eos
+        self.compress_loss = compress_loss
+        self.compress_eps = compress_eps
 
         # Info on this Direction Getter
         self.key = key
@@ -149,13 +156,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         params = {
             'input_size': self.input_size,
             'dropout': self.dropout,
-        }
-        # Adding stuff for nicer print in logs, although not necessary to
-        # instantiate a new model.
-        params.update({
             'key': self.key,
-            'loss': self.loss_description
-        })
+        }
 
         return params
 
@@ -193,23 +195,43 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
     def compute_loss(self, outputs: List[Tensor],
                      target_streamlines: List[Tensor], average_results=True):
+        if self._compress_loss and not average_results:
+            raise ValueError(
+                "There is not sense in using compress_loss = True and "
+                "average_loss = False. Compress_loss returns only one value.")
+
         target_dirs = self.prepare_targets_for_loss(target_streamlines)
         lengths = [len(t) for t in target_dirs]
 
-        target_dirs = torch.vstack(target_dirs)
-        outputs = torch.vstack(outputs)
+        if self._compress_loss:
+            target_dirs_list = target_dirs  # Save here, or re-split below.
+            average_results = False  # We will do our own average.
+
+        outputs, target_dirs = self.stack_batch(outputs, target_dirs)
         loss = self._compute_loss(outputs, target_dirs, average_results)
 
         if average_results:
             return loss
+        elif self._compress_loss:
+            loss = torch.split(loss, lengths)
+            final_loss, final_n = self._compress_loss(loss, target_dirs_list)
+            logging.info("Converted {} data points into {} compressed data "
+                         "points".format(sum(lengths), final_n))
+            return final_loss, final_n
+        else:
+            loss = torch.split(loss, lengths)
+            return loss
 
-        return torch.split(loss, lengths)
+    @staticmethod
+    def stack_batch(outputs, target_dirs):
+        target_dirs = torch.vstack(target_dirs)
+        outputs = torch.vstack(outputs)
+        return outputs, target_dirs
 
     def _compute_loss(self, outputs: Tensor, target_dirs: Tensor,
                       average_results=True):
         """
-        Expecting a single tensor. Hint: either concatenate all streamlines'
-        tensors, or loop on streamlines.
+        Expecting a single tensor.
 
         Returns
         -------
@@ -222,6 +244,46 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             losses: Tensor of shape (n, )
         """
         raise NotImplementedError
+
+    def _compress_loss(self, losses, dirs):
+        # 1e-3 rad = 0.05 degrees.
+        # In our in-house test, on average 140 000 -> 30 000 points
+        # Because our PFT tracking for training in this example was done on
+        # sphere = many points completely straight (with angle 0).
+        # ToDo Smooth and check angles.
+
+        one = torch.ones(1, device=dirs[0].device)
+
+        compressed_mean_loss = 0.0
+        compressed_n = 0
+        for loss, line_dirs in zip(losses, dirs):
+            if not (isinstance(self, AbstractRegressionDG) and
+                    self.normalize_targets):
+                line_dirs /= torch.linalg.norm(line_dirs, dim=-1, keepdim=True)
+            cos_angles = torch.sum(line_dirs[:-1, :] * line_dirs[1:, :], dim=1)
+
+            # Resolve numerical instability
+            cos_angles = torch.minimum(torch.maximum(-one, cos_angles), one)
+            angles = torch.arccos(cos_angles)
+
+            current_loss = loss[0]
+            current_n = 1
+            for next_loss, next_angle in zip(loss[1:], angles):
+                # toDO. Find how to skip loop
+                if next_angle < eps:
+                    current_loss = current_loss + next_loss
+                    current_n += 1
+                else:
+                    # Save previous current_loss
+                    compressed_mean_loss = \
+                        compressed_mean_loss + current_loss / current_n
+                    compressed_n += 1
+
+                    # Restart
+                    current_loss = next_loss
+                    current_n = 1
+
+        return compressed_mean_loss / compressed_n, compressed_n
 
     def _sample_tracking_direction_prob(
             self, outputs, eos_stopping_thresh: Union[float, str]) -> Tensor:
@@ -278,7 +340,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         return next_dirs.detach()
 
 
-class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
+class AbstractRegressionDG(AbstractDirectionGetterModel):
     """
     Regression model.
 
@@ -288,12 +350,8 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         1. Linear1:  output size = ceil(input_size/2)
         2. Linear2:  output size = 3
     """
-    def __init__(self, input_size, dropout: float, key: str,
-                 supports_compressed_streamlines: bool,
-                 loss_description: str = '',
-                 normalize_targets: float = False,
-                 normalize_outputs: float = False,
-                 add_eos: float = False):
+    def __init__(self, normalize_targets: float = False,
+                 normalize_outputs: float = False, **kwargs):
         """
         normalize_targets: float
             Value to which to normalize targets when computing loss.
@@ -305,16 +363,14 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
         add_eos: bool
             If true, add a 4th dimension to learn the SOS label.
         """
-        super().__init__(input_size, dropout, key,
-                         supports_compressed_streamlines, loss_description)
+        super().__init__(**kwargs)
 
         output_size = 3  # x, y, z direction.
-        if add_eos:
+        if self.add_eos:
             output_size = 4  # + EOS choice.
-        self.layers = init_2layer_fully_connected(input_size, output_size)
+        self.layers = init_2layer_fully_connected(self.input_size, output_size)
         self.normalize_targets = normalize_targets
         self.normalize_outputs = normalize_outputs
-        self.add_eos = add_eos
 
     @property
     def params(self):
@@ -357,7 +413,8 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
 
         # 1. Main loss:
         if self.normalize_targets:
-            target_dirs = normalize_directions(target_dirs) * self.normalize_targets
+            target_dirs = normalize_directions(target_dirs) * \
+                          self.normalize_targets
         losses_dirs = self._compute_loss_dir(learned_directions[:, 0:3],
                                              target_dirs[:, 0:3])
 
@@ -401,21 +458,15 @@ class AbstractRegressionDirectionGetter(AbstractDirectionGetterModel):
             return model_outputs
 
 
-class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
+class CosineRegressionDG(AbstractRegressionDG):
     """
     Regression model. Loss = negative cosine similarity.
     """
-    def __init__(self, input_size: int, dropout: float = None,
-                 normalize_targets: float = False,
-                 normalize_outputs: float = False,
-                 add_eos: bool = False):
-        super().__init__(input_size, dropout,
-                         key='cosine-regression',
+    def __init__(self, **kwargs):
+        super().__init__(key='cosine-regression',
                          supports_compressed_streamlines=False,
                          loss_description='negative cosine similarity',
-                         normalize_targets=normalize_targets,
-                         normalize_outputs=normalize_outputs,
-                         add_eos=add_eos)
+                         **kwargs)
 
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
@@ -430,25 +481,19 @@ class CosineRegressionDirectionGetter(AbstractRegressionDirectionGetter):
         return losses
 
 
-class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
+class L2RegressionDG(AbstractRegressionDG):
     """
     Regression model.
 
     Loss = Pairwise distance = p_root(sum(|x_i|^P))
     * If sequence: averaged on time steps and sequences.
     """
-    def __init__(self, input_size: int, dropout: float = None,
-                 normalize_targets: float = False,
-                 normalize_outputs: float = False,
-                 add_eos: bool = False):
+    def __init__(self, **kwargs):
         # L2 Distance loss supports compressed streamlines
-        super().__init__(input_size, dropout,
-                         key='l2-regression',
+        super().__init__(key='l2-regression',
                          supports_compressed_streamlines=True,
                          loss_description="torch's pairwise distance",
-                         normalize_targets=normalize_targets,
-                         normalize_outputs=normalize_outputs,
-                         add_eos=add_eos)
+                         **kwargs)
 
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
@@ -474,18 +519,12 @@ class L2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
         return losses
 
 
-class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
-    def __init__(self, input_size: int, dropout: float = None,
-                 normalize_targets: float = False,
-                 normalize_outputs: float = False,
-                 add_eos: bool = False):
-        super().__init__(input_size, dropout,
-                         key='cos-plus-l2-regression',
+class CosPlusL2RegressionDG(AbstractRegressionDG):
+    def __init__(self, **kwargs):
+        super().__init__(key='cos-plus-l2-regression',
                          supports_compressed_streamlines=False,
                          loss_description='l2 + negative cosine similarity',
-                         normalize_targets=normalize_targets,
-                         normalize_outputs=normalize_outputs,
-                         add_eos=add_eos)
+                         **kwargs)
 
         # Loss will be applied on the last dimension.
         self.cos_loss = CosineSimilarity(dim=-1)
@@ -500,8 +539,7 @@ class CosPlusL2RegressionDirectionGetter(AbstractRegressionDirectionGetter):
         return losses
 
 
-class AbstractSphereClassificationDirectionGetter(
-      AbstractDirectionGetterModel):
+class AbstractSphereClassificationDG(AbstractDirectionGetterModel):
     """
     Classification model.
 
@@ -513,18 +551,14 @@ class AbstractSphereClassificationDirectionGetter(
         1. Linear1:  output size = ceil(input_size/2)
         2. Linear2:  output size = n
     """
-    def __init__(self, sphere: str, add_eos: bool,
-                 input_size: int, dropout: float, key: str,
-                 supports_compressed_streamlines: bool,
-                 loss_description: str = ''):
+    def __init__(self, sphere: str = 'symmetric724', **kwargs):
         """
         sphere: str
             An choice of dipy's Sphere.
         add_eos_class: bool
             If true, adds a class for EOS.
         """
-        super().__init__(input_size, dropout, key,
-                         supports_compressed_streamlines, loss_description)
+        super().__init__(**kwargs)
 
         # Classes
         self.sphere_name = sphere
@@ -533,8 +567,7 @@ class AbstractSphereClassificationDirectionGetter(
         nb_classes = sphere.vertices.shape[0]
 
         # EOS
-        self.add_eos = add_eos
-        if add_eos:
+        if self.add_eos:
             nb_classes += 1
             self.eos_class_idx = nb_classes - 1  # Last class. Idx -1.
             # During tracking: tried choosing EOS if it's the class with max
@@ -545,7 +578,7 @@ class AbstractSphereClassificationDirectionGetter(
             # have seen "if more than the sum of all others". Not implemented
             # here, probably even more strict.
 
-        self.layers = init_2layer_fully_connected(input_size, nb_classes)
+        self.layers = init_2layer_fully_connected(self.input_size, nb_classes)
 
     def move_to(self, device):
         super().move_to(device)
@@ -627,17 +660,15 @@ class AbstractSphereClassificationDirectionGetter(
             stop[:, None], torch.nan)
 
 
-class SphereClassificationDirectionGetter(
-      AbstractSphereClassificationDirectionGetter):
+class SphereClassificationDG(AbstractSphereClassificationDG):
     """
     Loss = negative log-likelihood.
     """
-    def __init__(self, input_size: int, dropout: float = None,
-                 sphere: str = 'symmetric724', add_eos=False):
-        super().__init__(sphere, add_eos, input_size, dropout,
-                         key='sphere-classification',
+    def __init__(self, **kwargs):
+        super().__init__(key='sphere-classification',
                          supports_compressed_streamlines=False,
-                         loss_description='negative log-likelihood')
+                         loss_description='negative log-likelihood',
+                         **kwargs)
 
     def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
         """
@@ -652,6 +683,15 @@ class SphereClassificationDirectionGetter(
             target_dirs, self.torch_sphere, smooth_labels=False,
             add_sos=False, add_eos=self.add_eos, to_one_hot=False)
         return target_idx
+
+    @staticmethod
+    def stack_batch(outputs, target_dirs):
+        # Formatted targets are a list of class index. Using hstack
+        target_dirs = torch.hstack(target_dirs)
+        # However, outputs are already a 'one-hot' vector per point (i.e. 2D).
+        # Using vstack.
+        outputs = torch.vstack(outputs)
+        return outputs, target_dirs
 
     def _compute_loss(self, logits_per_class: Tensor, targets_idx: Tensor,
                       average_results=True):
@@ -679,21 +719,19 @@ class SphereClassificationDirectionGetter(
             return nll_losses
 
 
-class SmoothSphereClassificationDirectionGetter(
-      AbstractSphereClassificationDirectionGetter):
+class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
     """
     Loss = KL divergence
     """
-    def __init__(self, input_size: int, dropout: float = None,
-                 sphere: str = 'symmetric724', add_eos=False):
+    def __init__(self, **kwargs):
         """
         smooth_labels: bool
             If true, applies a Gaussian on the labels, as done in Deeptract.
         """
-        super().__init__(sphere, add_eos, input_size, dropout,
-                         key='smooth-sphere-classification',
+        super().__init__(key='smooth-sphere-classification',
                          supports_compressed_streamlines=False,
-                         loss_description='negative log-likelihood')
+                         loss_description='negative log-likelihood',
+                         **kwargs)
 
     def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
         """
@@ -757,7 +795,7 @@ class SmoothSphereClassificationDirectionGetter(
             return nll_losses
 
 
-class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
+class SingleGaussianDG(AbstractDirectionGetterModel):
     """
     Regression model. The output is not an x,y,z value but the learned
     parameters of the gaussian representing the local direction.
@@ -770,17 +808,19 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
 
     Loss: Negative log-likelihood.
     """
-    def __init__(self, input_size: int, dropout: float = None):
+    def __init__(self, **kwargs):
         # 3D gaussian supports compressed streamlines
-        super().__init__(input_size, dropout,
-                         key='gaussian',
+        super().__init__(key='gaussian',
                          supports_compressed_streamlines=True,
-                         loss_description='negative log-likelihood')
+                         loss_description='negative log-likelihood',
+                         **kwargs)
 
         # Layers
-        self.layers_mean = init_2layer_fully_connected(input_size, 3)
-        self.layers_sigmas = init_2layer_fully_connected(input_size, 3)
+        self.layers_mean = init_2layer_fully_connected(self.input_size, 3)
+        self.layers_sigmas = init_2layer_fully_connected(self.input_size, 3)
 
+        if self.add_eos:
+            raise NotImplementedError
         # toDo:
         # if add_eos_label:
         #     self.layers_eos = init_2layer_fully_connected(input_size, 1)
@@ -856,7 +896,7 @@ class SingleGaussianDirectionGetter(AbstractDirectionGetterModel):
         return means
 
 
-class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
+class GaussianMixtureDG(AbstractDirectionGetterModel):
     """
     Regression model. The output is not an x,y,z value but the learned
     parameters of the distribution representing the local direction.
@@ -871,13 +911,15 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
 
     Loss: Negative log-likelihood.
     """
-    def __init__(self, input_size: int, dropout: float = None,
-                 nb_gaussians: int = 3):
+    def __init__(self, nb_gaussians: int = 3, **kwargs):
         # 3D Gaussian mixture supports compressed streamlines
-        super().__init__(input_size, dropout,
-                         key='gaussian-mixture',
+        super().__init__(key='gaussian-mixture',
                          supports_compressed_streamlines=True,
-                         loss_description='negative log-likelihood')
+                         loss_description='negative log-likelihood',
+                         **kwargs)
+
+        if self.add_eos:
+            raise NotImplementedError
 
         self.nb_gaussians = nb_gaussians
 
@@ -886,11 +928,11 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         # Use separate *heads* for the mu and sigma, but concatenate gaussians
 
         self.layers_mixture = init_2layer_fully_connected(
-            input_size, 1 * self.nb_gaussians)
+            self.input_size, 1 * self.nb_gaussians)
         self.layers_mean = init_2layer_fully_connected(
-            input_size, 3 * self.nb_gaussians)
+            self.input_size, 3 * self.nb_gaussians)
         self.layers_sigmas = init_2layer_fully_connected(
-            input_size, 3 * self.nb_gaussians)
+            self.input_size, 3 * self.nb_gaussians)
 
         # Loss will be defined in _compute_loss, using torch distribution
 
@@ -1007,7 +1049,7 @@ class GaussianMixtureDirectionGetter(AbstractDirectionGetterModel):
         return mixture_logits, means, sigmas
 
 
-class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
+class FisherVonMisesDG(AbstractDirectionGetterModel):
     """
     Regression model. The output is not an x,y,z value but the learned
     parameters of the distribution representing the local direction.
@@ -1028,14 +1070,16 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
     [3]: Directional Statistics (Mardia and Jupp, 1999)
     [4]: https://github.com/jasonlaska/spherecluster
     """
-    def __init__(self, input_size: int, dropout: float = None):
-        super().__init__(input_size, dropout,
-                         key='fisher-von-mises',
+    def __init__(self, **kwargs):
+        super().__init__(key='fisher-von-mises',
                          supports_compressed_streamlines=False,
-                         loss_description='negative log-likelihood')
+                         loss_description='negative log-likelihood',
+                         **kwargs)
 
-        self.layers_mean = init_2layer_fully_connected(input_size, 3)
-        self.layers_kappa = init_2layer_fully_connected(input_size, 1)
+        if self.add_eos:
+            raise NotImplementedError
+        self.layers_mean = init_2layer_fully_connected(self.input_size, 3)
+        self.layers_kappa = init_2layer_fully_connected(self.input_size, 1)
 
         # Loss will be defined in _compute_loss, using torch distribution
 
@@ -1142,17 +1186,16 @@ class FisherVonMisesDirectionGetter(AbstractDirectionGetterModel):
         return orthto / np.linalg.norm(orthto)
 
 
-class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
+class FisherVonMisesMixtureDG(AbstractDirectionGetterModel):
     """
     Compared to the version with 1 disbstribution, we now have an additional
     weight parameter alpha.
     """
-    def __init__(self, input_size: int, dropout: float = None,
-                 n_cluster: int = 3):
-        super().__init__(input_size, dropout,
-                         key='fisher-von-mises-mixture',
+    def __init__(self, n_cluster: int = 3, **kwargs):
+        super().__init__(key='fisher-von-mises-mixture',
                          supports_compressed_streamlines=False,
-                         loss_description='negative log-likelihood')
+                         loss_description='negative log-likelihood',
+                         **kwargs)
 
         self.n_cluster = n_cluster
         # toDO
@@ -1183,12 +1226,12 @@ class FisherVonMisesMixtureDirectionGetter(AbstractDirectionGetterModel):
 
 
 keys_to_direction_getters = \
-    {'cosine-regression': CosineRegressionDirectionGetter,
-     'l2-regression': L2RegressionDirectionGetter,
-     'cosine-plus-l2-regression': CosPlusL2RegressionDirectionGetter,
-     'sphere-classification': SphereClassificationDirectionGetter,
-     'smooth-sphere-classification': SmoothSphereClassificationDirectionGetter,
-     'gaussian': SingleGaussianDirectionGetter,
-     'gaussian-mixture': GaussianMixtureDirectionGetter,
-     'fisher-von-mises': FisherVonMisesDirectionGetter,
-     'fisher-von-mises-mixture': FisherVonMisesMixtureDirectionGetter}
+    {'cosine-regression': CosineRegressionDG,
+     'l2-regression': L2RegressionDG,
+     'cosine-plus-l2-regression': CosPlusL2RegressionDG,
+     'sphere-classification': SphereClassificationDG,
+     'smooth-sphere-classification': SmoothSphereClassificationDG,
+     'gaussian': SingleGaussianDG,
+     'gaussian-mixture': GaussianMixtureDG,
+     'fisher-von-mises': FisherVonMisesDG,
+     'fisher-von-mises-mixture': FisherVonMisesMixtureDG}

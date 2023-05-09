@@ -12,6 +12,7 @@ import os
 # See bug report here https://github.com/Lightning-AI/lightning/issues/5829
 # Importing now to solve issues later.
 import comet_ml
+import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
@@ -55,6 +56,7 @@ def prepare_arg_parser():
 
 
 def init_from_args(args, sub_loggers_level):
+    torch.manual_seed(args.rng)  # Set torch seed
 
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args, load_testing=False,
@@ -89,6 +91,7 @@ def init_from_args(args, sub_loggers_level):
             dropout=args.dropout,
             use_layer_normalization=args.use_layer_normalization,
             use_skip_connection=args.use_skip_connection,
+            start_from_copy_prev=args.start_from_copy_prev,
             # TRACKING MODEL
             dg_key=args.dg_key, dg_args=dg_args,
             # Other

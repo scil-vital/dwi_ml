@@ -2,13 +2,14 @@
 import logging
 from typing import Union, List
 
-import numpy as np
 import torch
-from torch.nn.utils.rnn import PackedSequence, pack_sequence, unpack_sequence, \
-    invert_permutation
+from torch.nn.utils.rnn import invert_permutation, PackedSequence, \
+    pack_sequence, unpack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions, compute_n_previous_dirs
+from dwi_ml.data.processing.streamlines.sos_eos_management import \
+    convert_dirs_to_class
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
     keys_to_tensor_embeddings, NoEmbedding
 from dwi_ml.models.main_models import (
@@ -47,6 +48,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  rnn_key: str, rnn_layer_sizes: List[int],
                  use_skip_connection: bool,
                  use_layer_normalization: bool, dropout: float,
+                 start_from_copy_prev: bool,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  # Other
@@ -81,11 +83,15 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             Whether to use skip connections. See [1] (Figure 1) to visualize
             the architecture.
         use_layer_normalization: bool
-            Wheter to apply layer normalization to the forward connections. See
-            [2].
+            Whether to apply layer normalization to the forward connections.
+            See [2].
         dropout : float
             If non-zero, introduces a `Dropout` layer on the outputs of each
             RNN layer except the last layer, with given dropout probability.
+        start_from_copy_prev: bool
+            If true, final_output = previous_dir + model_output. This can be
+            used independantly from the other previous dirs options that define
+            values to be concatenated to the input.
         ---
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
@@ -114,6 +120,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features
         self.dropout = dropout
+        self.start_from_copy_prev = start_from_copy_prev
 
         # ----------- Checks
         if self.input_embedding_key not in keys_to_tensor_embeddings.keys():
@@ -166,7 +173,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.forward_uses_streamlines = True
 
     def set_context(self, context):
-        assert context in ['training', 'tracking', 'visu',
+        assert context in ['training', 'validation', 'tracking', 'visu',
                            'preparing_backward']
         self._context = context
 
@@ -184,6 +191,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             'rnn_layer_sizes': self.rnn_model.layer_sizes,
             'use_skip_connection': self.rnn_model.use_skip_connection,
             'use_layer_normalization': self.rnn_model.use_layer_normalization,
+            'start_from_copy_prev': self.start_from_copy_prev,
             'dropout': self.dropout,
         })
 
@@ -191,8 +199,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
     def forward(self, inputs: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
-                hidden_recurrent_states: tuple = None,
-                default_to_copy_prev = False):
+                hidden_recurrent_states: tuple = None):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -209,9 +216,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             used.
         hidden_recurrent_states : tuple
             The current hidden states of the (stacked) RNN model.
-        default_to_copy_prev: bool
-            If true, output = prev_dir + model_output. If nb_previous_dirs > 0,
-            acts as a type of additive skip-connection. Else, unclear.
 
         Returns
         -------
@@ -249,35 +253,13 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # Formatting the n previous dirs for last point or all
         point_idx = -1 if self._context == 'tracking' else None
         n_prev_dirs = compute_n_previous_dirs(
-            dirs, max(self.nb_previous_dirs, 1), point_idx=point_idx,
+            dirs, self.nb_previous_dirs, point_idx=point_idx,
             device=self.device)
 
+        # Start from copy prev option.
         copy_prev_dir = 0.0
-        if default_to_copy_prev:
-            if self.nb_previous_dirs <= 1:
-                copy_prev_dir = n_prev_dirs
-            else:
-                copy_prev_dir = [p[:, 0:3] for p in n_prev_dirs]
-            copy_prev_dir = pack_sequence(copy_prev_dir, enforce_sorted=True)
-
-            # Shape: (nb_points - 1) per streamline x 3
-
-            if 'regression' in self.dg_key:
-                # Regression: The latest previous dir will be used as skip
-                # connection on the output.
-                pass
-            elif 'classification' in self.dg_key:
-                # Classification: We can do it too: we need to convert to the
-                # output class.
-                raise NotImplementedError
-            elif 'gaussian' in self.dg_key:
-                # The mean of the gaussian = the previous dir
-                raise NotImplementedError
-            else:
-                # Fisher: not sure how to do that.
-                raise NotImplementedError
-
-            copy_prev_dir = copy_prev_dir.data
+        if self.start_from_copy_prev:
+            copy_prev_dir = self.copy_prev_dir(dirs, n_prev_dirs)
 
         # ==== 1. Previous dirs embedding ====
         if self.nb_previous_dirs > 0:
@@ -318,7 +300,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # output will be a tensor, but with same format as input.data.
         # we will get a direction for each point.
         model_outputs = self.direction_getter(rnn_output)
-        model_outputs = model_outputs + copy_prev_dir
+        model_outputs = copy_prev_dir + model_outputs
 
         # Return the hidden states. Necessary for the generative
         # (tracking) part, done step by step.
@@ -340,3 +322,70 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             return model_outputs, out_hidden_recurrent_states
         else:
             return model_outputs
+
+    def compute_loss(self, model_outputs, target_streamlines,
+                     average_results=True, **kw):
+        if self._context == 'training':
+            return self.direction_getter.compute_loss(
+                model_outputs, target_streamlines, average_results)
+        else:
+            assert self._context in ['validation', 'visu']
+            return self.direction_getter.compute_loss(
+                model_outputs, target_streamlines, average_results)
+
+    def copy_prev_dir(self, dirs, n_prev_dirs):
+        if 'regression' in self.dg_key:
+            # Regression: The latest previous dir will be used as skip
+            # connection on the output.
+            # Either take dirs and add [0, 0, 0] at each first position.
+            # Or use pre-computed:
+            if self.nb_previous_dirs > 1:
+                copy_prev_dir = [p[:, 0:3] for p in n_prev_dirs]
+            else:
+                copy_prev_dir = [torch.nn.functional.pad(cp, [0, 0, 1, 0])
+                                 for cp in dirs]
+            copy_prev_dir = pack_sequence(copy_prev_dir)
+            copy_prev_dir = copy_prev_dir.data
+        elif self.dg_key == 'sphere-classification':
+            # Converting the input directions into classes the same way as
+            # during loss, but convert to one-hot.
+            # The first previous dir (0) converts to index 0.
+            if self._context == 'tracking':
+                if dirs[0].shape[0] == 0:
+                    copy_prev_dir = torch.zeros(
+                        len(dirs),
+                        len(self.direction_getter.torch_sphere.vertices),
+                        device=self.device)
+                else:
+                    # Take only the last point.
+                    dirs = [d[-1, :][None, :] for d in dirs]
+                    copy_prev_dir = convert_dirs_to_class(
+                        dirs, self.direction_getter.torch_sphere,
+                        smooth_labels=False, add_sos=False, add_eos=False,
+                        to_one_hot=True)
+                    copy_prev_dir = pack_sequence(copy_prev_dir)
+            else:
+                # Take all points.
+                copy_prev_dir = convert_dirs_to_class(
+                    dirs, self.direction_getter.torch_sphere,
+                    smooth_labels=False, add_sos=False, add_eos=False,
+                    to_one_hot=True)
+
+                # Add zeros as previous dir at the first position
+                copy_prev_dir = [torch.nn.functional.pad(cp, [0, 0, 1, 0])
+                                 for cp in copy_prev_dir]
+                copy_prev_dir = pack_sequence(copy_prev_dir)
+
+            # Making the one from one-hot important for the sigmoid.
+            copy_prev_dir = copy_prev_dir.data * 6.0
+
+        elif self.dg_key == 'smooth-sphere-classification':
+            raise NotImplementedError
+        elif 'gaussian' in self.dg_key:
+            # The mean of the gaussian = the previous dir
+            raise NotImplementedError
+        else:
+            # Fisher: not sure how to do that.
+            raise NotImplementedError
+
+        return copy_prev_dir

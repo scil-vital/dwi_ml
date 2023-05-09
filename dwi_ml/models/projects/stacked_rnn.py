@@ -203,15 +203,13 @@ class StackedRNN(torch.nn.Module):
 
             if i > 0:
                 # Packing back the output tensor from previous layer;
-                # only the .data was kept for the direction getter.
-                last_output = PackedSequence(last_output, inputs.batch_sizes,
-                                             inputs.sorted_indices,
-                                             inputs.unsorted_indices)
+                # only the .data was kept from Dropout and Relu
+                last_output = PackedSequence(last_output, inputs.batch_sizes)
 
             # ** RNN **
             # Either as 3D tensor or as packedSequence
-            last_output, new_state_i = self.rnn_layers[i](last_output,
-                                                          hidden_states[i])
+            last_output, new_state_i = self.rnn_layers[i](
+                last_output, hidden_states[i])
             out_hidden_states.append(new_state_i)
 
             # ** Other sub-layers **
@@ -253,11 +251,18 @@ class StackedRNN(torch.nn.Module):
 
         # Final last_output
         if self.use_skip_connection:
-            last_output = torch.cat(outputs, dim=-1)
+            if len(self.rnn_layers) > 1:
+                last_output = torch.cat(outputs, dim=-1)
+            else:
+                last_output = outputs[0]
+
             if ADD_SKIP_TO_OUTPUT:
                 last_output = torch.cat((last_output, init_inputs), dim=-1)
-
-            logger.debug(
-                'Final skip connection: concatenating all outputs but not '
-                'input. Final shape is {}'.format(last_output.shape))
+                logger.debug(
+                    'Final skip connection: concatenating all outputs AND '
+                    'input. Final shape is {}'.format(last_output.shape))
+            else:
+                logger.debug(
+                    'Final skip connection: concatenating all outputs but NOT '
+                    'input. Final shape is {}'.format(last_output.shape))
         return last_output, out_hidden_states

@@ -100,15 +100,24 @@ class Tester:
     def _volume_groups(self):
         raise NotImplementedError
 
-    def run_model_on_sft(self, sft, compute_loss=True):
+    def run_model_on_sft(self, sft, add_zeros_if_no_eos=True,
+                         compute_loss=True):
         """
         Equivalent of one validation pass.
+
+        Parameters
+        ----------
+        sft: StatefulTractogram
+        add_zeros_if_no_eos: bool
+            If true, the loss with no zeros is also printed.
+        compute_loss: bool
+            If False, the method returns the outputs after a forward pass only.
         """
         batch_size = self.batch_size or len(sft)
         nb_batches = int(np.ceil(len(sft) / batch_size))
 
-        losses = [torch.Tensor] * nb_batches
-        outputs = [torch.Tensor] * nb_batches
+        losses = []
+        outputs = []
         batch_start = 0
         batch_end = batch_size
         with torch.no_grad():
@@ -137,28 +146,26 @@ class Tester:
                     tmp_losses = self.model.compute_loss(
                         tmp_outputs, streamlines, average_results=False)
 
+                outputs.extend([o.cpu() for o in tmp_outputs])
+                losses.extend([line_loss.cpu() for line_loss in tmp_losses])
+
                 batch_start = batch_end
                 batch_end = min(batch_start + batch_size, len(sft))
 
-                outputs[batch_start:batch_end] = [o.cpu() for o in tmp_outputs]
-                losses[batch_start:batch_end] = [l.cpu() for l in tmp_losses]
-
-            losses, outputs = self.combine_batches(losses, outputs)
-
-            total_n = len(losses)
-            total_loss = torch.mean(losses)
+            total_n = sum([len(line_loss) for line_loss in losses])
+            total_loss = torch.mean(torch.hstack(losses))
             print("Loss function, averaged over all {} points in the chosen "
                   "SFT, is: {}.".format(total_n, total_loss))
 
+            if add_zeros_if_no_eos:
+                zero = torch.zeros(1)
+                losses = [torch.hstack([line, zero]) for line in losses]
+                total_n = sum([len(line_loss) for line_loss in losses])
+                total_loss = torch.mean(torch.hstack(losses))
+                print("When adding a 0 loss at the EOS position, the mean"
+                      "loss is {} for {} points.".format(total_n, total_loss))
+
         return outputs, losses
-
-    def combine_batches(self, losses, outputs):
-        if len(losses) == 1:
-            return losses[0], outputs[0]
-
-        losses = torch.cat(losses)
-        outputs = torch.cat(outputs)
-        return losses, outputs
 
     def _prepare_inputs_at_pos(self, streamlines):
         raise NotImplementedError

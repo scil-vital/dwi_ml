@@ -13,7 +13,7 @@ from dwi_ml.models.projects.transforming_tractography import \
 
 # Currently, with our quite long sequences compared to their example, this
 # is a bit ugly.
-from dwi_ml.visu.projects.transformer_visualisation_utils import \
+from dwi_ml.testing.visu.projects.transformer_visualisation_utils import \
     load_data_run_model, tto_show_head_view, tto_show_model_view, \
     prepare_tokens, ttst_show_head_view, ttst_show_model_view
 

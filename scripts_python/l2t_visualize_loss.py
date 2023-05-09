@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 import argparse
 import logging
 import os.path
@@ -13,7 +12,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.testing.projects.learn2track_tester import TesterPackedSequence
-from dwi_ml.visu.visu_loss import prepare_colors_from_loss, \
+from dwi_ml.testing.visu.visu_loss import prepare_colors_from_loss, \
     prepare_args_visu_loss, combine_displacement_with_ref, pick_a_few, \
     separate_best_and_worst
 
@@ -38,6 +37,7 @@ def main():
 
     # Verify output names
     out_files = [args.out_colored_sft]
+    colorbar_name, best_sft_name, worst_sft_name = False
     if args.out_colored_sft is not None:
         base_name, _ = os.path.splitext(os.path.basename(args.out_colored_sft))
         file_dir = os.path.dirname(args.out_colored_sft)
@@ -76,14 +76,20 @@ def main():
                             args.pick_best_and_worst, args.pick_idx)
 
     logging.info("Running model to compute loss")
+
     outputs, losses = tester.run_model_on_sft(sft)
+
+    compute_loss_only = (args.out_colored_sft is None and
+                         args.out_displacement_sft is None and
+                         args.save_best_and_worst is None)
+    if compute_loss_only:
+        return
 
     # 3. Save colored SFT
     if args.out_colored_sft is not None:
         logging.info("Preparing colored sft")
         sft, colorbar_fig = prepare_colors_from_loss(
-            losses, model.direction_getter.add_eos, sft,
-            args.colormap, args.min_range, args.max_range)
+            losses, sft, args.colormap, args.min_range, args.max_range)
         print("Saving colored SFT as {}".format(args.out_colored_sft))
         save_tractogram(sft, args.out_colored_sft)
 
@@ -95,8 +101,7 @@ def main():
     worst_idx = []
     if args.save_best_and_worst is not None or args.pick_best_and_worst:
         best_idx, worst_idx = separate_best_and_worst(
-            args.save_best_and_worst, model.direction_getter.add_eos,
-            losses, sft)
+            args.save_best_and_worst, losses, sft)
 
         if args.out_colored is not None:
             best_sft = sft[best_idx]

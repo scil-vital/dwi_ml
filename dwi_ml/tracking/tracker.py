@@ -16,7 +16,7 @@ from tqdm.contrib.logging import tqdm_logging_redirect
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.direction_getter_models import \
-    AbstractRegressionDirectionGetter
+    AbstractRegressionDG
 from dwi_ml.models.main_models import ModelWithDirectionGetter, \
     MainModelOneInput
 from dwi_ml.tracking.tracking_mask import TrackingMask
@@ -131,7 +131,7 @@ class DWIMLAbstractTracker:
                             .format(self.eos_stopping_thresh))
                 if self.eos_stopping_thresh == 'max' and isinstance(
                         model.direction_getter,
-                        AbstractRegressionDirectionGetter):
+                        AbstractRegressionDG):
                     raise ValueError("Regression's EOS is a tag, not a class. "
                                      "It does not support the criterion "
                                      "'max'.")

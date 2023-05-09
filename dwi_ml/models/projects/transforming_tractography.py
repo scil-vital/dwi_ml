@@ -108,7 +108,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
                  norm_first: bool,
-                 # start_from_copy_prev: bool,
+                 start_from_copy_prev: bool,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: dict,
                  # Other
@@ -195,9 +195,12 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         self.dropout_rate = dropout_rate
         self.activation = activation
         self.norm_first = norm_first
-        self.start_from_copy_prev = False # start_from_copy_prev
+        self.start_from_copy_prev = start_from_copy_prev
 
         # ----------- Checks
+        assert embedding_size_x > 3, \
+            "Current computation of the positional encoding required data " \
+            "of size > 3, but got {}".format(embedding_size_x)
         if self.embedding_key_x not in keys_to_embeddings.keys():
             raise ValueError("Embedding choice for x data not understood: {}"
                              .format(self.embedding_key_x))
@@ -491,7 +494,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         outputs = copy_prev_dir + outputs
 
         if self._context != 'tracking':
-            outputs = torch.split(outputs, list(unpad_lengths))
+            outputs = list(torch.split(outputs, list(unpad_lengths)))
 
         if return_weights:
             return outputs, weights
@@ -738,7 +741,8 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         })
         return p
 
-    def run_embedding(self, inputs, targets, use_padding, batch_max_len):
+    def run_embedding(self, inputs: List[torch.Tensor], targets, use_padding,
+                      batch_max_len):
         """
         Pad + concatenate.
         Embedding. (Add SOS token to target.)

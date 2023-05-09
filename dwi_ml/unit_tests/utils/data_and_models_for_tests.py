@@ -4,7 +4,7 @@ import os
 from typing import List
 
 import torch
-from torch.nn.utils.rnn import pack_sequence
+from torch.nn.utils.rnn import pack_sequence, unpack_sequence
 
 from scilpy.io.fetcher import fetch_data, get_home
 
@@ -128,22 +128,15 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
 
         self.instantiate_direction_getter(dg_input_size)
 
-    def compute_loss(self, model_outputs: torch.Tensor,
+    def compute_loss(self, model_outputs: List[torch.Tensor],
                      target_streamlines: List[torch.Tensor],
                      average_results=True, **kw):
-        target_dirs = self.direction_getter.prepare_targets_for_loss(
-            target_streamlines)
-
-        # Packing dirs and using the .data instead of looping on streamlines.
-        # Anyway, loss is computed point by point.
-        target_dirs = torch.vstack(target_dirs)
-
         # Computing loss
         # Depends on model. Ex: regression: direct difference.
         # Classification: log-likelihood.
         # Gaussian: difference between distribution and target.
-        return self.direction_getter.compute_loss(model_outputs, target_dirs,
-                                                  average_results)
+        return self.direction_getter.compute_loss(
+            model_outputs, target_streamlines, average_results)
 
     def get_tracking_directions(self, regressed_dirs, algo):
         if algo == 'det':
@@ -177,12 +170,9 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
                                     device=self.device)
                          for s in inputs]
 
-        # Packing results
-        # Resulting shape = self.df_input_size *
-        model_outputs = pack_sequence(model_outputs, enforce_sorted=False).data
-
-        # Direction getter
-        model_outputs = self.direction_getter(model_outputs)
+        # Packing results, unpacking, or stacking, unstacking, or looping on
+        # streamlines?
+        model_outputs = [self.direction_getter(out) for out in model_outputs]
 
         return model_outputs
 

@@ -127,7 +127,6 @@ class DWIMLBatchIDSampler(Sampler):
         # Set random numbers
         self.rng = rng
         self.np_rng = np.random.RandomState(self.rng)
-        torch.manual_seed(self.rng)  # Set torch seed
 
         # Batch sampler's logging level can be changed separately from main
         # scripts.

@@ -13,9 +13,10 @@ from dwi_ml.models.projects.transforming_tractography import \
 
 # Currently, with our quite long sequences compared to their example, this
 # is a bit ugly.
-from dwi_ml.testing.visu.projects.transformer_visualisation_utils import \
+from dwi_ml.testing.projects.transformer_visualisation_utils import \
     load_data_run_model, tto_show_head_view, tto_show_model_view, \
-    prepare_tokens, ttst_show_head_view, ttst_show_model_view
+    tto_prepare_tokens, ttst_prepare_tokens, ttst_show_model_view, \
+    ttst_show_head_view
 
 NORMALIZE_WEIGHTS = True
 INFORMATIVE_TOKENS = False
@@ -110,11 +111,15 @@ def tto_visualize_weights(args, parser):
     nb_heads = 1 if args.average_heads else model.nheads
 
     streamline1 = batch_streamlines[0]
-    this_seq_len = len(streamline1) - 1
-    logging.info("Chosen streamline's length: {} points"
-                 .format(len(streamline1)))
+    this_seq_len = len(streamline1)
+    if model.direction_getter.add_eos:
+        logging.info("Chosen streamline's length: {} points"
+                     .format(len(streamline1)))
+    else:
+        logging.info("Chosen streamline's length (after removing the last "
+                     "unused point): {} points".format(len(streamline1)))
 
-    encoder_tokens, decoder_tokens = prepare_tokens(streamline1)
+    encoder_tokens, decoder_tokens = tto_prepare_tokens(streamline1)
 
     # Unpadding attention
     if args.average_heads:
@@ -194,12 +199,15 @@ def ttst_visualize_weights(args, parser):
     nb_heads = 1 if args.average_heads else model.nheads
 
     streamline1 = batch_streamlines[0]
-    this_seq_len = (len(streamline1) - 1) * 2
-    logging.info("Chosen streamline's length: {} points"
-                 .format(len(streamline1)))
+    this_seq_len = len(streamline1)
+    if model.direction_getter.add_eos:
+        logging.info("Chosen streamline's length: {} points"
+                     .format(len(streamline1)))
+    else:
+        logging.info("Chosen streamline's length (after removing the last "
+                     "unused point): {} points".format(len(streamline1)))
 
-    encoder_tokens, decoder_tokens = prepare_tokens(streamline1)
-    tokens = encoder_tokens + decoder_tokens
+    tokens = ttst_prepare_tokens(streamline1)
 
     # Unpadding attention
     if args.average_heads:

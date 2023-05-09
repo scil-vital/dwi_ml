@@ -307,7 +307,6 @@ class DWIMLAbstractTrainer:
         # NOTE: This ordering is important! The optimizer needs to use the cuda
         # Tensors if using the GPU...
         self.model.move_to(device=self.device)
-        self.model.set_context('training')
 
         # Build optimizer (Optimizer is built here since it needs the model
         # parameters)
@@ -386,6 +385,8 @@ class DWIMLAbstractTrainer:
                     display_summary_level=False)
                 self.comet_exp.set_name(self.experiment_name)
                 self.comet_exp.log_parameters(self.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.batch_loader.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.model.params_for_checkpoint)
                 self.comet_key = self.comet_exp.get_key()
                 # Couldn't find how to set log level. Getting it directly.
                 comet_log = logging.getLogger("comet_ml")
@@ -577,6 +578,8 @@ class DWIMLAbstractTrainer:
         # Setting contexts
         self.batch_loader.set_context('training')
         self.batch_sampler.set_context('training')
+        self.model.set_context('training')
+
         comet_context = self.comet_exp.train if self.comet_exp else None
         self._clear_handles()
         self.model.train()
@@ -643,6 +646,7 @@ class DWIMLAbstractTrainer:
         self.batch_loader.set_context('validation')
         self.batch_sampler.set_context('validation')
         comet_context = self.comet_exp.validate if self.comet_exp else None
+        self.model.set_context('validation')
         self.model.eval()
         grad_context = torch.no_grad
 

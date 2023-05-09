@@ -79,13 +79,14 @@ def init_from_args(args, sub_loggers_level):
             step_size=args.step_size, compress=args.compress,
             # Targets in encoder:
             token_type=args.token_type, embedding_key_t=args.target_embedding,
+            embedding_size_t=args.embedding_size_t,
             # Concerning inputs:
             nb_features=args.nb_features, embedding_key_x=args.data_embedding,
             embedding_size_x=args.embedding_size_x,
             # Torch's transformer parameters
             max_len=args.max_len,
             positional_encoding_key=args.position_encoding,
-            d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,
+            ffnn_hidden_size=args.ffnn_hidden_size,
             nheads=args.nheads, dropout_rate=args.dropout_rate,
             activation=args.activation,
             norm_first=args.norm_first, n_layers_d=args.n_layers_d,

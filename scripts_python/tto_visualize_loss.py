@@ -4,8 +4,6 @@ import argparse
 import logging
 import os.path
 
-from dipy.io.streamline import save_tractogram
-import matplotlib.pyplot as plt
 import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
@@ -14,9 +12,8 @@ from dwi_ml.models.projects.transforming_tractography import \
     OriginalTransformerModel
 from dwi_ml.testing.testers import TesterOneInput
 
-from dwi_ml.testing.visu.visu_loss import prepare_colors_from_loss, \
-    prepare_args_visu_loss, combine_displacement_with_ref, pick_a_few, \
-    separate_best_and_worst
+from dwi_ml.testing.visu_loss import \
+    prepare_args_visu_loss, pick_a_few, run_visu_save_colored_displacement
 
 
 def main():
@@ -39,6 +36,7 @@ def main():
 
     # Verify output names
     out_files = [args.out_colored_sft]
+    colorbar_name, best_sft_name, worst_sft_name = (None, None, None)
     if args.out_colored_sft is not None:
         base_name, _ = os.path.splitext(os.path.basename(args.out_colored_sft))
         file_dir = os.path.dirname(args.out_colored_sft)
@@ -79,61 +77,15 @@ def main():
     logging.info("Running model to compute loss")
     outputs, losses = tester.run_model_on_sft(sft)
 
-    # 3. Save colored SFT
-    if args.out_colored_sft is not None:
-        logging.info("Preparing colored sft")
-        sft, colorbar_fig = prepare_colors_from_loss(
-            losses, model.direction_getter.add_eos, sft,
-            args.colormap, args.min_range, args.max_range)
-        print("Saving colored SFT as {}".format(args.out_colored_sft))
-        save_tractogram(sft, args.out_colored_sft)
+    compute_loss_only = (args.out_colored_sft is None and
+                         args.out_displacement_sft is None and
+                         args.save_best_and_worst is None)
+    if compute_loss_only:
+        return
 
-        print("Saving colorbar as {}".format(colorbar_name))
-        colorbar_fig.savefig(colorbar_name)
-
-    # 4. Separate best and worst
-    best_idx = []
-    worst_idx = []
-    if args.save_best_and_worst is not None or args.pick_best_and_worst:
-        best_idx, worst_idx = separate_best_and_worst(
-            args.save_best_and_worst, model.direction_getter.add_eos,
-            losses, sft)
-
-        if args.out_colored is not None:
-            best_sft = sft[best_idx]
-            worst_sft = sft[worst_idx]
-            print("Saving best and worst streamlines as {} \nand {}"
-                  .format(best_sft_name, worst_sft_name))
-            save_tractogram(best_sft, best_sft_name)
-            save_tractogram(worst_sft, worst_sft_name)
-
-    # 4. Save displacement
-    if args.out_displacement_sft:
-        if model.direction_getter.add_eos:
-            outputs = torch.split(outputs, [len(s) for s in sft.streamlines])
-        else:
-            outputs = torch.split(outputs, [len(s) - 1 for s in sft.streamlines])
-
-        if args.out_colored_sft:
-            # We have run model on all streamlines. Picking a few now.
-            sft, idx = pick_a_few(
-                sft, best_idx, worst_idx, args.pick_at_random,
-                args.pick_best_and_worst, args.pick_idx)
-            outputs = [outputs[i] for i in idx]
-
-        # Either concat, run, split or (chosen:) loop
-        # Use eos_thresh of 1 to be sure we don't output a NaN
-        out_dirs = [model.get_tracking_directions(
-            s_output, algo='det', eos_stopping_thresh=1.0).numpy()
-                    for s_output in outputs]
-
-        # Save error together with ref
-        sft = combine_displacement_with_ref(out_dirs, sft, model.step_size)
-
-        save_tractogram(sft, args.out_displacement_sft, bbox_valid_check=False)
-
-    if args.show_colorbar:
-        plt.show()
+    run_visu_save_colored_displacement(args, model, losses, outputs, sft,
+                                       colorbar_name, best_sft_name,
+                                       worst_sft_name)
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from math import ceil
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Any
 
 import dipy.data
 import numpy as np
@@ -93,8 +93,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
                   |                     |
                   -----------------------
     """
-    def __init__(self, input_size: int, dropout: float, key: str,
-                 supports_compressed_streamlines: bool,
+    def __init__(self, input_size: int, key: str,
+                 supports_compressed_streamlines: bool,  dropout: float = None,
                  compress_loss: bool = False, compress_eps: float = 1e-3,
                  loss_description: str = '', add_eos: bool = False):
         """
@@ -195,7 +195,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
     def compute_loss(self, outputs: List[Tensor],
                      target_streamlines: List[Tensor], average_results=True):
-        if self._compress_loss and not average_results:
+        if self.compress_loss and not average_results:
             raise ValueError(
                 "There is not sense in using compress_loss = True and "
                 "average_loss = False. Compress_loss returns only one value.")
@@ -203,7 +203,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         target_dirs = self.prepare_targets_for_loss(target_streamlines)
         lengths = [len(t) for t in target_dirs]
 
-        if self._compress_loss:
+        target_dirs_list = None
+        if self.compress_loss:
             target_dirs_list = target_dirs  # Save here, or re-split below.
             average_results = False  # We will do our own average.
 
@@ -212,7 +213,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         if average_results:
             return loss
-        elif self._compress_loss:
+        elif self.compress_loss:
             loss = torch.split(loss, lengths)
             final_loss, final_n = self._compress_loss(loss, target_dirs_list)
             logging.info("Converted {} data points into {} compressed data "
@@ -245,7 +246,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         """
         raise NotImplementedError
 
-    def _compress_loss(self, losses, dirs):
+    def _compress_loss(self, losses: List, dirs: List):
         # 1e-3 rad = 0.05 degrees.
         # In our in-house test, on average 140 000 -> 30 000 points
         # Because our PFT tracking for training in this example was done on
@@ -257,31 +258,41 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         compressed_mean_loss = 0.0
         compressed_n = 0
         for loss, line_dirs in zip(losses, dirs):
-            if not (isinstance(self, AbstractRegressionDG) and
-                    self.normalize_targets):
-                line_dirs /= torch.linalg.norm(line_dirs, dim=-1, keepdim=True)
-            cos_angles = torch.sum(line_dirs[:-1, :] * line_dirs[1:, :], dim=1)
+            if len(loss) < 2:
+                compressed_mean_loss = compressed_mean_loss + torch.mean(loss)
+                compressed_n += len(loss)
+            else:
+                # 1. Compute angles
+                # Skip normalization if not required:
+                if not (isinstance(self, AbstractRegressionDG) and
+                        self.normalize_targets):
+                    line_dirs /= torch.linalg.norm(line_dirs, dim=-1,
+                                                   keepdim=True)
+                cos_angles = torch.sum(line_dirs[:-1, :] * line_dirs[1:, :],
+                                       dim=1)
 
-            # Resolve numerical instability
-            cos_angles = torch.minimum(torch.maximum(-one, cos_angles), one)
-            angles = torch.arccos(cos_angles)
+                # Resolve numerical instability
+                cos_angles = torch.minimum(torch.maximum(-one, cos_angles),
+                                           one)
+                angles = torch.arccos(cos_angles)
 
-            current_loss = loss[0]
-            current_n = 1
-            for next_loss, next_angle in zip(loss[1:], angles):
-                # toDO. Find how to skip loop
-                if next_angle < eps:
-                    current_loss = current_loss + next_loss
-                    current_n += 1
-                else:
-                    # Save previous current_loss
-                    compressed_mean_loss = \
-                        compressed_mean_loss + current_loss / current_n
-                    compressed_n += 1
+                # 2. Compress losses
+                current_loss = loss[0]
+                current_n = 1
+                for next_loss, next_angle in zip(loss[1:], angles):
+                    # toDO. Find how to skip loop
+                    if next_angle < self.compress_eps:
+                        current_loss = current_loss + next_loss
+                        current_n += 1
+                    else:
+                        # Save previous current_loss
+                        compressed_mean_loss = \
+                            compressed_mean_loss + current_loss / current_n
+                        compressed_n += 1
 
-                    # Restart
-                    current_loss = next_loss
-                    current_n = 1
+                        # Restart
+                        current_loss = next_loss
+                        current_n = 1
 
         return compressed_mean_loss / compressed_n, compressed_n
 
@@ -838,6 +849,13 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
 
         return means, sigmas
 
+    @staticmethod
+    def stack_batch(outputs, target_dirs):
+        target_dirs = torch.vstack(target_dirs)
+        means = torch.vstack([out[0] for out in outputs])
+        sigmas = torch.vstack([out[1] for out in outputs])
+        return (means, sigmas), target_dirs
+
     def _compute_loss(self, learned_gaussian_params: Tuple[Tensor, Tensor],
                       target_dirs: Tensor, average_results=True):
         """
@@ -956,6 +974,14 @@ class GaussianMixtureDG(AbstractDirectionGetterModel):
         sigmas = torch.exp(log_sigmas)
 
         return mixture_logits, means, sigmas
+
+    @staticmethod
+    def stack_batch(outputs, target_dirs):
+        target_dirs = torch.vstack(target_dirs)
+        mixture_logits = torch.vstack([out[0] for out in outputs])
+        means = torch.vstack([out[1] for out in outputs])
+        sigmas = torch.vstack([out[2] for out in outputs])
+        return (mixture_logits, means, sigmas), target_dirs
 
     def _compute_loss(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
@@ -1105,6 +1131,13 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         kappas = kappas.squeeze(dim=-1)
 
         return means, kappas
+
+    @staticmethod
+    def stack_batch(outputs, target_dirs):
+        target_dirs = torch.vstack(target_dirs)
+        mus = torch.vstack([out[0] for out in outputs])
+        kappas = torch.vstack([out[1] for out in outputs])
+        return (mus, kappas), target_dirs
 
     def _compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
                       target_dirs, average_results=True):

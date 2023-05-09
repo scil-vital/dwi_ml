@@ -497,7 +497,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
     def instantiate_direction_getter(self, dg_input_size):
         direction_getter_cls = keys_to_direction_getters[self.dg_key]
         self.direction_getter = direction_getter_cls(
-            dg_input_size, **self.dg_args)
+            input_size=dg_input_size, **self.dg_args)
 
     @staticmethod
     def add_args_tracking_model(p):

@@ -46,6 +46,7 @@ def test_learn2track():
                              input_embedding_size_ratio=None,
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,
+                             start_from_copy_prev=False,
                              dg_key='cosine-regression', dg_args=None,
                              neighborhood_type=None, neighborhood_radius=None)
 

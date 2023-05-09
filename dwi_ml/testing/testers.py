@@ -162,8 +162,8 @@ class Tester:
                 losses = [torch.hstack([line, zero]) for line in losses]
                 total_n = sum([len(line_loss) for line_loss in losses])
                 total_loss = torch.mean(torch.hstack(losses))
-                print("When adding a 0 loss at the EOS position, the mean"
-                      "loss is {} for {} points.".format(total_n, total_loss))
+                print("When adding a 0 loss at the EOS position, the mean "
+                      "loss for {} points is {}.".format(total_n, total_loss))
 
         return outputs, losses
 

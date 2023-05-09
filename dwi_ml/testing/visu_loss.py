@@ -10,6 +10,8 @@ from typing import List
 
 import numpy as np
 import torch
+from dipy.io.stateful_tractogram import StatefulTractogram
+from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
 from scilpy.io.utils import add_overwrite_arg
 
@@ -67,29 +69,20 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
 
 
 def prepare_colors_from_loss(
-        losses: torch.Tensor, sft, colormap, min_range=None, max_range=None):
-    """
-    Args
-    ----
-    losses: list[Tensor]
-    sft: StatefulTractogram
-    colormap: str
-    min_range: float
-    max_range: float
-    """
+        losses: List[torch.Tensor], sft: StatefulTractogram, colormap: str,
+        min_range: float = None, max_range: float = None):
+
+    losses = np.concatenate(losses)
     # normalize between 0 and 1
     # Keeping as tensor because the split method below is easier to use
     # with torch.
-    min_val = torch.min(losses) if min_range is None else min_range
-    max_val = torch.max(losses) if max_range is None else max_range
+    min_val = np.min(losses) if min_range is None else min_range
+    max_val = np.max(losses) if max_range is None else max_range
     logging.info("Range of the colormap is considered to be: {:.2f} - {:.2f}"
                  .format(min_val, max_val))
-    losses = torch.clip(losses, min_val, max_val)
+    losses = np.clip(losses, min_val, max_val)
     losses = (losses - min_val) / (max_val - min_val)
     print("Loss ranges between {} and {}".format(min_val, max_val))
-
-    # Add 0 loss for the last point and merge
-    losses = np.concatenate(losses)
 
     cmap = plt.colormaps.get_cmap(colormap)
     color = cmap(losses)[:, 0:3] * 255
@@ -171,7 +164,6 @@ def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
         # output : Starts on first point
         #          + tmp = each point = true previous point + learned dir
         #                 + in between each point, comes back to correct point.
-        logging.warning("S: {}\n D: {}\n".format(s, streamline_out_dir))
         tmp = [[s[p] + streamline_out_dir[p], s[p+1]]
                for p in range(this_s_len - 1)]
         out_streamline = \
@@ -210,3 +202,58 @@ def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
           "estimation at each time point.")
 
     return sft
+
+
+def run_visu_save_colored_displacement(
+        args, model, losses: List[torch.Tensor], outputs: List[torch.Tensor],
+        sft: StatefulTractogram, colorbar_name: str, best_sft_name: str,
+        worst_sft_name: str):
+
+    # Save colored SFT
+    if args.out_colored_sft is not None:
+        logging.info("Preparing colored sft")
+        sft, colorbar_fig = prepare_colors_from_loss(
+            losses, sft, args.colormap, args.min_range, args.max_range)
+        print("Saving colored SFT as {}".format(args.out_colored_sft))
+        save_tractogram(sft, args.out_colored_sft)
+
+        print("Saving colorbar as {}".format(colorbar_name))
+        colorbar_fig.savefig(colorbar_name)
+
+    # Separate best and worst
+    best_idx = []
+    worst_idx = []
+    if args.save_best_and_worst is not None or args.pick_best_and_worst:
+        best_idx, worst_idx = separate_best_and_worst(
+            args.save_best_and_worst, losses, sft)
+
+        if args.out_colored_sft is not None:
+            best_sft = sft[best_idx]
+            worst_sft = sft[worst_idx]
+            print("Saving best and worst streamlines as {} \nand {}"
+                  .format(best_sft_name, worst_sft_name))
+            save_tractogram(best_sft, best_sft_name)
+            save_tractogram(worst_sft, worst_sft_name)
+
+    # Save displacement
+    if args.out_displacement_sft:
+        if args.out_colored_sft:
+            # We have run model on all streamlines. Picking a few now.
+            sft, idx = pick_a_few(
+                sft, best_idx, worst_idx, args.pick_at_random,
+                args.pick_best_and_worst, args.pick_idx)
+            outputs = [outputs[i] for i in idx]
+
+        # Either concat, run, split or (chosen:) loop
+        # Use eos_thresh of 1 to be sure we don't output a NaN
+        out_dirs = [model.get_tracking_directions(
+            s_output, algo='det', eos_stopping_thresh=1.0).numpy()
+                    for s_output in outputs]
+
+        # Save error together with ref
+        sft = combine_displacement_with_ref(out_dirs, sft, model.step_size)
+
+        save_tractogram(sft, args.out_displacement_sft, bbox_valid_check=False)
+
+    if args.show_colorbar:
+        plt.show()

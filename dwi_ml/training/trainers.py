@@ -20,7 +20,7 @@ from dwi_ml.training.batch_loaders import (
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.utils.gradient_norm import compute_gradient_norm
 from dwi_ml.training.utils.monitoring import (
-    BestEpochMonitoring, IterTimer, BatchHistoryMonitor, TimeMonitor,
+    BestEpochMonitor, IterTimer, BatchHistoryMonitor, TimeMonitor,
     EarlyStoppingError)
 
 logger = logging.getLogger('train_logger')
@@ -230,12 +230,11 @@ class DWIMLAbstractTrainer:
         # initialization.
         # ----------------------
         if patience:
-            self.best_epoch_monitoring = BestEpochMonitoring(patience,
-                                                             patience_delta)
+            self.best_epoch_monitor = BestEpochMonitor(patience, patience_delta)
         else:
             # We won't use early stopping to stop the epoch, but we will use
             # it as monitor of the best epochs.
-            self.best_epoch_monitoring = BestEpochMonitoring(patience=np.inf)
+            self.best_epoch_monitor = BestEpochMonitor(patience=np.inf)
 
         self.current_epoch = 0
 
@@ -485,48 +484,55 @@ class DWIMLAbstractTrainer:
                 logger.info("*** VALIDATION")
                 self.validate_one_epoch(epoch)
 
-                mean_epoch_loss = self.valid_loss_monitor.average_per_epoch[-1]
-            else:
-                mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
-
             # Updating info
-            is_bad = self.best_epoch_monitoring.update(mean_epoch_loss, epoch)
+            mean_epoch_loss = self._get_latest_loss_to_supervise_best()
+            is_bad = self.best_epoch_monitor.update(mean_epoch_loss, epoch)
 
             # Check if current best has been reached
             if self.comet_exp:
                 # Saving this no matter what; we will see the stairs.
                 self.comet_exp.log_metric(
-                    "best_epoch", self.best_epoch_monitoring.best_epoch)
+                    "best_epoch", self.best_epoch_monitor.best_epoch)
             if is_bad:
-                logger.info(
-                    "** This is the {}th bad epoch (patience = {})"
-                    .format(self.best_epoch_monitoring.n_bad_epochs,
-                            self.best_epoch_monitoring.patience))
-            elif self.best_epoch_monitoring.best_epoch == epoch:
+                logger.info("** This is the {}th bad epoch (patience = {})"
+                            .format(self.best_epoch_monitor.n_bad_epochs,
+                                    self.best_epoch_monitor.patience))
+            elif self.best_epoch_monitor.best_epoch == epoch:
                 self._save_info_best_epoch()
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
-            self._save_log_locally(self.train_loss_monitor.average_per_epoch,
-                                   "training_loss_per_epoch.npy")
-            self._save_log_locally(self.valid_loss_monitor.average_per_epoch,
-                                   "validation_loss_per_epoch.npy")
-            self._save_log_locally(self.grad_norm_monitor.average_per_epoch,
-                                   "gradient_norm.npy")
-            self._save_log_locally(self.training_time_monitor.epoch_durations,
-                                   "training_epochs_duration")
-            self._save_log_locally(self.validation_time_monitor.epoch_durations,
-                                   "validation_epochs_duration")
+            self.save_local_logs()
 
             # Check for early stopping
-            if self.best_epoch_monitoring.is_patience_reached:
+            if self.best_epoch_monitor.is_patience_reached:
                 logger.warning(
                     "Early stopping! Loss has not improved after {} epochs!\n"
                     "Best result: {}; At epoch #{}"
-                    .format(self.best_epoch_monitoring.patience,
-                            self.best_epoch_monitoring.best_value,
-                            self.best_epoch_monitoring.best_epoch))
+                    .format(self.best_epoch_monitor.patience,
+                            self.best_epoch_monitor.best_value,
+                            self.best_epoch_monitor.best_epoch))
                 break
+
+    def _get_latest_loss_to_supervise_best(self):
+        if self.use_validation:
+            mean_epoch_loss = self.valid_loss_monitor.average_per_epoch[-1]
+        else:
+            mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
+
+        return mean_epoch_loss
+
+    def save_local_logs(self):
+        self._save_log_locally(self.train_loss_monitor.average_per_epoch,
+                               "training_loss_per_epoch.npy")
+        self._save_log_locally(self.valid_loss_monitor.average_per_epoch,
+                               "validation_loss_per_epoch.npy")
+        self._save_log_locally(self.grad_norm_monitor.average_per_epoch,
+                               "gradient_norm.npy")
+        self._save_log_locally(self.training_time_monitor.epoch_durations,
+                               "training_epochs_duration")
+        self._save_log_locally(self.validation_time_monitor.epoch_durations,
+                               "validation_epochs_duration")
 
     def _clear_handles(self):
         # Make sure there are no existing HDF handles if using parallel workers
@@ -567,7 +573,6 @@ class DWIMLAbstractTrainer:
         self.batch_sampler.set_context('training')
         self.model.set_context('training')
 
-        comet_context = self.comet_exp.train if self.comet_exp else None
         self._clear_handles()
         self.model.train()
         grad_context = torch.enable_grad
@@ -611,10 +616,7 @@ class DWIMLAbstractTrainer:
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
         self.training_time_monitor.end_epoch()
-        self._update_loss_logs_after_epoch(
-            comet_context, epoch,
-            self.train_loss_monitor.average_per_epoch[-1])
-        self._update_gradnorm_logs_after_epoch(comet_context, epoch)
+        self._update_comet_after_epoch('training', epoch)
 
         all_n = self.train_loss_monitor.current_epoch_batch_weights
         logger.info("Number of data points per batch: {}\u00B1{}"
@@ -632,7 +634,6 @@ class DWIMLAbstractTrainer:
         # Uses torch's module eval(), which "turns off" the training mode.
         self.batch_loader.set_context('validation')
         self.batch_sampler.set_context('validation')
-        comet_context = self.comet_exp.validate if self.comet_exp else None
         self.model.set_context('validation')
         self.model.eval()
         grad_context = torch.no_grad
@@ -641,7 +642,6 @@ class DWIMLAbstractTrainer:
         if (self.nb_cpu_processes > 0 and
                 self.batch_sampler.context_subset.is_lazy):
             self.batch_sampler.context_subset.close_all_handles()
-            self.batch_sampler.context_subset.volume_cache_manager = None
 
         # Validate all batches
         with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
@@ -662,6 +662,7 @@ class DWIMLAbstractTrainer:
                     mean_loss, n = self.run_one_batch(data)
 
                 mean_loss = mean_loss.cpu().item()
+
                 self.valid_loss_monitor.update(mean_loss, weight=n)
 
             # Explicitly delete iterator to kill threads and free memory before
@@ -671,12 +672,9 @@ class DWIMLAbstractTrainer:
         # Save info
         self.valid_loss_monitor.end_epoch()
         self.validation_time_monitor.end_epoch()
-        self._update_loss_logs_after_epoch(
-            comet_context, epoch,
-            self.valid_loss_monitor.average_per_epoch[-1])
+        self._update_comet_after_epoch('validation', epoch)
 
-    def _update_loss_logs_after_epoch(self, comet_context, epoch: int,
-                                      loss: float):
+    def _update_comet_after_epoch(self, context: str, epoch: int):
         """
         Update logs:
             - logging to user
@@ -686,9 +684,21 @@ class DWIMLAbstractTrainer:
         local_context: prefix when saving log. Training_ or Validate_ for
         instance.
         """
+        if context == 'training':
+            loss = self.train_loss_monitor.average_per_epoch[-1]
+        elif context == 'validation':
+            loss = self.valid_loss_monitor.average_per_epoch[-1]
+        else:
+            raise ValueError("Unexpected context.")
         logger.info("   Mean loss for this epoch: {}".format(loss))
 
         if self.comet_exp:
+            if context == 'training':
+                comet_context = self.comet_exp.train
+                self._update_gradnorm_logs_after_epoch(comet_context, epoch)
+            else:  # context == 'validation':
+                comet_context = self.comet_exp.validate
+
             with comet_context():
                 # Not really implemented yet.
                 # See https://github.com/comet-ml/issue-tracking/issues/247
@@ -716,9 +726,9 @@ class DWIMLAbstractTrainer:
         best_losses = {
             'train_loss':
                 self.train_loss_monitor.average_per_epoch[
-                    self.best_epoch_monitoring.best_epoch],
+                    self.best_epoch_monitor.best_epoch],
             'valid_loss':
-                self.best_epoch_monitoring.best_value if
+                self.best_epoch_monitor.best_value if
                 self.use_validation else None}
         with open(os.path.join(self.saving_path, "best_epoch_losses.json"),
                   'w') as json_file:
@@ -727,8 +737,7 @@ class DWIMLAbstractTrainer:
 
         if self.comet_exp:
             self.comet_exp.log_metric(
-                "best_loss",
-                self.best_epoch_monitoring.best_value)
+                "best_loss", self.best_epoch_monitor.best_value)
 
     def run_one_batch(self, data):
         """
@@ -781,70 +790,64 @@ class DWIMLAbstractTrainer:
         Hint: If you want to use this in your child class, use:
         experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
         """
+        trainer_params = checkpoint_state['params_for_init']
         trainer = cls(model=model,
                       experiments_path=experiments_path,
                       experiment_name=experiment_name,
                       batch_sampler=batch_sampler, batch_loader=batch_loader,
                       from_checkpoint=True, log_level=log_level,
-                      **checkpoint_state['params_for_init'])
+                      **trainer_params)
 
-        current_states = checkpoint_state['current_states']
         if new_max_epochs:
             trainer.max_epochs = new_max_epochs
 
         # Save params to json to help user remember.
         now = datetime.now()
-        filename = os.path.join(trainer.saving_path,
-                                "parameters_{}.json"
+        filename = os.path.join(trainer.saving_path, "parameters_{}.json"
                                 .format(now.strftime("%d-%m-%Y_%Hh%M")))
         with open(filename, 'w') as json_file:
-            json_file.write(json.dumps(
-                {'Date': str(datetime.now()),
-                 'New patience': new_patience,
-                 'New max_epochs': new_max_epochs
-                 },
-                indent=4, separators=(',', ': ')))
-
-        # Set RNG states
-        torch.set_rng_state(current_states['torch_rng_state'])
-        trainer.batch_sampler.np_rng.set_state(
-            current_states['numpy_rng_state'])
-        if trainer.use_gpu:
-            torch.cuda.set_rng_state(current_states['torch_cuda_state'])
-
-        # Comet properties
-        trainer.comet_key = current_states['comet_key']
-
-        # Starting one epoch further than last time!
-        trainer.current_epoch = current_states['current_epoch'] + 1
-
-        # Computed values
-        trainer.nb_train_batches_per_epoch = \
-            current_states['nb_train_batches_per_epoch']
-        trainer.nb_valid_batches_per_epoch = \
-            current_states['nb_valid_batches_per_epoch']
-
-        # Monitors
-        trainer.best_epoch_monitoring.set_state(
-            current_states['best_epoch_monitoring_state'])
-        trainer.train_loss_monitor.set_state(
-            current_states['train_loss_monitor_state'])
-        trainer.valid_loss_monitor.set_state(
-            current_states['valid_loss_monitor_state'])
-        trainer.grad_norm_monitor.set_state(
-            current_states['grad_norm_monitor_state'])
-        trainer.optimizer.load_state_dict(current_states['optimizer_state'])
+            json_file.write(json.dumps({'Date': str(datetime.now()),
+                                        'New patience': new_patience,
+                                        'New max_epochs': new_max_epochs
+                                        },
+                                       indent=4, separators=(',', ': ')))
         if new_patience:
-            trainer.best_epoch_monitoring.patience = new_patience
+            trainer.best_epoch_monitor.patience = new_patience
         logger.info("Starting from checkpoint! Starting from epoch #{}.\n"
                     "Previous best model was discovered at epoch #{}.\n"
                     "When finishing previously, we were counting {} epochs "
                     "with no improvement."
                     .format(trainer.current_epoch,
-                            trainer.best_epoch_monitoring.best_epoch,
-                            trainer.best_epoch_monitoring.n_bad_epochs))
+                            trainer.best_epoch_monitor.best_epoch,
+                            trainer.best_epoch_monitor.n_bad_epochs))
 
+        current_states = checkpoint_state['current_states']
+        trainer._update_states_from_checkpoint(current_states)
         return trainer
+
+    def _update_states_from_checkpoint(self, current_states):
+        # Set RNG states
+        torch.set_rng_state(current_states['torch_rng_state'])
+        self.batch_sampler.np_rng.set_state(current_states['numpy_rng_state'])
+        if self.use_gpu:
+            torch.cuda.set_rng_state(current_states['torch_cuda_state'])
+
+        # Comet properties
+        self.comet_key = current_states['comet_key']
+
+        # Starting one epoch further than last time!
+        self.current_epoch = current_states['current_epoch'] + 1
+
+        # Computed values
+        self.nb_train_batches_per_epoch = current_states['nb_train_batches_per_epoch']
+        self.nb_valid_batches_per_epoch = current_states['nb_valid_batches_per_epoch']
+
+        # Monitors
+        self.best_epoch_monitor.set_state(current_states['best_epoch_monitoring_state'])
+        self.train_loss_monitor.set_state(current_states['train_loss_monitor_state'])
+        self.valid_loss_monitor.set_state(current_states['valid_loss_monitor_state'])
+        self.grad_norm_monitor.set_state(current_states['grad_norm_monitor_state'])
+        self.optimizer.load_state_dict(current_states['optimizer_state'])
 
     def save_checkpoint(self):
         """
@@ -888,8 +891,8 @@ class DWIMLAbstractTrainer:
                 torch.cuda.get_rng_state() if self.use_gpu else None,
             'numpy_rng_state': self.batch_sampler.np_rng.get_state(),
             'best_epoch_monitoring_state':
-                self.best_epoch_monitoring.get_state() if
-                self.best_epoch_monitoring else None,
+                self.best_epoch_monitor.get_state() if
+                self.best_epoch_monitor else None,
             'train_loss_monitor_state': self.train_loss_monitor.get_state(),
             'valid_loss_monitor_state': self.valid_loss_monitor.get_state(),
             'grad_norm_monitor_state': self.grad_norm_monitor.get_state(),
@@ -914,8 +917,7 @@ class DWIMLAbstractTrainer:
         np.save(os.path.join(self.log_dir, fname), array)
 
     @staticmethod
-    def load_params_from_checkpoint(experiments_path: str,
-                                    experiment_name: str):
+    def load_params_from_checkpoint(experiments_path: str, experiment_name: str):
         total_path = os.path.join(
             experiments_path, experiment_name, "checkpoint",
             "checkpoint_state.pkl")
@@ -933,18 +935,17 @@ class DWIMLAbstractTrainer:
         current_epoch = checkpoint_state['current_states']['current_epoch']
 
         # 1. Check if early stopping had been triggered.
-        best_monitoring_state = \
+        best_monitor_state = \
             checkpoint_state['current_states']['best_epoch_monitoring_state']
-        bad_epochs = best_monitoring_state['n_bad_epochs']
+        bad_epochs = best_monitor_state['n_bad_epochs']
         if new_patience is None:
             # No new patience: checking if early stopping had been triggered.
-            if bad_epochs >= best_monitoring_state['patience']:
+            if bad_epochs >= best_monitor_state['patience']:
                 raise EarlyStoppingError(
                     "Resumed experiment was stopped because of early "
                     "stopping (patience {} reached at epcoh {}).\n"
                     "Increase patience in order to resume training!"
-                    .format(best_monitoring_state['patience'],
-                            current_epoch))
+                    .format(best_monitor_state['patience'], current_epoch))
         elif bad_epochs >= new_patience:
             # New patience: checking if we will be able to continue
             raise EarlyStoppingError(
@@ -952,7 +953,7 @@ class DWIMLAbstractTrainer:
                 "no improvement). You have now overriden patience to {} but "
                 "that won't be enough. Please increase that value in "
                 "order to resume training."
-                .format(best_monitoring_state['n_bad_epochs'], new_patience))
+                .format(best_monitor_state['n_bad_epochs'], new_patience))
 
         # 2. Checking that max_epochs had not been reached.
         if new_max_epochs is None:
@@ -969,8 +970,7 @@ class DWIMLAbstractTrainer:
                     "In resumed experiment, we had performed {} epochs. \nYou "
                     "have now overriden max_epoch to {} but that won't be "
                     "enough. \nPlease increase that value in order to resume "
-                    "training."
-                    .format(current_epoch + 1, new_max_epochs))
+                    "training.".format(current_epoch + 1, new_max_epochs))
 
 
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
@@ -1060,6 +1060,8 @@ class DWIMLTrainerForTracking(DWIMLAbstractTrainer):
         self.add_a_tracking_validation_phase = add_a_tracking_validation_phase
         self.tracking_phase_frequency = tracking_phase_frequency
         self.tracking_phase_nb_steps_init = tracking_phase_nb_steps_init
+        self.tracking_valid_time_monitor = TimeMonitor()
+        self.tracking_valid_loss_monitor = BatchHistoryMonitor(weighted=True)
 
     @property
     def params_for_checkpoint(self):
@@ -1072,12 +1074,99 @@ class DWIMLTrainerForTracking(DWIMLAbstractTrainer):
 
         return p
 
+    def _update_states_from_checkpoint(self, current_states):
+        super()._update_states_from_checkpoint(current_states)
+        self.tracking_valid_loss_monitor.set_state(current_states['tracking_valid_loss_monitor_state'])
+
+    def _prepare_checkpoint_info(self) -> dict:
+        checkpoint_info = super()._prepare_checkpoint_info()
+        checkpoint_info['current_states'].update({
+            'tracking_valid_loss_monitor_state': self.tracking_valid_loss_monitor.get_state(),
+        })
+        return checkpoint_info
+
+    def save_local_logs(self):
+        super().save_local_logs()
+        self._save_log_locally(self.tracking_valid_loss_monitor.average_per_epoch,
+                               "tracking_validation_loss_per_epoch.npy")
+
     def validate_one_epoch(self, epoch):
         super().validate_one_epoch(epoch)
 
+        self.tracking_valid_loss_monitor.start_new_epoch()
         if (epoch + 1) % self.tracking_phase_frequency == 0:
+            logger.info("Additional tracking-like generation validation phase")
             self.validate_using_tracking(epoch)
+        else:
+            self.tracking_valid_loss_monitor.update(
+                self.tracking_valid_loss_monitor.average_per_epoch[-1])
+
+    def _get_latest_loss_to_supervise_best(self):
+        if self.use_validation:
+            # Compared to super, replacing by tracking_valid loss.
+            mean_epoch_loss = self.tracking_valid_loss_monitor.average_per_epoch[-1]
+        else:
+            mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
+
+        return mean_epoch_loss
 
     def validate_using_tracking(self, epoch):
-        raise NotImplementedError
-        
+        self.tracking_valid_time_monitor.start_new_epoch()
+
+        # Setting contexts
+        # Turn gradients off (no back-propagation)
+        # Uses torch's module eval(), which "turns off" the training mode.
+        self.batch_loader.set_context('validation')
+        self.batch_sampler.set_context('validation')
+        comet_context = self.comet_exp.validate if self.comet_exp else None
+        self.model.set_context('validation')
+        self.model.eval()
+        grad_context = torch.no_grad
+
+        # Make sure there are no existing HDF handles if using parallel workers
+        if (self.nb_cpu_processes > 0 and
+                self.batch_sampler.context_subset.is_lazy):
+            self.batch_sampler.context_subset.close_all_handles()
+
+        # Validate all batches
+        with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
+                                   total=self.nb_valid_batches_per_epoch,
+                                   loggers=[logging.root],
+                                   tqdm_class=tqdm) as pbar:
+            valid_iterator = enumerate(pbar)
+            for batch_id, data in valid_iterator:
+                # Break if maximum number of epochs has been reached
+                if batch_id == self.nb_valid_batches_per_epoch:
+                    # Explicitly close tqdm's progress bar to fix possible bugs
+                    # when breaking the loop
+                    pbar.close()
+                    break
+
+                # Validate this batch: forward propagation + loss
+                with grad_context():
+                    mean_loss, n = self.generate_from_one_batch(data)
+
+                mean_loss = mean_loss.cpu().item()
+                self.tracking_valid_loss_monitor.update(mean_loss, weight=n)
+
+            # Explicitly delete iterator to kill threads and free memory before
+            # running training again
+            del valid_iterator
+
+        # Save info
+        self.tracking_valid_loss_monitor.end_epoch()
+        self.tracking_valid_time_monitor.end_epoch()
+        self._update_comet_after_epoch(comet_context, epoch)
+
+    def _update_comet_after_epoch(self, context: str, epoch: int):
+        if context == 'validation' and \
+                (epoch + 1) % self.tracking_phase_frequency == 0:
+            loss = self.tracking_valid_loss_monitor.average_per_epoch[-1]
+            logger.info("   Mean tracking loss for this epoch: {}".format(loss))
+            if self.comet_exp:
+                comet_context = self.comet_exp.validate
+                with comet_context():
+                    self.comet_exp.log_metric(
+                        "generation_loss_per_epoch", loss, epoch=0, step=epoch)
+
+        super()._update_comet_after_epoch(context, epoch)

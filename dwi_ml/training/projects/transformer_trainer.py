@@ -37,27 +37,6 @@ class TransformerTrainer(DWIMLTrainerOneInput):
                          comet_workspace, comet_project,
                          from_checkpoint, log_level)
 
-    @classmethod
-    def init_from_checkpoint(
-            cls, model: AbstractTransformerModel, experiments_path,
-            experiment_name, batch_sampler: DWIMLBatchIDSampler,
-            batch_loader: DWIMLBatchLoaderOneInput,
-            checkpoint_state: dict, new_patience, new_max_epochs,
-            log_level):
-        """
-        During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
-        back offers a dict that can be used to instantiate an experiment and
-        set it at the same state as previously. (Current_epoch is updated +1).
-        """
-
-        # Use super's method but return this transformer trainer as 'cls'.
-        experiment = super(cls, cls).init_from_checkpoint(
-            model, experiments_path, experiment_name,
-            batch_sampler, batch_loader,
-            checkpoint_state, new_patience, new_max_epochs, log_level)
-
-        return experiment
-
     def run_model(self, batch_inputs, batch_streamlines):
         dirs = self.model.format_directions(batch_streamlines)
 

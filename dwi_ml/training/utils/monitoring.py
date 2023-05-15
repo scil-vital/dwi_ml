@@ -114,7 +114,7 @@ class BatchHistoryMonitor(object):
         self.current_epoch = state['current_epoch']
 
 
-class BestEpochMonitoring(object):
+class BestEpochMonitor(object):
     """
     Object to stop training early if the loss doesn't improve after a given
     number of epochs ("patience").

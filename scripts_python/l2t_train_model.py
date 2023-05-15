@@ -110,8 +110,9 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         lr = format_lr(args.learning_rate)
         trainer = Learn2TrackTrainer(
-            model, args.experiments_path, args.experiment_name,
-            batch_sampler, batch_loader,
+            model=model, experiments_path=args.experiments_path,
+            experiment_name=args.experiment_name, batch_sampler=batch_sampler,
+            batch_loader=batch_loader,
             # COMET
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,

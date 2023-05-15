@@ -105,5 +105,5 @@ def run_experiment(trainer):
     logger.info("Summary: ran {} epochs (out of max {}). \n"
                 "Best loss was {} at epoch #{}.\n"
                 .format(trainer.current_epoch + 1, trainer.max_epochs,
-                        trainer.best_epoch_monitoring.best_value,
-                        trainer.best_epoch_monitoring.best_epoch + 1))
+                        trainer.best_epoch_monitor.best_value,
+                        trainer.best_epoch_monitor.best_epoch + 1))

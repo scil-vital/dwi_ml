@@ -106,7 +106,10 @@ def prepare_batch_visu_error(p, args, model: MainModelAbstract,
     sft.to_vox()
     sft.to_corner()
     streamlines = [torch.as_tensor(s) for s in sft.streamlines]
-    streamlines = model.prepare_streamlines_f(streamlines)
+    if not model.direction_getter.add_eos:
+        # We don't use the last coord because it does not have an
+        # associated target direction.
+        streamlines = [s[:-1, :] for s in streamlines]
 
     #   2) On inputs (done in dataloader / trainer)
     logging.info("Loading subject.")

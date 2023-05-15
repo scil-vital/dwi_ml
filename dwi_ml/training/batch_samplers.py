@@ -100,7 +100,8 @@ class DWIMLBatchIDSampler(Sampler):
                               .format(DEFAULT_CHUNK_SIZE))
         else:
             raise ValueError("batch_size_unit should either be "
-                             "'nb_streamlines' or 'length_mm'")
+                             "'nb_streamlines' or 'length_mm', got {}"
+                             .format(batch_size_units))
 
         # Checking that n_volumes was given if cycles was given
         if cycles and not nb_subjects_per_batch:

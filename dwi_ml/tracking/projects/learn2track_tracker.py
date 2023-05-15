@@ -52,7 +52,9 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         # Must re-run the model from scratch to get the hidden states
         # But! Not including the last point (i.e. the seed).
         self.model.set_context('preparing_backward')
-        tmp_lines = self.model.prepare_streamlines_f(lines)
+        # We don't re-run the last point (i.e. the seed) because the first
+        # propagation step after backward = at that point.
+        tmp_lines = [s[:-1, :] for s in lines]
         all_inputs = self.model.prepare_batch_one_input(
             tmp_lines, self.dataset, self.subj_idx, self.volume_group)
 
@@ -61,8 +63,7 @@ class RecurrentTracker(DWIMLTrackerOneInput):
 
         # No hidden state given = running model on all points.
         with self.grad_context:
-            _, self.hidden_recurrent_states = self.model(
-                all_inputs, tmp_lines, return_state=True)
+            _, self.hidden_recurrent_states = self.model(all_inputs, tmp_lines)
 
         # Back to tracking context
         self.model.set_context('tracking')
@@ -73,7 +74,7 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         # For RNN, we need to send the hidden state too.
         with self.grad_context:
             model_outputs, self.hidden_recurrent_states = self.model(
-                inputs, lines, self.hidden_recurrent_states, return_state=True)
+                inputs, lines, self.hidden_recurrent_states)
 
         return model_outputs
 

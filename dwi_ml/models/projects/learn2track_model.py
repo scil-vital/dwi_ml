@@ -167,39 +167,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                            'preparing_backward']
         self._context = context
 
-    def prepare_streamlines_f(self, streamlines):
-        """
-        - 'training' (i.e. training or validation) = We compute model outputs
-        in order to get the loss. If no EOS: removing values at the last
-        coordinate of the streamline; no target. If EOS: taking all inputs,
-        all previous dirs.
-        - 'tracking': We compute model outputs in order to get the next
-        direction. Using only the last point, based on hidden_state.
-        - 'preparing_backward': We recompute the whole streamline, last
-        coordinate included. Ex: At the beginning of backward tracking.
-        """
-        if self._context is None:
-            raise ValueError("Please set the context before running the model."
-                             "Ex: 'training'.")
-        elif self._context == 'training' or self._context == 'visu':
-            if not self.direction_getter.add_eos:
-                # We don't use the last coord because it does not have an
-                # associated target direction (except if EOS is used).
-                streamlines = [s[:-1, :] for s in streamlines]
-        elif self._context == 'preparing_backward':
-            # We don't re-run the last point (i.e. the seed) because the first
-            # propagation step after backward = at that point.
-            streamlines = [s[:-1, :] for s in streamlines]
-        else:
-            assert self._context == 'tracking', "Unkown context {}".format(
-                self._context)
-            # Reminder: during tracking, we have only one point per streamline.
-            raise NotImplementedError("Streamline preparation for tracking "
-                                      "is managed by the tracker!"
-                                      "Code error!")
-
-        return streamlines
-
     @property
     def params_for_checkpoint(self):
         # Every parameter necessary to build the different layers again.
@@ -221,8 +188,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
     def forward(self, inputs: List[torch.tensor],
                 target_streamlines: List[torch.tensor] = None,
-                hidden_recurrent_states: tuple = None,
-                return_state: bool = False):
+                hidden_recurrent_states: tuple = None):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -239,9 +205,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             used.
         hidden_recurrent_states : tuple
             The current hidden states of the (stacked) RNN model.
-        return_state: bool
-            If true, return new hidden recurrent state together with the model
-            outputs.
 
         Returns
         -------
@@ -264,8 +227,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                 Size of tensors are [1, nb_streamlines, nb_neurons].
         """
         # Reminder.
-        # Correct interpolation and management of points should be done
-        # before. (Ex: by calling prepare_streamlines_f).
+        # Correct interpolation and management of points should be done before.
         if self._context is None:
             raise ValueError("Please set context before usage.")
 
@@ -362,7 +324,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             model_outputs = PackedSequence(model_outputs, batch_sizes,
                                            sorted_indices, unsorted_indices)
 
-        if return_state:
+        if self._context in ['tracking', 'preparing_backward']:
+            # Return the hidden states too.
             return model_outputs, out_hidden_recurrent_states
         else:
             return model_outputs

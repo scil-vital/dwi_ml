@@ -30,14 +30,13 @@ class CopyPrevDirModel(ModelWithDirectionGetter):
 
         # Ignoring inputs.
         targets = compute_directions(streamlines)
-
         if self.skip_first_point:
-            outputs = [t[:-1, :] for t in targets]
+            outputs = targets
         else:
             # Add fake first point.
             zeros = torch.as_tensor([0., 0., 0.], dtype=torch.float32,
                                     device=self.device)
-            outputs = [torch.vstack((zeros, t[:-1, :])) for t in targets]
+            outputs = [torch.vstack((zeros, t)) for t in targets]
 
         # Faking outputs based on direction getter format
         if 'classification' in self.dg_key:

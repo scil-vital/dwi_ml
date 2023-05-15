@@ -276,26 +276,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         if self.token_sphere is not None:
             self.token_sphere.move_to(device)
 
-    def prepare_streamlines_f(self, streamlines):
-        if self._context is None:
-            raise ValueError("Please set the context before running the model."
-                             "Ex: 'training'.")
-        elif (self._context == 'training' or self._context == 'visu') and not \
-                self.direction_getter.add_eos:
-            # We don't use the last coord because does not have an associated
-            # target direction (except if EOS is used).
-            streamlines = [s[:-1, :] for s in streamlines]
-        else:
-            assert self._context in ['tracking', 'preparing_backward']
-            # Reminder: during tracking, we keep all points.
-            # For backward, we don't keep the last point (i.e. the seed)
-            # because we will start from there.
-            raise NotImplementedError("Streamline preparation for tracking "
-                                      "is managed by the tracker!"
-                                      "Code error!")
-
-        return streamlines
-
     def _prepare_targets_forward(self, batch_streamlines):
         """
         batch_streamlines: List[Tensors]
@@ -410,16 +390,11 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         weights: Tuple
             If return_weights: The weights (depending on the child model)
         """
-        # Reminder.
-        # Correct interpolation and management of points should be done
-        # before. (Ex: by calling prepare_streamlines_f).
-
         if self._context is None:
             raise ValueError("Please set context before usage.")
 
         # Reminder. In all cases, len(each input) == len(each streamline).
-        # Correct interpolation and management of points should be done
-        # before. (Ex: by calling prepare_streamlines_f).
+        # Correct interpolation and management of points should be done before.
         assert np.all([len(i) == len(s) for i, s in
                        zip(inputs, batch_streamlines)])
 

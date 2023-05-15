@@ -170,7 +170,7 @@ class DWIMLAbstractBatchLoader:
             logger.debug("Step size is the same as when creating "
                          "the hdf5 dataset. Not resampling again.")
         elif self.model.compress_lines is not None and \
-                self.context_subset.compress_lines == self.model.compress_lines:
+                self.context_subset.compress == self.model.compress_lines:
             logger.debug("Compression rate is the same as when creating "
                          "the hdf5 dataset. Not compressing again.")
         else:

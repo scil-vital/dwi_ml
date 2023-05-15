@@ -141,27 +141,46 @@ def normalize_directions(directions):
     return directions
 
 
-def compress_streamline_values(streamlines: List, values: List = None,
-                               compress_eps: float = 1e-3):
+def compute_angles(line_dirs):
+    one = torch.ones(1, device=line_dirs.device)
+
+    line_dirs /= torch.linalg.norm(line_dirs, dim=-1, keepdim=True)
+    cos_angles = torch.sum(line_dirs[:-1, :] * line_dirs[1:, :], dim=1)
+
+    # Resolve numerical instability
+    cos_angles = torch.minimum(torch.maximum(-one, cos_angles), one)
+    angles = torch.arccos(cos_angles)
+    return angles
+
+
+def compress_streamline_values(
+        streamlines: List = None, dirs: List = None, values: List = None,
+        compress_eps: float = 1e-3):
     """
     Parameters
     ----------
     streamlines: List[Tensors]
-        Streamlines' directions.
+        Streamlines' coordinates. If None, dirs must be given.
+    dirs: List[Tensors]
+        Streamlines' directions, optional. Useful to skip direction computation
+        if already computed elsewhere.
     values: List[Tensors]
         If set, compresses the values rather than the streamlines themselves.
     compress_eps: float
         Angle (in degrees)
     """
+    if streamlines is None and dirs is None:
+        raise ValueError("You must provide either streamlines or dirs.")
+    elif dirs is None:
+        dirs = compute_directions(streamlines)
+
     if values is None:
+        assert streamlines is not None
         # Compress the streamline itself with our technique.
         # toDo
         raise NotImplementedError("Code not ready")
 
     compress_eps = np.deg2rad(compress_eps)
-    one = torch.ones(1, device=streamlines[0].device)
-
-    dirs = compute_directions(streamlines)
 
     compressed_mean_loss = 0.0
     compressed_n = 0
@@ -171,13 +190,7 @@ def compress_streamline_values(streamlines: List, values: List = None,
             compressed_n += len(loss)
         else:
             # 1. Compute angles
-            # Skip normalization if not required:
-            line_dirs /= torch.linalg.norm(line_dirs, dim=-1, keepdim=True)
-            cos_angles = torch.sum(line_dirs[:-1, :] * line_dirs[1:, :], dim=1)
-
-            # Resolve numerical instability
-            cos_angles = torch.minimum(torch.maximum(-one, cos_angles), one)
-            angles = torch.arccos(cos_angles)
+            angles = compute_angles(line_dirs)
 
             # 2. Compress losses
             # By definition, the starting point is different from previous
@@ -209,3 +222,28 @@ def compress_streamline_values(streamlines: List, values: List = None,
                     current_n = 0
 
     return compressed_mean_loss / compressed_n, compressed_n
+
+
+def weight_value_with_angle(values: List, streamlines: List = None,
+                            dirs: List = None):
+    """
+    Parameters
+    ----------
+    values: List[Tensors]
+        Value to weight with angle. Ex: losses.
+    streamlines: List[Tensors]
+        Streamlines' coordinates. If None, dirs must be given.
+    dirs: List[Tensors]
+        Streamlines' directions, optional. Useful to skip direction computation
+        if already computed elsewhere.
+    """
+    if streamlines is None and dirs is None:
+        raise ValueError("You must provide either streamlines or dirs.")
+    elif dirs is None:
+        dirs = compute_directions(streamlines)
+
+    for i, line_dirs in enumerate(dirs):
+        angles = compute_angles(line_dirs)
+        values[i] = values * angles
+
+    return values

@@ -128,8 +128,8 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
         # Resampling streamlines to a fixed step size, if any
         logging.debug("            Resampling: {}".format(args.step_size))
         sft = resample_streamlines_step_size(sft, step_size=args.step_size)
-    if args.compress_lines:
-        logging.debug("            Compressing: {}".format(args.compress_lines))
+    if args.compress:
+        logging.debug("            Compressing: {}".format(args.compress))
         sft = compress_sft(sft)
 
     # To tensor

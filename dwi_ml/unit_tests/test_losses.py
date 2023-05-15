@@ -119,26 +119,26 @@ def test_cosine_regression_loss():
     model = CosineRegressionDG(input_size=3)
     streamline = [[0., 0, 0], [1., 0, 0]]
 
-    logging.debug("  - Identical vectors x: expecting -1")
+    logging.debug("  - Identical vectors x: expecting -1 (+1)")
     good_dir = [1., 0, 0]
-    expected_loss = -1.
+    expected_loss = 0.
     _verify_loss(streamline, good_dir, expected_loss, model)
 
-    logging.debug("  - Vectors with same angle: expecting -1")
+    logging.debug("  - Vectors with same angle: expecting -1 (+1)")
     scales = np.random.random(20) * 20
     for s in scales:
         good_dir_bad_scale = [s, 0., 0]
-        expected_loss = -1.
+        expected_loss = 0.
         _verify_loss(streamline, good_dir_bad_scale, expected_loss, model)
 
-    logging.debug("  - Vectors with at 90 degrees 1: expecting 0")
+    logging.debug("  - Vectors with at 90 degrees 1: expecting 0 (+1)")
     dir_90 = [0., 1, 0]
-    expected_loss = 0.
+    expected_loss = 1.
     _verify_loss(streamline, dir_90, expected_loss, model)
 
-    logging.debug("  - Vectors with at 180 degrees: expecting 1")
+    logging.debug("  - Vectors with at 180 degrees: expecting 1 (+1)")
     dir_90 = [-1., 0, 0]
-    expected_loss = 1.
+    expected_loss = 2.
     _verify_loss(streamline, dir_90, expected_loss, model)
 
     logging.debug("  - Random vectors: comparing with cosine.")
@@ -146,7 +146,8 @@ def test_cosine_regression_loss():
         streamline = [[0., 0, 0], _get_random_vector(3)]
         random_dir = _get_random_vector(3)
         # model outputs -cos(a,b), but scipy's cosine computes 1-cos(a,b)
-        expected_loss = cosine(streamline[1], random_dir) - 1
+        # then we add + 1.
+        expected_loss = cosine(streamline[1], random_dir)
         _verify_loss(streamline, random_dir, expected_loss, model)
 
 

@@ -16,7 +16,7 @@ nb_streamlines = len(batch_x_training)
 def _prepare_original_model():
     # Using defaults from script
     model = OriginalTransformerModel(
-        experiment_name='test', step_size=0.5, compress=None,
+        experiment_name='test', step_size=0.5, compress_lines=None,
         nb_features=4, d_model=4, max_len=5,
         log_level='DEBUG', positional_encoding_key='sinusoidal',
         token_type='as_label', embedding_key_x='nn_embedding',
@@ -30,7 +30,7 @@ def _prepare_original_model():
 
 def _prepare_ttst_model():
     model = TransformerSrcAndTgtModel(
-        experiment_name='test',  step_size=0.5, compress=None,
+        experiment_name='test',  step_size=0.5, compress_lines=None,
         nb_features=4, max_len=5, embedding_size_x=4, embedding_size_t=1,
         log_level='DEBUG', token_type='repulsion100',
         positional_encoding_key='sinusoidal', embedding_key_x='nn_embedding',

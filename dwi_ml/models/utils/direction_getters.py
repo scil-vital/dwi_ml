@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
+from argparse import ArgumentParser
 
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 
 
-def add_direction_getter_args(p, gaussian_fisher_args=True):
+def add_direction_getter_args(p: ArgumentParser, gaussian_fisher_args=True):
     # For the direction getters
     dg_keys = list(keys_to_direction_getters.keys())
     p.add_argument(
@@ -17,13 +18,18 @@ def add_direction_getter_args(p, gaussian_fisher_args=True):
     p.add_argument(
         '--dg_dropout', type=float, metavar='r', default=0.,
         help="Dropout ratio for the direction getter. Default: 0.")
-    p.add_argument(
+    g = p.add_argument_group("Loss-delocalising options")
+    g.add_argument(
         '--compress_loss', metavar='eps', nargs='?', const=1e-3, type=float,
-        help="If true, compress the loss. \nCan be used independently from "
+        help="If set, compress the loss. \nCan be used independently from "
              "options on the input streamlines such as --compress.\n"
              "Compression ratio (eps) can be given: as long as the angle is \n"
-             "smaller than eps (in rad), the next points' loss are averaged "
-             "together.")
+             "smaller than eps (in degree), the next points' loss are "
+             "averaged together.")
+    g.add_argument(
+        '--weight_loss_with_angle', action='store_true',
+        help="If set, weight the loss at each coordinate with the angle with "
+             "previous dir.")
 
     # Gaussian models, Fisher-von-Mises models
     if gaussian_fisher_args:
@@ -61,7 +67,8 @@ def check_args_direction_getter(args):
     dg_args = {'dropout': args.dg_dropout,
                'add_eos': args.add_eos,
                'compress_loss': args.compress_loss is not None,
-               'compress_eps': args.compress_loss
+               'compress_eps': args.compress_loss,
+               'weight_loss_with_angle': args.weight_loss_with_angle,
                }
 
     # Gaussian additional arg = nb_gaussians.

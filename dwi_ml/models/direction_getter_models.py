@@ -13,7 +13,8 @@ from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU,
 from torch.nn.modules.distance import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions, compute_directions, compress_streamline_values
+    normalize_directions, compute_directions, compress_streamline_values, \
+    weight_value_with_angle
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     add_label_as_last_dim, convert_dirs_to_class
 from dwi_ml.data.spheres import TorchSphere
@@ -70,6 +71,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     def __init__(self, input_size: int, key: str,
                  supports_compressed_streamlines: bool,  dropout: float = None,
                  compress_loss: bool = False, compress_eps: float = 1e-3,
+                 weight_loss_with_angle: bool = False,
                  loss_description: str = '', add_eos: bool = False):
         """
         Parameters
@@ -84,6 +86,9 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         compress_loss: bool
             If set, compress the loss. This is used idependently of the state
             of the streamlines received (compressed or resampled).
+        weight_loss_with_angle: bool
+            If set, weight loss with local angle. Can't be used together with
+            compress_loss.
         compress_eps: float
             Compression threshold. As long as the angle is smaller than eps
             (in rad), the next points' loss are averaged together.
@@ -95,6 +100,12 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         self.add_eos = add_eos
         self.compress_loss = compress_loss
         self.compress_eps = compress_eps
+        self.weight_loss_with_angle = weight_loss_with_angle
+        if self.compress_loss and self.weight_loss_with_angle:
+            raise ValueError("We don't think it is a very good idea to use "
+                             "option weight_loss_with_angle together "
+                             "with compress_loss. They both serve the same "
+                             "purpose.")
 
         # Info on this Direction Getter
         self.key = key
@@ -160,12 +171,12 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Will be implemented by each class
         raise NotImplementedError
 
-    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
+    def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
         """
         Returns: List[Tensor], the directions
         User is responsible for stacking the batch before computing loss.
         """
-        return compute_directions(target_streamlines)
+        return target_dirs
 
     def compute_loss(self, outputs: List[Tensor],
                      target_streamlines: List[Tensor], average_results=True):
@@ -173,21 +184,33 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             logging.warning("Current implementation of compress_loss does not "
                             "allow returning non-averaged loss.")
 
-        target_dirs = self.prepare_targets_for_loss(target_streamlines)
+        target_dirs = compute_directions(target_streamlines)
+        line_dirs = None
+        if self.weight_loss_with_angle or self.compress_loss:
+            line_dirs = [t.copy() for t in target_dirs]
+
+        target_dirs = self._prepare_dirs_for_loss(target_dirs)
         lengths = [len(t) for t in target_dirs]
 
-        if self.compress_loss:
-            average_results = False  # We will do our own average.
+        tmp_average_results = average_results
+        if self.compress_loss or self.weight_loss_with_angle:
+            # Compress: we will do our own average.
+            # Weight: we will weight before averaging.
+            tmp_average_results = False
 
         outputs, target_dirs = self.stack_batch(outputs, target_dirs)
-        loss = self._compute_loss(outputs, target_dirs, average_results)
+        loss = self._compute_loss(outputs, target_dirs, tmp_average_results)
 
+        if self.weight_loss_with_angle:
+            loss = weight_value_with_angle(
+                values=loss, streamlines=None, dirs=line_dirs)
         if average_results:
             return loss
         elif self.compress_loss:
             loss = torch.split(loss, lengths)
             final_loss, final_n = compress_streamline_values(
-                target_streamlines, loss, self.compress_eps)
+                streamlines=None, dirs=line_dirs, values=loss,
+                compress_eps=self.compress_eps)
             logging.info("Converted {} data points into {} compressed data "
                          "points".format(sum(lengths), final_n))
             return final_loss, final_n
@@ -202,7 +225,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         return outputs, target_dirs
 
     def _compute_loss(self, outputs: Tensor, target_dirs: Tensor,
-                      average_results=True):
+                      average_results=True) -> Union[Tuple[Tensor, int],
+                                                     List[Tensor]]:
         """
         Expecting a single tensor.
 
@@ -325,7 +349,7 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
             output = normalize_directions(output) * self.normalize_outputs
         return output
 
-    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
+    def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
         """
         Should be called before _compute_loss, before concatenating your
         streamlines.
@@ -333,7 +357,6 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
         Returns: list[Tensors], the directions.
         User is responsible for stacking the batch before computing loss.
         """
-        target_dirs = compute_directions(target_streamlines)
         return add_label_as_last_dim(target_dirs, add_sos=False,
                                      add_eos=self.add_eos)
 
@@ -410,7 +433,9 @@ class CosineRegressionDG(AbstractRegressionDG):
         #             a cosine of 0 = 90 degrees apart.
         #             a cosine of 1 = small angle
         # Thus we aim for a big cosine (maximize)! We minimize -cosine.
-        losses = - self.cos_loss(learned_directions, target_directions)
+        # Best loss = -1. Adding 1. Best loss = 0.
+        losses = torch.as_tensor(1, device=learned_directions.device) - \
+                 self.cos_loss(learned_directions, target_directions)
         return losses
 
 
@@ -517,7 +542,7 @@ class AbstractSphereClassificationDG(AbstractDirectionGetterModel):
         super().move_to(device)
         self.torch_sphere.move_to(device)
 
-    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
+    def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
         """
         Needs to convert directions to classes.
         To be defined by child classes.
@@ -603,15 +628,13 @@ class SphereClassificationDG(AbstractSphereClassificationDG):
                          loss_description='negative log-likelihood',
                          **kwargs)
 
-    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
+    def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
         """
         Finds the closest class for each target direction.
 
         returns: List[Tensor], the index for each target.
         User is responsible for stacking the batch before computing loss.
         """
-        target_dirs = compute_directions(target_streamlines)
-
         target_idx = convert_dirs_to_class(
             target_dirs, self.torch_sphere, smooth_labels=False,
             add_sos=False, add_eos=self.add_eos, to_one_hot=False)
@@ -666,7 +689,7 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
                          loss_description='negative log-likelihood',
                          **kwargs)
 
-    def prepare_targets_for_loss(self, target_streamlines: List[Tensor]):
+    def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
         """
         Finds the closest class for each target direction.
 
@@ -674,8 +697,6 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
         List[Tensor]: the one-hot distribution of each target.
             User is responsible for stacking the batch before computing loss.
         """
-        target_dirs = compute_directions(target_streamlines)
-
         target_idx = convert_dirs_to_class(
             target_dirs, self.torch_sphere, smooth_labels=True,
             add_sos=False, add_eos=self.add_eos, to_one_hot=True)

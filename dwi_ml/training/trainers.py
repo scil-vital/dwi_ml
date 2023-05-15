@@ -59,9 +59,7 @@ class DWIMLAbstractTrainer:
                  patience: int = None, patience_delta: float = 1e-6,
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, log_level=logging.root.level,
-                 # To be deprecated
-                 use_radam: bool = None, learning_rate: float = None):
+                 from_checkpoint: bool = False, log_level=logging.root.level):
         """
         Parameters
         ----------
@@ -122,8 +120,6 @@ class DWIMLAbstractTrainer:
         from_checkpoint: bool
              If true, we do not create the output dir, as it should already
              exist. Default: False.
-        use_radam: bool
-            Deprecated. If true, use RAdam optimizer. Else, use Adam.
         """
         # To developers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
@@ -171,11 +167,7 @@ class DWIMLAbstractTrainer:
         self.max_epochs = max_epochs
         self.max_batches_per_epochs_train = max_batches_per_epoch_training
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
-        if learning_rate is not None:
-            logger.warning("Deprecated use of learning rate. Should now be "
-                           "learning_rates.")
-            self.learning_rates = [learning_rate]
-        elif learning_rates is None:
+        if learning_rates is None:
             self.learning_rates = [0.001]
         elif isinstance(learning_rates, float):
             # Should be a list but we will accept it.
@@ -183,7 +175,6 @@ class DWIMLAbstractTrainer:
         else:
             self.learning_rates = learning_rates
         self.weight_decay = weight_decay
-        self.use_radam = use_radam
 
         # Currently, Dataloader multiprocessing is not working very well.
         # system error: to many file handles open.
@@ -198,10 +189,6 @@ class DWIMLAbstractTrainer:
             nb_cpu_processes = 0
         self.nb_cpu_processes = nb_cpu_processes
         self.use_gpu = use_gpu
-        if self.use_radam is not None:
-            logger.warning("Option --use_radam will be removed. Use option "
-                           "--optimizer instead.")
-            optimizer = 'RAdam' if self.use_radam else 'Adam'
         if optimizer not in ['SGD', 'Adam', 'RAdam']:
             raise ValueError("Optimizer choice {} not recognized."
                              .format(optimizer))

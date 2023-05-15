@@ -1048,3 +1048,36 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         # The mean tensor is a single value. Converting to float using item().
         return mean_loss, n
+
+
+class DWIMLTrainerForTracking(DWIMLAbstractTrainer):
+    def __init__(self, add_a_tracking_validation_phase: bool = False,
+                 tracking_phase_frequency: int = 5,
+                 tracking_phase_nb_steps_init: int = 5,
+                 *args, **kw):
+        super().__init__(*args, **kw)
+
+        self.add_a_tracking_validation_phase = add_a_tracking_validation_phase
+        self.tracking_phase_frequency = tracking_phase_frequency
+        self.tracking_phase_nb_steps_init = tracking_phase_nb_steps_init
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
+        p.update({
+            'add_a_tracking_validation_phase': self.add_a_tracking_validation_phase,
+            'tracking_phase_frequency': self.tracking_phase_frequency,
+            'tracking_phase_nb_steps_init': self.tracking_phase_nb_steps_init
+        })
+
+        return p
+
+    def validate_one_epoch(self, epoch):
+        super().validate_one_epoch(epoch)
+
+        if (epoch + 1) % self.tracking_phase_frequency == 0:
+            self.validate_using_tracking(epoch)
+
+    def validate_using_tracking(self, epoch):
+        raise NotImplementedError
+        

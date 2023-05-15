@@ -3,7 +3,7 @@
 import torch
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_n_previous_dirs
+    compute_n_previous_dirs, compute_directions
 
 NB_PREVIOUS_DIRS = 4
 

@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
-from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.models.main_models import MainModelAbstract, ModelWithDirectionGetter
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -50,8 +50,7 @@ class DWIMLAbstractTrainer:
 
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
-                 experiment_name: str,
-                 batch_sampler: DWIMLBatchIDSampler,
+                 experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
                  learning_rates: List = None, weight_decay: float = 0.01,
                  optimizer: str = 'Adam', max_epochs: int = 10,
@@ -451,8 +450,7 @@ class DWIMLAbstractTrainer:
         - Checks if allowed training time is exceeded.
 
         """
-        logger.debug("Trainer {}: \n"
-                     "Running the model {}.\n\n"
+        logger.debug("Trainer {}: \nRunning the model {}.\n\n"
                      .format(type(self), type(self.model)))
         self.save_params_to_json()
 
@@ -510,8 +508,7 @@ class DWIMLAbstractTrainer:
             if self.comet_exp:
                 # Saving this no matter what; we will see the stairs.
                 self.comet_exp.log_metric(
-                    "best_epoch",
-                    self.best_epoch_monitoring.best_epoch)
+                    "best_epoch", self.best_epoch_monitoring.best_epoch)
             if is_bad:
                 logger.info(
                     "** This is the {}th bad epoch (patience = {})"
@@ -582,6 +579,8 @@ class DWIMLAbstractTrainer:
         self.batch_sampler.set_context('training')
         comet_context = self.comet_exp.train if self.comet_exp else None
         self._clear_handles()
+        self.model.train()
+        grad_context = torch.enable_grad
 
         # Training all batches
         # Note: loggers = [logging.root] only.
@@ -602,11 +601,8 @@ class DWIMLAbstractTrainer:
                     pbar.close()
                     break
 
-                # Enable gradients for backpropagation.
-                # Uses torch's module train(), which "turns on" the training mode.
-                self.model.train()
-                self.batch_loader.set_context('training')
-                grad_context = torch.enable_grad
+                # Enable gradients for backpropagation. Uses torch's module
+                # train(), which "turns on" the training mode.
                 with grad_context():
                     mean_loss, n = self.run_one_batch(data)
 
@@ -631,9 +627,8 @@ class DWIMLAbstractTrainer:
         self._update_gradnorm_logs_after_epoch(comet_context, epoch)
 
         all_n = self.train_loss_monitor.current_epoch_batch_weights
-        logger.info(
-            "Number of data points per batch: {}\u00B1{}"
-            .format(int(np.mean(all_n)), int(np.std(all_n))))
+        logger.info("Number of data points per batch: {}\u00B1{}"
+                    .format(int(np.mean(all_n)), int(np.std(all_n))))
 
     def validate_one_epoch(self, epoch):
         """
@@ -649,7 +644,6 @@ class DWIMLAbstractTrainer:
         self.batch_sampler.set_context('validation')
         comet_context = self.comet_exp.validate if self.comet_exp else None
         self.model.eval()
-        self.batch_loader.set_context('validation')
         grad_context = torch.no_grad
 
         # Make sure there are no existing HDF handles if using parallel workers
@@ -1014,59 +1008,47 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         n: int
             Total number of points for this batch.
         """
-        # Data interpolation has not been done yet. GPU computations
-        # need to be done here in the main thread. Running final steps
-        # of data preparation.
-        streamlines, ids_per_subj = data
+        # Data interpolation has not been done yet. GPU computations are done
+        # here in the main thread.
+        targets, ids_per_subj = data
 
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
-        streamlines = [s.to(self.device, non_blocking=True, dtype=torch.float)
-                       for s in streamlines]
-        targets = streamlines
-        if not self.model.direction_getter.add_eos:
-            # We don't use the last coord because it does not have an
-            # associated target direction.
-            streamlines = [s[:-1, :] for s in streamlines]
+        targets = [s.to(self.device, non_blocking=True, dtype=torch.float)
+                   for s in targets]
 
         # Getting the inputs points from the volumes.
         # Uses the model's method, with the batch_loader's data.
-        batch_inputs = self.batch_loader.load_batch_inputs(streamlines,
-                                                           ids_per_subj)
+        # Possibly skipping the last point if not useful.
+        streamlines_f = targets
+        if isinstance(self.model, ModelWithDirectionGetter) and \
+                not self.model.direction_getter.add_eos:
+            # We don't use the last coord because it does not have an
+            # associated target direction.
+            streamlines_f = [s[:-1, :] for s in streamlines_f]
+        batch_inputs = self.batch_loader.load_batch_inputs(
+            streamlines_f, ids_per_subj)
 
         # Possibly add noise to inputs here.
         logger.debug('*** Computing forward propagation')
         if self.model.forward_uses_streamlines:
             # Now possibly add noise to streamlines (training / valid)
-            streamlines = self.batch_loader.add_noise_streamlines(
-                streamlines, self.device)
-
-            logger.debug("Uses a batch of {} streamlines, {} coordinates, "
-                         "{} input points."
-                         .format(len(streamlines),
-                                 sum([len(s) for s in streamlines_f]),
-                                 sum([len(s) for s in batch_inputs])))
+            streamlines_f = self.batch_loader.add_noise_streamlines(
+                streamlines_f, self.device)
 
             # Possibly computing directions twice (during forward and loss)
             # but ok, shouldn't be too heavy. Easier to deal with multiple
-            # project's requirements by sending whole streamlines rather
+            # projects' requirements by sending whole streamlines rather
             # than only directions.
             model_outputs = self.model(batch_inputs, streamlines_f)
             del streamlines_f
         else:
-            logger.debug("Uses a batch of {} streamlines, {} input points."
-                         .format(len(streamlines),
-                                 sum([len(s) for s in batch_inputs])))
+            del streamlines_f
             model_outputs = self.model(batch_inputs)
 
         logger.debug('*** Computing loss')
-        logger.debug("Uses a batch of {} streamlines, {} coordinates, "
-                     "{} outputs."
-                     .format(len(streamlines),
-                             sum([len(s) for s in streamlines]),
-                             len(model_outputs)))
         if self.model.loss_uses_streamlines:
-            mean_loss, n = self.model.compute_loss(model_outputs, streamlines)
+            mean_loss, n = self.model.compute_loss(model_outputs, targets)
         else:
             mean_loss, n = self.model.compute_loss(model_outputs)
 

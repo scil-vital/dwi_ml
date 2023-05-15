@@ -324,7 +324,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             model_outputs = PackedSequence(model_outputs, batch_sizes,
                                            sorted_indices, unsorted_indices)
 
-        if self._context == 'tracking':
+        if self._context in ['tracking', 'preparing_backward']:
             # Return the hidden states too.
             return model_outputs, out_hidden_recurrent_states
         else:

@@ -63,8 +63,7 @@ class RecurrentTracker(DWIMLTrackerOneInput):
 
         # No hidden state given = running model on all points.
         with self.grad_context:
-            _, self.hidden_recurrent_states = self.model(
-                all_inputs, tmp_lines, return_state=True)
+            _, self.hidden_recurrent_states = self.model(all_inputs, tmp_lines)
 
         # Back to tracking context
         self.model.set_context('tracking')
@@ -75,7 +74,7 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         # For RNN, we need to send the hidden state too.
         with self.grad_context:
             model_outputs, self.hidden_recurrent_states = self.model(
-                inputs, lines, self.hidden_recurrent_states, return_state=True)
+                inputs, lines, self.hidden_recurrent_states)
 
         return model_outputs
 

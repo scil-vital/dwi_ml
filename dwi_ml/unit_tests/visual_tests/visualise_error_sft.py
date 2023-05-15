@@ -84,7 +84,7 @@ def prepare_batch_visu_error(p, args, model: MainModelAbstract,
         sft = sft[streamline_ids]
 
     # Mimic hdf5 creation: resample / compress to user's definition.
-    sft = resample_or_compress(sft, args.step_size, args.compress)
+    sft = resample_or_compress(sft, args.step_size, args.compress_lines)
 
     # Mimic DataLoader:
     #   1) On streamlines: resample / compress (again).
@@ -98,7 +98,7 @@ def prepare_batch_visu_error(p, args, model: MainModelAbstract,
         step_size = params["Batch loader params"]["step_size"]
         compress = params["Batch loader params"]["compress"]
 
-        if not (step_size == args.step_size and compress == args.compress):
+        if not (step_size == args.step_size and compress == args.compress_lines):
             sft = resample_or_compress(sft, step_size, compress)
     else:
         input_group = args.input_group

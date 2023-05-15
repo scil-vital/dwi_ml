@@ -3,9 +3,8 @@ import logging
 import os
 
 import h5py
-from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
-                                                           SubjectData,
-                                                           LazySubjectData)
+from dwi_ml.data.dataset.single_subject_containers import (
+    LazySubjectData, SubjectDataAbstract, SubjectData)
 
 logger = logging.getLogger('dataset_logger')
 
@@ -92,7 +91,7 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
 
     def get_subj_with_handle(self, subject_idx) -> LazySubjectData:
         """
-        getitem but open an handle first (if none existed).
+        getitem but open a handle first (if none existed).
 
         Params
         ------

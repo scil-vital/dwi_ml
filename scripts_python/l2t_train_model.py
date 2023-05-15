@@ -75,7 +75,7 @@ def init_from_args(args, sub_loggers_level):
         # INPUTS: verifying args
         model = Learn2TrackModel(
             experiment_name=args.experiment_name,
-            step_size=args.step_size, compress=args.compress,
+            step_size=args.step_size, compress_lines=args.compress_lines,
             # PREVIOUS DIRS
             prev_dirs_embedding_key=args.prev_dirs_embedding_key,
             prev_dirs_embedding_size=args.prev_dirs_embedding_size,

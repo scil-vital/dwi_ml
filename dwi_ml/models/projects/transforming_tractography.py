@@ -11,15 +11,13 @@ from torch.nn.functional import pad
 
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     add_label_as_last_dim, convert_dirs_to_class
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
+from dwi_ml.data.processing.streamlines.post_processing import compute_directions
 from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithDirectionGetter,
                                        ModelWithNeighborhood)
-from dwi_ml.models.projects.positional_encoding import \
-    keys_to_positional_encodings
+from dwi_ml.models.projects.positional_encoding import keys_to_positional_encodings
 from dwi_ml.models.utils.transformers_from_torch import (
     ModifiedTransformer,
     ModifiedTransformerEncoder, ModifiedTransformerEncoderLayer,
@@ -98,7 +96,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
     """
     def __init__(self,
                  experiment_name: str,
-                 step_size: Union[float, None], compress: Union[float, None],
+                 step_size: Union[float, None], compress_lines: Union[float, None],
                  # INPUTS IN ENCODER
                  nb_features: int, embedding_key_x: str, embedding_size_x: int,
                  # TARGETS IN DECODER
@@ -107,8 +105,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                  max_len: int, positional_encoding_key: str,
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
-                 norm_first: bool,
-                 start_from_copy_prev: bool,
+                 norm_first: bool, start_from_copy_prev: bool,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: dict,
                  # Other
@@ -173,7 +170,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         super().__init__(
             # MainAbstract
             experiment_name=experiment_name, step_size=step_size,
-            compress=compress, log_level=log_level,
+            compress_lines=compress_lines, log_level=log_level,
             # Neighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
@@ -258,8 +255,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
     @property
     def params_for_checkpoint(self):
         """
-        Every parameter necessary to build the different layers again
-        from a checkpoint.
+        Every parameter necessary to build the different layers again from a
+        checkpoint.
         """
         p = super().params_for_checkpoint
         p.update({
@@ -508,7 +505,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         Positional encoding.
         """
         # toDo: Test faster:
-        #   1) stack (2D), embed, destack, pad_and_stack (3D)
+        #   1) stack (2D), embed, unstack, pad_and_stack (3D)
         #   2) loop on streamline to embed, pad_and_stack
         #   3) pad_and_stack, then embed (but we might embed many zeros that
         #      will be masked in attention anyway)
@@ -539,9 +536,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             # Not necessarily the same class as previous dirs used as input to
             # the decoder.
             copy_prev_dirs = convert_dirs_to_class(
-                dirs, self.direction_getter.torch_sphere,
-                smooth_labels=False, add_sos=False, add_eos=False,
-                to_one_hot=True)
+                dirs, self.direction_getter.torch_sphere, smooth_labels=False,
+                add_sos=False, add_eos=False, to_one_hot=True)
 
         elif self.dg_key == 'smooth-sphere-classification':
             raise NotImplementedError
@@ -623,8 +619,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
             dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
             activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
-        encoder = ModifiedTransformerEncoder(encoder_layer, n_layers_e,
-                                             norm=None)
+        encoder = ModifiedTransformerEncoder(encoder_layer, n_layers_e, norm=None)
 
         # Decoder
         decoder_layer = ModifiedTransformerDecoderLayer(
@@ -632,8 +627,7 @@ class OriginalTransformerModel(AbstractTransformerModel):
             dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
             activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
-        decoder = ModifiedTransformerDecoder(decoder_layer, n_layers_d,
-                                             norm=None)
+        decoder = ModifiedTransformerDecoder(decoder_layer, n_layers_d, norm=None)
 
         self.modified_torch_transformer = ModifiedTransformer(
             self.d_model, self.nheads, n_layers_e, n_layers_d,
@@ -724,10 +718,9 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
         # It is the max_len that is modified: The sequences are concatenated
         # one beside the other.
         main_layer_encoder = ModifiedTransformerEncoderLayer(
-            self.d_model, self.nheads,
-            dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
-            activation=self.activation, batch_first=True,
-            norm_first=self.norm_first)
+            self.d_model, self.nheads, dim_feedforward=self.ffnn_hidden_size,
+            dropout=self.dropout_rate, activation=self.activation,
+            batch_first=True, norm_first=self.norm_first)
         self.modified_torch_transformer = ModifiedTransformerEncoder(
             main_layer_encoder, n_layers_d, norm=None)
 

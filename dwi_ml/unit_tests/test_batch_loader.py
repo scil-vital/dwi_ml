@@ -77,7 +77,7 @@ def test_batch_loader():
         # 2) With compressing
         logging.info('*** Test with batch size {} + loading with compress'
                      .format(batch_size))
-        model = MainModelOneInput(experiment_name='test', compress=True)
+        model = MainModelOneInput(experiment_name='test', compress_lines=True)
         batch_loader = create_batch_loader(dataset, model)
         batch_loader.set_context('training')
         _load_directly_and_verify(batch_loader, batch_idx_tuples,

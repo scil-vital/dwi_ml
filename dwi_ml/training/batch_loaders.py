@@ -169,13 +169,13 @@ class DWIMLAbstractBatchLoader:
                 self.context_subset.step_size == self.model.step_size:
             logger.debug("Step size is the same as when creating "
                          "the hdf5 dataset. Not resampling again.")
-        elif self.model.compress is not None and \
-                self.context_subset.compress == self.model.compress:
+        elif self.model.compress_lines is not None and \
+                self.context_subset.compress_lines == self.model.compress_lines:
             logger.debug("Compression rate is the same as when creating "
                          "the hdf5 dataset. Not compressing again.")
         else:
             sft = resample_or_compress(sft, self.model.step_size,
-                                       self.model.compress)
+                                       self.model.compress_lines)
 
         # Splitting streamlines
         # This increases the batch size, but does not change the total

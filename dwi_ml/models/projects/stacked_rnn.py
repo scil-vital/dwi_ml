@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from typing import List, Tuple, Union
+from typing import List, Tuple
 
 import torch
 from torch import Tensor
@@ -96,10 +96,8 @@ class StackedRNN(torch.nn.Module):
             # Instantiate RNN layer
             # batch_first: If True, then the input and output tensors are
             # provided as (batch, seq, feature), not (seq, batch, feature)
-            rnn_layer = rnn_cls(input_size=last_layer_size,
-                                hidden_size=layer_size,
-                                num_layers=1,
-                                batch_first=True)
+            rnn_layer = rnn_cls(input_size=last_layer_size, hidden_size=layer_size,
+                                num_layers=1, batch_first=True)
 
             # Explicitly add module because it's not a named variable
             self.add_module("rnn_{}".format(i), rnn_layer)
@@ -244,8 +242,7 @@ class StackedRNN(torch.nn.Module):
                 # Adding skip connection, i.e. initial input.
                 # See here: https://arxiv.org/pdf/1308.0850v5.pdf
                 if i < len(self.rnn_layers) - 1:
-                    last_output = torch.cat((last_output, init_inputs),
-                                            dim=-1)
+                    last_output = torch.cat((last_output, init_inputs), dim=-1)
                     logger.debug('   Output size after skip connection: {}'
                                  .format(last_output.shape))
 

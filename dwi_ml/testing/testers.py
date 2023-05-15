@@ -8,8 +8,7 @@ import torch
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
-from dwi_ml.models.main_models import ModelWithDirectionGetter, \
-    MainModelOneInput
+from dwi_ml.models.main_models import ModelWithDirectionGetter, MainModelOneInput
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 logger = logging.getLogger('tester_logger')
@@ -53,8 +52,7 @@ class Tester:
     def params(self):
         if self._params is None:
             logging.info("Loading information from checkpoint")
-            params_filename = os.path.join(self.experiment_path,
-                                           "parameters.json")
+            params_filename = os.path.join(self.experiment_path, "parameters.json")
             with open(params_filename, 'r') as json_file:
                 self._params = json.load(json_file)
         return self._params
@@ -84,13 +82,12 @@ class Tester:
         logging.info("Loading its streamlines as SFT.")
         streamline_group_idx = self.subset.streamline_groups.index(
             self.streamlines_group)
-        subj_data = self.subset.subjs_data_list.get_subj_with_handle(
-            self.subj_idx)
+        subj_data = self.subset.subjs_data_list.get_subj_with_handle(self.subj_idx)
         subj_sft_data = subj_data.sft_data_list[streamline_group_idx]
         sft = subj_sft_data.as_sft()
 
         sft = resample_or_compress(sft, self.model.step_size,
-                                   self.model.compress)
+                                   self.model.compress_lines)
         sft.to_vox()
         sft.to_corner()
 

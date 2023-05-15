@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from math import ceil
-from typing import Tuple, List, Union, Any
+from typing import Tuple, List, Union
 
 import dipy.data
 import numpy as np
@@ -13,42 +13,16 @@ from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU,
 from torch.nn.modules.distance import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions, compute_directions
+    normalize_directions, compute_directions, compress_streamline_values
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     add_label_as_last_dim, convert_dirs_to_class
 from dwi_ml.data.spheres import TorchSphere
-from dwi_ml.models.utils.gaussians import \
-    independent_gaussian_log_prob
+from dwi_ml.models.utils.gaussians import independent_gaussian_log_prob
 from dwi_ml.models.utils.fisher_von_mises import fisher_von_mises_log_prob
 
 """
 The complete formulas and explanations are available in our doc:
 https://dwi-ml.readthedocs.io/en/latest/model.html
-
-
-Expected types and shapes:
-
-INPUTS:  Def: Here, we call 'input' the output of your experiment model.
-              (Ex, from a RNN).
-         Type: tensor
-         Size:
-             - Sequence models: [batch_size*seq_len, nb_features]
-              where seq_len is the nb of time steps in the sequence.
-              So the input sequences are concatenated.
-             - Local models: [batch_size, nb_features]
-
-OUTPUTS: Def: The model final outputs, corresponding to directions, i.e.
-              (x,y,z) coordinates.
-         Type: tensor
-         Size:
-             - Sequence models: [batch_size*seq_len, 3]
-             - Local models: [batch_size, 3]
-
-TARGETS: Def: The target values (real Y) for the batch
-         Type: tensor
-         Size:
-             - Sequence models: [batch_size*seq_len, 3]
-             - Local models: [batch_size, 3]
 """
 
 
@@ -196,16 +170,13 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     def compute_loss(self, outputs: List[Tensor],
                      target_streamlines: List[Tensor], average_results=True):
         if self.compress_loss and not average_results:
-            logging.warning(
-                "Current implementation of compress_loss does not allow "
-                "returning non-averaged loss.")
+            logging.warning("Current implementation of compress_loss does not "
+                            "allow returning non-averaged loss.")
 
         target_dirs = self.prepare_targets_for_loss(target_streamlines)
         lengths = [len(t) for t in target_dirs]
 
-        target_dirs_list = None
         if self.compress_loss:
-            target_dirs_list = target_dirs  # Save here, or re-split below.
             average_results = False  # We will do our own average.
 
         outputs, target_dirs = self.stack_batch(outputs, target_dirs)
@@ -215,7 +186,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             return loss
         elif self.compress_loss:
             loss = torch.split(loss, lengths)
-            final_loss, final_n = self._compress_loss(loss, target_dirs_list)
+            final_loss, final_n = compress_streamline_values(
+                target_streamlines, loss, self.compress_eps)
             logging.info("Converted {} data points into {} compressed data "
                          "points".format(sum(lengths), final_n))
             return final_loss, final_n
@@ -245,67 +217,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             losses: Tensor of shape (n, )
         """
         raise NotImplementedError
-
-    def _compress_loss(self, losses: List, dirs: List):
-        # 1e-3 rad = 0.05 degrees.
-        # In our in-house test, on average 140 000 -> 30 000 points
-        # Because our PFT tracking for training in this example was done on
-        # sphere = many points completely straight (with angle 0).
-        # ToDo Smooth and check angles.
-
-        one = torch.ones(1, device=dirs[0].device)
-
-        compressed_mean_loss = 0.0
-        compressed_n = 0
-        for loss, line_dirs in zip(losses, dirs):
-            if len(loss) < 2:
-                compressed_mean_loss = compressed_mean_loss + torch.mean(loss)
-                compressed_n += len(loss)
-            else:
-                # 1. Compute angles
-                # Skip normalization if not required:
-                if not (isinstance(self, AbstractRegressionDG) and
-                        self.normalize_targets):
-                    line_dirs /= torch.linalg.norm(line_dirs, dim=-1,
-                                                   keepdim=True)
-                cos_angles = torch.sum(line_dirs[:-1, :] * line_dirs[1:, :],
-                                       dim=1)
-
-                # Resolve numerical instability
-                cos_angles = torch.minimum(torch.maximum(-one, cos_angles),
-                                           one)
-                angles = torch.arccos(cos_angles)
-
-                # 2. Compress losses
-                # By definition, the starting point is different from previous
-                # and has an important meaning. Separating.
-                compressed_mean_loss = compressed_mean_loss + loss[0]
-                compressed_n += 1
-
-                # Then, verifying other segments
-                current_loss = 0.0
-                current_n = 0
-                for next_loss, next_angle in zip(loss[1:], angles):
-                    # toDO. Find how to skip loop
-                    if next_angle < self.compress_eps:
-                        current_loss = current_loss + next_loss
-                        current_n += 1
-                    else:
-                        if current_n > 0:
-                            # Finish the straight segment
-                            compressed_mean_loss = \
-                                compressed_mean_loss + current_loss / current_n
-                            compressed_n += 1
-
-                        # Add the point following a big curve separately
-                        compressed_mean_loss = compressed_mean_loss + next_loss
-                        compressed_n += 1
-
-                        # Then restart a possible segment
-                        current_loss = 0.0
-                        current_n = 0
-
-        return compressed_mean_loss / compressed_n, compressed_n
 
     def _sample_tracking_direction_prob(
             self, outputs, eos_stopping_thresh: Union[float, str]) -> Tensor:

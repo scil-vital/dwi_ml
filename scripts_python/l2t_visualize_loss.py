@@ -9,7 +9,7 @@ import torch
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.testing.projects.learn2track_tester import TesterPackedSequence
+from dwi_ml.testing.testers import TesterOneInput
 from dwi_ml.testing.visu_loss import \
     prepare_args_visu_loss, pick_a_few, run_visu_save_colored_displacement
 
@@ -60,10 +60,8 @@ def main():
         args.experiment_path + '/best_model', log_level=sub_logger_level)
 
     # 2. Compute loss
-    tester = TesterPackedSequence(args.experiment_path, model, args.batch_size,
-                                  device)
-    sft = tester.load_and_format_data(args.subj_id, args.hdf5_file,
-                                      args.subset)
+    tester = TesterOneInput(args.experiment_path, model, args.batch_size, device)
+    sft = tester.load_and_format_data(args.subj_id, args.hdf5_file, args.subset)
 
     if (args.out_displacement_sft and not args.out_colored_sft and
             not args.pick_best_and_worst):

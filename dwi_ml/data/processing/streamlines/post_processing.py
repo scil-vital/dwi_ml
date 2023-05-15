@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+from typing import List
+
+import numpy as np
 import torch
 
 # We could try using nan instead of zeros for non-existing previous dirs...
@@ -136,3 +139,73 @@ def normalize_directions(directions):
                       for s in directions]
 
     return directions
+
+
+def compress_streamline_values(streamlines: List, values: List = None,
+                               compress_eps: float = 1e-3):
+    """
+    Parameters
+    ----------
+    streamlines: List[Tensors]
+        Streamlines' directions.
+    values: List[Tensors]
+        If set, compresses the values rather than the streamlines themselves.
+    compress_eps: float
+        Angle (in degrees)
+    """
+    if values is None:
+        # Compress the streamline itself with our technique.
+        # toDo
+        raise NotImplementedError("Code not ready")
+
+    compress_eps = np.deg2rad(compress_eps)
+    one = torch.ones(1, device=streamlines[0].device)
+
+    dirs = compute_directions(streamlines)
+
+    compressed_mean_loss = 0.0
+    compressed_n = 0
+    for loss, line_dirs in zip(values, dirs):
+        if len(loss) < 2:
+            compressed_mean_loss = compressed_mean_loss + torch.mean(loss)
+            compressed_n += len(loss)
+        else:
+            # 1. Compute angles
+            # Skip normalization if not required:
+            line_dirs /= torch.linalg.norm(line_dirs, dim=-1, keepdim=True)
+            cos_angles = torch.sum(line_dirs[:-1, :] * line_dirs[1:, :], dim=1)
+
+            # Resolve numerical instability
+            cos_angles = torch.minimum(torch.maximum(-one, cos_angles), one)
+            angles = torch.arccos(cos_angles)
+
+            # 2. Compress losses
+            # By definition, the starting point is different from previous
+            # and has an important meaning. Separating.
+            compressed_mean_loss = compressed_mean_loss + loss[0]
+            compressed_n += 1
+
+            # Then, verifying other segments
+            current_loss = 0.0
+            current_n = 0
+            for next_loss, next_angle in zip(loss[1:], angles):
+                # toDO. Find how to skip loop
+                if next_angle < compress_eps:
+                    current_loss = current_loss + next_loss
+                    current_n += 1
+                else:
+                    if current_n > 0:
+                        # Finish the straight segment
+                        compressed_mean_loss = \
+                            compressed_mean_loss + current_loss / current_n
+                        compressed_n += 1
+
+                    # Add the point following a big curve separately
+                    compressed_mean_loss = compressed_mean_loss + next_loss
+                    compressed_n += 1
+
+                    # Then restart a possible segment
+                    current_loss = 0.0
+                    current_n = 0
+
+    return compressed_mean_loss / compressed_n, compressed_n

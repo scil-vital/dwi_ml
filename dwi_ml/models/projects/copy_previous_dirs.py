@@ -4,20 +4,17 @@ from typing import List
 import torch
 from torch.distributions import Categorical
 
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
+from dwi_ml.data.processing.streamlines.post_processing import compute_directions
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     convert_dirs_to_class
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 
 
 class CopyPrevDirModel(ModelWithDirectionGetter):
-    def __init__(self, dg_key: str = 'cosine-regression',
-                 dg_args: dict = None, skip_first_point=False,
-                 step_size=None, compress=None):
-        super().__init__(dg_key=dg_key, dg_args=dg_args,
-                         experiment_name='TEST', step_size=step_size,
-                         compress=compress)
+    def __init__(self, dg_key: str = 'cosine-regression', dg_args: dict = None,
+                 skip_first_point=False, step_size=None, compress_lines=None):
+        super().__init__(dg_key=dg_key, dg_args=dg_args, experiment_name='TEST',
+                         step_size=step_size, compress=compress_lines)
 
         # Fake input size, we won't use the forward method.
         self.instantiate_direction_getter(dg_input_size=1)

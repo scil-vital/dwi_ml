@@ -174,8 +174,7 @@ def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
         #                 + in between each point, comes back to correct point.
         tmp = [[s[p] + streamline_out_dir[p], s[p+1]]
                for p in range(this_s_len - 1)]
-        out_streamline = \
-            [s[0]] + list(itertools.chain.from_iterable(tmp))
+        out_streamline = [s[0]] + list(itertools.chain.from_iterable(tmp))
         out_streamline = out_streamline[:-1]
         this_s_len2 = len(out_streamline)
 

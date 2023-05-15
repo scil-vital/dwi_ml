@@ -71,7 +71,7 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = OriginalTransformerModel(
             experiment_name=args.experiment_name,
-            step_size=args.step_size, compress=args.compress,
+            step_size=args.step_size, compress=args.compress_lines,
             # Targets in decoder:
             token_type=args.token_type,
             # Concerning inputs:

@@ -76,7 +76,7 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = TransformerSrcAndTgtModel(
             experiment_name=args.experiment_name,
-            step_size=args.step_size, compress=args.compress,
+            step_size=args.step_size, compress=args.compress_lines,
             # Targets in encoder:
             token_type=args.token_type, embedding_key_t=args.target_embedding,
             embedding_size_t=args.embedding_size_t,

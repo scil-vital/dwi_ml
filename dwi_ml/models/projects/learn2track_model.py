@@ -33,7 +33,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     """
 
     def __init__(self, experiment_name,
-                 step_size: Union[float, None], compress: Union[float, None],
+                 step_size: Union[float, None], compress_lines: Union[float, None],
                  nb_features: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
@@ -41,14 +41,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  prev_dirs_embedding_key: Union[str, None],
                  normalize_prev_dirs: bool,
                  # INPUTS
-                 input_embedding_key: str,
-                 input_embedding_size: Union[int, None],
+                 input_embedding_key: str, input_embedding_size: Union[int, None],
                  input_embedding_size_ratio: Union[float, None],
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
-                 use_skip_connection: bool,
-                 use_layer_normalization: bool, dropout: float,
-                 start_from_copy_prev: bool,
+                 use_skip_connection: bool, use_layer_normalization: bool,
+                 dropout: float, start_from_copy_prev: bool,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  # Other
@@ -105,7 +103,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         super().__init__(
             experiment_name=experiment_name, step_size=step_size,
-            compress=compress, log_level=log_level,
+            compress_lines=compress_lines, log_level=log_level,
             # For modelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
@@ -158,8 +156,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.rnn_model = StackedRNN(
             rnn_key, rnn_input_size, rnn_layer_sizes,
             use_skip_connection=use_skip_connection,
-            use_layer_normalization=use_layer_normalization,
-            dropout=dropout)
+            use_layer_normalization=use_layer_normalization, dropout=dropout)
 
         # 4. Direction getter:
         self.instantiate_direction_getter(self.rnn_model.output_size)

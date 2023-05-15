@@ -128,8 +128,8 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
         # Resampling streamlines to a fixed step size, if any
         logging.debug("            Resampling: {}".format(args.step_size))
         sft = resample_streamlines_step_size(sft, step_size=args.step_size)
-    if args.compress:
-        logging.debug("            Compressing: {}".format(args.compress))
+    if args.compress_lines:
+        logging.debug("            Compressing: {}".format(args.compress_lines))
         sft = compress_sft(sft)
 
     # To tensor
@@ -152,9 +152,8 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
     model.eval()
     grad_context = torch.no_grad()
     with grad_context:
-        _, weights = model(
-            batch_input, streamlines,
-            return_weights=True, average_heads=args.average_heads)
+        _, weights = model(batch_input, streamlines, return_weights=True,
+                           average_heads=args.average_heads)
     return weights, streamlines
 
 
@@ -217,14 +216,12 @@ def tto_show_head_view(encoder_attention, decoder_attention, cross_attention,
     head_view(encoder_attention=encoder_attention,
               decoder_attention=decoder_attention,
               cross_attention=cross_attention,
-              encoder_tokens=encoder_tokens,
-              decoder_tokens=decoder_tokens)
+              encoder_tokens=encoder_tokens, decoder_tokens=decoder_tokens)
 
 
 def ttst_show_head_view(encoder_attention, tokens):
     print_head_view_help()
-    head_view(encoder_attention=encoder_attention,
-              encoder_tokens=tokens)
+    head_view(encoder_attention=encoder_attention, encoder_tokens=tokens)
 
 
 def tto_show_model_view(encoder_attention, decoder_attention, cross_attention,
@@ -240,10 +237,8 @@ def tto_show_model_view(encoder_attention, decoder_attention, cross_attention,
                      for i in range(nb_layers)]
             tmp_c = [cross_attention[i][:, head, :, :][:, None, :, :]
                      for i in range(nb_layers)]
-            model_view(encoder_attention=tmp_e,
-                       decoder_attention=tmp_d,
-                       cross_attention=tmp_c,
-                       encoder_tokens=encoder_tokens,
+            model_view(encoder_attention=tmp_e, decoder_attention=tmp_d,
+                       cross_attention=tmp_c, encoder_tokens=encoder_tokens,
                        decoder_tokens=decoder_tokens)
 
 
@@ -255,5 +250,4 @@ def ttst_show_model_view(encoder_attention, tokens, nb_heads, nb_layers):
             print("HEAD #{}".format(head + 1))
             tmp_e = [encoder_attention[i][:, head, :, :][:, None, :, :]
                      for i in range(nb_layers)]
-            model_view(encoder_attention=tmp_e,
-                       encoder_tokens=tokens)
+            model_view(encoder_attention=tmp_e, encoder_tokens=tokens)

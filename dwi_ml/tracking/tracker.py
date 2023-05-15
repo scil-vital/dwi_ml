@@ -110,7 +110,7 @@ class DWIMLAbstractTracker:
         self.append_last_point = append_last_point
         self.eos_stopping_thresh = eos_stopping_thresh
 
-        if model.compress:
+        if model.compress_lines:
             logger.warning(
                 "Careful! Model was trained on compressed streamlines. "
                 "Tractography with a fixed step size could lead to weird "

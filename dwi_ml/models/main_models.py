@@ -12,8 +12,7 @@ from torch import Tensor
 
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
-from dwi_ml.data.processing.space.neighborhood import \
-    prepare_neighborhood_vectors
+from dwi_ml.data.processing.space.neighborhood import prepare_neighborhood_vectors
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
@@ -31,9 +30,8 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name: str,
-                 step_size: float = None, compress: float = False,
-                 log_level=logging.root.level):
+    def __init__(self, experiment_name: str, step_size: float = None,
+                 compress_lines: float = False, log_level=logging.root.level):
         """
         Params
         ------
@@ -48,10 +46,11 @@ class MainModelAbstract(torch.nn.Module):
             resampled streamlined. When using an existing model in various
             scripts, you will often have the option to modify this value, but
             it is probably not recommanded.
-        compress: float
+        compress_streamlines: float
             If set, compress streamlines to that tolerance error. Cannot be
             used together with step_size. Once again, the choice can be
             different here than chosen when creating the hdf5. Default: False.
+            * Do not counfound with direction getters' compress_loss param.
         log_level: str
             Level of the model logger. Default: root's level.
         """
@@ -71,7 +70,7 @@ class MainModelAbstract(torch.nn.Module):
         
         # To tell our batch loader how to resample streamlines during training
         # (should also be the step size during tractography).
-        if step_size and compress:
+        if step_size and compress_lines:
             raise ValueError("You may choose either resampling or compressing,"
                              "but not both.")
         elif step_size and step_size <= 0:
@@ -83,7 +82,7 @@ class MainModelAbstract(torch.nn.Module):
             # as you may be wanting to test weird things to understand better
             # your model.
         self.step_size = step_size
-        self.compress = compress
+        self.compress_lines = compress_lines
 
         # Adding a context. Most models in here act differently
         # during training (ex: no loss at the last coordinate = we skip it)
@@ -117,7 +116,7 @@ class MainModelAbstract(torch.nn.Module):
         return {
             'experiment_name': self.experiment_name,
             'step_size': self.step_size,
-            'compress': self.compress,
+            'compress_lines': self.compress_lines,
         }
 
     def save_params_and_state(self, model_dir):
@@ -293,8 +292,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
             if (prev_dirs_embedding_key is not None and
                     prev_dirs_embedding_size is None):
                 raise ValueError(
-                    "To use an embedding class, you must provide its output "
-                    "size")
+                    "To use an embedding class, you must provide its output size")
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
                 raise ValueError("Embedding choice for previous dirs not "
                                  "understood: {}. It should be one of {}"
@@ -359,8 +357,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         Params
         ------
         inputs: Any
-            Batch of inputs.
-            [nb_points, nb_features].
+            Batch of inputs. Shape: [nb_points, nb_features].
         target_streamlines: List[torch.tensor]
             Directions computed from the streamlines. Not normalized yet.
         """
@@ -437,8 +434,7 @@ class MainModelOneInput(MainModelAbstract):
             upper = torch.as_tensor(data_tensor.shape[:3], device=self.device)
             upper -= 1
             coords_to_idx_clipped = torch.min(
-                torch.max(torch.floor(coords_torch).long(), lower),
-                upper)
+                torch.max(torch.floor(coords_torch).long(), lower), upper)
             input_mask = torch.as_tensor(np.zeros(data_tensor.shape[0:3]))
             for s in range(len(coords_torch)):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1

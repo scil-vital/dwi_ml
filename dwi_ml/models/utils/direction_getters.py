@@ -18,7 +18,7 @@ def add_direction_getter_args(p, gaussian_fisher_args=True):
         '--dg_dropout', type=float, metavar='r', default=0.,
         help="Dropout ratio for the direction getter. Default: 0.")
     p.add_argument(
-        '--compress_loss', metavar='eps', nargs='?', const=1e-3,
+        '--compress_loss', metavar='eps', nargs='?', const=1e-3, type=float,
         help="If true, compress the loss. \nCan be used independently from "
              "options on the input streamlines such as --compress.\n"
              "Compression ratio (eps) can be given: as long as the angle is \n"

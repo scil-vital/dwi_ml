@@ -231,9 +231,10 @@ class MultisubjectSubset(Dataset):
         subject_keys = sorted(hdf_handle.attrs[self.set_name + '_subjs'])
         if subj_id is not None:
             if subj_id not in subject_keys:
-                raise ValueError("Given subject ID {} to be loaded in the {} "
-                                 "does not exist."
-                                 .format(subj_id, self.set_name))
+                raise ValueError(
+                    "Given subject ID {} to be loaded in the {} set does not "
+                    "exist. \nPossible subjects in that set are: {}"
+                    .format(subj_id, self.set_name, subject_keys))
             else:
                 subject_keys = [subj_id]
         self.subjects = subject_keys
@@ -497,7 +498,7 @@ class MultiSubjectDataset:
             # LOADING
             if load_training:
                 self.training_set.load(hdf_handle, subj_id)
-            if load_validation and self.training_set.nb_subjects > 0:
+            if load_validation:
                 self.validation_set.load(hdf_handle, subj_id)
             if load_testing:
                 self.testing_set.load(hdf_handle, subj_id)

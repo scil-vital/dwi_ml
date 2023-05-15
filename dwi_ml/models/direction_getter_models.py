@@ -196,9 +196,9 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     def compute_loss(self, outputs: List[Tensor],
                      target_streamlines: List[Tensor], average_results=True):
         if self.compress_loss and not average_results:
-            raise ValueError(
-                "There is not sense in using compress_loss = True and "
-                "average_loss = False. Compress_loss returns only one value.")
+            logging.warning(
+                "Current implementation of compress_loss does not allow "
+                "returning non-averaged loss.")
 
         target_dirs = self.prepare_targets_for_loss(target_streamlines)
         lengths = [len(t) for t in target_dirs]
@@ -277,22 +277,33 @@ class AbstractDirectionGetterModel(torch.nn.Module):
                 angles = torch.arccos(cos_angles)
 
                 # 2. Compress losses
-                current_loss = loss[0]
-                current_n = 1
+                # By definition, the starting point is different from previous
+                # and has an important meaning. Separating.
+                compressed_mean_loss = compressed_mean_loss + loss[0]
+                compressed_n += 1
+
+                # Then, verifying other segments
+                current_loss = 0.0
+                current_n = 0
                 for next_loss, next_angle in zip(loss[1:], angles):
                     # toDO. Find how to skip loop
                     if next_angle < self.compress_eps:
                         current_loss = current_loss + next_loss
                         current_n += 1
                     else:
-                        # Save previous current_loss
-                        compressed_mean_loss = \
-                            compressed_mean_loss + current_loss / current_n
+                        if current_n > 0:
+                            # Finish the straight segment
+                            compressed_mean_loss = \
+                                compressed_mean_loss + current_loss / current_n
+                            compressed_n += 1
+
+                        # Add the point following a big curve separately
+                        compressed_mean_loss = compressed_mean_loss + next_loss
                         compressed_n += 1
 
-                        # Restart
-                        current_loss = next_loss
-                        current_n = 1
+                        # Then restart a possible segment
+                        current_loss = 0.0
+                        current_n = 0
 
         return compressed_mean_loss / compressed_n, compressed_n
 

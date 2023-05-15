@@ -75,7 +75,9 @@ def main():
                             args.pick_best_and_worst, args.pick_idx)
 
     logging.info("Running model to compute loss")
-    outputs, losses = tester.run_model_on_sft(sft)
+    outputs, losses = tester.run_model_on_sft(
+        sft, uncompress_loss=args.uncompress_loss,
+        force_compress_loss=args.force_compress_loss)
 
     compute_loss_only = (args.out_colored_sft is None and
                          args.out_displacement_sft is None and

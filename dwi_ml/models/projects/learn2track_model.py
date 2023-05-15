@@ -323,16 +323,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         else:
             return model_outputs
 
-    def compute_loss(self, model_outputs, target_streamlines,
-                     average_results=True, **kw):
-        if self._context == 'training':
-            return self.direction_getter.compute_loss(
-                model_outputs, target_streamlines, average_results)
-        else:
-            assert self._context in ['validation', 'visu']
-            return self.direction_getter.compute_loss(
-                model_outputs, target_streamlines, average_results)
-
     def copy_prev_dir(self, dirs, n_prev_dirs):
         if 'regression' in self.dg_key:
             # Regression: The latest previous dir will be used as skip

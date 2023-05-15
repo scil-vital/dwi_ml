@@ -76,7 +76,7 @@ class Tester:
             hdf5_file, subj_id, subset_name=subset_name,
             volume_groups=self._volume_groups,
             streamline_groups=[self.streamlines_group],
-            lazy=False, cache_size=None)
+            lazy=False, cache_size=1)
 
         # 2. Load SFT as in dataloader, except we don't loop on many subject,
         # we don't verify streamline ids (loading all), and we don't split /
@@ -101,7 +101,8 @@ class Tester:
         raise NotImplementedError
 
     def run_model_on_sft(self, sft, add_zeros_if_no_eos=True,
-                         compute_loss=True):
+                         compute_loss=True, uncompress_loss=False,
+                         force_compress_loss=False):
         """
         Equivalent of one validation pass.
 
@@ -112,11 +113,28 @@ class Tester:
             If true, the loss with no zeros is also printed.
         compute_loss: bool
             If False, the method returns the outputs after a forward pass only.
+        uncompress_loss: bool
+            If true, ignores the --compress_loss option of the direction
+            getter.
+        force_compress_loss: bool
+            If true, compresses the loss even if that is not the model's
+            parameter.
         """
+        if uncompress_loss and force_compress_loss:
+            raise ValueError("Can't use both compress and uncompress.")
+
+        save_val = self.model.direction_getter.compress_loss
+        if uncompress_loss:
+            self.model.direction_getter.compress_loss = False
+        elif force_compress_loss:
+            self.model.direction_getter.compress_loss = True
+            self.model.direction_getter.compress_eps = force_compress_loss
+
         batch_size = self.batch_size or len(sft)
         nb_batches = int(np.ceil(len(sft) / batch_size))
 
         losses = []
+        compressed_n = []
         outputs = []
         batch_start = 0
         batch_end = batch_size
@@ -147,23 +165,38 @@ class Tester:
                         tmp_outputs, streamlines, average_results=False)
 
                 outputs.extend([o.cpu() for o in tmp_outputs])
-                losses.extend([line_loss.cpu() for line_loss in tmp_losses])
+                if self.model.direction_getter.compress_loss:
+                    tmp_losses, n = tmp_losses
+                    losses.append(tmp_losses)
+                    compressed_n.append(n)
+                else:
+                    losses.extend([line_loss.cpu() for line_loss in tmp_losses])
 
                 batch_start = batch_end
                 batch_end = min(batch_start + batch_size, len(sft))
 
-            total_n = sum([len(line_loss) for line_loss in losses])
-            total_loss = torch.mean(torch.hstack(losses))
+            if self.model.direction_getter.compress_loss:
+                total_n = sum(compressed_n)
+                total_loss = sum([loss * n for loss, n in
+                                  zip(losses, compressed_n)]) / total_n
+            else:
+                total_n = sum([len(line_loss) for line_loss in losses])
+                total_loss = torch.mean(torch.hstack(losses))
+
             print("Loss function, averaged over all {} points in the chosen "
                   "SFT, is: {}.".format(total_n, total_loss))
 
-            if add_zeros_if_no_eos:
+            if (not self.model.direction_getter.compress_loss) and \
+                    add_zeros_if_no_eos and \
+                    not self.model.direction_getter.add_eos:
                 zero = torch.zeros(1)
                 losses = [torch.hstack([line, zero]) for line in losses]
                 total_n = sum([len(line_loss) for line_loss in losses])
                 total_loss = torch.mean(torch.hstack(losses))
                 print("When adding a 0 loss at the EOS position, the mean "
                       "loss for {} points is {}.".format(total_n, total_loss))
+
+        self.model.direction_getter.compress_loss = save_val
 
         return outputs, losses
 

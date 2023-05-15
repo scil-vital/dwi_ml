@@ -17,6 +17,7 @@ from scilpy.io.utils import add_overwrite_arg
 
 from dwi_ml.io_utils import add_logging_arg, add_arg_existing_experiment_path
 from dwi_ml.io_utils import add_memory_args
+from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 
 blue = [2., 75., 252.]
@@ -27,6 +28,13 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
     if use_existing_experiment:
         # Should only be False for debugging tests.
         add_arg_existing_experiment_path(p)
+        p.add_argument('--uncompress_loss', action='store_true',
+                       help="If model uses compressed loss, take uncompressed "
+                            "equivalent.")
+        p.add_argument('--force_compress_loss', nargs='?', type=float,
+                       const=1e-3,
+                       help="Compress loss, even if model uses uncompressed "
+                            "loss.")
 
     add_args_testing_subj_hdf5(p)
 
@@ -205,9 +213,13 @@ def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
 
 
 def run_visu_save_colored_displacement(
-        args, model, losses: List[torch.Tensor], outputs: List[torch.Tensor],
-        sft: StatefulTractogram, colorbar_name: str, best_sft_name: str,
-        worst_sft_name: str):
+        args, model: ModelWithDirectionGetter, losses: List[torch.Tensor],
+        outputs: List[torch.Tensor], sft: StatefulTractogram,
+        colorbar_name: str, best_sft_name: str, worst_sft_name: str):
+
+    if model.direction_getter.compress_loss:
+        if not ('uncompress_loss' in args and args.uncompress_loss):
+            print("Can't save colored SFT for compressed loss")
 
     # Save colored SFT
     if args.out_colored_sft is not None:

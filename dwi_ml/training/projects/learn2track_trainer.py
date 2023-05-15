@@ -36,8 +36,7 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, clip_grad: float = None,
-                 log_level=logging.WARNING, use_radam: bool = None,
-                 learning_rate: float = None):
+                 log_level=logging.WARNING):
         """
         Init trainer.
 
@@ -51,14 +50,13 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput):
             experiment_name=experiment_name, batch_sampler=batch_sampler,
             batch_loader=batch_loader, learning_rates=learning_rates,
             weight_decay=weight_decay, optimizer=optimizer,
-            use_radam=use_radam, max_epochs=max_epochs,
+            max_epochs=max_epochs,
             max_batches_per_epoch_training=max_batches_per_epoch_training,
             max_batches_per_epoch_validation=max_batches_per_epoch_validation,
             patience=patience, patience_delta=patience_delta,
             nb_cpu_processes=nb_cpu_processes, use_gpu=use_gpu,
             comet_workspace=comet_workspace, comet_project=comet_project,
-            from_checkpoint=from_checkpoint,
-            log_level=log_level, learning_rate=learning_rate)
+            from_checkpoint=from_checkpoint, log_level=log_level)
 
         self.clip_grad = clip_grad
         self.real_hidden_state_memory = None  # For n-step training

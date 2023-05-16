@@ -55,13 +55,6 @@ def add_tracking_options(p):
                         metavar='M',
                         help='Maximum length of a streamline in mm. '
                              '[%(default)s]')
-    stop_g.add_argument('--max_invalid_nb_points', metavar='MAX', type=float,
-                        default=0,
-                        help="Maximum number of steps without valid "
-                             "direction, \nex: if threshold on ODF or max "
-                             "angles are reached.\n"
-                             "Default: 0, i.e. do not add points following "
-                             "an invalid direction.")
     stop_g.add_argument('--tracking_mask_group',
                         help="Tracking mask's volume group in the hdf5.")
     stop_g.add_argument('--theta', metavar='t', type=float,

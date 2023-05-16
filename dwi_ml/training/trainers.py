@@ -15,6 +15,7 @@ from tqdm import tqdm
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract, ModelWithDirectionGetter
+from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -1050,7 +1051,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         return mean_loss, n
 
 
-class DWIMLTrainerForTracking(DWIMLAbstractTrainer):
+class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
+    model: ModelWithDirectionGetter
+
     def __init__(self, add_a_tracking_validation_phase: bool = False,
                  tracking_phase_frequency: int = 5,
                  tracking_phase_nb_steps_init: int = 5,
@@ -1170,3 +1173,45 @@ class DWIMLTrainerForTracking(DWIMLAbstractTrainer):
                         "generation_loss_per_epoch", loss, epoch=0, step=epoch)
 
         super()._update_comet_after_epoch(context, epoch)
+
+    def generate_from_one_batch(self, data):
+        # Data interpolation has not been done yet. GPU computations are done
+        # here in the main thread.
+        lines, ids_per_subj = data
+
+        # Dataloader always works on CPU. Sending to right device.
+        # (model is already moved). Using only the n first points
+        lines = [s[:min(len(s), self.tracking_phase_nb_steps_init), :].to(
+            self.device, non_blocking=True, dtype=torch.float)
+                   for s in lines]
+        lines = self.propagate_multiple_lines(lines, ids_per_subj)
+
+    def propagate_multiple_lines(self, lines: List[torch.Tensor], ids_per_subj):
+        assert self.model.step_size is not None, \
+            "We can't propagate compressed streamlines."
+
+        def update_memory_after_removing_lines(_, __):
+            pass
+
+        def get_dirs_at_last_pos(_lines: List[torch.Tensor]):
+            n_last_pos = [line[-1, :][None, :] for line in _lines]
+            batch_inputs = self.batch_loader.load_batch_inputs(
+                n_last_pos, ids_per_subj)
+            if self.model.forward_uses_streamlines:
+                # Possibly computing directions twice (during forward and loss)
+                # but ok, shouldn't be too heavy. Easier to deal with multiple
+                # projects' requirements by sending whole streamlines rather
+                # than only directions.
+                model_outputs = self.model(batch_inputs, n_last_pos)
+            else:
+                model_outputs = self.model(batch_inputs)
+            next_dirs = self.model.get_tracking_directions(
+                model_outputs, algo='det', eos_stopping_thresh=0.5)
+            return next_dirs, n_last_pos
+
+        return propagate_multiple_lines(
+            lines, update_memory_after_removing_lines,
+            get_dirs_at_last_pos, theta=np.pi / 2,
+            step_size=self.model.step_size, verify_opposite_direction=False,
+            mask=self.mask, max_nbr_pts=None, append_last_point=False,
+            normalize_directions=True)

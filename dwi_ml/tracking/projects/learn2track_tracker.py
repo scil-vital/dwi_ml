@@ -38,20 +38,19 @@ class RecurrentTracker(DWIMLTrackerOneInput):
 
         return super().prepare_forward(seeding_pos)
 
-    def prepare_backward(self, lines, seeds, forward_dir=None):
+    def prepare_backward(self, lines):
         """
         Preparing backward. We need to recompute the hidden recurrent state
         for this half-streamline.
         """
-        lines, seeds, backward_dir, rej_idx = super().prepare_backward(
-            lines, seeds, forward_dir)
+        lines, rej_idx = super().prepare_backward(lines)
 
         logger.debug("Computing hidden RNN state at backward: run model on "
                      "(reversed) first half.")
 
         # Must re-run the model from scratch to get the hidden states
-        # But! Not including the last point (i.e. the seed).
         self.model.set_context('preparing_backward')
+
         # We don't re-run the last point (i.e. the seed) because the first
         # propagation step after backward = at that point.
         tmp_lines = [s[:-1, :] for s in lines]
@@ -68,7 +67,7 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         # Back to tracking context
         self.model.set_context('tracking')
 
-        return lines, seeds, backward_dir, rej_idx
+        return lines, rej_idx
 
     def _call_model_forward(self, inputs, lines):
         # For RNN, we need to send the hidden state too.
@@ -78,16 +77,14 @@ class RecurrentTracker(DWIMLTrackerOneInput):
 
         return model_outputs
 
-    def update_memory_after_removing_lines(
-            self, can_continue: np.ndarray, new_stopping_lines_raw_idx: list,
-            batch_size: int):
+    def update_memory_after_removing_lines(self, can_continue: np.ndarray, _):
         """
         Removing rejected lines from hidden states.
 
         Params
         ------
-        lines_that_continue: list
-            List of indexes of lines that are kept.
+        can_continue: np.ndarray
+            Indexes of lines that are kept.
         """
         # Hidden states: list[states] (One value per layer).
         if self.model.rnn_model.rnn_torch_key == 'lstm':

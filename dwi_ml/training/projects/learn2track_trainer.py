@@ -6,12 +6,12 @@ import torch
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from dwi_ml.training.trainers import DWIMLTrainerOneInput, DWIMLTrainerForTracking
+from dwi_ml.training.trainers import DWIMLTrainerOneInput, DWIMLTrainerForTrackingOneInput
 
 logger = logging.getLogger('trainer_logger')
 
 
-class Learn2TrackTrainer(DWIMLTrainerOneInput, DWIMLTrainerForTracking):
+class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
     """
     Trainer for Learn2Track. Nearly the same as in dwi_ml, but we add the
     clip_grad parameter to avoid exploding gradients, typical in RNN.
@@ -55,3 +55,20 @@ class Learn2TrackTrainer(DWIMLTrainerOneInput, DWIMLTrainerForTracking):
                 self.model.parameters(), self.clip_grad)
             if torch.isnan(total_norm):
                 raise ValueError("Exploding gradients. Experiment failed.")
+
+    def prepare_model_to_track(self, lines, ids_per_subj):
+        # Running the beginning of the sequence to get the hidden state.
+        batch_inputs = self.batch_loader.load_batch_inputs(lines, ids_per_subj)
+
+        logger.debug('*** Computing forward propagation for N={} steps'
+                     .format(self.tracking_phase_nb_steps_init))
+        if self.model.forward_uses_streamlines:
+            # Possibly computing directions twice (during forward and loss)
+            # but ok, shouldn't be too heavy. Easier to deal with multiple
+            # projects' requirements by sending whole streamlines rather
+            # than only directions.
+            _, hidden_state = self.model(batch_inputs, lines)
+        else:
+            _, hidden_state = self.model(batch_inputs)
+
+        return hidden_state

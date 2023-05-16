@@ -103,7 +103,6 @@ def prepare_tracker(parser, args):
             dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
             seed_generator=seed_generator, nbr_seeds=nbr_seeds,
             min_len_mm=args.min_length, max_len_mm=args.max_length,
-            max_invalid_dirs=args.max_invalid_nb_points,
             compression_th=args.compress, nbr_processes=args.nbr_processes,
             save_seeds=args.save_seeds, rng_seed=args.rng_seed,
             track_forward_only=args.track_forward_only,

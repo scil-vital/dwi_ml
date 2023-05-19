@@ -73,7 +73,9 @@ def prepare_tracker(parser, args):
 
         if args.tracking_mask_group is not None:
             logging.info("Loading tracking mask.")
-            tracking_mask, ref2 = prepare_tracking_mask(args, hdf_handle)
+            tracking_mask, ref2 = prepare_tracking_mask(
+                hdf_handle, args.tracking_mask_group, args.subj_id,
+                args.mask_interp)
 
             # Comparing tracking and seeding masks
             is_header_compatible(ref2, seeding_mask_header)

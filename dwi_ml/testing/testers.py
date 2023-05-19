@@ -99,7 +99,8 @@ class Tester:
 
     def run_model_on_sft(self, sft, add_zeros_if_no_eos=True,
                          compute_loss=True, uncompress_loss=False,
-                         force_compress_loss=False):
+                         force_compress_loss=False,
+                         weight_with_angle=False):
         """
         Equivalent of one validation pass.
 
@@ -116,16 +117,24 @@ class Tester:
         force_compress_loss: bool
             If true, compresses the loss even if that is not the model's
             parameter.
+        change_weight_with_angle: bool
+            If true, modify model's wieght_loss_with_angle param.
         """
         if uncompress_loss and force_compress_loss:
             raise ValueError("Can't use both compress and uncompress.")
 
         save_val = self.model.direction_getter.compress_loss
+        save_val_angle = self.model.direction_getter.weight_loss_with_angle
         if uncompress_loss:
             self.model.direction_getter.compress_loss = False
         elif force_compress_loss:
             self.model.direction_getter.compress_loss = True
             self.model.direction_getter.compress_eps = force_compress_loss
+
+        if weight_with_angle:
+            self.model.direction_getter.weight_loss_with_angle = True
+        else:
+            self.model.direction_getter.weight_loss_with_angle = False
 
         batch_size = self.batch_size or len(sft)
         nb_batches = int(np.ceil(len(sft) / batch_size))
@@ -161,13 +170,15 @@ class Tester:
                     tmp_losses = self.model.compute_loss(
                         tmp_outputs, streamlines, average_results=False)
 
+                    if self.model.direction_getter.compress_loss:
+                        tmp_losses, n = tmp_losses
+                        losses.append(tmp_losses)
+                        compressed_n.append(n)
+                    else:
+                        losses.extend([line_loss.cpu() for line_loss in
+                                       tmp_losses])
+
                 outputs.extend([o.cpu() for o in tmp_outputs])
-                if self.model.direction_getter.compress_loss:
-                    tmp_losses, n = tmp_losses
-                    losses.append(tmp_losses)
-                    compressed_n.append(n)
-                else:
-                    losses.extend([line_loss.cpu() for line_loss in tmp_losses])
 
                 batch_start = batch_end
                 batch_end = min(batch_start + batch_size, len(sft))
@@ -194,6 +205,7 @@ class Tester:
                       "loss for {} points is {}.".format(total_n, total_loss))
 
         self.model.direction_getter.compress_loss = save_val
+        self.model.direction_getter.weight_loss_with_angle = save_val_angle
 
         return outputs, losses
 

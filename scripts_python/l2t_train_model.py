@@ -23,6 +23,7 @@ from dwi_ml.io_utils import add_logging_arg, add_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.models.projects.learn2track_utils import add_model_args
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
+from dwi_ml.tracking.utils import prepare_tracking_mask
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
@@ -40,7 +41,7 @@ def prepare_arg_parser():
     add_mandatory_args_training_experiment(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
-    training_group = add_training_args(p)
+    training_group = add_training_args(p, add_a_tracking_validation_phase=True)
     add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_logging_arg(p)
 
@@ -123,6 +124,11 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, patience_delta=args.patience_delta,
             from_checkpoint=False, clip_grad=args.clip_grad,
+            # (generation validation:)
+            add_a_tracking_validation_phase=args.add_a_tracking_validation_phase,
+            tracking_phase_frequency=args.tracking_phase_frequency,
+            tracking_phase_nb_steps_init=5,  # args.tracking_phase_nb_steps_init
+            tracking_phase_mask_group=args.tracking_mask,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
             log_level=args.logging)

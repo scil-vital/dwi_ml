@@ -62,7 +62,8 @@ class RecurrentTracker(DWIMLTrackerOneInput):
 
         # No hidden state given = running model on all points.
         with self.grad_context:
-            _, self.hidden_recurrent_states = self.model(all_inputs, tmp_lines)
+            _, self.hidden_recurrent_states = self.model(
+                all_inputs, tmp_lines, return_hidden=True, point_idx=None)
 
         # Back to tracking context
         self.model.set_context('tracking')
@@ -73,7 +74,8 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         # For RNN, we need to send the hidden state too.
         with self.grad_context:
             model_outputs, self.hidden_recurrent_states = self.model(
-                inputs, lines, self.hidden_recurrent_states)
+                inputs, lines, self.hidden_recurrent_states,
+                return_hidden=True, point_idx=-1)
 
         return model_outputs
 
@@ -87,16 +89,5 @@ class RecurrentTracker(DWIMLTrackerOneInput):
             Indexes of lines that are kept.
         """
         # Hidden states: list[states] (One value per layer).
-        if self.model.rnn_model.rnn_torch_key == 'lstm':
-            # LSTM: States are tuples; (h_t, C_t)
-            # Size of tensors are each [1, nb_streamlines, nb_neurons]
-            self.hidden_recurrent_states = [
-                (hidden_states[0][:, can_continue, :],
-                 hidden_states[1][:, can_continue, :]) for
-                hidden_states in self.hidden_recurrent_states]
-        else:
-            #   GRU: States are tensors; h_t.
-            #     Size of tensors are [1, nb_streamlines, nb_neurons].
-            self.hidden_recurrent_states = [
-                hidden_states[:, can_continue, :] for
-                hidden_states in self.hidden_recurrent_states]
+        self.hidden_recurrent_states = self.model.update_hidden_state(
+            self.hidden_recurrent_states, can_continue)

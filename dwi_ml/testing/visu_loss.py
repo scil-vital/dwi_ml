@@ -35,6 +35,12 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
                        const=1e-3,
                        help="Compress loss, even if model uses uncompressed "
                             "loss.")
+        g = p.add_mutually_exclusive_group()
+        g.add_argument('--weight_with_angle', action='store_true',
+                       help="Change model's weight loss with angle parameter "
+                            "value (True/False).")
+        g.add_argument('--do_not_weight_with_angle', dest='weight_with_angle',
+                       action='store_false')
 
     add_args_testing_subj_hdf5(p)
 

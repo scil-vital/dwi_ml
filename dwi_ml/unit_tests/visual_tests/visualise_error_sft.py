@@ -11,10 +11,11 @@ from dipy.io.streamline import save_tractogram
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 
-from dwi_ml.experiment_utils.prints import add_logging_arg
+from dwi_ml.data.processing.streamlines.data_augmentation import \
+    resample_or_compress
 from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.tracking.utils import prepare_dataset_one_subj
-from dwi_ml.io_utils import add_resample_or_compress_arg, resample_or_compress
+from dwi_ml.io_utils import add_resample_or_compress_arg, add_logging_arg
+from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 blue = [2., 75., 252.]
 
@@ -71,7 +72,7 @@ def prepare_batch_visu_error(p, args, model: MainModelAbstract,
                              check_data_loader=True):
     """
     Loads the batch input from one subject.
-    Loads the batch streamlines from a SFT rather than from the hdf5.
+    Loads the batch streamlines from an SFT rather than from the hdf5.
     """
     # Load SFT, possibly pick one streamline
     sft = load_tractogram_with_reference(p, args, args.input_sft)
@@ -115,7 +116,7 @@ def prepare_batch_visu_error(p, args, model: MainModelAbstract,
     logging.info("Loading subject.")
     subset, subj_idx = prepare_dataset_one_subj(
         args.hdf5_file, args.subj_id, lazy=False, cache_size=False,
-        subset=args.subset)
+        subset_name=args.subset)
     group_idx = subset.volume_groups.index(input_group)
     streamlines_minus_one = [s[:-1, :] for s in streamlines]
     batch_input, _ = model.prepare_batch_one_input(

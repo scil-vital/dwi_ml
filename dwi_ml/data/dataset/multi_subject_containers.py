@@ -424,7 +424,6 @@ class MultiSubjectDataset:
         with h5py.File(self.hdf5_file, 'r') as hdf_handle:
             # Load main attributes from hdf file, but each process calling
             # the collate_fn must open its own hdf_file
-
             step_size = hdf_handle.attrs['step_size']
             if 'compress' in hdf_handle.attrs:
                 compress = hdf_handle.attrs['compress']

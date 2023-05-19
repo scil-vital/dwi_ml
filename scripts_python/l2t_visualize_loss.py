@@ -74,7 +74,8 @@ def main():
 
     outputs, losses = tester.run_model_on_sft(
         sft, uncompress_loss=args.uncompress_loss,
-        force_compress_loss=args.force_compress_loss)
+        force_compress_loss=args.force_compress_loss,
+        weight_with_angle=args.weight_with_angle)
 
     compute_loss_only = (args.out_colored_sft is None and
                          args.out_displacement_sft is None and

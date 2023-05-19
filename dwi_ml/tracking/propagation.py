@@ -50,8 +50,7 @@ def propagate_multiple_lines(
     # Will get the final lines when they are done.
     final_lines = [None] * nb_streamlines  # type: List[Tensor]
 
-    # `lines` will be updated at each loop to only contain the remaining
-    # lines.
+    # Find initial direction
     all_lines_completed = False
     if len(lines[0]) == 1:
         # Starting from zero. We suppose all streamlines are starting from
@@ -62,6 +61,8 @@ def propagate_multiple_lines(
         previous_dir = torch.vstack(previous_dir)
         if normalize_directions:
             previous_dir /= torch.linalg.norm(previous_dir, dim=-1)[:, None]
+
+    # Track
     while not all_lines_completed:
         n_new_pos, previous_dir, invalid_dirs = \
             _take_one_step_or_go_straight(
@@ -70,8 +71,8 @@ def propagate_multiple_lines(
 
         # If invalid direction (ex: angle or EOS), stop now.
         if sum(invalid_dirs) > 0:
-            logger.debug("{} streamlines with invalid directions (ex, EOS)."
-                         .format(sum(invalid_dirs)))
+            logger.debug("{} streamlines with invalid directions "
+                         "(ex, EOS, angle).".format(sum(invalid_dirs)))
 
         # For other streamlines: verifying but appending only if option is
         # chosen.
@@ -182,7 +183,7 @@ def _verify_stopping_criteria(n_last_pos, lines, mask=None, max_nbr_pts=None):
             logger.debug("{} streamlines stopping after reaching max nb "
                          "points ({})".format(sum(stopping), max_nbr_pts))
     else:
-        stopping = np.ones(len(lines))
+        stopping = np.zeros(len(lines), dtype=bool)
 
     # Checking if out of bound using seeding mask
     if mask is not None:
@@ -228,14 +229,14 @@ def _verify_angle(next_dirs: Tensor, previous_dirs: Tensor, theta,
     # small step.
     one = torch.ones(1, device=next_dirs.device)
     cos_angle = torch.minimum(torch.maximum(-one, cos_angle), one)
-    angle = torch.arccos(cos_angle)
+    angles = torch.arccos(cos_angle)
 
     if verify_opposite_direction:
-        mask_angle = angle > np.pi / 2  # 90 degrees
-        angle[mask_angle] = np.mod(angle[mask_angle] + np.pi, 2*np.pi)
+        mask_angle = angles > np.pi / 2  # 90 degrees
+        angles[mask_angle] = np.mod(angles[mask_angle] + np.pi, 2*np.pi)
         next_dirs[mask_angle] = - next_dirs[mask_angle]
 
-    mask_angle = angle > theta
+    mask_angle = angles > theta
     next_dirs[mask_angle] = torch.full((3,), fill_value=torch.nan,
                                        device=next_dirs.device)
 

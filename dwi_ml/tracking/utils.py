@@ -129,22 +129,24 @@ def prepare_seed_generator(parser, args, hdf_handle):
     return seed_generator, nbr_seeds, seed_header, ref
 
 
-def prepare_tracking_mask(args, hdf_handle):
+def prepare_tracking_mask(hdf_handle, tracking_mask_group, subj_id, mask_interp):
     """
     Prepare the tracking mask as a DataVolume from scilpy's library. Returns
     also some header information to allow verifications.
     """
-    if args.tracking_mask_group not in hdf_handle[args.subj_id]:
+    if subj_id not in hdf_handle:
+        raise KeyError("Subject {} not found in {}. Possible subjects are: {}"
+                       .format(subj_id, hdf_handle, list(hdf_handle.keys())))
+    if tracking_mask_group not in hdf_handle[subj_id]:
         raise KeyError("HDF group '{}' not found for subject {} in hdf file {}"
-                       .format(args.tracking_mask_group, args.subj_id,
-                               hdf_handle))
-    tm_group = hdf_handle[args.subj_id][args.tracking_mask_group]
+                       .format(tracking_mask_group, subj_id, hdf_handle))
+    tm_group = hdf_handle[subj_id][tracking_mask_group]
     mask_data = np.array(tm_group['data'], dtype=np.float64).squeeze()
     # mask_res = np.array(tm_group.attrs['voxres'], dtype=np.float32)
     affine = np.array(tm_group.attrs['affine'], dtype=np.float32)
     ref = nib.Nifti1Image(mask_data, affine)
 
-    mask = TrackingMask(mask_data.shape, mask_data, args.mask_interp)
+    mask = TrackingMask(mask_data.shape, mask_data, mask_interp)
 
     return mask, ref
 

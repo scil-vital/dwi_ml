@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 import logging
+from typing import List
 
+import numpy as np
 import torch
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
-from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from dwi_ml.training.trainers import DWIMLTrainerOneInput, DWIMLTrainerForTrackingOneInput
+from dwi_ml.tracking.propagation import propagate_multiple_lines
+from dwi_ml.training.projects.trainers_for_generation import \
+    DWIMLTrainerForTrackingOneInput
 
 logger = logging.getLogger('trainer_logger')
 
@@ -16,6 +18,7 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
     Trainer for Learn2Track. Nearly the same as in dwi_ml, but we add the
     clip_grad parameter to avoid exploding gradients, typical in RNN.
     """
+    model: Learn2TrackModel
 
     def __init__(self, clip_grad: float = None, **kwargs):
         """
@@ -56,19 +59,44 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
             if torch.isnan(total_norm):
                 raise ValueError("Exploding gradients. Experiment failed.")
 
-    def prepare_model_to_track(self, lines, ids_per_subj):
-        # Running the beginning of the sequence to get the hidden state.
-        batch_inputs = self.batch_loader.load_batch_inputs(lines, ids_per_subj)
+    def propagate_multiple_lines(self, lines: List[torch.Tensor], ids_per_subj):
+        assert self.model.step_size is not None, \
+            "We can't propagate compressed streamlines."
 
-        logger.debug('*** Computing forward propagation for N={} steps'
-                     .format(self.tracking_phase_nb_steps_init))
-        if self.model.forward_uses_streamlines:
-            # Possibly computing directions twice (during forward and loss)
-            # but ok, shouldn't be too heavy. Easier to deal with multiple
-            # projects' requirements by sending whole streamlines rather
-            # than only directions.
-            _, hidden_state = self.model(batch_inputs, lines)
-        else:
-            _, hidden_state = self.model(batch_inputs)
+        # Running the beginning of the streamlines to get the hidden states
+        # (using one less point. The next will be done during propagation).
+        tmp_lines = [line[:-1, :] for line in lines]
+        inputs = self.batch_loader.load_batch_inputs(tmp_lines, ids_per_subj)
+        _, hidden_states = self.model(inputs, tmp_lines, return_hidden=True)
+        del tmp_lines
 
-        return hidden_state
+        def update_memory_after_removing_lines(can_continue: np.ndarray, _):
+            nonlocal hidden_states
+            hidden_states = self.model.update_hidden_state(hidden_states,
+                                                           can_continue)
+
+        def get_dirs_at_last_pos(_lines: List[torch.Tensor], n_last_pos):
+            nonlocal hidden_states
+
+            n_last_pos = [pos[None, :] for pos in n_last_pos]
+            batch_inputs = self.batch_loader.load_batch_inputs(n_last_pos,
+                                                               ids_per_subj)
+
+            _model_outputs, hidden_states = self.model(
+                batch_inputs, _lines, return_hidden=True, point_idx=-1)
+
+            next_dirs = self.model.get_tracking_directions(
+                _model_outputs, algo='det', eos_stopping_thresh=0.5)
+            return next_dirs
+
+        self.model.set_context('tracking')
+        theta = 2 * np.pi  # theta = 360 degrees
+        max_nbr_pts = int(200 / self.model.step_size)
+        results = propagate_multiple_lines(
+            lines, update_memory_after_removing_lines, get_dirs_at_last_pos,
+            theta=theta, step_size=self.model.step_size,
+            verify_opposite_direction=False, mask=self.tracking_mask,
+            max_nbr_pts=max_nbr_pts, append_last_point=False,
+            normalize_directions=True)
+        self.model.set_context('training')
+        return results

@@ -15,7 +15,6 @@ from tqdm import tqdm
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import MainModelAbstract, ModelWithDirectionGetter
-from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -499,7 +498,11 @@ class DWIMLAbstractTrainer:
                             .format(self.best_epoch_monitor.n_bad_epochs,
                                     self.best_epoch_monitor.patience))
             elif self.best_epoch_monitor.best_epoch == epoch:
-                self._save_info_best_epoch()
+                self._save_best_model()
+
+            if self.comet_exp:
+                self.comet_exp.log_metric(
+                    "best_loss", self.best_epoch_monitor.best_value, step=epoch)
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
@@ -715,9 +718,9 @@ class DWIMLAbstractTrainer:
                 self.comet_exp.log_metric(
                     "mean_gradient_norm_per_epoch",
                     self.grad_norm_monitor.average_per_epoch[epoch],
-                    epoch=epoch, step=None)
+                    epoch=None, step=epoch)
 
-    def _save_info_best_epoch(self):
+    def _save_best_model(self):
         logger.info("   Best epoch yet! Saving model and loss history.")
 
         # Save model
@@ -735,10 +738,6 @@ class DWIMLAbstractTrainer:
                   'w') as json_file:
             json_file.write(json.dumps(best_losses, indent=4,
                                        separators=(',', ': ')))
-
-        if self.comet_exp:
-            self.comet_exp.log_metric(
-                "best_loss", self.best_epoch_monitor.best_value)
 
     def run_one_batch(self, data):
         """
@@ -1049,169 +1048,3 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         # The mean tensor is a single value. Converting to float using item().
         return mean_loss, n
-
-
-class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
-    model: ModelWithDirectionGetter
-
-    def __init__(self, add_a_tracking_validation_phase: bool = False,
-                 tracking_phase_frequency: int = 5,
-                 tracking_phase_nb_steps_init: int = 5,
-                 *args, **kw):
-        super().__init__(*args, **kw)
-
-        self.add_a_tracking_validation_phase = add_a_tracking_validation_phase
-        self.tracking_phase_frequency = tracking_phase_frequency
-        self.tracking_phase_nb_steps_init = tracking_phase_nb_steps_init
-        self.tracking_valid_time_monitor = TimeMonitor()
-        self.tracking_valid_loss_monitor = BatchHistoryMonitor(weighted=True)
-
-    @property
-    def params_for_checkpoint(self):
-        p = super().params_for_checkpoint
-        p.update({
-            'add_a_tracking_validation_phase': self.add_a_tracking_validation_phase,
-            'tracking_phase_frequency': self.tracking_phase_frequency,
-            'tracking_phase_nb_steps_init': self.tracking_phase_nb_steps_init
-        })
-
-        return p
-
-    def _update_states_from_checkpoint(self, current_states):
-        super()._update_states_from_checkpoint(current_states)
-        self.tracking_valid_loss_monitor.set_state(current_states['tracking_valid_loss_monitor_state'])
-
-    def _prepare_checkpoint_info(self) -> dict:
-        checkpoint_info = super()._prepare_checkpoint_info()
-        checkpoint_info['current_states'].update({
-            'tracking_valid_loss_monitor_state': self.tracking_valid_loss_monitor.get_state(),
-        })
-        return checkpoint_info
-
-    def save_local_logs(self):
-        super().save_local_logs()
-        self._save_log_locally(self.tracking_valid_loss_monitor.average_per_epoch,
-                               "tracking_validation_loss_per_epoch.npy")
-
-    def validate_one_epoch(self, epoch):
-        super().validate_one_epoch(epoch)
-
-        self.tracking_valid_loss_monitor.start_new_epoch()
-        if (epoch + 1) % self.tracking_phase_frequency == 0:
-            logger.info("Additional tracking-like generation validation phase")
-            self.validate_using_tracking(epoch)
-        else:
-            self.tracking_valid_loss_monitor.update(
-                self.tracking_valid_loss_monitor.average_per_epoch[-1])
-
-    def _get_latest_loss_to_supervise_best(self):
-        if self.use_validation:
-            # Compared to super, replacing by tracking_valid loss.
-            mean_epoch_loss = self.tracking_valid_loss_monitor.average_per_epoch[-1]
-        else:
-            mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
-
-        return mean_epoch_loss
-
-    def validate_using_tracking(self, epoch):
-        self.tracking_valid_time_monitor.start_new_epoch()
-
-        # Setting contexts
-        # Turn gradients off (no back-propagation)
-        # Uses torch's module eval(), which "turns off" the training mode.
-        self.batch_loader.set_context('validation')
-        self.batch_sampler.set_context('validation')
-        comet_context = self.comet_exp.validate if self.comet_exp else None
-        self.model.set_context('validation')
-        self.model.eval()
-        grad_context = torch.no_grad
-
-        # Make sure there are no existing HDF handles if using parallel workers
-        if (self.nb_cpu_processes > 0 and
-                self.batch_sampler.context_subset.is_lazy):
-            self.batch_sampler.context_subset.close_all_handles()
-
-        # Validate all batches
-        with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
-                                   total=self.nb_valid_batches_per_epoch,
-                                   loggers=[logging.root],
-                                   tqdm_class=tqdm) as pbar:
-            valid_iterator = enumerate(pbar)
-            for batch_id, data in valid_iterator:
-                # Break if maximum number of epochs has been reached
-                if batch_id == self.nb_valid_batches_per_epoch:
-                    # Explicitly close tqdm's progress bar to fix possible bugs
-                    # when breaking the loop
-                    pbar.close()
-                    break
-
-                # Validate this batch: forward propagation + loss
-                with grad_context():
-                    mean_loss, n = self.generate_from_one_batch(data)
-
-                mean_loss = mean_loss.cpu().item()
-                self.tracking_valid_loss_monitor.update(mean_loss, weight=n)
-
-            # Explicitly delete iterator to kill threads and free memory before
-            # running training again
-            del valid_iterator
-
-        # Save info
-        self.tracking_valid_loss_monitor.end_epoch()
-        self.tracking_valid_time_monitor.end_epoch()
-        self._update_comet_after_epoch(comet_context, epoch)
-
-    def _update_comet_after_epoch(self, context: str, epoch: int):
-        if context == 'validation' and \
-                (epoch + 1) % self.tracking_phase_frequency == 0:
-            loss = self.tracking_valid_loss_monitor.average_per_epoch[-1]
-            logger.info("   Mean tracking loss for this epoch: {}".format(loss))
-            if self.comet_exp:
-                comet_context = self.comet_exp.validate
-                with comet_context():
-                    self.comet_exp.log_metric(
-                        "generation_loss_per_epoch", loss, epoch=0, step=epoch)
-
-        super()._update_comet_after_epoch(context, epoch)
-
-    def generate_from_one_batch(self, data):
-        # Data interpolation has not been done yet. GPU computations are done
-        # here in the main thread.
-        lines, ids_per_subj = data
-
-        # Dataloader always works on CPU. Sending to right device.
-        # (model is already moved). Using only the n first points
-        lines = [s[:min(len(s), self.tracking_phase_nb_steps_init), :].to(
-            self.device, non_blocking=True, dtype=torch.float)
-                   for s in lines]
-        lines = self.propagate_multiple_lines(lines, ids_per_subj)
-
-    def propagate_multiple_lines(self, lines: List[torch.Tensor], ids_per_subj):
-        assert self.model.step_size is not None, \
-            "We can't propagate compressed streamlines."
-
-        def update_memory_after_removing_lines(_, __):
-            pass
-
-        def get_dirs_at_last_pos(_lines: List[torch.Tensor]):
-            n_last_pos = [line[-1, :][None, :] for line in _lines]
-            batch_inputs = self.batch_loader.load_batch_inputs(
-                n_last_pos, ids_per_subj)
-            if self.model.forward_uses_streamlines:
-                # Possibly computing directions twice (during forward and loss)
-                # but ok, shouldn't be too heavy. Easier to deal with multiple
-                # projects' requirements by sending whole streamlines rather
-                # than only directions.
-                model_outputs = self.model(batch_inputs, n_last_pos)
-            else:
-                model_outputs = self.model(batch_inputs)
-            next_dirs = self.model.get_tracking_directions(
-                model_outputs, algo='det', eos_stopping_thresh=0.5)
-            return next_dirs, n_last_pos
-
-        return propagate_multiple_lines(
-            lines, update_memory_after_removing_lines,
-            get_dirs_at_last_pos, theta=np.pi / 2,
-            step_size=self.model.step_size, verify_opposite_direction=False,
-            mask=self.mask, max_nbr_pts=None, append_last_point=False,
-            normalize_directions=True)

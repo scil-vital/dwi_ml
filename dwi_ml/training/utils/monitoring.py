@@ -73,8 +73,9 @@ class BatchHistoryMonitor(object):
     def start_new_epoch(self):
         assert len(self.average_per_epoch) == self.current_epoch + 1, \
             "Did you forget to end previous epoch? Number of epoch values " \
-            "is {} but monitor's current epoch is {}" \
-            .format(len(self.average_per_epoch), self.current_epoch)
+            "is {} but monitor's current epoch is {} (i.e. the {}th)" \
+            .format(len(self.average_per_epoch), self.current_epoch,
+                    self.current_epoch + 1)
 
         self.current_epoch += 1
         self.current_epoch_batch_values = []

@@ -196,7 +196,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
     def forward(self, inputs: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
-                hidden_recurrent_states: tuple = None):
+                hidden_recurrent_states: tuple = None, return_hidden=False,
+                point_idx: int = None):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -213,6 +214,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             used.
         hidden_recurrent_states : tuple
             The current hidden states of the (stacked) RNN model.
+        return_hidden: bool
+        point_idx: int
 
         Returns
         -------
@@ -248,7 +251,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             dirs = normalize_directions(dirs)
 
         # Formatting the n previous dirs for last point or all
-        point_idx = -1 if self._context == 'tracking' else None
         n_prev_dirs = compute_n_previous_dirs(
             dirs, self.nb_previous_dirs, point_idx=point_idx,
             device=self.device)
@@ -314,8 +316,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             model_outputs = unpack_sequence(model_outputs)
             model_outputs = [model_outputs[i] for i in unsorted_indices]
 
-        if self._context in ['tracking', 'preparing_backward']:
-            # Return the hidden states too.
+        if return_hidden:
             return model_outputs, out_hidden_recurrent_states
         else:
             return model_outputs
@@ -376,3 +377,19 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             raise NotImplementedError
 
         return copy_prev_dir
+
+    def update_hidden_state(self, hidden_recurrent_states, lines_to_keep):
+        if self.rnn_model.rnn_torch_key == 'lstm':
+            # LSTM: States are tuples; (h_t, C_t)
+            # Size of tensors are each [1, nb_streamlines, nb_neurons]
+            hidden_recurrent_states = [
+                (hidden_states[0][:, lines_to_keep, :],
+                 hidden_states[1][:, lines_to_keep, :]) for
+                hidden_states in hidden_recurrent_states]
+        else:
+            #   GRU: States are tensors; h_t.
+            #     Size of tensors are [1, nb_streamlines, nb_neurons].
+            hidden_recurrent_states = [
+                hidden_states[:, lines_to_keep, :] for
+                hidden_states in hidden_recurrent_states]
+        return hidden_recurrent_states

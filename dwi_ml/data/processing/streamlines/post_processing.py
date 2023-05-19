@@ -141,7 +141,7 @@ def normalize_directions(directions):
     return directions
 
 
-def compute_angles(line_dirs):
+def compute_angles(line_dirs, degrees=False):
     one = torch.ones(1, device=line_dirs.device)
 
     line_dirs /= torch.linalg.norm(line_dirs, dim=-1, keepdim=True)
@@ -150,6 +150,9 @@ def compute_angles(line_dirs):
     # Resolve numerical instability
     cos_angles = torch.minimum(torch.maximum(-one, cos_angles), one)
     angles = torch.arccos(cos_angles)
+
+    if degrees:
+        angles = torch.rad2deg(angles)
     return angles
 
 
@@ -242,8 +245,21 @@ def weight_value_with_angle(values: List, streamlines: List = None,
     elif dirs is None:
         dirs = compute_directions(streamlines)
 
+    zero = torch.as_tensor(0.0, device=dirs[0].device)
     for i, line_dirs in enumerate(dirs):
-        angles = compute_angles(line_dirs)
-        values[i] = values * angles
+        angles = compute_angles(line_dirs, degrees=True)
+        # Adding a zero angle for first value.
+        angles = torch.hstack([zero, angles])
+
+        # Mult choice:
+        # We don't want to multiply by 0. Multiplying by angles + 1.
+        # values[i] = values[i] * (angles + 1.0)
+        values[i] = values[i] * (angles + 1.0)**2
+
+        # Pow choice:
+        # loss^0 = 1. loss^1 = loss. Also adding 1.
+        # But if values are < 1, pow becomes smaller.
+        # Our losses tend toward 0.  Adding 1 before.
+        #values[i] = torch.pow(1.0 + values[i], angles + 1.0) - 1.0
 
     return values

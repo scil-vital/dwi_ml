@@ -187,7 +187,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         target_dirs = compute_directions(target_streamlines)
         line_dirs = None
         if self.weight_loss_with_angle or self.compress_loss:
-            line_dirs = [t.copy() for t in target_dirs]
+            line_dirs = [t.detach().clone() for t in target_dirs]
 
         target_dirs = self._prepare_dirs_for_loss(target_dirs)
         lengths = [len(t) for t in target_dirs]
@@ -202,20 +202,28 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         loss = self._compute_loss(outputs, target_dirs, tmp_average_results)
 
         if self.weight_loss_with_angle:
+            loss = list(torch.split(loss, lengths))
             loss = weight_value_with_angle(
                 values=loss, streamlines=None, dirs=line_dirs)
-        if average_results:
-            return loss
-        elif self.compress_loss:
-            loss = torch.split(loss, lengths)
+            if not self.compress_loss:
+                if average_results:
+                    loss = torch.hstack(loss)
+                    return torch.mean(loss), len(loss)
+                return loss
+
+        if self.compress_loss:
+            loss = list(torch.split(loss, lengths))
             final_loss, final_n = compress_streamline_values(
                 streamlines=None, dirs=line_dirs, values=loss,
                 compress_eps=self.compress_eps)
             logging.info("Converted {} data points into {} compressed data "
                          "points".format(sum(lengths), final_n))
             return final_loss, final_n
+        elif average_results:
+            loss, n = loss
+            return loss, n
         else:
-            loss = torch.split(loss, lengths)
+            loss = list(torch.split(loss, lengths))
             return loss
 
     @staticmethod
@@ -225,8 +233,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         return outputs, target_dirs
 
     def _compute_loss(self, outputs: Tensor, target_dirs: Tensor,
-                      average_results=True) -> Union[Tuple[Tensor, int],
-                                                     List[Tensor]]:
+                      average_results=True) -> Union[Tuple[Tensor, int], Tensor]:
         """
         Expecting a single tensor.
 
@@ -434,8 +441,7 @@ class CosineRegressionDG(AbstractRegressionDG):
         #             a cosine of 1 = small angle
         # Thus we aim for a big cosine (maximize)! We minimize -cosine.
         # Best loss = -1. Adding 1. Best loss = 0.
-        losses = torch.as_tensor(1, device=learned_directions.device) - \
-                 self.cos_loss(learned_directions, target_directions)
+        losses = 1.0 - self.cos_loss(learned_directions, target_directions)
         return losses
 
 
@@ -455,7 +461,7 @@ class L2RegressionDG(AbstractRegressionDG):
 
         # Loss will be applied on the last dimension, by default in
         # PairWiseDistance
-        self.l2_loss = PairwiseDistance()
+        self.l2_loss = PairwiseDistance(p=2)
 
         # Range of the L2: depends on the scaling of directions.
         # Ex if directions are normalized:
@@ -491,7 +497,7 @@ class CosPlusL2RegressionDG(AbstractRegressionDG):
     def _compute_loss_dir(self, learned_directions: Tensor,
                           target_directions: Tensor):
         l2_losses = self.l2_loss(learned_directions, target_directions)
-        cos_losses = -self.cos_loss(learned_directions, target_directions)
+        cos_losses = 1.0 - self.cos_loss(learned_directions, target_directions)
         losses = l2_losses + cos_losses
 
         return losses

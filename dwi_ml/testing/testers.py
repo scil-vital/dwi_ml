@@ -51,8 +51,9 @@ class Tester:
     @property
     def params(self):
         if self._params is None:
-            logging.info("Loading information from checkpoint")
-            params_filename = os.path.join(self.experiment_path, "parameters.json")
+            logging.info("Loading information about your experiment.")
+            params_filename = os.path.join(self.experiment_path,
+                                           "parameters_latest.json")
             with open(params_filename, 'r') as json_file:
                 self._params = json.load(json_file)
         return self._params

@@ -153,7 +153,6 @@ class DWIMLBatchIDSampler(Sampler):
             'rng': self.rng,
             'nb_subjects_per_batch': self.nb_subjects_per_batch,
             'cycles': self.cycles,
-            'type': str(type(self)),
         }
         return params
 

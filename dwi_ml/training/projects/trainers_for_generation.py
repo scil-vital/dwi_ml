@@ -17,6 +17,10 @@ from dwi_ml.training.utils.monitoring import BatchHistoryMonitor, TimeMonitor
 
 logger = logging.getLogger('train_logger')
 
+# Emma tests in ISMRM: a box of 30x30x30 mm sounds good.
+# So half of it, max distance = sqrt( 3 * 15^2) =
+IS_THRESHOLD = 25.98
+
 
 class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
     model: ModelWithDirectionGetter
@@ -71,13 +75,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         super()._update_states_from_checkpoint(current_states)
         self.tracking_valid_loss_monitor.set_state(
             current_states['tracking_valid_loss_monitor_state'])
-
-        print("?????? WARNING ADDING STATE")
-        self.tracking_valid_IS_monitor.current_epoch = 149
-        self.tracking_valid_IS_monitor.average_per_epoch = [0] * 150
-
-        #self.tracking_valid_IS_monitor.set_state(
-        #   current_states['tracking_valid_IS_monitor_state'])
+        self.tracking_valid_IS_monitor.set_state(
+           current_states['tracking_valid_IS_monitor_state'])
 
     def _prepare_checkpoint_info(self) -> dict:
         checkpoint_info = super()._prepare_checkpoint_info()
@@ -106,7 +105,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         self.tracking_valid_time_monitor.start_new_epoch()
         if (epoch + 1) % self.tracking_phase_frequency == 0:
             logger.info("Additional tracking-like generation validation phase")
-            self.validate_using_tracking(epoch)
+            self.validate_using_tracking()
         else:
             self.tracking_valid_loss_monitor.update(
                 self.tracking_valid_loss_monitor.average_per_epoch[-1])
@@ -132,7 +131,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
 
         return mean_epoch_loss
 
-    def validate_using_tracking(self, epoch):
+    def validate_using_tracking(self):
 
         # Setting contexts
         # Turn gradients off (no back-propagation)
@@ -150,13 +149,13 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
 
         # Validate all batches
         with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
-                                   total=self.nb_valid_batches_per_epoch,
+                                   total=self.nb_batches_valid,
                                    loggers=[logging.root],
                                    tqdm_class=tqdm) as pbar:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
                 # Break if maximum number of epochs has been reached
-                if batch_id == self.nb_valid_batches_per_epoch:
+                if batch_id == self.nb_batches_valid:
                     # Explicitly close tqdm's progress bar to fix possible bugs
                     # when breaking the loop
                     pbar.close()
@@ -181,7 +180,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             logger.info("   Mean tracking loss for this epoch: {}".format(loss))
 
             percent_inv = self.tracking_valid_IS_monitor.average_per_epoch[-1]
-            logger.info("   Mean IS ratio for this epoch: {}".format(percent_inv))
+            logger.info("   Mean simili-IS ratio for this epoch: {}"
+                        " (threshold {})".format(percent_inv, IS_THRESHOLD))
 
             if self.comet_exp:
                 comet_context = self.comet_exp.validate
@@ -225,12 +225,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         logging.info("    Best / Worst loss: {} / {}"
                      .format(torch.max(loss), torch.min(loss)))
 
-        # Emma tests in ISMRM: a box of 30x30x30 mm sounds good.
-        # So half of it, max distance = sqrt( 3 * 15^2) =
-        IS_THRESHOLD = 25.98
         IS_ratio = torch.sum(loss > IS_THRESHOLD).cpu() / len(lines) * 100
-        logging.info("    Simili-IS ratio (at a threshold of {} voxels) : {}%"
-                     .format(IS_THRESHOLD, IS_ratio))
 
         return torch.mean(loss), len(lines), IS_ratio
 

@@ -25,6 +25,12 @@ class TimeMonitor(object):
         self.epoch_durations.append(duration.total_seconds() / 60)
         self._start_time = None
 
+    def get_state(self):
+        return {'epoch_durations': self.epoch_durations}
+
+    def set_state(self, states):
+        self.epoch_durations = states['epoch_durations']
+
 
 class BatchHistoryMonitor(object):
     """ History of some value for each iteration during training, and mean

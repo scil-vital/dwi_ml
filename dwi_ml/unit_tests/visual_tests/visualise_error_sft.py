@@ -92,7 +92,8 @@ def prepare_batch_visu_error(p, args, model: MainModelAbstract,
     #      (We do not revert, split, or add noise.)
     # Load batch loader's info
     if check_data_loader:
-        params_filename = os.path.join(args.experiment_path, "parameters.json")
+        params_filename = os.path.join(args.experiment_path,
+                                       "parameters_latest.json")
         with open(params_filename, 'r') as json_file:
             params = json.load(json_file)
         input_group = params["Batch loader params"]["input_group_name"]

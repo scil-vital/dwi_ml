@@ -7,6 +7,7 @@ This script allows tracking from a trained Transformer model.
 """
 import argparse
 import logging
+import os
 
 import dipy.core.geometry as gm
 from dipy.io.utils import is_header_compatible
@@ -40,9 +41,8 @@ APPEND_LAST_POINT = True
 
 
 def build_argparser():
-    p = argparse.ArgumentParser(
-        formatter_class=argparse.RawTextHelpFormatter,
-        description=__doc__)
+    p = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
+                                description=__doc__)
 
     track_g = add_tracking_options(p)
     # Sphere used if the direction_getter key is the sphere-classification.
@@ -65,16 +65,19 @@ def prepare_tracker(parser, args):
         # make them info max
         sub_logger_level = 'INFO'
 
-    with Timer("\n\nLoading data and preparing tracker...",
+    with Timer("\nLoading data and preparing tracker...",
                newline=True, color='green'):
         logging.info("Loading seeding mask + preparing seed generator.")
+        # Vox space, corner origin
         seed_generator, nbr_seeds, seeding_mask_header, ref = \
             prepare_seed_generator(parser, args, hdf_handle)
         dim = ref.shape
 
         if args.tracking_mask_group is not None:
             logging.info("Loading tracking mask.")
-            tracking_mask, ref2 = prepare_tracking_mask(args, hdf_handle)
+            tracking_mask, ref2 = prepare_tracking_mask(
+                hdf_handle, args.tracking_mask_group, args.subj_id,
+                args.mask_interp)
 
             # Comparing tracking and seeding masks
             is_header_compatible(ref2, seeding_mask_header)
@@ -90,7 +93,8 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading model.")
         model = OriginalTransformerModel.load_params_and_state(
-            args.experiment_path + '/best_model', log_level=sub_logger_level)
+            os.path.join(args.experiment_path, 'best_model'),
+            log_level=sub_logger_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 
@@ -101,7 +105,6 @@ def prepare_tracker(parser, args):
             dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
             seed_generator=seed_generator, nbr_seeds=nbr_seeds,
             min_len_mm=args.min_length, max_len_mm=args.max_length,
-            max_invalid_dirs=args.max_invalid_nb_points,
             compression_th=args.compress, nbr_processes=args.nbr_processes,
             save_seeds=args.save_seeds, rng_seed=args.rng_seed,
             track_forward_only=args.track_forward_only,
@@ -121,8 +124,8 @@ def main():
     # Setting root logger to high level to max info, not debug, prints way too
     # much stuff. (but we can set our tracker's logger to debug)
     root_level = args.logging
-    if root_level == logging.DEBUG:
-        root_level = logging.INFO
+    if root_level == 'DEBUG':
+        root_level = 'INFO'
     logging.getLogger().setLevel(level=root_level)
 
     # ----- Checks

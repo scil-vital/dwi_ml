@@ -21,7 +21,6 @@ from dwi_ml.testing.utils import prepare_dataset_one_subj
 # Currently, with our quite long sequences compared to their example, this
 # is a bit ugly.
 SHOW_MODEL_VIEW = False
-INFORMATIVE_TOKENS = False
 
 
 def build_argparser_transformer_visu():
@@ -153,60 +152,62 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
     model.eval()
     grad_context = torch.no_grad()
     with grad_context:
-        _, weights = model(
-            batch_input, streamlines,
-            return_weights=True, average_heads=args.average_heads)
+        _, weights = model(batch_input, streamlines, return_weights=True,
+                           average_heads=args.average_heads)
     return weights, streamlines
 
 
-def prepare_tokens(streamline):
-    this_seq_len = len(streamline) - 1  # nb directions = nb coordinates - 1
-    if INFORMATIVE_TOKENS:
-        # Encoder: coordinates of the streamline, except last one
-        encoder_tokens = ['p{} -- '.format(i) +
-                          np.array2string(np.asarray(streamline[i, :]),
-                                          precision=1, separator=', ') +
-                          ' -- p{}'.format(i)
-                          for i in range(this_seq_len)]
+def tto_prepare_tokens(streamline):
+    this_seq_len = len(streamline)
+    encoder_tokens = ['point {}'.format(i) for i in range(this_seq_len)]
+    decoder_tokens = ['SOS'] + \
+                     ['dir {}'.format(i) for i in range(this_seq_len - 1)]
 
-        # Decoder input: directions, except the last one, plus SOS.
-        dirs = np.diff(streamline, n=1, axis=0)
-        decoder_tokens = ['SOS'] + \
-                         ['p{} -- '.format(i) +
-                          np.array2string(np.asarray(dirs[i]),
-                                          precision=2, separator=', ') +
-                          ' -- p{} '.format(i)
-                          for i in range(this_seq_len - 1)]
-    else:
-        # Just point1, point, etc.
-        encoder_tokens = ['point {}'.format(i) for i in range(this_seq_len)]
-        decoder_tokens = ['SOS'] + \
-                         ['dir {}'.format(i) for i in range(this_seq_len - 1)]
     return encoder_tokens, decoder_tokens
+
+
+def ttst_prepare_tokens(streamline,):
+    this_seq_len = len(streamline)
+    encoder_tokens = ['point 0 / SOS'] + \
+                     ['point {} / dir {}'.format(i, i - 1) for i in
+                      range(1, this_seq_len)]
+    return encoder_tokens
 
 
 def print_head_view_help():
     print("INSTRUCTIONS of the head view: ")
-    print(" -- Hover over any token on the left/right side of the visualization to filter attention from/to that token.")
-    print(" -- Double-click on any of the colored tiles at the top to filter to the corresponding attention head.")
-    print(" -- Single-click on any of the colored tiles to toggle selection of the corresponding attention head.")
-    print(" -- Click on the Layer drop-down to change the model layer (zero-indexed).")
+    print(" -- Hover over any token on the left/right side of the "
+          "visualization to filter attention from/to that token.")
+    print(" -- Double-click on any of the colored tiles at the top to filter "
+          "to the corresponding attention head.")
+    print(" -- Single-click on any of the colored tiles to toggle selection "
+          "of the corresponding attention head.")
+    print(" -- Click on the Layer drop-down to change the model layer "
+          "(zero-indexed).")
 
 
 def print_model_view_help():
     print("INSTRUCTIONS of the model view for each head: ")
-    print(" -- Click on any cell for a detailed view of attention for the associated attention head (or to unselect that cell).")
-    print(" -- Then hover over any token on the left side of detail view to filter the attention from that token.")
+    print(" -- Click on any cell for a detailed view of attention for the "
+          "associated attention head (or to unselect that cell).")
+    print(" -- Then hover over any token on the left side of detail view to "
+          "filter the attention from that token.")
 
 
 def print_neuron_view_help():
     print("INSTRUCTIONS of the neuron view:")
-    print("Hover over any of the tokens on the left side of the visualization to filter attention from that token.")
-    print("Then click on the plus icon that is revealed when hovering. This exposes the query vectors, key vectors, "
-          "and other intermediate representations used to compute the attention weights. Each color band represents "
-          "a single neuron value, where color intensity indicates the magnitude and hue the sign (blue=positive, orange=negative).")
-    print("Once in the expanded view, hover over any other token on the left to see the associated attention computations.")
-    print("Click on the Layer or Head drop-downs to change the model layer or head (zero-indexed).")
+    print("Hover over any of the tokens on the left side of the visualization "
+          "to filter attention from that token.")
+    print("Then click on the plus icon that is revealed when hovering. This "
+          "exposes the query vectors, key vectors, and other intermediate "
+          "representations used to compute the attention weights. Each "
+          "color band represents a single neuron value, where color "
+          "intensity indicates the magnitude and hue the sign (blue=positive, "
+          "orange=negative).")
+    print("Once in the expanded view, hover over any other token on the left "
+          "to see the associated attention computations.")
+    print("Click on the Layer or Head drop-downs to change the model layer "
+          "or head (zero-indexed).")
 
 
 def tto_show_head_view(encoder_attention, decoder_attention, cross_attention,
@@ -215,14 +216,12 @@ def tto_show_head_view(encoder_attention, decoder_attention, cross_attention,
     head_view(encoder_attention=encoder_attention,
               decoder_attention=decoder_attention,
               cross_attention=cross_attention,
-              encoder_tokens=encoder_tokens,
-              decoder_tokens=decoder_tokens)
+              encoder_tokens=encoder_tokens, decoder_tokens=decoder_tokens)
 
 
 def ttst_show_head_view(encoder_attention, tokens):
     print_head_view_help()
-    head_view(encoder_attention=encoder_attention,
-              encoder_tokens=tokens)
+    head_view(encoder_attention=encoder_attention, encoder_tokens=tokens)
 
 
 def tto_show_model_view(encoder_attention, decoder_attention, cross_attention,
@@ -238,10 +237,8 @@ def tto_show_model_view(encoder_attention, decoder_attention, cross_attention,
                      for i in range(nb_layers)]
             tmp_c = [cross_attention[i][:, head, :, :][:, None, :, :]
                      for i in range(nb_layers)]
-            model_view(encoder_attention=tmp_e,
-                       decoder_attention=tmp_d,
-                       cross_attention=tmp_c,
-                       encoder_tokens=encoder_tokens,
+            model_view(encoder_attention=tmp_e, decoder_attention=tmp_d,
+                       cross_attention=tmp_c, encoder_tokens=encoder_tokens,
                        decoder_tokens=decoder_tokens)
 
 
@@ -253,5 +250,4 @@ def ttst_show_model_view(encoder_attention, tokens, nb_heads, nb_layers):
             print("HEAD #{}".format(head + 1))
             tmp_e = [encoder_attention[i][:, head, :, :][:, None, :, :]
                      for i in range(nb_layers)]
-            model_view(encoder_attention=tmp_e,
-                       encoder_tokens=tokens)
+            model_view(encoder_attention=tmp_e, encoder_tokens=tokens)

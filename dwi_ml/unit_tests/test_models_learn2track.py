@@ -34,7 +34,7 @@ def test_stacked_rnn():
 
 
 def test_learn2track():
-    model = Learn2TrackModel('test', step_size=0.5, compress=False,
+    model = Learn2TrackModel('test', step_size=0.5, compress_lines=False,
                              nb_features=4, rnn_layer_sizes=[3, 3],
                              log_level='DEBUG',
                              # Using default from script:
@@ -46,6 +46,7 @@ def test_learn2track():
                              input_embedding_size_ratio=None,
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,
+                             start_from_copy_prev=False,
                              dg_key='cosine-regression', dg_args=None,
                              neighborhood_type=None, neighborhood_radius=None)
 

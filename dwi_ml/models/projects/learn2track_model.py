@@ -2,12 +2,14 @@
 import logging
 from typing import Union, List
 
-import numpy as np
 import torch
-from torch.nn.utils.rnn import PackedSequence, pack_sequence, unpack_sequence
+from torch.nn.utils.rnn import invert_permutation, PackedSequence, \
+    pack_sequence, unpack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
+    compute_directions, normalize_directions, compute_n_previous_dirs
+from dwi_ml.data.processing.streamlines.sos_eos_management import \
+    convert_dirs_to_class
 from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
     keys_to_tensor_embeddings, NoEmbedding
 from dwi_ml.models.main_models import (
@@ -31,7 +33,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     """
 
     def __init__(self, experiment_name,
-                 step_size: Union[float, None], compress: Union[float, None],
+                 step_size: Union[float, None], compress_lines: Union[float, None],
                  nb_features: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
@@ -39,13 +41,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  prev_dirs_embedding_key: Union[str, None],
                  normalize_prev_dirs: bool,
                  # INPUTS
-                 input_embedding_key: str,
-                 input_embedding_size: Union[int, None],
+                 input_embedding_key: str, input_embedding_size: Union[int, None],
                  input_embedding_size_ratio: Union[float, None],
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
-                 use_skip_connection: bool,
-                 use_layer_normalization: bool, dropout: float,
+                 use_skip_connection: bool, use_layer_normalization: bool,
+                 dropout: float, start_from_copy_prev: bool,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  # Other
@@ -80,11 +81,15 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             Whether to use skip connections. See [1] (Figure 1) to visualize
             the architecture.
         use_layer_normalization: bool
-            Wheter to apply layer normalization to the forward connections. See
-            [2].
+            Whether to apply layer normalization to the forward connections.
+            See [2].
         dropout : float
             If non-zero, introduces a `Dropout` layer on the outputs of each
             RNN layer except the last layer, with given dropout probability.
+        start_from_copy_prev: bool
+            If true, final_output = previous_dir + model_output. This can be
+            used independantly from the other previous dirs options that define
+            values to be concatenated to the input.
         ---
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
@@ -98,7 +103,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         super().__init__(
             experiment_name=experiment_name, step_size=step_size,
-            compress=compress, log_level=log_level,
+            compress_lines=compress_lines, log_level=log_level,
             # For modelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
@@ -113,6 +118,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features
         self.dropout = dropout
+        self.start_from_copy_prev = start_from_copy_prev
 
         # ----------- Checks
         if self.input_embedding_key not in keys_to_tensor_embeddings.keys():
@@ -150,8 +156,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.rnn_model = StackedRNN(
             rnn_key, rnn_input_size, rnn_layer_sizes,
             use_skip_connection=use_skip_connection,
-            use_layer_normalization=use_layer_normalization,
-            dropout=dropout)
+            use_layer_normalization=use_layer_normalization, dropout=dropout)
 
         # 4. Direction getter:
         self.instantiate_direction_getter(self.rnn_model.output_size)
@@ -162,8 +167,10 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             assert self.forward_uses_streamlines
         assert self.loss_uses_streamlines
 
+        self.forward_uses_streamlines = True
+
     def set_context(self, context):
-        assert context in ['training', 'tracking', 'visu',
+        assert context in ['training', 'validation', 'tracking', 'visu',
                            'preparing_backward']
         self._context = context
 
@@ -181,14 +188,16 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             'rnn_layer_sizes': self.rnn_model.layer_sizes,
             'use_skip_connection': self.rnn_model.use_skip_connection,
             'use_layer_normalization': self.rnn_model.use_layer_normalization,
+            'start_from_copy_prev': self.start_from_copy_prev,
             'dropout': self.dropout,
         })
 
         return params
 
     def forward(self, inputs: List[torch.tensor],
-                target_streamlines: List[torch.tensor] = None,
-                hidden_recurrent_states: tuple = None):
+                input_streamlines: List[torch.tensor] = None,
+                hidden_recurrent_states: tuple = None, return_hidden=False,
+                point_idx: int = None):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -199,26 +208,20 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             [nb_points, nb_features]. During training, should be the length of
             the streamlines minus one (last point is not used). During
             tracking, nb_points should be one; the current point.
-        target_streamlines: List[torch.tensor],
+        input_streamlines: List[torch.tensor],
             Batch of streamlines. Only used if previous directions are added to
             the model. Used to compute directions; its last point will not be
             used.
         hidden_recurrent_states : tuple
             The current hidden states of the (stacked) RNN model.
+        return_hidden: bool
+        point_idx: int
 
         Returns
         -------
-        model_outputs : Tensor
+        model_outputs : List[Tensor]
             Output data, ready to be passed to either `compute_loss()` or
             `get_tracking_directions()`.
-            NOTE: this tensor's format will be one direction per point in the
-            input, with the same organization os the initial packed sequence.
-            It should be compared with packed_sequences's .data.
-            Or it is possible to form pack a packed sequence with
-            output = PackedSequence(output,
-                                   inputs.batch_sizes,
-                                   inputs.sorted_indices,
-                                   inputs.unsorted_indices)
         out_hidden_recurrent_states : list[states]
             One value per layer.
             LSTM: States are tuples; (h_t, C_t)
@@ -231,57 +234,45 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         if self._context is None:
             raise ValueError("Please set context before usage.")
 
-        # Ordering of PackedSequence for 1) inputs, 2) previous dirs and
-        # 3) targets (when computing loss) may not always be the same.
-        # Pack inputs now and use that information for others.
-        # Shape of inputs.data: nb_pts_total * nb_features
-        if self._context == 'tracking':
-            # We should have only one input per streamline (at the last
-            # coordinate).
-            assert np.all([len(i) == 1] for i in inputs)
+        # Making sure we can use default 'enforce_sorted=True' with packed
+        # sequences.
+        unsorted_indices = None
+        if not self._context == 'tracking':
+            # Ordering streamlines per length.
+            lengths = torch.as_tensor([len(s) for s in input_streamlines])
+            _, sorted_indices = torch.sort(lengths, descending=True)
+            unsorted_indices = invert_permutation(sorted_indices)
+            input_streamlines = [input_streamlines[i] for i in sorted_indices]
+            inputs = [inputs[i] for i in sorted_indices]
 
-            # Using vstack rather than packing directly, to supervise their
-            # order.
-            nb_streamlines = len(inputs)
-            inputs = torch.vstack(inputs)
-            batch_sizes = torch.as_tensor([nb_streamlines])
-            sorted_indices = torch.arange(nb_streamlines, device=self.device)
-            unsorted_indices = torch.arange(nb_streamlines, device=self.device)
-            inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
-                                    unsorted_indices)
-        else:
-            # In all other cases, len(each input) == len(each streamline),
-            # if any (only used with previous dirs).
-            if target_streamlines is not None:
-                assert np.all([len(i) == len(s) for i, s in
-                               zip(inputs, target_streamlines)]), \
-                    "Expecting same nb of inputs and streamlines... " \
-                    "Got {} vs {} \n(p.s. context is: {})" \
-                    .format([len(i) for i in inputs],
-                            [len(s) for s in target_streamlines],
-                            self._context)
+        # ==== 0. Previous dirs.
+        dirs = compute_directions(input_streamlines)
+        if self.normalize_prev_dirs:
+            dirs = normalize_directions(dirs)
 
-            # Streamlines have different lengths. Packing.
-            inputs = pack_sequence(inputs, enforce_sorted=False)
-            batch_sizes = inputs.batch_sizes
-            sorted_indices = inputs.sorted_indices
-            unsorted_indices = inputs.unsorted_indices
+        # Formatting the n previous dirs for last point or all
+        n_prev_dirs = compute_n_previous_dirs(
+            dirs, self.nb_previous_dirs, point_idx=point_idx,
+            device=self.device)
+
+        # Start from copy prev option.
+        copy_prev_dir = 0.0
+        if self.start_from_copy_prev:
+            copy_prev_dir = self.copy_prev_dir(dirs, n_prev_dirs)
 
         # ==== 1. Previous dirs embedding ====
         if self.nb_previous_dirs > 0:
-            prev_dirs = compute_directions(target_streamlines)
-            point_idx = -1 if self._context == 'tracking' else None
-
-            # Result will be a packed sequence.
-            n_prev_dirs_embedded = self.normalize_and_embed_previous_dirs(
-                prev_dirs, unpack_results=False, point_idx=point_idx,
-                sorted_indices=sorted_indices)
-            n_prev_dirs_embedded = self.embedding_dropout(
-                n_prev_dirs_embedded.data)
+            n_prev_dirs = pack_sequence(n_prev_dirs)
+            # Shape: (nb_points - 1) per streamline x (3 per prev dir)
+            n_prev_dirs = self.prev_dirs_embedding(n_prev_dirs.data)
+            n_prev_dirs = self.embedding_dropout(n_prev_dirs)
         else:
-            n_prev_dirs_embedded = None
+            n_prev_dirs = None
 
         # ==== 2. Inputs embedding ====
+        inputs = pack_sequence(inputs)
+        batch_sizes = inputs.batch_sizes
+
         # Avoiding unpacking and packing back if not needed.
         if self.nb_previous_dirs > 0 or not isinstance(
                 self.input_embedding, NoEmbedding):
@@ -291,13 +282,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             inputs = self.embedding_dropout(inputs)
 
             # ==== 3. Concat with previous dirs ====
-            if n_prev_dirs_embedded is not None:
-                inputs = torch.cat((inputs, n_prev_dirs_embedded), dim=-1)
+            if self.nb_previous_dirs > 0:
+                inputs = torch.cat((inputs, n_prev_dirs), dim=-1)
 
             # Shaping again as packed sequence.
             # Shape of inputs.data: nb_pts_total * embedding_size_total
-            inputs = PackedSequence(inputs, batch_sizes, sorted_indices,
-                                    unsorted_indices)
+            inputs = PackedSequence(inputs, batch_sizes)
 
         # ==== 3. Stacked RNN (on packed sequence, returns a tensor) ====
         # rnn_output shape: nb_pts_total * last_hidden_layer_size
@@ -309,6 +299,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # output will be a tensor, but with same format as input.data.
         # we will get a direction for each point.
         model_outputs = self.direction_getter(rnn_output)
+        model_outputs = copy_prev_dir + model_outputs
 
         # Return the hidden states. Necessary for the generative
         # (tracking) part, done step by step.
@@ -321,39 +312,84 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # During tracking backward: ignoring output anyway. Only computing
         # hidden state.
         if not self._context == 'tracking':
-            model_outputs = PackedSequence(model_outputs, batch_sizes,
-                                           sorted_indices, unsorted_indices)
+            model_outputs = PackedSequence(model_outputs, batch_sizes)
+            model_outputs = unpack_sequence(model_outputs)
+            model_outputs = [model_outputs[i] for i in unsorted_indices]
 
-        if self._context in ['tracking', 'preparing_backward']:
-            # Return the hidden states too.
+        if return_hidden:
             return model_outputs, out_hidden_recurrent_states
         else:
             return model_outputs
 
-    def compute_loss(self, model_outputs: PackedSequence,
-                     target_streamlines: List[torch.Tensor],
-                     average_results=True, **kw):
-        # Prepare targets to the correct format.
-        target_dirs = self.direction_getter.prepare_targets_for_loss(
-            target_streamlines)
+    def copy_prev_dir(self, dirs, n_prev_dirs):
+        if 'regression' in self.dg_key:
+            # Regression: The latest previous dir will be used as skip
+            # connection on the output.
+            # Either take dirs and add [0, 0, 0] at each first position.
+            # Or use pre-computed:
+            if self.nb_previous_dirs > 1:
+                copy_prev_dir = [p[:, 0:3] for p in n_prev_dirs]
+            else:
+                copy_prev_dir = [torch.nn.functional.pad(cp, [0, 0, 1, 0])
+                                 for cp in dirs]
+            copy_prev_dir = pack_sequence(copy_prev_dir)
+            copy_prev_dir = copy_prev_dir.data
+        elif self.dg_key == 'sphere-classification':
+            # Converting the input directions into classes the same way as
+            # during loss, but convert to one-hot.
+            # The first previous dir (0) converts to index 0.
+            if self._context == 'tracking':
+                if dirs[0].shape[0] == 0:
+                    copy_prev_dir = torch.zeros(
+                        len(dirs),
+                        len(self.direction_getter.torch_sphere.vertices),
+                        device=self.device)
+                else:
+                    # Take only the last point.
+                    dirs = [d[-1, :][None, :] for d in dirs]
+                    copy_prev_dir = convert_dirs_to_class(
+                        dirs, self.direction_getter.torch_sphere,
+                        smooth_labels=False, add_sos=False, add_eos=False,
+                        to_one_hot=True)
+                    copy_prev_dir = pack_sequence(copy_prev_dir)
+            else:
+                # Take all points.
+                copy_prev_dir = convert_dirs_to_class(
+                    dirs, self.direction_getter.torch_sphere,
+                    smooth_labels=False, add_sos=False, add_eos=False,
+                    to_one_hot=True)
 
-        # Packing dirs and using the .data instead of looping on streamlines.
-        # Anyway, loss is computed point by point.
-        target_dirs = pack_sequence(target_dirs, enforce_sorted=False)
-        assert torch.equal(target_dirs.sorted_indices,
-                           model_outputs.sorted_indices)
+                # Add zeros as previous dir at the first position
+                copy_prev_dir = [torch.nn.functional.pad(cp, [0, 0, 1, 0])
+                                 for cp in copy_prev_dir]
+                copy_prev_dir = pack_sequence(copy_prev_dir)
 
-        # Computing loss
-        loss = self.direction_getter.compute_loss(
-            model_outputs.data, target_dirs.data, average_results)
+            # Making the one from one-hot important for the sigmoid.
+            copy_prev_dir = copy_prev_dir.data * 6.0
 
-        if not average_results:
-            # Will be easier to manage if streamlines are stacked rather than
-            # packed. Will be like other models.
-            loss_packed = PackedSequence(
-                loss, batch_sizes=model_outputs.batch_sizes,
-                sorted_indices=model_outputs.sorted_indices,
-                unsorted_indices=model_outputs.unsorted_indices)
-            loss = unpack_sequence(loss_packed)
-            loss = torch.hstack(loss)
-        return loss
+        elif self.dg_key == 'smooth-sphere-classification':
+            raise NotImplementedError
+        elif 'gaussian' in self.dg_key:
+            # The mean of the gaussian = the previous dir
+            raise NotImplementedError
+        else:
+            # Fisher: not sure how to do that.
+            raise NotImplementedError
+
+        return copy_prev_dir
+
+    def update_hidden_state(self, hidden_recurrent_states, lines_to_keep):
+        if self.rnn_model.rnn_torch_key == 'lstm':
+            # LSTM: States are tuples; (h_t, C_t)
+            # Size of tensors are each [1, nb_streamlines, nb_neurons]
+            hidden_recurrent_states = [
+                (hidden_states[0][:, lines_to_keep, :],
+                 hidden_states[1][:, lines_to_keep, :]) for
+                hidden_states in hidden_recurrent_states]
+        else:
+            #   GRU: States are tensors; h_t.
+            #     Size of tensors are [1, nb_streamlines, nb_neurons].
+            hidden_recurrent_states = [
+                hidden_states[:, lines_to_keep, :] for
+                hidden_states in hidden_recurrent_states]
+        return hidden_recurrent_states

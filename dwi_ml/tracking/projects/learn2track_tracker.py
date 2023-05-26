@@ -38,20 +38,19 @@ class RecurrentTracker(DWIMLTrackerOneInput):
 
         return super().prepare_forward(seeding_pos)
 
-    def prepare_backward(self, lines, seeds, forward_dir=None):
+    def prepare_backward(self, lines):
         """
         Preparing backward. We need to recompute the hidden recurrent state
         for this half-streamline.
         """
-        lines, seeds, backward_dir, rej_idx = super().prepare_backward(
-            lines, seeds, forward_dir)
+        lines, rej_idx = super().prepare_backward(lines)
 
         logger.debug("Computing hidden RNN state at backward: run model on "
                      "(reversed) first half.")
 
         # Must re-run the model from scratch to get the hidden states
-        # But! Not including the last point (i.e. the seed).
         self.model.set_context('preparing_backward')
+
         # We don't re-run the last point (i.e. the seed) because the first
         # propagation step after backward = at that point.
         tmp_lines = [s[:-1, :] for s in lines]
@@ -63,43 +62,32 @@ class RecurrentTracker(DWIMLTrackerOneInput):
 
         # No hidden state given = running model on all points.
         with self.grad_context:
-            _, self.hidden_recurrent_states = self.model(all_inputs, tmp_lines)
+            _, self.hidden_recurrent_states = self.model(
+                all_inputs, tmp_lines, return_hidden=True, point_idx=None)
 
         # Back to tracking context
         self.model.set_context('tracking')
 
-        return lines, seeds, backward_dir, rej_idx
+        return lines, rej_idx
 
     def _call_model_forward(self, inputs, lines):
         # For RNN, we need to send the hidden state too.
         with self.grad_context:
             model_outputs, self.hidden_recurrent_states = self.model(
-                inputs, lines, self.hidden_recurrent_states)
+                inputs, lines, self.hidden_recurrent_states,
+                return_hidden=True, point_idx=-1)
 
         return model_outputs
 
-    def update_memory_after_removing_lines(
-            self, can_continue: np.ndarray, new_stopping_lines_raw_idx: list,
-            batch_size: int):
+    def update_memory_after_removing_lines(self, can_continue: np.ndarray, _):
         """
         Removing rejected lines from hidden states.
 
         Params
         ------
-        lines_that_continue: list
-            List of indexes of lines that are kept.
+        can_continue: np.ndarray
+            Indexes of lines that are kept.
         """
         # Hidden states: list[states] (One value per layer).
-        if self.model.rnn_model.rnn_torch_key == 'lstm':
-            # LSTM: States are tuples; (h_t, C_t)
-            # Size of tensors are each [1, nb_streamlines, nb_neurons]
-            self.hidden_recurrent_states = [
-                (hidden_states[0][:, can_continue, :],
-                 hidden_states[1][:, can_continue, :]) for
-                hidden_states in self.hidden_recurrent_states]
-        else:
-            #   GRU: States are tensors; h_t.
-            #     Size of tensors are [1, nb_streamlines, nb_neurons].
-            self.hidden_recurrent_states = [
-                hidden_states[:, can_continue, :] for
-                hidden_states in self.hidden_recurrent_states]
+        self.hidden_recurrent_states = self.model.update_hidden_state(
+            self.hidden_recurrent_states, can_continue)

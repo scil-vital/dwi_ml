@@ -3,9 +3,8 @@ import logging
 import os
 
 import h5py
-from dwi_ml.data.dataset.single_subject_containers import (SubjectDataAbstract,
-                                                           SubjectData,
-                                                           LazySubjectData)
+from dwi_ml.data.dataset.single_subject_containers import (
+    LazySubjectData, SubjectDataAbstract, SubjectData)
 
 logger = logging.getLogger('dataset_logger')
 
@@ -84,29 +83,15 @@ class LazySubjectsDataList(SubjectsDataListAbstract):
         self.is_lazy = True
         self.hdf_handle = None
 
-    def __getitem__(self, subject_item) -> LazySubjectData:
+    def __getitem__(self, subject_item: int) -> LazySubjectData:
         """
-        Params
-        ------
-        subject_item: Union[int, Tuple(int, hdf_handle)]
-            If it is int or (int, None): return the LazySubjectData for given
-            subject.
-            If it is (int, hdf_handle): add handle to the LazySubjectData.
-
-        Returns
-        -------
-        subj: LazySubjectData
-            Subject as is (loaded or not).
+        Returns the nth LazySubjectData.
         """
-        if isinstance(subject_item, tuple):
-            raise DeprecationWarning("Deprecated use. Simply add "
-                                     "subj.add_handle to your getitem(idx).")
-
         return self._subjects_data_list[subject_item]
 
     def get_subj_with_handle(self, subject_idx) -> LazySubjectData:
         """
-        getitem but open an handle first (if none existed).
+        getitem but open a handle first (if none existed).
 
         Params
         ------

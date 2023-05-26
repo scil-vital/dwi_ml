@@ -21,7 +21,7 @@ def add_args_testing_subj_hdf5(p, ask_input_group=False,
                         "'training' or 'validation'.")
 
 
-def prepare_dataset_one_subj(hdf5_file, subj_id, lazy=False, cache_size=None,
+def prepare_dataset_one_subj(hdf5_file, subj_id, lazy=False, cache_size=1,
                              subset_name='testing', volume_groups=None,
                              streamline_groups=None):
     # Right now, we con only track on one subject at the time. We could
@@ -30,6 +30,10 @@ def prepare_dataset_one_subj(hdf5_file, subj_id, lazy=False, cache_size=None,
     dataset = MultiSubjectDataset(hdf5_file, lazy=lazy,
                                   cache_size=cache_size)
 
+    possible_subsets = ['training', 'validation', 'testing']
+    if subset_name not in possible_subsets:
+        raise ValueError("Subset name should be one of {}"
+                         .format(possible_subsets))
     load_training = True if subset_name == 'training' else False
     load_validation = True if subset_name == 'validation' else False
     load_testing = True if subset_name == 'testing' else False
@@ -48,8 +52,15 @@ def prepare_dataset_one_subj(hdf5_file, subj_id, lazy=False, cache_size=None,
                          "or 'testing.")
 
     if subj_id not in subset.subjects:
-        raise ValueError("Subject {} does not belong in hdf5's {} set."
-                         .format(subj_id, subset))
+        raise ValueError("Subject {} does not belong in hdf5's {} set.\n"
+                         "Existing subjects are: \n"
+                         "Training set: {}\n"
+                         "Validation set: {}\n"
+                         "Testing set: {}."
+                         .format(subj_id, subset.set_name,
+                                 dataset.training_set.subjects,
+                                 dataset.validation_set.subjects,
+                                 dataset.testing_set.subjects))
     subj_idx = subset.subjects.index(subj_id)  # Should be 0.
 
     return subset, subj_idx

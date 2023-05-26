@@ -25,6 +25,12 @@ class TimeMonitor(object):
         self.epoch_durations.append(duration.total_seconds() / 60)
         self._start_time = None
 
+    def get_state(self):
+        return {'epoch_durations': self.epoch_durations}
+
+    def set_state(self, states):
+        self.epoch_durations = states['epoch_durations']
+
 
 class BatchHistoryMonitor(object):
     """ History of some value for each iteration during training, and mean
@@ -73,8 +79,9 @@ class BatchHistoryMonitor(object):
     def start_new_epoch(self):
         assert len(self.average_per_epoch) == self.current_epoch + 1, \
             "Did you forget to end previous epoch? Number of epoch values " \
-            "is {} but monitor's current epoch is {}" \
-            .format(len(self.average_per_epoch), self.current_epoch)
+            "is {} but monitor's current epoch is {} (i.e. the {}th)" \
+            .format(len(self.average_per_epoch), self.current_epoch,
+                    self.current_epoch + 1)
 
         self.current_epoch += 1
         self.current_epoch_batch_values = []
@@ -114,7 +121,7 @@ class BatchHistoryMonitor(object):
         self.current_epoch = state['current_epoch']
 
 
-class BestEpochMonitoring(object):
+class BestEpochMonitor(object):
     """
     Object to stop training early if the loss doesn't improve after a given
     number of epochs ("patience").

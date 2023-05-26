@@ -120,7 +120,7 @@ class MultisubjectSubset(Dataset):
         See here for more information on how the dataloader can use the
         dataset: https://pytorch.org/docs/stable/data.html
         Here, we create a 'map-style' dataset, meaning the the dataloader will
-        use dataset[idx]. We could be loading the data here but we will
+        use dataset[idx]. We could be loading the data here, but we will
         actually do it after, in the collate_fn=load_batch, to make sure we
         load one once the data per subject. Thus, this function does nothing
         but passes idx. The dataloader will iterate and pass a list of idx
@@ -160,8 +160,7 @@ class MultisubjectSubset(Dataset):
         # deal with here.
 
         # First verify cache
-        if device is not None and device.type == 'cuda' and \
-                not self.cache_size:
+        if device is not None and device.type == 'cuda' and not self.cache_size:
             raise ValueError("Cache size 0 is never recommended with GPU! "
                              "Moving data to GPU everytime!")
 
@@ -210,8 +209,7 @@ class MultisubjectSubset(Dataset):
         """
         if self.subjs_data_list.is_lazy:
             if load_it:
-                subj_data = self.subjs_data_list.get_subj_with_handle(
-                    subj_idx)
+                subj_data = self.subjs_data_list.get_subj_with_handle(subj_idx)
             else:
                 subj_data = self.subjs_data_list[subj_idx]
         else:
@@ -231,9 +229,10 @@ class MultisubjectSubset(Dataset):
         subject_keys = sorted(hdf_handle.attrs[self.set_name + '_subjs'])
         if subj_id is not None:
             if subj_id not in subject_keys:
-                raise ValueError("Given subject ID {} to be loaded in the {} "
-                                 "does not exist."
-                                 .format(subj_id, self.set_name))
+                raise ValueError(
+                    "Given subject ID {} to be loaded in the {} set does not "
+                    "exist. \nPossible subjects in that set are: {}"
+                    .format(subj_id, self.set_name, subject_keys))
             else:
                 subject_keys = [subj_id]
         self.subjects = subject_keys
@@ -259,8 +258,7 @@ class MultisubjectSubset(Dataset):
 
         # Using tqdm progress bar, load all subjects from hdf_file
         with logging_redirect_tqdm(loggers=[logging.root], tqdm_class=tqdm):
-            for subj_id in tqdm(subject_keys, ncols=100,
-                                total=self.nb_subjects):
+            for subj_id in tqdm(subject_keys, ncols=100, total=self.nb_subjects):
                 # Create subject's container
                 # Uses SubjectData or LazySubjectData based on the class
                 # calling this method.
@@ -409,13 +407,12 @@ class MultiSubjectDataset:
 
     def load_data(self, load_training=True, load_validation=True,
                   load_testing=True, subj_id: str = None,
-                  volume_groups: List = None,
-                  streamline_groups: List = None):
+                  volume_groups: List = None, streamline_groups: List = None):
         """
         Load raw dataset into memory.
 
-        If `subj_id` is given, loads only this subject. Useful at
-        tractography time, for instance.
+        If `subj_id` is given, loads only this subject. Useful at tractography
+        time, for instance.
 
         If streamline_groups is given, only counts streamlines for this group.
         With non-lazy data: only loads streamlines for this group. None means
@@ -427,11 +424,11 @@ class MultiSubjectDataset:
         with h5py.File(self.hdf5_file, 'r') as hdf_handle:
             # Load main attributes from hdf file, but each process calling
             # the collate_fn must open its own hdf_file
-
             step_size = hdf_handle.attrs['step_size']
             if 'compress' in hdf_handle.attrs:
                 compress = hdf_handle.attrs['compress']
             else:
+                # Fix deprecated usages
                 logger.warning(
                     "Using an old version of hdf database. Compression rate "
                     "information was not saved. This only means that if you "
@@ -497,7 +494,7 @@ class MultiSubjectDataset:
             # LOADING
             if load_training:
                 self.training_set.load(hdf_handle, subj_id)
-            if load_validation and self.training_set.nb_subjects > 0:
+            if load_validation:
                 self.validation_set.load(hdf_handle, subj_id)
             if load_testing:
                 self.testing_set.load(hdf_handle, subj_id)

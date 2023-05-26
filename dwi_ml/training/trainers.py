@@ -20,7 +20,7 @@ from dwi_ml.training.batch_loaders import (
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.utils.gradient_norm import compute_gradient_norm
 from dwi_ml.training.utils.monitoring import (
-    BestEpochMonitoring, IterTimer, BatchHistoryMonitor, TimeMonitor,
+    BestEpochMonitor, IterTimer, BatchHistoryMonitor, TimeMonitor,
     EarlyStoppingError)
 
 logger = logging.getLogger('train_logger')
@@ -29,6 +29,11 @@ logger = logging.getLogger('train_logger')
 QUIT_TIME_DELAY_SECONDS = 10
 # Update comet every 10 batch for faster management.
 COMET_UPDATE_FREQUENCY = 10
+
+# toDo. See if we would like to implement mixed precision.
+#  Could improve performance / speed
+#  https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
+#  https://pytorch.org/blog/what-every-user-should-know-about-mixed-precision-training-in-pytorch/
 
 
 class DWIMLAbstractTrainer:
@@ -59,9 +64,7 @@ class DWIMLAbstractTrainer:
                  patience: int = None, patience_delta: float = 1e-6,
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
                  comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, log_level=logging.root.level,
-                 # To be deprecated
-                 use_radam: bool = None, learning_rate: float = None):
+                 from_checkpoint: bool = False, log_level=logging.root.level):
         """
         Parameters
         ----------
@@ -122,8 +125,6 @@ class DWIMLAbstractTrainer:
         from_checkpoint: bool
              If true, we do not create the output dir, as it should already
              exist. Default: False.
-        use_radam: bool
-            Deprecated. If true, use RAdam optimizer. Else, use Adam.
         """
         # To developers: do not forget that changes here must be reflected
         # in the save_checkpoint method!
@@ -131,60 +132,29 @@ class DWIMLAbstractTrainer:
         # ----------------------
         # Values given by the user
         # ----------------------
-
-        # Trainer's logging level can be changed separately from main
-        # scripts.
-        logger.setLevel(log_level)
-
-        # Experiment
         self.experiments_path = experiments_path
         self.experiment_name = experiment_name
-        self.saving_path = os.path.join(experiments_path, experiment_name)
-        self.log_dir = os.path.join(self.saving_path, "logs")
-        if not os.path.isdir(experiments_path):
-            raise NotADirectoryError(
-                "The experiments path does not exist! ({}). Can't create this "
-                "experiment sub-folder!".format(experiments_path))
-        if not from_checkpoint:
-            if os.path.isdir(self.saving_path):
-                raise FileExistsError("Current experiment seems to already "
-                                      "exist... Use run from checkpoint to "
-                                      "continue training.")
-            else:
-                logger.info('Creating directory {}'.format(self.saving_path))
-                os.mkdir(self.saving_path)
-                os.mkdir(self.log_dir)
-
-        # Note that the training/validation sets are also contained in the
-        # data_loaders.dataset
-        self.batch_sampler = batch_sampler
-        if self.batch_sampler.dataset.validation_set.nb_subjects == 0:
-            self.use_validation = False
-            logger.warning(
-                "WARNING! There is no validation set. Loss for best epoch "
-                "monitoring will be the training loss. \n"
-                "Best practice is to have a validation set.")
-        else:
-            self.use_validation = True
-        self.batch_loader = batch_loader
-        self.model = model
         self.max_epochs = max_epochs
         self.max_batches_per_epochs_train = max_batches_per_epoch_training
         self.max_batches_per_epochs_valid = max_batches_per_epoch_validation
-        if learning_rate is not None:
-            logger.warning("Deprecated use of learning rate. Should now be "
-                           "learning_rates.")
-            self.learning_rates = [learning_rate]
-        elif learning_rates is None:
+        self.weight_decay = weight_decay
+        self.use_gpu = use_gpu
+        self.optimizer_key = optimizer
+        self.comet_workspace = comet_workspace
+        self.comet_project = comet_project
+        self.space = 'vox'
+        self.origin = 'corner'
+
+        # Learning rate:
+        if learning_rates is None:
             self.learning_rates = [0.001]
         elif isinstance(learning_rates, float):
             # Should be a list but we will accept it.
             self.learning_rates = [learning_rates]
         else:
             self.learning_rates = learning_rates
-        self.weight_decay = weight_decay
-        self.use_radam = use_radam
 
+        # Multiprocessing:
         # Currently, Dataloader multiprocessing is not working very well.
         # system error: to many file handles open.
         # toDo: Verify our datasets if it is our fault.
@@ -197,85 +167,14 @@ class DWIMLAbstractTrainer:
         if nb_cpu_processes == 1:
             nb_cpu_processes = 0
         self.nb_cpu_processes = nb_cpu_processes
-        self.use_gpu = use_gpu
-        if self.use_radam is not None:
-            logger.warning("Option --use_radam will be removed. Use option "
-                           "--optimizer instead.")
-            optimizer = 'RAdam' if self.use_radam else 'Adam'
-        if optimizer not in ['SGD', 'Adam', 'RAdam']:
-            raise ValueError("Optimizer choice {} not recognized."
-                             .format(optimizer))
-        self.optimizer_key = optimizer
-
-        self.comet_workspace = comet_workspace
-        self.comet_project = comet_project
 
         # ----------------------
-        # Values fixed by us
+        # Instantiated classes given by the user
         # ----------------------
-        self.space = 'vox'
-        self.origin = 'corner'
+        self.batch_sampler = batch_sampler
+        self.batch_loader = batch_loader
+        self.model = model
 
-        # Device and rng value. Note that if loading from a checkpoint, the
-        # complete state should be updated.
-        if use_gpu:
-            if torch.cuda.is_available():
-                self.device = torch.device('cuda')
-
-                # If you see a hint error below in code editor, upgrade torch.
-                torch.cuda.manual_seed(self.batch_sampler.rng)
-
-                logger.info("We will be using GPU!")
-            else:
-                raise ValueError("You chose GPU (cuda) device but it is not "
-                                 "available!")
-        else:
-            self.device = torch.device('cpu')
-
-        # toDo. See if we would like to implement mixed precision.
-        #  Could improve performance / speed
-        #  https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
-        #  https://pytorch.org/blog/what-every-user-should-know-about-mixed-precision-training-in-pytorch/
-
-        # ----------------------
-        # Values that will be modified later on. If initializing experiment
-        # from a checkpoint, these values should be updated after
-        # initialization.
-        # ----------------------
-        if patience:
-            self.best_epoch_monitoring = BestEpochMonitoring(patience,
-                                                             patience_delta)
-        else:
-            # We won't use early stopping to stop the epoch, but we will use
-            # it as monitor of the best epochs.
-            self.best_epoch_monitoring = BestEpochMonitoring(patience=np.inf)
-
-        self.current_epoch = 0
-
-        # Nb of batches with be estimated later on
-        # This will be used to estimate time left for nice prints to user.
-        self.nb_train_batches_per_epoch = None
-        self.nb_valid_batches_per_epoch = None
-
-        # RNG state
-        # Nothing to do here.
-
-        # Setup monitors
-        # grad_norm = The total norm (sqrt(sum(params**2))) of parameters
-        # before gradient clipping, if any.
-        self.train_loss_monitor = BatchHistoryMonitor(weighted=True)
-        self.valid_loss_monitor = BatchHistoryMonitor(weighted=True)
-        self.grad_norm_monitor = BatchHistoryMonitor(weighted=False)
-        self.training_time_monitor = TimeMonitor()
-        self.validation_time_monitor = TimeMonitor()
-
-        # Comet values will be instantiated in train().
-        self.comet_exp = None
-        self.comet_key = None
-
-        # ---------------------
-        # Dataloader: usage will depend on context
-        # ---------------------
         # Create DataLoaders from the BatchSamplers
         #   * Before usage, context must be set for the batch sampler and the
         #     batch loader, to use appropriate parameters.
@@ -298,16 +197,96 @@ class DWIMLAbstractTrainer:
             pin_memory=self.use_gpu)
 
         # ----------------------
-        # Launching optimizer!
+        # Checks
+        # ----------------------
+        # Trainer's logging level can be changed separately from main
+        # scripts.
+        logger.setLevel(log_level)
+        self.saving_path = os.path.join(experiments_path, experiment_name)
+        self.log_dir = os.path.join(self.saving_path, "logs")
+        if not os.path.isdir(experiments_path):
+            raise NotADirectoryError(
+                "The experiments path does not exist! ({}). Can't create this "
+                "experiment sub-folder!".format(experiments_path))
+        if not from_checkpoint:
+            if os.path.isdir(self.saving_path):
+                raise FileExistsError("Current experiment seems to already "
+                                      "exist... Use run from checkpoint to "
+                                      "continue training.")
+            else:
+                logger.info('Creating directory {}'.format(self.saving_path))
+                os.mkdir(self.saving_path)
+                os.mkdir(self.log_dir)
+
+        assert np.all([param == self.batch_loader.dataset.params[key] for
+                       key, param in self.batch_sampler.dataset.params.items()])
+        if self.batch_sampler.dataset.validation_set.nb_subjects == 0:
+            self.use_validation = False
+            logger.warning(
+                "WARNING! There is no validation set. Loss for best epoch "
+                "monitoring will be the training loss. \n"
+                "Best practice is to have a validation set.")
+        else:
+            self.use_validation = True
+
+        if optimizer not in ['SGD', 'Adam', 'RAdam']:
+            raise ValueError("Optimizer choice {} not recognized."
+                             .format(optimizer))
+
+        # ----------------------
+        # Evolving values. They will need to be updated if initialized from
+        # checkpoint.
         # ----------------------
 
-        # Prepare optimizer
+        # A. Device and rng value.
+        if use_gpu:
+            if torch.cuda.is_available():
+                self.device = torch.device('cuda')
+                torch.cuda.manual_seed(self.batch_sampler.rng)
+
+                logger.info("We will be using GPU!")
+            else:
+                raise ValueError("You chose GPU (cuda) device but it is not "
+                                 "available!")
+        else:
+            self.device = torch.device('cpu')
         # Send model to device. Reminder, contrary to tensors, model.to
-        # overwrites the model.
-        # NOTE: This ordering is important! The optimizer needs to use the cuda
-        # Tensors if using the GPU...
+        # overwrites the model. Must be done before launching the optimizer
+        # (it needs to use the cuda tensors if using the GPU.)
         self.model.move_to(device=self.device)
-        self.model.set_context('training')
+
+        # B. Current epoch
+        self.current_epoch = 0
+
+        # C. Nb of batches per epoch.
+        # This will be used to estimate time left for nice prints to user.
+        # Will be estimated later on.
+        self.nb_batches_train = None
+        self.nb_batches_valid = None
+
+        # D. Monitors
+        # grad_norm = The total norm (sqrt(sum(params**2))) of parameters
+        # before gradient clipping, if any.
+        self.train_loss_monitor = BatchHistoryMonitor(weighted=True)
+        self.valid_loss_monitor = BatchHistoryMonitor(weighted=True)
+        self.grad_norm_monitor = BatchHistoryMonitor(weighted=False)
+        self.training_time_monitor = TimeMonitor()
+        self.validation_time_monitor = TimeMonitor()
+        if patience:
+            self.best_epoch_monitor = BestEpochMonitor(patience, patience_delta)
+        else:
+            # We won't use early stopping to stop the epoch, but we will use
+            # it as monitor of the best epochs.
+            self.best_epoch_monitor = BestEpochMonitor(patience=np.inf)
+
+        # E. Comet Experiment
+        # Values will be instantiated in train().
+        self.comet_exp = None
+        self.comet_key = None
+
+        # ----------------------
+        # F. Launching optimizer!
+        # ----------------------
 
         # Build optimizer (Optimizer is built here since it needs the model
         # parameters)
@@ -317,7 +296,6 @@ class DWIMLAbstractTrainer:
                      "following model.parameters: {}"
                      .format(self.optimizer_key, list_params))
 
-        self.current_lr = self.learning_rates[0]
         if self.optimizer_key == 'RAdam':
             cls = torch.optim.RAdam
         elif self.optimizer_key == 'Adam':
@@ -325,12 +303,20 @@ class DWIMLAbstractTrainer:
         else:
             cls = torch.optim.SGD
 
+        # Learning rate will be set at each epoch.
         self.optimizer = cls(self.model.parameters(),
-                             lr=self.current_lr, weight_decay=weight_decay)
+                             weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
-        # These are the parameters necessary to use _init_
+        # These are the parameters necessary to use _init_, together with
+        # instantiated classes (model, batch loader, batch sampler).
+
+        # Not saving experiment_path and experiment_name. Allowing user to
+        # move the experiment on his computer between training sessions.
+
+        # Patience and patience delta will be taken from the best epoch monitor.
+
         params = {
             'learning_rates': self.learning_rates,
             'weight_decay': self.weight_decay,
@@ -351,16 +337,166 @@ class DWIMLAbstractTrainer:
         folder as the experiment. Suggestion, call this after instantiating
         your trainer.
         """
-        os.listdir(self.saving_path)
-        json_filename = os.path.join(self.saving_path, "parameters.json")
+        now = datetime.now()
+        json_filename = os.path.join(self.saving_path, "parameters_{}.json"
+                                     .format(now.strftime("%d-%m-%Y_%Hh%M")))
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
                  'Trainer params': self.params_for_checkpoint,
                  'Sampler params': self.batch_sampler.params_for_checkpoint,
                  'Loader params': self.batch_loader.params_for_checkpoint,
+                 'Model params': self.model.params_for_checkpoint,
+                 'Patience': self.best_epoch_monitor.patience,
+                 'Patience_delta': self.best_epoch_monitor.min_eps
                  },
                 indent=4, separators=(',', ': ')))
+
+        json_filename2 = os.path.join(self.saving_path, "parameters_latest.json")
+        shutil.copyfile(json_filename, json_filename2)
+
+    def save_checkpoint(self):
+        """
+        Save an experiment checkpoint that can be resumed from.
+        """
+        logger.debug("Saving checkpoint...")
+
+        # Make checkpoint directory
+        checkpoint_dir = os.path.join(self.saving_path, "checkpoint")
+
+        # Backup old checkpoint before saving, and erase it afterwards
+        to_remove = None
+        if os.path.exists(checkpoint_dir):
+            to_remove = os.path.join(self.saving_path, "checkpoint_old")
+            shutil.move(checkpoint_dir, to_remove)
+
+        os.mkdir(checkpoint_dir)
+
+        # Save experiment
+        # Separated function to be re-implemented by child classes to fit your
+        # needs. Below is one working example.
+        checkpoint_state = self._prepare_checkpoint_info()
+        torch.save(checkpoint_state,
+                   os.path.join(checkpoint_dir, "checkpoint_state.pkl"))
+
+        # Save model inside the checkpoint dir
+        self.model.save_params_and_state(os.path.join(checkpoint_dir, 'model'))
+
+        if to_remove:
+            shutil.rmtree(to_remove)
+
+    def _prepare_checkpoint_info(self) -> dict:
+        # These are parameters that should be updated after instantiating cls.
+
+        # Note. batch sampler's rng state and batch loader's are the same.
+        current_states = {
+            # A. Rng value.
+            'torch_rng_state': torch.random.get_rng_state(),
+            'torch_cuda_state':
+                torch.cuda.get_rng_state() if self.use_gpu else None,
+            'sampler_np_rng_state': self.batch_sampler.np_rng.get_state(),
+            'loader_np_rng_state': self.batch_loader.np_rng.get_state(),
+            # B. Current epoch.
+            'current_epoch': self.current_epoch,
+            # C. Nb of batches per epoch.
+            'nb_batches_train': self.nb_batches_train,
+            'nb_batches_valid': self.nb_batches_valid,
+            # D. Monitors
+            'best_epoch_monitoring_state': self.best_epoch_monitor.get_state(),
+            'train_loss_monitor_state': self.train_loss_monitor.get_state(),
+            'valid_loss_monitor_state': self.valid_loss_monitor.get_state(),
+            'grad_norm_monitor_state': self.grad_norm_monitor.get_state(),
+            'training_time_monitor_state': self.training_time_monitor.get_state(),
+            'validation_time_monitor_state': self.validation_time_monitor.get_state(),
+            # E. Comet Experiment
+            'comet_key': self.comet_key,
+            # F. Optimizer
+            'optimizer_state': self.optimizer.state_dict(),
+        }
+
+        # Additional params are the parameters necessary to load data, batch
+        # samplers/loaders (see the example script dwiml_train_model.py).
+        checkpoint_info = {
+            'dataset_params': self.batch_sampler.dataset.params,
+            'batch_sampler_params': self.batch_sampler.params_for_checkpoint,
+            'batch_loader_params': self.batch_loader.params_for_checkpoint,
+            'params_for_init': self.params_for_checkpoint,
+            'current_states': current_states
+        }
+
+        return checkpoint_info
+
+    @classmethod
+    def init_from_checkpoint(
+            cls, model: MainModelAbstract, experiments_path, experiment_name,
+            batch_sampler: DWIMLBatchIDSampler,
+            batch_loader: DWIMLAbstractBatchLoader,
+            checkpoint_state: dict, new_patience, new_max_epochs, log_level):
+        """
+        During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
+        back offers a dict that can be used to instantiate an experiment and
+        set it at the same state as previously. (Current_epoch is updated +1).
+
+        Hint: If you want to use this in your child class, use:
+        experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
+        """
+        trainer_params = checkpoint_state['params_for_init']
+        trainer = cls(model=model, experiments_path=experiments_path,
+                      experiment_name=experiment_name, batch_sampler=batch_sampler,
+                      batch_loader=batch_loader, from_checkpoint=True,
+                      log_level=log_level, **trainer_params)
+
+        if new_max_epochs:
+            trainer.max_epochs = new_max_epochs
+
+        # Save params to json to help user remember.
+        if new_patience:
+            trainer.best_epoch_monitor.patience = new_patience
+        logger.info("Starting from checkpoint! Starting from epoch #{}.\n"
+                    "Previous best model was discovered at epoch #{}.\n"
+                    "When finishing previously, we were counting {} epochs "
+                    "with no improvement."
+                    .format(trainer.current_epoch,
+                            trainer.best_epoch_monitor.best_epoch,
+                            trainer.best_epoch_monitor.n_bad_epochs))
+
+        current_states = checkpoint_state['current_states']
+        trainer._update_states_from_checkpoint(current_states)
+        return trainer
+
+    def _update_states_from_checkpoint(self, current_states):
+        # A. Rng value.
+        # RNG:
+        #  - numpy
+        self.batch_sampler.np_rng.set_state(current_states['sampler_np_rng_state'])
+        self.batch_loader.np_rng.set_state(current_states['loader_np_rng_state'])
+        #  - torch
+        torch.set_rng_state(current_states['torch_rng_state'])
+        if self.use_gpu:
+            torch.cuda.set_rng_state(current_states['torch_cuda_state'])
+
+        # B. Current epoch
+        # Starting one epoch further than last time!
+        self.current_epoch = current_states['current_epoch'] + 1
+
+        # C. Nb of batches per epoch.
+        self.nb_batches_train = current_states['nb_batches_train']
+        self.nb_batches_valid = current_states['nb_batches_valid']
+
+        # D. Monitors
+        self.best_epoch_monitor.set_state(current_states['best_epoch_monitoring_state'])
+        self.train_loss_monitor.set_state(current_states['train_loss_monitor_state'])
+        self.valid_loss_monitor.set_state(current_states['valid_loss_monitor_state'])
+        self.grad_norm_monitor.set_state(current_states['grad_norm_monitor_state'])
+        self.training_time_monitor.set_state(current_states['training_time_monitor_state'])
+        self.validation_time_monitor.set_state(current_states['validation_time_monitor_state'])
+
+        # E. Comet Experiment
+        # Experiment will be instantiated in train().
+        self.comet_key = current_states['comet_key']
+
+        # F. Optimizer
+        self.optimizer.load_state_dict(current_states['optimizer_state'])
 
     def _init_comet(self):
         """
@@ -386,6 +522,9 @@ class DWIMLAbstractTrainer:
                     display_summary_level=False)
                 self.comet_exp.set_name(self.experiment_name)
                 self.comet_exp.log_parameters(self.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.batch_sampler.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.batch_loader.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.model.params_for_checkpoint)
                 self.comet_key = self.comet_exp.get_key()
                 # Couldn't find how to set log level. Getting it directly.
                 comet_log = logging.getLogger("comet_ml")
@@ -397,9 +536,8 @@ class DWIMLAbstractTrainer:
                 raise ValueError("You have provided a comet project, "
                                  "but no comet workspace!")
         except ConnectionError:
-            logger.warning(
-                "Could not connect to Comet.ml, metrics will not be logged "
-                "online...")
+            logger.warning("Could not connect to Comet.ml, metrics will not "
+                           "be logged online...")
             self.comet_exp = None
             self.comet_key = None
 
@@ -415,6 +553,7 @@ class DWIMLAbstractTrainer:
         train_set = self.batch_sampler.dataset.training_set
         valid_set = self.batch_sampler.dataset.validation_set
 
+        nb_valid = 0
         if self.batch_sampler.batch_size_units == 'nb_streamlines':
             nb_train = train_set.total_nb_streamlines[streamline_group]
             if self.use_validation:
@@ -455,10 +594,9 @@ class DWIMLAbstractTrainer:
         self.save_params_to_json()
 
         # If data comes from checkpoint, this is already computed
-        if self.nb_train_batches_per_epoch is None:
+        if self.nb_batches_train is None:
             logger.info("Estimating batch sizes.")
-            (self.nb_train_batches_per_epoch,
-             self.nb_valid_batches_per_epoch) = \
+            (self.nb_batches_train, self.nb_batches_valid) = \
                 self.estimate_nb_batches_per_epoch()
 
         # Instantiating comet
@@ -482,11 +620,11 @@ class DWIMLAbstractTrainer:
                         .format(epoch, epoch + 1))
 
             # Set learning rate to either current value or last value
-            self.current_lr = self.learning_rates[
+            current_lr = self.learning_rates[
                 min(self.current_epoch, len(self.learning_rates) - 1)]
-            logger.info("Learning rate = {}".format(self.current_lr))
+            logger.info("Learning rate = {}".format(current_lr))
             for g in self.optimizer.param_groups:
-                g['lr'] = self.current_lr
+                g['lr'] = current_lr
 
             # Training
             logger.info("*** TRAINING")
@@ -497,48 +635,59 @@ class DWIMLAbstractTrainer:
                 logger.info("*** VALIDATION")
                 self.validate_one_epoch(epoch)
 
-                mean_epoch_loss = self.valid_loss_monitor.average_per_epoch[-1]
-            else:
-                mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
-
             # Updating info
-            is_bad = self.best_epoch_monitoring.update(mean_epoch_loss, epoch)
+            mean_epoch_loss = self._get_latest_loss_to_supervise_best()
+            is_bad = self.best_epoch_monitor.update(mean_epoch_loss, epoch)
 
             # Check if current best has been reached
             if self.comet_exp:
                 # Saving this no matter what; we will see the stairs.
                 self.comet_exp.log_metric(
-                    "best_epoch", self.best_epoch_monitoring.best_epoch)
+                    "best_epoch", self.best_epoch_monitor.best_epoch)
             if is_bad:
-                logger.info(
-                    "** This is the {}th bad epoch (patience = {})"
-                    .format(self.best_epoch_monitoring.n_bad_epochs,
-                            self.best_epoch_monitoring.patience))
-            elif self.best_epoch_monitoring.best_epoch == epoch:
-                self._save_info_best_epoch()
+                logger.info("** This is the {}th bad epoch (patience = {})"
+                            .format(self.best_epoch_monitor.n_bad_epochs,
+                                    self.best_epoch_monitor.patience))
+            elif self.best_epoch_monitor.best_epoch == epoch:
+                self._save_best_model()
+
+            if self.comet_exp:
+                self.comet_exp.log_metric(
+                    "best_loss", self.best_epoch_monitor.best_value, step=epoch)
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
-            self._save_log_locally(self.train_loss_monitor.average_per_epoch,
-                                   "training_loss_per_epoch.npy")
-            self._save_log_locally(self.valid_loss_monitor.average_per_epoch,
-                                   "validation_loss_per_epoch.npy")
-            self._save_log_locally(self.grad_norm_monitor.average_per_epoch,
-                                   "gradient_norm.npy")
-            self._save_log_locally(self.training_time_monitor.epoch_durations,
-                                   "training_epochs_duration")
-            self._save_log_locally(self.validation_time_monitor.epoch_durations,
-                                   "validation_epochs_duration")
+            self.save_local_logs()
 
             # Check for early stopping
-            if self.best_epoch_monitoring.is_patience_reached:
+            if self.best_epoch_monitor.is_patience_reached:
                 logger.warning(
                     "Early stopping! Loss has not improved after {} epochs!\n"
                     "Best result: {}; At epoch #{}"
-                    .format(self.best_epoch_monitoring.patience,
-                            self.best_epoch_monitoring.best_value,
-                            self.best_epoch_monitoring.best_epoch))
+                    .format(self.best_epoch_monitor.patience,
+                            self.best_epoch_monitor.best_value,
+                            self.best_epoch_monitor.best_epoch))
                 break
+
+    def _get_latest_loss_to_supervise_best(self):
+        if self.use_validation:
+            mean_epoch_loss = self.valid_loss_monitor.average_per_epoch[-1]
+        else:
+            mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
+
+        return mean_epoch_loss
+
+    def save_local_logs(self):
+        self._save_log_locally(self.train_loss_monitor.average_per_epoch,
+                               "training_loss_per_epoch.npy")
+        self._save_log_locally(self.valid_loss_monitor.average_per_epoch,
+                               "validation_loss_per_epoch.npy")
+        self._save_log_locally(self.grad_norm_monitor.average_per_epoch,
+                               "gradient_norm.npy")
+        self._save_log_locally(self.training_time_monitor.epoch_durations,
+                               "training_epochs_duration")
+        self._save_log_locally(self.validation_time_monitor.epoch_durations,
+                               "validation_epochs_duration")
 
     def _clear_handles(self):
         # Make sure there are no existing HDF handles if using parallel workers
@@ -577,7 +726,8 @@ class DWIMLAbstractTrainer:
         # Setting contexts
         self.batch_loader.set_context('training')
         self.batch_sampler.set_context('training')
-        comet_context = self.comet_exp.train if self.comet_exp else None
+        self.model.set_context('training')
+
         self._clear_handles()
         self.model.train()
         grad_context = torch.enable_grad
@@ -588,14 +738,14 @@ class DWIMLAbstractTrainer:
         # A handler is added in the root logger, and sub-loggers propagate
         # their message.
         with tqdm_logging_redirect(self.train_dataloader, ncols=100,
-                                   total=self.nb_train_batches_per_epoch,
+                                   total=self.nb_batches_train,
                                    loggers=[logging.root],
                                    tqdm_class=tqdm) as pbar:
 
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
                 # Break if maximum number of batches has been reached
-                if batch_id == self.nb_train_batches_per_epoch:
+                if batch_id == self.nb_batches_train:
                     # Explicitly close tqdm's progress bar to fix possible bugs
                     # when breaking the loop
                     pbar.close()
@@ -621,10 +771,7 @@ class DWIMLAbstractTrainer:
         self.train_loss_monitor.end_epoch()
         self.grad_norm_monitor.end_epoch()
         self.training_time_monitor.end_epoch()
-        self._update_loss_logs_after_epoch(
-            comet_context, epoch,
-            self.train_loss_monitor.average_per_epoch[-1])
-        self._update_gradnorm_logs_after_epoch(comet_context, epoch)
+        self._update_comet_after_epoch('training', epoch)
 
         all_n = self.train_loss_monitor.current_epoch_batch_weights
         logger.info("Number of data points per batch: {}\u00B1{}"
@@ -642,7 +789,7 @@ class DWIMLAbstractTrainer:
         # Uses torch's module eval(), which "turns off" the training mode.
         self.batch_loader.set_context('validation')
         self.batch_sampler.set_context('validation')
-        comet_context = self.comet_exp.validate if self.comet_exp else None
+        self.model.set_context('validation')
         self.model.eval()
         grad_context = torch.no_grad
 
@@ -650,17 +797,16 @@ class DWIMLAbstractTrainer:
         if (self.nb_cpu_processes > 0 and
                 self.batch_sampler.context_subset.is_lazy):
             self.batch_sampler.context_subset.close_all_handles()
-            self.batch_sampler.context_subset.volume_cache_manager = None
 
         # Validate all batches
         with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
-                                   total=self.nb_valid_batches_per_epoch,
+                                   total=self.nb_batches_valid,
                                    loggers=[logging.root],
                                    tqdm_class=tqdm) as pbar:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
                 # Break if maximum number of epochs has been reached
-                if batch_id == self.nb_valid_batches_per_epoch:
+                if batch_id == self.nb_batches_valid:
                     # Explicitly close tqdm's progress bar to fix possible bugs
                     # when breaking the loop
                     pbar.close()
@@ -671,6 +817,7 @@ class DWIMLAbstractTrainer:
                     mean_loss, n = self.run_one_batch(data)
 
                 mean_loss = mean_loss.cpu().item()
+
                 self.valid_loss_monitor.update(mean_loss, weight=n)
 
             # Explicitly delete iterator to kill threads and free memory before
@@ -680,12 +827,9 @@ class DWIMLAbstractTrainer:
         # Save info
         self.valid_loss_monitor.end_epoch()
         self.validation_time_monitor.end_epoch()
-        self._update_loss_logs_after_epoch(
-            comet_context, epoch,
-            self.valid_loss_monitor.average_per_epoch[-1])
+        self._update_comet_after_epoch('validation', epoch)
 
-    def _update_loss_logs_after_epoch(self, comet_context, epoch: int,
-                                      loss: float):
+    def _update_comet_after_epoch(self, context: str, epoch: int):
         """
         Update logs:
             - logging to user
@@ -695,9 +839,21 @@ class DWIMLAbstractTrainer:
         local_context: prefix when saving log. Training_ or Validate_ for
         instance.
         """
+        if context == 'training':
+            loss = self.train_loss_monitor.average_per_epoch[-1]
+        elif context == 'validation':
+            loss = self.valid_loss_monitor.average_per_epoch[-1]
+        else:
+            raise ValueError("Unexpected context.")
         logger.info("   Mean loss for this epoch: {}".format(loss))
 
         if self.comet_exp:
+            if context == 'training':
+                comet_context = self.comet_exp.train
+                self._update_gradnorm_logs_after_epoch(comet_context, epoch)
+            else:  # context == 'validation':
+                comet_context = self.comet_exp.validate
+
             with comet_context():
                 # Not really implemented yet.
                 # See https://github.com/comet-ml/issue-tracking/issues/247
@@ -713,9 +869,9 @@ class DWIMLAbstractTrainer:
                 self.comet_exp.log_metric(
                     "mean_gradient_norm_per_epoch",
                     self.grad_norm_monitor.average_per_epoch[epoch],
-                    epoch=epoch, step=None)
+                    epoch=None, step=epoch)
 
-    def _save_info_best_epoch(self):
+    def _save_best_model(self):
         logger.info("   Best epoch yet! Saving model and loss history.")
 
         # Save model
@@ -725,19 +881,14 @@ class DWIMLAbstractTrainer:
         best_losses = {
             'train_loss':
                 self.train_loss_monitor.average_per_epoch[
-                    self.best_epoch_monitoring.best_epoch],
+                    self.best_epoch_monitor.best_epoch],
             'valid_loss':
-                self.best_epoch_monitoring.best_value if
+                self.best_epoch_monitor.best_value if
                 self.use_validation else None}
         with open(os.path.join(self.saving_path, "best_epoch_losses.json"),
                   'w') as json_file:
             json_file.write(json.dumps(best_losses, indent=4,
                                        separators=(',', ': ')))
-
-        if self.comet_exp:
-            self.comet_exp.log_metric(
-                "best_loss",
-                self.best_epoch_monitoring.best_value)
 
     def run_one_batch(self, data):
         """
@@ -748,8 +899,7 @@ class DWIMLAbstractTrainer:
         ----------
         data : tuple of (List[StatefulTractogram], dict)
             This is the output of the AbstractBatchLoader's
-            load_batch_streamlines()
-            method. data is a tuple
+            load_batch_streamlines() method. data is a tuple
             - batch_sfts: one sft per subject
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
@@ -775,156 +925,12 @@ class DWIMLAbstractTrainer:
         """
         pass
 
-    @classmethod
-    def init_from_checkpoint(
-            cls, model: MainModelAbstract, experiments_path, experiment_name,
-            batch_sampler: DWIMLBatchIDSampler,
-            batch_loader: DWIMLAbstractBatchLoader,
-            checkpoint_state: dict, new_patience,
-            new_max_epochs, log_level):
-        """
-        During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
-        back offers a dict that can be used to instantiate an experiment and
-        set it at the same state as previously. (Current_epoch is updated +1).
-
-        Hint: If you want to use this in your child class, use:
-        experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
-        """
-        trainer = cls(model=model,
-                      experiments_path=experiments_path,
-                      experiment_name=experiment_name,
-                      batch_sampler=batch_sampler, batch_loader=batch_loader,
-                      from_checkpoint=True, log_level=log_level,
-                      **checkpoint_state['params_for_init'])
-
-        current_states = checkpoint_state['current_states']
-        if new_max_epochs:
-            trainer.max_epochs = new_max_epochs
-
-        # Save params to json to help user remember.
-        now = datetime.now()
-        filename = os.path.join(trainer.saving_path,
-                                "parameters_{}.json"
-                                .format(now.strftime("%d-%m-%Y_%Hh%M")))
-        with open(filename, 'w') as json_file:
-            json_file.write(json.dumps(
-                {'Date': str(datetime.now()),
-                 'New patience': new_patience,
-                 'New max_epochs': new_max_epochs
-                 },
-                indent=4, separators=(',', ': ')))
-
-        # Set RNG states
-        torch.set_rng_state(current_states['torch_rng_state'])
-        trainer.batch_sampler.np_rng.set_state(
-            current_states['numpy_rng_state'])
-        if trainer.use_gpu:
-            torch.cuda.set_rng_state(current_states['torch_cuda_state'])
-
-        # Comet properties
-        trainer.comet_key = current_states['comet_key']
-
-        # Starting one epoch further than last time!
-        trainer.current_epoch = current_states['current_epoch'] + 1
-
-        # Computed values
-        trainer.nb_train_batches_per_epoch = \
-            current_states['nb_train_batches_per_epoch']
-        trainer.nb_valid_batches_per_epoch = \
-            current_states['nb_valid_batches_per_epoch']
-
-        # Monitors
-        trainer.best_epoch_monitoring.set_state(
-            current_states['best_epoch_monitoring_state'])
-        trainer.train_loss_monitor.set_state(
-            current_states['train_loss_monitor_state'])
-        trainer.valid_loss_monitor.set_state(
-            current_states['valid_loss_monitor_state'])
-        trainer.grad_norm_monitor.set_state(
-            current_states['grad_norm_monitor_state'])
-        trainer.optimizer.load_state_dict(current_states['optimizer_state'])
-        if new_patience:
-            trainer.best_epoch_monitoring.patience = new_patience
-        logger.info("Starting from checkpoint! Starting from epoch #{}.\n"
-                    "Previous best model was discovered at epoch #{}.\n"
-                    "When finishing previously, we were counting {} epochs "
-                    "with no improvement."
-                    .format(trainer.current_epoch,
-                            trainer.best_epoch_monitoring.best_epoch,
-                            trainer.best_epoch_monitoring.n_bad_epochs))
-
-        return trainer
-
-    def save_checkpoint(self):
-        """
-        Save an experiment checkpoint that can be resumed from.
-        """
-        logger.debug("Saving checkpoint...")
-
-        # Make checkpoint directory
-        checkpoint_dir = os.path.join(self.saving_path, "checkpoint")
-
-        # Backup old checkpoint before saving, and erase it afterwards
-        to_remove = None
-        if os.path.exists(checkpoint_dir):
-            to_remove = os.path.join(self.saving_path, "checkpoint_old")
-            shutil.move(checkpoint_dir, to_remove)
-
-        os.mkdir(checkpoint_dir)
-
-        # Save experiment
-        # Separated function to be re-implemented by child classes to fit your
-        # needs. Below is one working example.
-        checkpoint_state = self._prepare_checkpoint_info()
-        torch.save(checkpoint_state,
-                   os.path.join(checkpoint_dir, "checkpoint_state.pkl"))
-
-        # Save model inside the checkpoint dir
-        self.model.save_params_and_state(os.path.join(checkpoint_dir, 'model'))
-
-        if to_remove:
-            shutil.rmtree(to_remove)
-
-    def _prepare_checkpoint_info(self) -> dict:
-        # These are parameters that should be updated after instantiating cls.
-        current_states = {
-            'comet_key': self.comet_key,
-            'current_epoch': self.current_epoch,
-            'nb_train_batches_per_epoch': self.nb_train_batches_per_epoch,
-            'nb_valid_batches_per_epoch': self.nb_valid_batches_per_epoch,
-            'torch_rng_state': torch.random.get_rng_state(),
-            'torch_cuda_state':
-                torch.cuda.get_rng_state() if self.use_gpu else None,
-            'numpy_rng_state': self.batch_sampler.np_rng.get_state(),
-            'best_epoch_monitoring_state':
-                self.best_epoch_monitoring.get_state() if
-                self.best_epoch_monitoring else None,
-            'train_loss_monitor_state': self.train_loss_monitor.get_state(),
-            'valid_loss_monitor_state': self.valid_loss_monitor.get_state(),
-            'grad_norm_monitor_state': self.grad_norm_monitor.get_state(),
-            'optimizer_state': self.optimizer.state_dict(),
-        }
-
-        # Additional params are the parameters necessary to load data, batch
-        # samplers/loaders (see the example script dwiml_train_model.py).
-        checkpoint_info = {
-            # todo Verify:
-            #  batch sampler and batch loader should have the same dataset
-            'dataset_params': self.batch_sampler.dataset.params,
-            'batch_sampler_params': self.batch_sampler.params_for_checkpoint,
-            'batch_loader_params': self.batch_loader.params_for_checkpoint,
-            'params_for_init': self.params_for_checkpoint,
-            'current_states': current_states
-        }
-
-        return checkpoint_info
 
     def _save_log_locally(self, array: np.ndarray, fname: str):
         np.save(os.path.join(self.log_dir, fname), array)
 
     @staticmethod
-    def load_params_from_checkpoint(experiments_path: str,
-                                    experiment_name: str):
+    def load_params_from_checkpoint(experiments_path: str, experiment_name: str):
         total_path = os.path.join(
             experiments_path, experiment_name, "checkpoint",
             "checkpoint_state.pkl")
@@ -942,18 +948,17 @@ class DWIMLAbstractTrainer:
         current_epoch = checkpoint_state['current_states']['current_epoch']
 
         # 1. Check if early stopping had been triggered.
-        best_monitoring_state = \
+        best_monitor_state = \
             checkpoint_state['current_states']['best_epoch_monitoring_state']
-        bad_epochs = best_monitoring_state['n_bad_epochs']
+        bad_epochs = best_monitor_state['n_bad_epochs']
         if new_patience is None:
             # No new patience: checking if early stopping had been triggered.
-            if bad_epochs >= best_monitoring_state['patience']:
+            if bad_epochs >= best_monitor_state['patience']:
                 raise EarlyStoppingError(
                     "Resumed experiment was stopped because of early "
                     "stopping (patience {} reached at epcoh {}).\n"
                     "Increase patience in order to resume training!"
-                    .format(best_monitoring_state['patience'],
-                            current_epoch))
+                    .format(best_monitor_state['patience'], current_epoch))
         elif bad_epochs >= new_patience:
             # New patience: checking if we will be able to continue
             raise EarlyStoppingError(
@@ -961,7 +966,7 @@ class DWIMLAbstractTrainer:
                 "no improvement). You have now overriden patience to {} but "
                 "that won't be enough. Please increase that value in "
                 "order to resume training."
-                .format(best_monitoring_state['n_bad_epochs'], new_patience))
+                .format(best_monitor_state['n_bad_epochs'], new_patience))
 
         # 2. Checking that max_epochs had not been reached.
         if new_max_epochs is None:
@@ -978,8 +983,7 @@ class DWIMLAbstractTrainer:
                     "In resumed experiment, we had performed {} epochs. \nYou "
                     "have now overriden max_epoch to {} but that won't be "
                     "enough. \nPlease increase that value in order to resume "
-                    "training."
-                    .format(current_epoch + 1, new_max_epochs))
+                    "training.".format(current_epoch + 1, new_max_epochs))
 
 
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):

@@ -8,8 +8,7 @@ import torch
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
-from dwi_ml.models.main_models import ModelWithDirectionGetter, \
-    MainModelOneInput
+from dwi_ml.models.main_models import ModelWithDirectionGetter, MainModelOneInput
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 logger = logging.getLogger('tester_logger')
@@ -52,9 +51,9 @@ class Tester:
     @property
     def params(self):
         if self._params is None:
-            logging.info("Loading information from checkpoint")
+            logging.info("Loading information about your experiment.")
             params_filename = os.path.join(self.experiment_path,
-                                           "parameters.json")
+                                           "parameters_latest.json")
             with open(params_filename, 'r') as json_file:
                 self._params = json.load(json_file)
         return self._params
@@ -76,7 +75,7 @@ class Tester:
             hdf5_file, subj_id, subset_name=subset_name,
             volume_groups=self._volume_groups,
             streamline_groups=[self.streamlines_group],
-            lazy=False, cache_size=None)
+            lazy=False, cache_size=1)
 
         # 2. Load SFT as in dataloader, except we don't loop on many subject,
         # we don't verify streamline ids (loading all), and we don't split /
@@ -84,13 +83,12 @@ class Tester:
         logging.info("Loading its streamlines as SFT.")
         streamline_group_idx = self.subset.streamline_groups.index(
             self.streamlines_group)
-        subj_data = self.subset.subjs_data_list.get_subj_with_handle(
-            self.subj_idx)
+        subj_data = self.subset.subjs_data_list.get_subj_with_handle(self.subj_idx)
         subj_sft_data = subj_data.sft_data_list[streamline_group_idx]
         sft = subj_sft_data.as_sft()
 
         sft = resample_or_compress(sft, self.model.step_size,
-                                   self.model.compress)
+                                   self.model.compress_lines)
         sft.to_vox()
         sft.to_corner()
 
@@ -100,21 +98,57 @@ class Tester:
     def _volume_groups(self):
         raise NotImplementedError
 
-    def run_model_on_sft(self, sft, compute_loss=True):
+    def run_model_on_sft(self, sft, add_zeros_if_no_eos=True,
+                         compute_loss=True, uncompress_loss=False,
+                         force_compress_loss=False,
+                         weight_with_angle=False):
         """
         Equivalent of one validation pass.
+
+        Parameters
+        ----------
+        sft: StatefulTractogram
+        add_zeros_if_no_eos: bool
+            If true, the loss with no zeros is also printed.
+        compute_loss: bool
+            If False, the method returns the outputs after a forward pass only.
+        uncompress_loss: bool
+            If true, ignores the --compress_loss option of the direction
+            getter.
+        force_compress_loss: bool
+            If true, compresses the loss even if that is not the model's
+            parameter.
+        change_weight_with_angle: bool
+            If true, modify model's wieght_loss_with_angle param.
         """
+        if uncompress_loss and force_compress_loss:
+            raise ValueError("Can't use both compress and uncompress.")
+
+        save_val = self.model.direction_getter.compress_loss
+        save_val_angle = self.model.direction_getter.weight_loss_with_angle
+        if uncompress_loss:
+            self.model.direction_getter.compress_loss = False
+        elif force_compress_loss:
+            self.model.direction_getter.compress_loss = True
+            self.model.direction_getter.compress_eps = force_compress_loss
+
+        if weight_with_angle:
+            self.model.direction_getter.weight_loss_with_angle = True
+        else:
+            self.model.direction_getter.weight_loss_with_angle = False
+
         batch_size = self.batch_size or len(sft)
         nb_batches = int(np.ceil(len(sft) / batch_size))
 
-        losses = [[]] * nb_batches
-        outputs = [[]] * nb_batches
+        losses = []
+        compressed_n = []
+        outputs = []
         batch_start = 0
         batch_end = batch_size
         with torch.no_grad():
-            for b in range(nb_batches):
+            for batch in range(nb_batches):
                 logging.info("  Batch #{}:  {} - {}"
-                             .format(b + 1, batch_start, batch_end))
+                             .format(batch + 1, batch_start, batch_end))
                 # 1. Prepare batch
                 streamlines = [
                     torch.as_tensor(s, dtype=torch.float32, device=self.device)
@@ -129,36 +163,52 @@ class Tester:
                 inputs = self._prepare_inputs_at_pos(streamlines_f)
 
                 # 2. Run forward
-                outputs[b] = self.model(inputs, streamlines_f)
+                tmp_outputs = self.model(inputs, streamlines_f)
                 del streamlines_f
 
                 if compute_loss:
                     # 3. Compute loss
-                    losses[b] = self.model.compute_loss(
-                        outputs[b], streamlines, average_results=False)
+                    tmp_losses = self.model.compute_loss(
+                        tmp_outputs, streamlines, average_results=False)
+
+                    if self.model.direction_getter.compress_loss:
+                        tmp_losses, n = tmp_losses
+                        losses.append(tmp_losses)
+                        compressed_n.append(n)
+                    else:
+                        losses.extend([line_loss.cpu() for line_loss in
+                                       tmp_losses])
+
+                outputs.extend([o.cpu() for o in tmp_outputs])
 
                 batch_start = batch_end
                 batch_end = min(batch_start + batch_size, len(sft))
 
-                outputs[b].cpu()
-                losses[b].cpu()
+            if self.model.direction_getter.compress_loss:
+                total_n = sum(compressed_n)
+                total_loss = sum([loss * n for loss, n in
+                                  zip(losses, compressed_n)]) / total_n
+            else:
+                total_n = sum([len(line_loss) for line_loss in losses])
+                total_loss = torch.mean(torch.hstack(losses))
 
-            losses, outputs = self.combine_batches(losses, outputs)
-
-            total_n = len(losses)
-            total_loss = torch.mean(losses)
             print("Loss function, averaged over all {} points in the chosen "
                   "SFT, is: {}.".format(total_n, total_loss))
 
+            if (not self.model.direction_getter.compress_loss) and \
+                    add_zeros_if_no_eos and \
+                    not self.model.direction_getter.add_eos:
+                zero = torch.zeros(1)
+                losses = [torch.hstack([line, zero]) for line in losses]
+                total_n = sum([len(line_loss) for line_loss in losses])
+                total_loss = torch.mean(torch.hstack(losses))
+                print("When adding a 0 loss at the EOS position, the mean "
+                      "loss for {} points is {}.".format(total_n, total_loss))
+
+        self.model.direction_getter.compress_loss = save_val
+        self.model.direction_getter.weight_loss_with_angle = save_val_angle
+
         return outputs, losses
-
-    def combine_batches(self, losses, outputs):
-        if len(losses) == 1:
-            return losses[0], outputs[0]
-
-        losses = torch.cat(losses)
-        outputs = torch.cat(outputs)
-        return losses, outputs
 
     def _prepare_inputs_at_pos(self, streamlines):
         raise NotImplementedError

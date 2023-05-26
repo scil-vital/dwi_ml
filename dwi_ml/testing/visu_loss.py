@@ -10,11 +10,14 @@ from typing import List
 
 import numpy as np
 import torch
+from dipy.io.stateful_tractogram import StatefulTractogram
+from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
-from scilpy.io.utils import add_reference_arg, add_overwrite_arg
+from scilpy.io.utils import add_overwrite_arg
 
 from dwi_ml.io_utils import add_logging_arg, add_arg_existing_experiment_path
 from dwi_ml.io_utils import add_memory_args
+from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 
 blue = [2., 75., 252.]
@@ -25,6 +28,19 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
     if use_existing_experiment:
         # Should only be False for debugging tests.
         add_arg_existing_experiment_path(p)
+        p.add_argument('--uncompress_loss', action='store_true',
+                       help="If model uses compressed loss, take uncompressed "
+                            "equivalent.")
+        p.add_argument('--force_compress_loss', nargs='?', type=float,
+                       const=1e-3,
+                       help="Compress loss, even if model uses uncompressed "
+                            "loss.")
+        g = p.add_mutually_exclusive_group()
+        g.add_argument('--weight_with_angle', action='store_true',
+                       help="Change model's weight loss with angle parameter "
+                            "value (True/False).")
+        g.add_argument('--do_not_weight_with_angle', dest='weight_with_angle',
+                       action='store_false')
 
     add_args_testing_subj_hdf5(p)
 
@@ -67,56 +83,20 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
 
 
 def prepare_colors_from_loss(
-        losses: torch.Tensor, contains_eos, sft, colormap,
-        min_range=None, max_range=None, skip_first_point=False,
-        nan_value=None):
-    """
-    Args
-    ----
-    losses: list[Tensor]
-    contains_eos: bool
-        If true, the EOS loss is added at the last point. Else, the nan_value
-        is added.
-    sft: StatefulTractogram
-    colormap: str
-    min_range: float
-    max_range: float
-    skip_first_point: bool
-        If true, nan_value is used as loss at the first coordinate.
-        Meant particularly for the "copy_previous_dir" loss, where there is no
-        previous dir at the first point.
-    nan_value: float
-        Value to use when loss is unknown. If not given, will be set to the
-        minimal value.
-    """
+        losses: List[torch.Tensor], sft: StatefulTractogram, colormap: str,
+        min_range: float = None, max_range: float = None):
+
+    losses = np.concatenate(losses)
     # normalize between 0 and 1
     # Keeping as tensor because the split method below is easier to use
     # with torch.
-    min_val = torch.min(losses) if min_range is None else min_range
-    max_val = torch.max(losses) if max_range is None else max_range
+    min_val = np.min(losses) if min_range is None else min_range
+    max_val = np.max(losses) if max_range is None else max_range
     logging.info("Range of the colormap is considered to be: {:.2f} - {:.2f}"
                  .format(min_val, max_val))
-    losses = torch.clip(losses, min_val, max_val)
+    losses = np.clip(losses, min_val, max_val)
     losses = (losses - min_val) / (max_val - min_val)
-    nan_value = nan_value if nan_value is not None else 0.0
     print("Loss ranges between {} and {}".format(min_val, max_val))
-
-    # Splitting back into streamlines to add a 0 loss at last position
-    # (if no EOS was used).
-    losses = split_losses(contains_eos, losses, sft, skip_first_point)
-
-    # Add 0 loss for the last point and merge back
-    if skip_first_point:
-        logging.info("Loss unknown at first point of the streamlines. Set to "
-                     "{}".format(nan_value))
-        losses = [[nan_value] + s_losses for s_losses in losses]
-
-    if not contains_eos:
-        logging.info("Loss unknown at last point of the streamlines. Set to {}"
-                     .format(nan_value))
-        losses = [s_losses + [nan_value] for s_losses in losses]
-
-    losses = np.concatenate(losses)
 
     cmap = plt.colormaps.get_cmap(colormap)
     color = cmap(losses)[:, 0:3] * 255
@@ -132,9 +112,7 @@ def prepare_colors_from_loss(
     return sft, colorbar_fig
 
 
-def separate_best_and_worst(percent, contains_eos, losses, sft,
-                            skip_first_point=False):
-    losses = split_losses(contains_eos, losses, sft, skip_first_point)
+def separate_best_and_worst(percent, losses, sft):
     losses = [np.mean(s_losses) for s_losses in losses]
 
     percent = int(percent / 100 * len(sft))
@@ -146,27 +124,6 @@ def separate_best_and_worst(percent, contains_eos, losses, sft,
           "      Best : {}\n"
           "      Worst: {}".format(losses[best_idx[0]], losses[worst_idx[-1]]))
     return best_idx, worst_idx
-
-
-def split_losses(contains_eos, losses, sft, skip_first_point=False):
-    diff_length = 0 if contains_eos else 1
-    if skip_first_point:
-        diff_length += 1
-    lengths = [len(s) - diff_length for s in sft.streamlines]
-
-    # If this fails, torch's warning is really ugly. Verifying ourselves.
-    msg = "Can't split loss... Please verify the code. There are {} values " \
-        "of losses but {} points (total in {} streamlines)"\
-        .format(len(losses), sum(lengths), len(lengths))
-    if not contains_eos:
-        msg += "(minus 1 because we have no EOS loss at the last point)"
-    if skip_first_point:
-        msg += "(minus 1 because we don't look the loss at the first point, "
-        ", probably because this was called with the copy_previous_dir script."
-    assert len(losses) == sum(lengths), msg
-    losses = torch.split(losses, lengths)
-    losses = [s_losses.tolist() for s_losses in losses]
-    return losses
 
 
 def pick_a_few(sft, ids_best, ids_worst,
@@ -221,11 +178,9 @@ def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
         # output : Starts on first point
         #          + tmp = each point = true previous point + learned dir
         #                 + in between each point, comes back to correct point.
-        logging.warning("S: {}\n D: {}\n".format(s, streamline_out_dir))
         tmp = [[s[p] + streamline_out_dir[p], s[p+1]]
                for p in range(this_s_len - 1)]
-        out_streamline = \
-            [s[0]] + list(itertools.chain.from_iterable(tmp))
+        out_streamline = [s[0]] + list(itertools.chain.from_iterable(tmp))
         out_streamline = out_streamline[:-1]
         this_s_len2 = len(out_streamline)
 
@@ -260,3 +215,62 @@ def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
           "estimation at each time point.")
 
     return sft
+
+
+def run_visu_save_colored_displacement(
+        args, model: ModelWithDirectionGetter, losses: List[torch.Tensor],
+        outputs: List[torch.Tensor], sft: StatefulTractogram,
+        colorbar_name: str, best_sft_name: str, worst_sft_name: str):
+
+    if model.direction_getter.compress_loss:
+        if not ('uncompress_loss' in args and args.uncompress_loss):
+            print("Can't save colored SFT for compressed loss")
+
+    # Save colored SFT
+    if args.out_colored_sft is not None:
+        logging.info("Preparing colored sft")
+        sft, colorbar_fig = prepare_colors_from_loss(
+            losses, sft, args.colormap, args.min_range, args.max_range)
+        print("Saving colored SFT as {}".format(args.out_colored_sft))
+        save_tractogram(sft, args.out_colored_sft)
+
+        print("Saving colorbar as {}".format(colorbar_name))
+        colorbar_fig.savefig(colorbar_name)
+
+    # Separate best and worst
+    best_idx = []
+    worst_idx = []
+    if args.save_best_and_worst is not None or args.pick_best_and_worst:
+        best_idx, worst_idx = separate_best_and_worst(
+            args.save_best_and_worst, losses, sft)
+
+        if args.out_colored_sft is not None:
+            best_sft = sft[best_idx]
+            worst_sft = sft[worst_idx]
+            print("Saving best and worst streamlines as {} \nand {}"
+                  .format(best_sft_name, worst_sft_name))
+            save_tractogram(best_sft, best_sft_name)
+            save_tractogram(worst_sft, worst_sft_name)
+
+    # Save displacement
+    if args.out_displacement_sft:
+        if args.out_colored_sft:
+            # We have run model on all streamlines. Picking a few now.
+            sft, idx = pick_a_few(
+                sft, best_idx, worst_idx, args.pick_at_random,
+                args.pick_best_and_worst, args.pick_idx)
+            outputs = [outputs[i] for i in idx]
+
+        # Either concat, run, split or (chosen:) loop
+        # Use eos_thresh of 1 to be sure we don't output a NaN
+        out_dirs = [model.get_tracking_directions(
+            s_output, algo='det', eos_stopping_thresh=1.0).numpy()
+                    for s_output in outputs]
+
+        # Save error together with ref
+        sft = combine_displacement_with_ref(out_dirs, sft, model.step_size)
+
+        save_tractogram(sft, args.out_displacement_sft, bbox_valid_check=False)
+
+    if args.show_colorbar:
+        plt.show()

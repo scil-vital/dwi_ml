@@ -8,7 +8,8 @@ from dwi_ml.experiment_utils.timer import Timer
 logger = logging.getLogger('train_logger')
 
 
-def add_training_args(p: argparse.ArgumentParser):
+def add_training_args(p: argparse.ArgumentParser,
+                      add_a_tracking_validation_phase=False):
     training_group = p.add_argument_group("Training")
     training_group.add_argument(
         '--learning_rate', metavar='r', nargs='+',
@@ -46,6 +47,14 @@ def add_training_args(p: argparse.ArgumentParser):
         '--max_batches_per_epoch_validation', type=int, default=1000,
         metavar='n',
         help="Maximum number of batches per epoch during validation.")
+
+    if add_a_tracking_validation_phase:
+        training_group.add_argument(
+            '--add_a_tracking_validation_phase', action='store_true')
+        training_group.add_argument(
+            '--tracking_phase_frequency', type=int, default=5)
+        training_group.add_argument(
+            '--tracking_mask')
 
     comet_g = p.add_argument_group("Comet")
     comet_g.add_argument(
@@ -105,5 +114,5 @@ def run_experiment(trainer):
     logger.info("Summary: ran {} epochs (out of max {}). \n"
                 "Best loss was {} at epoch #{}.\n"
                 .format(trainer.current_epoch + 1, trainer.max_epochs,
-                        trainer.best_epoch_monitoring.best_value,
-                        trainer.best_epoch_monitoring.best_epoch + 1))
+                        trainer.best_epoch_monitor.best_value,
+                        trainer.best_epoch_monitor.best_epoch + 1))

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import logging
+from typing import Union, Tuple
 
 import numpy as np
 from dipy.data import get_sphere
@@ -10,9 +11,9 @@ from torch.nn.utils.rnn import PackedSequence
 from torch.nn.functional import softmax
 
 from dwi_ml.models.direction_getter_models import (
-    CosineRegressionDirectionGetter, FisherVonMisesDirectionGetter,
-    GaussianMixtureDirectionGetter, L2RegressionDirectionGetter,
-    SingleGaussianDirectionGetter, SphereClassificationDirectionGetter)
+    CosineRegressionDG, FisherVonMisesDG,
+    GaussianMixtureDG, L2RegressionDG,
+    SingleGaussianDG, SphereClassificationDG, AbstractDirectionGetterModel)
 from dwi_ml.models.utils.fisher_von_mises import (
     fisher_von_mises_log_prob_vector)
 
@@ -78,14 +79,15 @@ def _prepare_packedsequence(a):
         return a
 
 
-def _verify_loss(streamline, fake_model_output, expected_loss, model,
+def _verify_loss(streamline: Union[torch.Tensor, list],
+                 fake_model_output: Union[np.ndarray, list, torch.Tensor,
+                 Tuple], expected_loss: Union[torch.Tensor, np.ndarray, float],
+                 model: AbstractDirectionGetterModel,
                  expected_eos_loss=torch.as_tensor(0.)):
+    # Convert types
     if not isinstance(streamline, torch.Tensor):
         streamline = torch.as_tensor(np.asarray(streamline),
                                      dtype=torch.float32)
-    targets = model.prepare_targets_for_loss([streamline])[0]
-
-    # Convert types
     if (isinstance(fake_model_output, np.ndarray) or
             isinstance(fake_model_output, list)):
         fake_model_output = torch.as_tensor(fake_model_output,
@@ -100,7 +102,8 @@ def _verify_loss(streamline, fake_model_output, expected_loss, model,
         fake_model_output = fake_model_output[None, :]
 
     # Compute loss and verify
-    computed_loss, _ = model.compute_loss(fake_model_output, targets)
+    computed_loss, _ = model.compute_loss([fake_model_output], [streamline])
+
     assert np.allclose(computed_loss, expected_loss, atol=tol), \
         "Expected loss {} but got {}.\n" \
         "      - Streamline: {}    ( = dir {})\n" \
@@ -113,29 +116,29 @@ def _verify_loss(streamline, fake_model_output, expected_loss, model,
 def test_cosine_regression_loss():
     logging.debug('Testing cosine regression loss')
 
-    model = CosineRegressionDirectionGetter(3)
+    model = CosineRegressionDG(input_size=3)
     streamline = [[0., 0, 0], [1., 0, 0]]
 
-    logging.debug("  - Identical vectors x: expecting -1")
+    logging.debug("  - Identical vectors x: expecting -1 (+1)")
     good_dir = [1., 0, 0]
-    expected_loss = -1.
+    expected_loss = 0.
     _verify_loss(streamline, good_dir, expected_loss, model)
 
-    logging.debug("  - Vectors with same angle: expecting -1")
+    logging.debug("  - Vectors with same angle: expecting -1 (+1)")
     scales = np.random.random(20) * 20
     for s in scales:
         good_dir_bad_scale = [s, 0., 0]
-        expected_loss = -1.
+        expected_loss = 0.
         _verify_loss(streamline, good_dir_bad_scale, expected_loss, model)
 
-    logging.debug("  - Vectors with at 90 degrees 1: expecting 0")
+    logging.debug("  - Vectors with at 90 degrees 1: expecting 0 (+1)")
     dir_90 = [0., 1, 0]
-    expected_loss = 0.
+    expected_loss = 1.
     _verify_loss(streamline, dir_90, expected_loss, model)
 
-    logging.debug("  - Vectors with at 180 degrees: expecting 1")
+    logging.debug("  - Vectors with at 180 degrees: expecting 1 (+1)")
     dir_90 = [-1., 0, 0]
-    expected_loss = 1.
+    expected_loss = 2.
     _verify_loss(streamline, dir_90, expected_loss, model)
 
     logging.debug("  - Random vectors: comparing with cosine.")
@@ -143,14 +146,15 @@ def test_cosine_regression_loss():
         streamline = [[0., 0, 0], _get_random_vector(3)]
         random_dir = _get_random_vector(3)
         # model outputs -cos(a,b), but scipy's cosine computes 1-cos(a,b)
-        expected_loss = cosine(streamline[1], random_dir) - 1
+        # then we add + 1.
+        expected_loss = cosine(streamline[1], random_dir)
         _verify_loss(streamline, random_dir, expected_loss, model)
 
 
 def test_l2regression_loss():
     logging.debug('Testing l2 regression loss')
 
-    model = L2RegressionDirectionGetter(1)
+    model = L2RegressionDG(input_size=1)
     streamline = [[0., 0, 0], _get_random_vector(3)]
 
     logging.debug("  - Identical vectors x: expecting 0")
@@ -168,7 +172,7 @@ def test_l2regression_loss():
 def test_sphere_classification_loss():
     logging.debug('Testing sphere classification loss')
 
-    model = SphereClassificationDirectionGetter(1)
+    model = SphereClassificationDG(input_size=1)
     sphere = get_sphere('symmetric724')
 
     logging.debug("  - Neg log likelihood, expecting -ln(softmax).")
@@ -209,7 +213,7 @@ def test_sphere_classification_loss():
 def test_gaussian_loss():
     logging.debug('Testing gaussian loss:')
 
-    model = SingleGaussianDirectionGetter(1)
+    model = SingleGaussianDG(input_size=1)
 
     logging.debug("      - x = mu")
     for _ in range(20):
@@ -244,7 +248,7 @@ def test_gaussian_loss():
 def test_mixture_loss():
     logging.debug('Testing mixture loss')
 
-    model = GaussianMixtureDirectionGetter(1)
+    model = GaussianMixtureDG(input_size=1)
 
     logging.debug("      - Random")
     for _ in range(20):
@@ -273,7 +277,7 @@ def test_mixture_loss():
 def test_fisher_von_mises():
     logging.debug('Testing fisher-Von mises loss')
 
-    model = FisherVonMisesDirectionGetter(1)
+    model = FisherVonMisesDG(input_size=1)
 
     logging.debug("  - Expecting log prob.")
 

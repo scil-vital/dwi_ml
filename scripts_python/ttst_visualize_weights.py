@@ -5,9 +5,9 @@ from os.path import join, dirname
 from scilpy.io.fetcher import get_home
 from scilpy.io.utils import assert_inputs_exist
 
-from dwi_ml.visu.projects.transformer_visualisation import \
+from dwi_ml.testing.projects.transformer_visualisation import \
     visualize_weights_using_jupyter, ttst_visualize_weights
-from dwi_ml.visu.projects.transformer_visualisation_utils import \
+from dwi_ml.testing.projects.transformer_visualisation_utils import \
     build_argparser_transformer_visu
 
 

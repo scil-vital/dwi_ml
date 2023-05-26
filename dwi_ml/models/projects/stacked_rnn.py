@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from typing import List, Tuple, Union
+from typing import List, Tuple
 
 import torch
 from torch import Tensor
@@ -96,10 +96,8 @@ class StackedRNN(torch.nn.Module):
             # Instantiate RNN layer
             # batch_first: If True, then the input and output tensors are
             # provided as (batch, seq, feature), not (seq, batch, feature)
-            rnn_layer = rnn_cls(input_size=last_layer_size,
-                                hidden_size=layer_size,
-                                num_layers=1,
-                                batch_first=True)
+            rnn_layer = rnn_cls(input_size=last_layer_size, hidden_size=layer_size,
+                                num_layers=1, batch_first=True)
 
             # Explicitly add module because it's not a named variable
             self.add_module("rnn_{}".format(i), rnn_layer)
@@ -146,16 +144,15 @@ class StackedRNN(torch.nn.Module):
         else:
             return self.layer_sizes[-1]
 
-    def forward(self, inputs: Union[Tensor, PackedSequence],
+    def forward(self, inputs: PackedSequence,
                 hidden_states: Tuple[Tensor, ...] = None):
         """
         Parameters
         ----------
-        inputs : torch.Tensor or PackedSequence
-            Batch of input sequences. Size (seq, features).
+        inputs : PackedSequence
             Current implementation of the learn2track model calls this using
             packed sequence. We run the RNN on the packed data, but the
-            normalization and dropout of their tensor version.
+            normalization and dropout on their tensor version.
         hidden_states : list[states]
             One value per layer.
             LSTM: States are tuples; (h_t, C_t)
@@ -166,9 +163,8 @@ class StackedRNN(torch.nn.Module):
         Returns
         -------
         last_output : Tensor
-            The results. Shape is [nb_points, last layer size], or
-            [nb_points, sum of layer sizes] if skip_connections.
-            * If inputs was a PackedSequence, you can get the packed results:
+            The PackedSequence.data output, modified through the RNN.
+            * You can get the packed results:
             last_output = PackedSequence(last_output,
                                          inputs.batch_sizes,
                                          inputs.sorted_indices,
@@ -179,22 +175,11 @@ class StackedRNN(torch.nn.Module):
             The last step hidden states (h_(t-1), C_(t-1) for LSTM) for each
             layer.
         """
-
         # If input is a tensor: RNN simply runs on it.
         # Else: RNN knows what to do.
 
         # We need to concatenate initial inputs with skip connections.
-        if isinstance(inputs, Tensor):
-            was_packed = False
-            init_inputs = inputs
-        elif isinstance(inputs, list):
-            raise TypeError("Unexpected input type! Data should not be a list."
-                            "You could try using PackedSequences.")
-        elif isinstance(inputs, PackedSequence):
-            was_packed = True
-            init_inputs = inputs.data
-        else:
-            raise TypeError("Unexpected input type!")
+        init_inputs = inputs.data
 
         # Arranging states
         if hidden_states is None:
@@ -214,35 +199,26 @@ class StackedRNN(torch.nn.Module):
             logger.debug('Applying StackedRnn layer #{}. Layer is: {}'
                          .format(i, self.rnn_layers[i]))
 
-            if i > 0 and was_packed:
+            if i > 0:
                 # Packing back the output tensor from previous layer;
-                # only the .data was kept for the direction getter.
-                last_output = PackedSequence(last_output, inputs.batch_sizes,
-                                             inputs.sorted_indices,
-                                             inputs.unsorted_indices)
+                # only the .data was kept from Dropout and Relu
+                last_output = PackedSequence(last_output, inputs.batch_sizes)
 
             # ** RNN **
             # Either as 3D tensor or as packedSequence
-            last_output, new_state_i = self.rnn_layers[i](last_output,
-                                                          hidden_states[i])
+            last_output, new_state_i = self.rnn_layers[i](
+                last_output, hidden_states[i])
             out_hidden_states.append(new_state_i)
 
             # ** Other sub-layers **
             # Forward functions for layer_norm, dropout and skip take tensors
             # Does not matter if order of datapoints is not kept, applied on
             # each data point separately
-            if was_packed:
-                last_output = last_output.data
-
-            logger.debug('   Output size after main sub-layer: {}'
-                         .format(last_output.shape))
+            last_output = last_output.data
 
             # Apply layer normalization
             if self.use_layer_normalization:
                 last_output = self.layer_norm_layers[i](last_output)
-
-            logger.debug('   Output size after normalization: {}'
-                         .format(last_output.shape))
 
             if i < len(self.rnn_layers) - 1:
                 # Apply dropout except on last layer
@@ -266,18 +242,24 @@ class StackedRNN(torch.nn.Module):
                 # Adding skip connection, i.e. initial input.
                 # See here: https://arxiv.org/pdf/1308.0850v5.pdf
                 if i < len(self.rnn_layers) - 1:
-                    last_output = torch.cat((last_output, init_inputs),
-                                            dim=-1)
+                    last_output = torch.cat((last_output, init_inputs), dim=-1)
                     logger.debug('   Output size after skip connection: {}'
                                  .format(last_output.shape))
 
         # Final last_output
         if self.use_skip_connection:
-            last_output = torch.cat(outputs, dim=-1)
+            if len(self.rnn_layers) > 1:
+                last_output = torch.cat(outputs, dim=-1)
+            else:
+                last_output = outputs[0]
+
             if ADD_SKIP_TO_OUTPUT:
                 last_output = torch.cat((last_output, init_inputs), dim=-1)
-
-            logger.debug(
-                'Final skip connection: concatenating all outputs but not '
-                'input. Final shape is {}'.format(last_output.shape))
+                logger.debug(
+                    'Final skip connection: concatenating all outputs AND '
+                    'input. Final shape is {}'.format(last_output.shape))
+            else:
+                logger.debug(
+                    'Final skip connection: concatenating all outputs but NOT '
+                    'input. Final shape is {}'.format(last_output.shape))
         return last_output, out_hidden_states

@@ -12,6 +12,7 @@ import os
 # See bug report here https://github.com/Lightning-AI/lightning/issues/5829
 # Importing now to solve issues later.
 import comet_ml
+import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
@@ -22,6 +23,7 @@ from dwi_ml.io_utils import add_logging_arg, add_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.models.projects.learn2track_utils import add_model_args
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
+from dwi_ml.tracking.utils import prepare_tracking_mask
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
@@ -39,7 +41,7 @@ def prepare_arg_parser():
     add_mandatory_args_training_experiment(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
-    training_group = add_training_args(p)
+    training_group = add_training_args(p, add_a_tracking_validation_phase=True)
     add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_logging_arg(p)
 
@@ -55,6 +57,7 @@ def prepare_arg_parser():
 
 
 def init_from_args(args, sub_loggers_level):
+    torch.manual_seed(args.rng)  # Set torch seed
 
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args, load_testing=False,
@@ -73,7 +76,7 @@ def init_from_args(args, sub_loggers_level):
         # INPUTS: verifying args
         model = Learn2TrackModel(
             experiment_name=args.experiment_name,
-            step_size=args.step_size, compress=args.compress,
+            step_size=args.step_size, compress_lines=args.compress,
             # PREVIOUS DIRS
             prev_dirs_embedding_key=args.prev_dirs_embedding_key,
             prev_dirs_embedding_size=args.prev_dirs_embedding_size,
@@ -89,6 +92,7 @@ def init_from_args(args, sub_loggers_level):
             dropout=args.dropout,
             use_layer_normalization=args.use_layer_normalization,
             use_skip_connection=args.use_skip_connection,
+            start_from_copy_prev=args.start_from_copy_prev,
             # TRACKING MODEL
             dg_key=args.dg_key, dg_args=dg_args,
             # Other
@@ -107,8 +111,9 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         lr = format_lr(args.learning_rate)
         trainer = Learn2TrackTrainer(
-            model, args.experiments_path, args.experiment_name,
-            batch_sampler, batch_loader,
+            model=model, experiments_path=args.experiments_path,
+            experiment_name=args.experiment_name, batch_sampler=batch_sampler,
+            batch_loader=batch_loader,
             # COMET
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
@@ -119,6 +124,11 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, patience_delta=args.patience_delta,
             from_checkpoint=False, clip_grad=args.clip_grad,
+            # (generation validation:)
+            add_a_tracking_validation_phase=args.add_a_tracking_validation_phase,
+            tracking_phase_frequency=args.tracking_phase_frequency,
+            tracking_phase_nb_steps_init=5,  # args.tracking_phase_nb_steps_init
+            tracking_phase_mask_group=args.tracking_mask,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
             log_level=args.logging)

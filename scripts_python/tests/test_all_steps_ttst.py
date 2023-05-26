@@ -57,7 +57,7 @@ def test_execution(script_runner, experiments_path):
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
                             '--nheads', '2', '--max_len', str(MAX_LEN),
-                            '--d_model', '6', '--n_layers_d', '1',
+                            '--n_layers_d', '1',
                             '--token_type', 'as_label',
                             '--ffnn_hidden_size', '3', '--logging', 'INFO')
     assert ret.success
@@ -78,7 +78,9 @@ def test_execution(script_runner, experiments_path):
                                 '--max_batches_per_epoch_training', '2',
                                 '--max_batches_per_epoch_validation', '1',
                                 '--nheads', '2', '--max_len', str(MAX_LEN),
-                                '--d_model', '6', '--n_layers_d', '1',
+                                '--embedding_size_x', '6',
+                                '--embedding_size_t', '2',
+                                '--n_layers_d', '1',
                                 '--token_type', 'as_label',
                                 '--ffnn_hidden_size', '3', '--logging', 'INFO',
                                 '--use_gpu')
@@ -120,4 +122,3 @@ def test_execution(script_runner, experiments_path):
         input_group, in_sft, '--step_size', '0.5',
         '--subset', 'training', '--logging', 'INFO', '--run_locally')
     assert ret.success
-

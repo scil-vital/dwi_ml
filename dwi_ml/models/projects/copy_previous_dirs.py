@@ -4,20 +4,17 @@ from typing import List
 import torch
 from torch.distributions import Categorical
 
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_directions
+from dwi_ml.data.processing.streamlines.post_processing import compute_directions
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     convert_dirs_to_class
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 
 
 class CopyPrevDirModel(ModelWithDirectionGetter):
-    def __init__(self, dg_key: str = 'cosine-regression',
-                 dg_args: dict = None, skip_first_point=False,
-                 step_size=None, compress=None):
-        super().__init__(dg_key=dg_key, dg_args=dg_args,
-                         experiment_name='TEST', step_size=step_size,
-                         compress=compress)
+    def __init__(self, dg_key: str = 'cosine-regression', dg_args: dict = None,
+                 skip_first_point=False, step_size=None, compress_lines=None):
+        super().__init__(dg_key=dg_key, dg_args=dg_args, experiment_name='TEST',
+                         step_size=step_size, compress_lines=compress_lines)
 
         # Fake input size, we won't use the forward method.
         self.instantiate_direction_getter(dg_input_size=1)
@@ -29,49 +26,34 @@ class CopyPrevDirModel(ModelWithDirectionGetter):
         # A) Compute directions. Shift + add a fake first direction.
 
         # Ignoring inputs.
-        targets = compute_directions(streamlines)
-        if self.skip_first_point:
-            outputs = targets
-        else:
-            # Add fake first point.
-            zeros = torch.as_tensor([0., 0., 0.], dtype=torch.float32,
-                                    device=self.device)
-            outputs = [torch.vstack((zeros, t)) for t in targets]
+        outputs = compute_directions(streamlines)
 
+        # Output at first position will be 0. We will add it later.
         # Faking outputs based on direction getter format
         if 'classification' in self.dg_key:
-            outputs = convert_dirs_to_class(outputs,
-                                            self.direction_getter.torch_sphere)
-            outputs = torch.hstack(outputs)
-
-            # Prepare logits_per_class
-            outputs = torch.nn.functional.one_hot(outputs.to(dtype=torch.long))
-
-            distribution = Categorical(probs=outputs)
-            outputs = distribution.logits
-        elif 'regression' in self.dg_key:
-            outputs = torch.vstack(outputs)
-        else:
+            outputs = convert_dirs_to_class(
+                outputs, self.direction_getter.torch_sphere, add_sos=False,
+                add_eos=self.direction_getter.add_eos, to_one_hot=True)
+            outputs = [Categorical(probs=out).logits for out in outputs]
+        elif not ('regression' in self.dg_key):
             raise NotImplementedError
+
+        if not self.skip_first_point:
+            # Add fake first point. We don't know what output to give. Just
+            # using zeros everywhere.
+            outputs = [torch.nn.functional.pad(out, [0, 0, 1, 0])
+                       for out in outputs]
 
         return outputs
 
-    def compute_loss(self, model_outputs: torch.Tensor,
+    def compute_loss(self, model_outputs: List[torch.Tensor],
                      target_streamlines: List[torch.Tensor],
                      average_results=True, **kw):
-        targets = self.direction_getter.prepare_targets_for_loss(
-            target_streamlines)
-
         if self.skip_first_point:
-            targets = [t[1:] for t in targets]
-
-        if self.dg_key == 'sphere-classification':
-            targets = torch.hstack(targets)
-        else:
-            targets = torch.vstack(targets)
+            target_streamlines = [t[1:] for t in target_streamlines]
 
         if self._context == 'visu':
             return self.direction_getter.compute_loss(
-                model_outputs, targets, average_results)
+                model_outputs, target_streamlines, average_results)
         else:
             raise NotImplementedError

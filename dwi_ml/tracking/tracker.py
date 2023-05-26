@@ -7,18 +7,21 @@ import sys
 import traceback
 from typing import List
 
-import numpy as np
-import torch
 from dipy.io.stateful_tractogram import Space, Origin
 from dipy.tracking.streamlinespeed import compress_streamlines
-from scilpy.tracking.seed import SeedGenerator
+import numpy as np
+import torch
+from torch import Tensor
 from tqdm.contrib.logging import tqdm_logging_redirect
+
+from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.direction_getter_models import \
-    AbstractRegressionDirectionGetter
+    AbstractRegressionDG
 from dwi_ml.models.main_models import ModelWithDirectionGetter, \
     MainModelOneInput
+from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.utils import prepare_step_size_vox
 
@@ -36,7 +39,7 @@ class DWIMLAbstractTracker:
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: ModelWithDirectionGetter, mask: TrackingMask,
                  seed_generator: SeedGenerator, nbr_seeds: int,
-                 min_len_mm: float, max_len_mm: float, max_invalid_dirs: int,
+                 min_len_mm: float, max_len_mm: float,
                  step_size_mm: float, algo: str, theta: float,
                  verify_opposite_direction: bool,
                  compression_th=0.1, nbr_processes=1, save_seeds=False,
@@ -60,11 +63,6 @@ class DWIMLAbstractTracker:
         nbr_seeds: int, nb seeds total to track.
         min_len_mm: float, minimal streamline length.
         max_len_mm: float, maximal streamline length.
-        max_invalid_dirs: int
-            Maximal invalid direction. If >0 and a direction is invalid (Ex: If
-            EOS is chosen in a model, or if the angle is too sharp), the
-            streamline will continue straight until reaching the number of
-            invalid values allowed. Default: 0.
         step_size_mm: float, the step size for tracking, in millimiters.
         algo: str, 'det' or 'prob'
         theta: float
@@ -94,7 +92,6 @@ class DWIMLAbstractTracker:
         self.mask = mask
         self.seed_generator = seed_generator
         self.nbr_seeds = nbr_seeds
-        self.max_invalid_dirs = max_invalid_dirs
         self.compression_th = compression_th
         self.save_seeds = save_seeds
         self.mmap_mode = None
@@ -110,7 +107,7 @@ class DWIMLAbstractTracker:
         self.append_last_point = append_last_point
         self.eos_stopping_thresh = eos_stopping_thresh
 
-        if model.compress:
+        if model.compress_lines:
             logger.warning(
                 "Careful! Model was trained on compressed streamlines. "
                 "Tractography with a fixed step size could lead to weird "
@@ -131,7 +128,7 @@ class DWIMLAbstractTracker:
                             .format(self.eos_stopping_thresh))
                 if self.eos_stopping_thresh == 'max' and isinstance(
                         model.direction_getter,
-                        AbstractRegressionDirectionGetter):
+                        AbstractRegressionDG):
                     raise ValueError("Regression's EOS is a tag, not a class. "
                                      "It does not support the criterion "
                                      "'max'.")
@@ -317,8 +314,8 @@ class DWIMLAbstractTracker:
 
         Return
         -------
-        lines: list
-            List of list of 3D positions (streamlines).
+        lines: List[List]
+            List of lists of 3D positions (streamlines).
         """
         self._cpu_reload_data_for_new_process()
         try:
@@ -343,9 +340,9 @@ class DWIMLAbstractTracker:
 
         Returns
         -------
-        streamlines: list
+        streamlines: List[List]
             The successful streamlines.
-        seeds: list
+        seeds: List[np.ndarray]
             The list of seeds for each streamline, if self.save_seeds. Else, an
             empty list.
         """
@@ -415,8 +412,8 @@ class DWIMLAbstractTracker:
                 n_seeds = self.seed_generator.get_next_n_pos(
                     random_generator, indices, next_seeds)
 
-                tmp_lines, tmp_seeds = self._get_multiple_lines_both_directions(
-                    n_seeds)
+                tmp_lines, tmp_seeds = \
+                    self._get_multiple_lines_both_directions(n_seeds)
                 pbar.update(nb_next_seeds)
                 lines.extend([line.tolist() for line in tmp_lines])
                 seeds.extend([s.tolist() for s in tmp_seeds])
@@ -427,11 +424,6 @@ class DWIMLAbstractTracker:
 
     def _get_multiple_lines_both_directions(self, seeds: List[np.ndarray]):
         """
-        Params
-        ------
-        n_seeds : List[np.ndarray]
-            3D positions, the seed positions.
-
         Returns
         -------
         clean_lines: List[np.ndarray]
@@ -439,21 +431,21 @@ class DWIMLAbstractTracker:
         """
         torch.cuda.empty_cache()
 
-        # List of list. Sending to torch tensors.
+        # List of list. Sending to Tensors.
         seeds = [torch.as_tensor(s, device=self.device, dtype=torch.float)
                  for s in seeds]
         lines = [s.clone()[None, :] for s in seeds]
 
         logger.debug("Starting forward")
-        initial_dirs = self.prepare_forward(seeds)
-        lines = self._propagate_multiple_lines(lines, initial_dirs)
+        self.prepare_forward(seeds)
+        lines = self.propagate_multiple_lines(lines)
 
         if not self.track_forward_only:
             logger.debug("Starting backward")
-            lines, seeds, backward_dir, _ = self.prepare_backward(
-                lines, seeds, initial_dirs)
-
-            lines = self._propagate_multiple_lines(lines, backward_dir)
+            lines, rej_idx = self.prepare_backward(lines)
+            if rej_idx is not None and len(rej_idx) > 0:
+                seeds = [s for i, s in enumerate(seeds) if i not in rej_idx]
+            lines = self.propagate_multiple_lines(lines)
 
         # Clean streamlines
         # Max is already checked as stopping criteria.
@@ -464,16 +456,36 @@ class DWIMLAbstractTracker:
 
         return clean_lines, clean_seeds
 
-    def prepare_forward(self, seeding_pos):
-        """
-        Prepare information necessary at the first point of the
-        streamline for forward propagation.
+    def propagate_multiple_lines(self, lines: List[Tensor]):
+        return propagate_multiple_lines(
+            lines, self.update_memory_after_removing_lines,
+            self.get_next_dirs, self.theta, self.step_size,
+            self.verify_opposite_direction, self.mask, self.max_nbr_pts,
+            append_last_point=self.append_last_point,
+            normalize_directions=self.normalize_directions)
 
-        Parameters
-        ----------
-        seeding_pos: Tensor or List(Tensor)
-            The 3D coordinates or, for simultaneous tracking, list of 3D
-            coordinates.
+    def get_next_dirs(self, lines: List[Tensor], n_last_pos: List[Tensor]):
+        """
+        Returns
+        -------
+        next_dirs: Tensor
+            Input to model is a list of streamlines but output should be
+            next_dirs = a Tensor of shape [nb_streamlines, 3].
+        n_last_pos: List[Tensor]
+        """
+        inputs = self._prepare_inputs_at_pos(n_last_pos)
+
+        model_outputs = self._call_model_forward(inputs, lines)
+
+        next_dirs = self.model.get_tracking_directions(
+            model_outputs, self.algo, self.eos_stopping_thresh)
+
+        return next_dirs
+
+    def prepare_forward(self, seeding_pos: List[Tensor]):
+        """
+        Prepare information necessary at the first point of the streamline
+        for forward propagation.
 
         Returns
         -------
@@ -482,139 +494,7 @@ class DWIMLAbstractTracker:
         """
         # Our models should be able to get an initial direction even with no
         # starting information. Override if your model is different.
-        empty_pos = torch.full((3,), fill_value=torch.nan, device=self.device)
-        forward_dirs = torch.tile(empty_pos, (len(seeding_pos), 1))
-
-        return forward_dirs
-
-    def _propagate_multiple_lines(self, lines, initial_dir):
-        """
-        Equivalent of super's() _propagate_lines() for multiple tracking at
-        the same time (meant to be used on GPU).
-        """
-        nb_streamlines = len(lines)
-
-        # Monitoring
-        invalid_direction_counts = np.zeros(nb_streamlines)
-        continuing_lines_rawidx = np.arange(nb_streamlines)
-
-        # Will get the final lines when they are done.
-        final_lines = [None] * nb_streamlines  # type: List[torch.Tensor]
-
-        # `lines` will be updated at each loop to only contain the remaining
-        # lines.
-        all_lines_completed = False
-        previous_dir = initial_dir
-        while not all_lines_completed:
-            n_new_pos, previous_dir, invalid_dirs = \
-                self.take_one_step_or_go_straight(lines, previous_dir)
-
-            # If invalid direction (ex: angle or EOS), stop now.
-            invalid_direction_counts[invalid_dirs] += 1
-            breaking_now = invalid_direction_counts > self.max_invalid_dirs
-            if sum(breaking_now) > 0:
-                logger.debug("{} streamlines with invalid directions for more "
-                             "than allowed {} points."
-                             .format(sum(breaking_now), self.max_invalid_dirs))
-
-            # For other streamlines: verifying but appending only if option is
-            # chosen.
-            break_with_appending = self._verify_stopping_criteria(
-                n_new_pos, lines)
-
-            if self.append_last_point:
-                # Appending last point only to streamlines not breaking now.
-                # (i.e. wrong angle or NaN direction) more than
-                # max invalid dirs.
-                lines = [torch.vstack((s, n_new_pos[i, :])) if ~breaking_now[i]
-                         else s for i, s in enumerate(lines)]
-                breaking_now = np.logical_or(break_with_appending,
-                                             breaking_now)
-                can_continue = ~breaking_now
-            else:
-                # Appending last point only to continuing streamlines
-                breaking_now = np.logical_or(break_with_appending,
-                                             breaking_now)
-                can_continue = ~breaking_now
-                lines = [torch.vstack((s, n_new_pos[i, :])) if can_continue[i]
-                         else s for i, s in enumerate(lines)]
-
-            # Saving finished streamlines
-            idx_stop, = np.where(breaking_now)
-            for i in idx_stop:
-                final_lines[continuing_lines_rawidx[i]] = lines[i]
-
-            # Update model if needed.
-            if np.any(breaking_now):
-                new_stopping_lines_raw_idx = continuing_lines_rawidx[
-                    ~can_continue]
-                self.update_memory_after_removing_lines(
-                    can_continue, new_stopping_lines_raw_idx, nb_streamlines)
-
-            # Keeping only remaining lines.
-            if np.any(can_continue):
-                lines = [s for i, s in enumerate(lines) if can_continue[i]]
-                previous_dir = previous_dir[can_continue, :]
-                continuing_lines_rawidx = continuing_lines_rawidx[can_continue]
-                invalid_direction_counts = invalid_direction_counts[can_continue]
-            else:
-                all_lines_completed = True
-
-        assert not np.any([line is None for line in final_lines])
-
-        return final_lines
-
-    def take_one_step_or_go_straight(self, lines, previous_dirs):
-        """
-        Finds the next direction. If no valid direction is found (invalid = if
-        the model returns NaN, ex if EOS is used, or if the angle is too
-        sharp). Then, the previous direction is copied but the list of invalid
-        directions is returned.
-
-        Params
-        ------
-        line: List[Tensor]
-            For each streamline, tensor of shape (nb_points, 3).
-        previous_dirs: Tensor(n, 3)
-            Previous tracking directions. Can contain [NaN, NaN, NaN] for some
-            points.
-
-        Return
-        ------
-        n_new_pos: Tensor(n, 3)
-            The new positions.
-        next_dirs: Tensor(n, 3)
-            The new segment direction. The previous direction is copied if no
-            valid direction is found. Normalized if self.normalize_directions.
-        invalid_dirs: ndarray(n, )
-            True if new_dir is invalid.
-        """
-        last_pos = [line[-1, :] for line in lines]
-
-        # Using the forward method to get the outputs.
-        inputs = self._prepare_inputs_at_pos(last_pos)
-        model_outputs = self._call_model_forward(inputs, lines)
-
-        # Input to model is a list of streamlines but output should be
-        # next_dirs = a tensor of shape [nb_streamlines, 3].
-        next_dirs = self.model.get_tracking_directions(
-            model_outputs, self.algo, self.eos_stopping_thresh)
-
-        if self.normalize_directions:
-            # Will divide along correct axis.
-            next_dirs /= torch.linalg.norm(next_dirs, dim=-1)[:, None]
-
-        next_dirs = self._verify_angle(next_dirs, previous_dirs)
-
-        # Copy previous dirs for invalid directions
-        invalid_dirs = torch.isnan(next_dirs[:, 0])
-        next_dirs[invalid_dirs, :] = previous_dirs[invalid_dirs, :]
-
-        # Get new positions
-        last_pos = torch.vstack(last_pos)
-        n_new_pos = last_pos + self.step_size * next_dirs
-
-        return n_new_pos, next_dirs, invalid_dirs.cpu().numpy()
+        pass
 
     def _prepare_inputs_at_pos(self, last_pos):
         raise NotImplementedError
@@ -627,50 +507,22 @@ class DWIMLAbstractTracker:
                 model_outputs = self.model(inputs)
         return model_outputs
 
-    def _verify_angle(self, next_dirs: torch.Tensor,
-                      previous_dirs: torch.Tensor):
-        # toDo could we find a better solution for proba tracking?
-        #  Resampling until angle < theta? Easy on the sphere (restrain
-        #  probas on the sphere pics inside a cone theta) but what do we do
-        #  for other models? Ex: For the Gaussian direction getter?
-        if self.normalize_directions:
-            # Already normalized
-            cos_angle = torch.sum(next_dirs * previous_dirs, dim=1)
-        else:
-            norm1 = torch.linalg.norm(next_dirs, dim=-1)
-            norm2 = torch.linalg.norm(previous_dirs, dim=-1)
-            cos_angle = torch.sum(
-                torch.div(next_dirs, norm1[:, None]) *
-                torch.div(previous_dirs, norm2[:, None]), dim=1)
-
-        # Resolving numerical instabilities:
-        # (Converts angle to numpy)
-        # Torch does not have a min() for tensor vs scalar. Using np. Ok,
-        # small step.
-        cos_angle = np.minimum(np.maximum(-1.0, cos_angle.cpu()), 1.0)
-        angle = torch.arccos(cos_angle)
-
-        if self.verify_opposite_direction:
-            mask_angle = angle > np.pi / 2  # 90 degrees
-            angle[mask_angle] = np.mod(angle[mask_angle] + np.pi, 2*np.pi)
-            next_dirs[mask_angle] = - next_dirs[mask_angle]
-
-        mask_angle = angle > self.theta
-        next_dirs[mask_angle] = torch.full((3,), fill_value=torch.nan,
-                                           device=self.device)
-
-        return next_dirs
-
-    def update_memory_after_removing_lines(
-            self, can_continue: np.ndarray, new_stopping_lines_raw_idx: list,
-            batch_size: int):
+    def update_memory_after_removing_lines(self, can_continue: np.ndarray,
+                                           new_stopping_lines_raw_idx: List):
         """
         In case you need to update your model's memory when removing a
         streamline.
+
+        Params
+        ------
+        can_continue: np.ndarray
+            Indexes of lines that are kept.
+        new_stopping_lines_raw_idx: List
+            Raw indexes of lines that can't continue in the initial batch.
         """
         pass
 
-    def prepare_backward(self, lines, seeds, forward_dir=None):
+    def prepare_backward(self, lines: List[Tensor]):
         """
         Preparing backward.
 
@@ -679,11 +531,6 @@ class DWIMLAbstractTracker:
         lines: List[Tensor]
             Result from the forward tracking, reversed. Each tensor is of
             shape (nb_points, 3).
-        seeds: List[ndarray]
-            List of seeds.
-        forward_dir: Tensor
-            First direction chosen at the forward step. Not used here but
-            overwrite if your model needs it.
 
         Returns
         -------
@@ -691,8 +538,6 @@ class DWIMLAbstractTracker:
             Updated streamlines: rejected faild ones + reversed.
         seeds: List
             Updated seeds: rejected faild ones.
-        backward_dir: Tensor
-            Initialization direction during forward tracking.
         idx: List
             List of rejected indices
         """
@@ -704,7 +549,6 @@ class DWIMLAbstractTracker:
 
         if rej_idx is not None and len(rej_idx) > 0:
             lines = [s for i, s in enumerate(lines) if i not in rej_idx]
-            seeds = [s for i, s in enumerate(seeds) if i not in rej_idx]
 
         if len(lines) > 0:
             logger.debug("   Starting backward propagation for the remaining "
@@ -713,46 +557,7 @@ class DWIMLAbstractTracker:
             # 2) If forward tracking succeeded, revert streamlines
             lines = [torch.flip(line, (0,)) for line in lines]
 
-            # 3) New v_in = last direction
-            # (normalized if self.normalize_directions)
-            backward_dir = [s[-1, :] - s[-2, :] for s in lines]
-            backward_dir = torch.vstack(backward_dir)
-            if self.normalize_directions:
-                backward_dir /= torch.linalg.norm(backward_dir, dim=-1)[:, None]
-        else:
-            backward_dir = []
-
-        return lines, seeds, backward_dir, rej_idx
-
-    def _verify_stopping_criteria(self, n_last_pos, lines):
-
-        # Checking total length. During forward: all the same length. Not
-        # during backward.
-        stopping = np.asarray([len(s) for s in lines]) == self.max_nbr_pts
-        if sum(stopping) > 0:
-            logger.debug("{} streamlines stopping after reaching max nb "
-                         "points ({})".format(sum(stopping), self.max_nbr_pts))
-
-        # Checking if out of bound using seeding mask
-        out_of_mask = ~self.mask.is_vox_corner_in_bound(n_last_pos).cpu().numpy()
-        if sum(out_of_mask) > 0:
-            logger.debug("{} streamlines stopping out of bounds."
-                         .format(sum(out_of_mask)))
-        stopping = np.logical_or(stopping, out_of_mask)
-
-        if self.mask.data is not None and not np.all(stopping):
-            # Checking if out of mask
-            # Avoid interpolation for points that we already know can't
-            # continue.
-            still_on = ~stopping
-
-            out_of_mask = ~self.mask.is_in_mask(n_last_pos[still_on]).cpu().numpy()
-            if sum(out_of_mask) > 0:
-                logger.debug("{} streamlines stopping out of mask."
-                             .format(sum(out_of_mask)))
-            stopping[still_on] = out_of_mask
-
-        return stopping
+        return lines, rej_idx
 
 
 class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
@@ -786,13 +591,11 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
         self.input_memory_for_backward = [None] * len(seeding_pos)
         return super().prepare_forward(seeding_pos)
 
-    def prepare_backward(self, lines, seeds, forward_dir=None):
-
+    def prepare_backward(self, lines):
         # Reminder. Super:
         #  - Rejects lines that contain only the seed.
         #  - Reverts lines
-        lines, seeds, backward_dir, rej_idx = super().prepare_backward(
-            lines, seeds, forward_dir)
+        lines, rej_idx = super().prepare_backward(lines)
 
         # Not keeping the seed (input #0). Backward will start at that point,
         # and we will compute it again at _prepare_inputs_at_pos.
@@ -801,42 +604,45 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
             [s[1:, :] for i, s in enumerate(self.input_memory_for_backward)
              if i not in rej_idx]
 
-        # If the last direction was valid (i.e. not EOS), the last point has
-        # been added to the streamline, but we never computed its input.
-        # Computing that last additional input when
-        # len(input) < len(lines)  (but we removed the seed point so:)
-        # len(input) < len(lines) - 1
-        missing_one = [len(inp) < len(s) - 1 for inp, s in zip(
-            self.input_memory_for_backward, lines)]
-        idx_missing_one, = np.where(missing_one)
-        if len(idx_missing_one) > 0:
-            logger.debug("Computing last input for streamlines that had a "
-                         "last valid step.")
-            last_inputs = self._prepare_inputs_at_pos(
-                [lines[i][0, :] for i in idx_missing_one])
-            self.input_memory_for_backward = [
-                torch.vstack([self.input_memory_for_backward[i],
-                              last_inputs[where_first(idx_missing_one == i)]])
-                if missing_one[i] else self.input_memory_for_backward[i]
-                for i in range(len(missing_one))]
+        if self.append_last_point:
+            # If the last direction was valid (i.e. not EOS), the last point
+            # has been added to the streamline, but we never computed its
+            # input. Computing that last additional input when
+            # len(input) == len(lines) -1 (but we removed the seed point in input:)
+            # len(input) == len(lines) - 2
+            missing_one = [len(inp) == len(s) - 2 for inp, s in zip(
+                self.input_memory_for_backward, lines)]
+            idx_missing_one, = np.where(missing_one)
+            if len(idx_missing_one) > 0:
+                logger.debug("Computing last input for streamlines that had a "
+                             "last valid step.")
+
+                # Inputs: not reverted. Lines: reverted. Last input = line[0]
+                last_inputs = self._prepare_inputs_at_pos(
+                    [lines[i][0, :]for i in idx_missing_one])
+
+                self.input_memory_for_backward = [
+                    torch.vstack([self.input_memory_for_backward[i],
+                                  last_inputs[where_first(idx_missing_one == i)]])
+                    if missing_one[i] else self.input_memory_for_backward[i]
+                    for i in range(len(lines))]
 
         # Reverting.
-        self.input_memory = [
-            torch.flip(line_input, dims=[0])
-            for line_input in self.input_memory_for_backward]
+        self.input_memory = [torch.flip(line_input, dims=[0])
+                             for line_input in self.input_memory_for_backward]
         self.input_memory_for_backward = 'deactivated'
 
-        return lines, seeds, forward_dir, rej_idx
+        return lines, rej_idx
 
     def update_memory_after_removing_lines(
-            self, can_continue: np.ndarray, new_stopping_lines_raw_idx: list,
-            batch_size: int):
+            self, can_continue: np.ndarray, new_stopping_lines_raw_idx: list):
 
         logger.debug("Updating memory after removing lines")
         if np.any(~can_continue):
             stopping_lines_sub_idx, = np.where(~can_continue)
 
             if self.input_memory_for_backward != 'deactivated':
+                self.input_memory_for_backward: List
                 # Forward! Saving removed inputs for later.
                 for idx_r, idx_s in zip(new_stopping_lines_raw_idx,
                                         stopping_lines_sub_idx):
@@ -844,8 +650,7 @@ class DWIMLTrackerFromWholeStreamline(DWIMLAbstractTracker):
 
             # Now removing from current inputs memory
             self.input_memory = [self.input_memory[i] for i in
-                                 range(len(can_continue)) if
-                                 can_continue[i]]
+                                 range(len(can_continue)) if can_continue[i]]
 
     def _call_model_forward(self, inputs, lines):
 

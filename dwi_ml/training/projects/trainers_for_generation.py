@@ -132,18 +132,20 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
     def validate_one_batch(self, data, epoch):
         mean_loss, n = super().validate_one_batch(data, epoch)
 
-        if (epoch + 1) % self.tracking_phase_frequency == 0:
-            logger.info("Additional tracking-like generation validation "
-                        "from batch.")
-            gen_mean_loss, gen_n, percent_inv = self.generate_from_one_batch(data)
-            gen_mean_loss = gen_mean_loss.cpu().item()
-            self.tracking_valid_loss_monitor.update(gen_mean_loss, weight=n)
-            self.tracking_valid_IS_monitor.update(percent_inv, weight=n)
-        else:
-            self.tracking_valid_loss_monitor.update(
-                self.tracking_valid_loss_monitor.average_per_epoch[-1])
-            self.tracking_valid_IS_monitor.update(
-                self.tracking_valid_IS_monitor.average_per_epoch[-1])
+        if self.add_a_tracking_validation_phase:
+            if (epoch + 1) % self.tracking_phase_frequency == 0:
+                logger.info("Additional tracking-like generation validation "
+                            "from batch.")
+                gen_mean_loss, gen_n, percent_inv = \
+                    self.generate_from_one_batch(data)
+                gen_mean_loss = gen_mean_loss.cpu().item()
+                self.tracking_valid_loss_monitor.update(gen_mean_loss, weight=n)
+                self.tracking_valid_IS_monitor.update(percent_inv, weight=n)
+            else:
+                self.tracking_valid_loss_monitor.update(
+                    self.tracking_valid_loss_monitor.average_per_epoch[-1])
+                self.tracking_valid_IS_monitor.update(
+                    self.tracking_valid_IS_monitor.average_per_epoch[-1])
 
         return mean_loss, n
 

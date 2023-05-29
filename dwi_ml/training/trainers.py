@@ -814,7 +814,7 @@ class DWIMLAbstractTrainer:
 
                 # Validate this batch: forward propagation + loss
                 with grad_context():
-                    mean_loss, n = self.run_one_batch(data)
+                    mean_loss, n = self.validate_one_batch(data, epoch)
 
                 mean_loss = mean_loss.cpu().item()
 
@@ -828,6 +828,11 @@ class DWIMLAbstractTrainer:
         self.valid_loss_monitor.end_epoch()
         self.validation_time_monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
+
+    def validate_one_batch(self, data, epoch):
+        # Encapsulated for easier management of child classes.
+        mean_loss, n = self.run_one_batch(data)
+        return mean_loss, n
 
     def _update_comet_after_epoch(self, context: str, epoch: int):
         """

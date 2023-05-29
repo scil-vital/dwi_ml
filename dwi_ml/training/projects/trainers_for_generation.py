@@ -98,80 +98,54 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             "tracking_validation_IS_per_epoch.npy")
 
     def validate_one_epoch(self, epoch):
+        if self.add_a_tracking_validation_phase:
+            self.tracking_valid_loss_monitor.start_new_epoch()
+            self.tracking_valid_IS_monitor.start_new_epoch()
+            self.tracking_valid_time_monitor.start_new_epoch()
+
         super().validate_one_epoch(epoch)
 
-        self.tracking_valid_loss_monitor.start_new_epoch()
-        self.tracking_valid_IS_monitor.start_new_epoch()
-        self.tracking_valid_time_monitor.start_new_epoch()
-        if (epoch + 1) % self.tracking_phase_frequency == 0:
-            logger.info("Additional tracking-like generation validation phase")
-            self.validate_using_tracking()
-        else:
-            self.tracking_valid_loss_monitor.update(
-                self.tracking_valid_loss_monitor.average_per_epoch[-1])
-            self.tracking_valid_IS_monitor.update(
-                self.tracking_valid_IS_monitor.average_per_epoch[-1])
-        self.tracking_valid_loss_monitor.end_epoch()
-        self.tracking_valid_IS_monitor.end_epoch()
-        self.tracking_valid_time_monitor.end_epoch()
+        if self.add_a_tracking_validation_phase:
+            self.tracking_valid_loss_monitor.end_epoch()
+            self.tracking_valid_IS_monitor.end_epoch()
+            self.tracking_valid_time_monitor.end_epoch()
 
-        # Save info
-        if self.comet_exp:
-            self._update_comet_after_epoch(self.comet_exp.validate, epoch,
-                                           tracking_phase=True)
+            # Save info
+            if self.comet_exp:
+                self._update_comet_after_epoch(self.comet_exp.validate, epoch,
+                                               tracking_phase=True)
 
     def _get_latest_loss_to_supervise_best(self):
         if self.use_validation:
-            # Compared to super, replacing by tracking_valid loss.
-            mean_epoch_loss = self.tracking_valid_loss_monitor.average_per_epoch[-1]
+            if self.add_a_tracking_validation_phase:
+                # Compared to super, replacing by tracking_valid loss.
+                mean_epoch_loss = self.tracking_valid_loss_monitor.average_per_epoch[-1]
 
-            # Could use IS instead. Not implemented.
+                # Could use IS instead. Not implemented.
+            else:
+                mean_epoch_loss = self.valid_loss_monitor.average_per_epoch[-1]
         else:
             mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
 
         return mean_epoch_loss
 
-    def validate_using_tracking(self):
+    def validate_one_batch(self, data, epoch):
+        mean_loss, n = super().validate_one_batch(data, epoch)
 
-        # Setting contexts
-        # Turn gradients off (no back-propagation)
-        # Uses torch's module eval(), which "turns off" the training mode.
-        self.batch_loader.set_context('validation')
-        self.batch_sampler.set_context('validation')
-        self.model.set_context('validation')
-        self.model.eval()
-        grad_context = torch.no_grad
+        if (epoch + 1) % self.tracking_phase_frequency == 0:
+            logger.info("Additional tracking-like generation validation "
+                        "from batch.")
+            gen_mean_loss, gen_n, percent_inv = self.generate_from_one_batch(data)
+            gen_mean_loss = gen_mean_loss.cpu().item()
+            self.tracking_valid_loss_monitor.update(gen_mean_loss, weight=n)
+            self.tracking_valid_IS_monitor.update(percent_inv, weight=n)
+        else:
+            self.tracking_valid_loss_monitor.update(
+                self.tracking_valid_loss_monitor.average_per_epoch[-1])
+            self.tracking_valid_IS_monitor.update(
+                self.tracking_valid_IS_monitor.average_per_epoch[-1])
 
-        # Make sure there are no existing HDF handles if using parallel workers
-        if (self.nb_cpu_processes > 0 and
-                self.batch_sampler.context_subset.is_lazy):
-            self.batch_sampler.context_subset.close_all_handles()
-
-        # Validate all batches
-        with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
-                                   total=self.nb_batches_valid,
-                                   loggers=[logging.root],
-                                   tqdm_class=tqdm) as pbar:
-            valid_iterator = enumerate(pbar)
-            for batch_id, data in valid_iterator:
-                # Break if maximum number of epochs has been reached
-                if batch_id == self.nb_batches_valid:
-                    # Explicitly close tqdm's progress bar to fix possible bugs
-                    # when breaking the loop
-                    pbar.close()
-                    break
-
-                # Validate this batch: forward propagation + loss
-                with grad_context():
-                    mean_loss, n, percent_inv = self.generate_from_one_batch(data)
-
-                mean_loss = mean_loss.cpu().item()
-                self.tracking_valid_loss_monitor.update(mean_loss, weight=n)
-                self.tracking_valid_IS_monitor.update(percent_inv, weight=n)
-
-            # Explicitly delete iterator to kill threads and free memory before
-            # running training again
-            del valid_iterator
+        return mean_loss, n
 
     def _update_comet_after_epoch(self, context: str, epoch: int,
                                   tracking_phase=False):

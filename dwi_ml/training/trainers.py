@@ -616,7 +616,7 @@ class DWIMLAbstractTrainer:
             if self.comet_exp:
                 self.comet_exp.set_epoch(epoch)
 
-            logger.info("******* STARTING : Epoch {} (i.e. #{}) *******"
+            logger.info("\n\n******* STARTING : Epoch {} (i.e. #{}) *******"
                         .format(epoch, epoch + 1))
 
             # Set learning rate to either current value or last value
@@ -820,8 +820,22 @@ class DWIMLAbstractTrainer:
 
                 self.valid_loss_monitor.update(mean_loss, weight=n)
 
+        with tqdm_logging_redirect(self.valid_dataloader, ncols=100,
+                                   total=self.nb_batches_valid,
+                                   loggers=[logging.root],
+                                   tqdm_class=tqdm) as pbar:
+
             # Explicitly delete iterator to kill threads and free memory before
             # running training again
+            valid_iterator = enumerate(pbar)
+            for batch_id, data in valid_iterator:
+                logging.warning("BATCH: ******************** REMOVE THIS. FOR UNIQUE PICTURE!")
+                if batch_id == self.nb_batches_valid:
+                    # Explicitly close tqdm's progress bar to fix possible bugs
+                    # when breaking the loop
+                    pbar.close()
+                    break
+
             del valid_iterator
 
         # Save info

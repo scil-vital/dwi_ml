@@ -58,7 +58,7 @@ class BatchHistoryMonitor(object):
         self.average_per_epoch = []
         self.current_epoch = -1
 
-    def update(self, value, weight=None):
+    def update(self, value, weight=1):
         """
         Note. Does not save the update if value is inf.
 

@@ -159,6 +159,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             self.tracking_clipped_final_distance_monitor.start_new_epoch()
             self.tracking_valid_time_monitor.start_new_epoch()
 
+        # This will run our modified "validate one batch" for each batch.
         super().validate_one_epoch(epoch)
 
         if self.add_a_tracking_validation_phase:
@@ -172,12 +173,12 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
 
             # Save info
             if self.comet_exp:
-                self._update_comet_after_epoch(self.comet_exp.validate, epoch,
+                self._update_comet_after_epoch('validation', epoch,
                                                tracking_phase=True)
 
     def _get_latest_loss_to_supervise_best(self):
         if self.use_validation:
-            if self.add_a_tracking_validation_phase:
+            if False: # self.add_a_tracking_validation_phase:
                 # Compared to super, replacing by tracking_valid loss.
                 mean_epoch_loss = self.tracking_clipped_final_distance_monitor.average_per_epoch[-1]
 
@@ -209,6 +210,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 self.tracking_clipped_final_distance_monitor.update(mean_clipped_final_dist, weight=n)
                 self.tracking_valid_diverg_monitor.update(diverging_pnt, weight=n)
             elif len(self.tracking_mean_final_distance_monitor.average_per_epoch) == 0:
+                logger.info("Skipping tracking-like generation validation from "
+                            "batch. No values yet: adding fake initial values.")
                 # Fake values at the beginning
                 # Bad IS = 100%
                 self.tracking_very_good_IS_monitor.update(100.0)
@@ -224,6 +227,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 self.tracking_mean_final_distance_monitor.update(100.0)
                 self.tracking_clipped_final_distance_monitor.update(ACCEPTABLE_THRESHOLD)
             else:
+                logger.info("Skipping tracking-like generation validation from "
+                            "batch. Copying previous epoch's values.")
                 # Copy previous value
                 for monitor in [self.tracking_very_good_IS_monitor,
                                 self.tracking_acceptable_IS_monitor,
@@ -285,8 +290,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                     self.comet_exp.log_metric(
                         "Diverging point", diverg, step=epoch)
 
-        else:
-            super()._update_comet_after_epoch(context, epoch)
+        super()._update_comet_after_epoch(context, epoch)
 
     def generate_from_one_batch(self, data):
         # Data interpolation has not been done yet. GPU computations are done
@@ -304,7 +308,9 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         # (model is already moved). Using only the n first points
         lines = [s[0:min(len(s), self.tracking_phase_nb_steps_init), :]
                  for s in real_lines]
+        self.model.set_context('tracking')
         lines = self.propagate_multiple_lines(lines, ids_per_subj)
+        self.model.set_context('validation')
 
         compute_mean_length = np.mean([len(s) for s in lines])
         logger.info("-> Average streamline length (nb pts) in this batch: {} \n"

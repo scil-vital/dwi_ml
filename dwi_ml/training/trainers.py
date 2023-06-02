@@ -863,7 +863,8 @@ class DWIMLAbstractTrainer:
         elif context == 'validation':
             loss = self.valid_loss_monitor.average_per_epoch[-1]
         else:
-            raise ValueError("Unexpected context.")
+            raise ValueError("Unexpected context ({}) for comet. Expecting "
+                             "training or validation.")
         logger.info("   Mean loss for this epoch: {}".format(loss))
 
         if self.comet_exp:

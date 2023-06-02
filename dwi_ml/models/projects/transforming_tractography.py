@@ -488,7 +488,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # Outputs will be all streamlines merged.
         # To compute loss = ok. During tracking, we will need to split back.
         outputs = self.direction_getter(outputs)
-        outputs = copy_prev_dir + outputs
+        if self.start_from_copy_prev:
+            outputs = copy_prev_dir + outputs
 
         if self._context != 'tracking':
             outputs = list(torch.split(outputs, list(unpad_lengths)))

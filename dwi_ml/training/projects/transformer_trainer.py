@@ -7,35 +7,16 @@ import torch
 from dwi_ml.models.projects.transforming_tractography import AbstractTransformerModel
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from dwi_ml.training.trainers import DWIMLTrainerOneInput
+from dwi_ml.training.projects.trainers_for_generation import \
+    DWIMLTrainerForTrackingOneInput
 
 
-class TransformerTrainer(DWIMLTrainerOneInput):
-    def __init__(self,
-                 model: AbstractTransformerModel, experiments_path: str,
-                 experiment_name: str,
-                 batch_sampler: DWIMLBatchIDSampler,
-                 batch_loader: DWIMLBatchLoaderOneInput,
-                 learning_rates: List = None, weight_decay: float = 0.01,
-                 optimizer='Adam', max_epochs: int = 10,
-                 max_batches_per_epoch_training: int = 1000,
-                 max_batches_per_epoch_validation: int = 1000,
-                 patience: int = None, patience_delta: float = 1e-6,
-                 nb_cpu_processes: int = 0, use_gpu: bool = False,
-                 comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, log_level=logging.root.level):
+class TransformerTrainer(DWIMLTrainerForTrackingOneInput):
+    def __init__(self, **kwargs):
         """
         See Super for parameter description. No additional parameters here.
         """
-        super().__init__(model, experiments_path, experiment_name,
-                         batch_sampler, batch_loader,
-                         learning_rates, weight_decay,
-                         optimizer, max_epochs,
-                         max_batches_per_epoch_training,
-                         max_batches_per_epoch_validation,
-                         patience, patience_delta, nb_cpu_processes, use_gpu,
-                         comet_workspace, comet_project,
-                         from_checkpoint, log_level)
+        super().__init__(**kwargs)
 
     def run_model(self, batch_inputs, batch_streamlines):
         dirs = self.model.format_directions(batch_streamlines)

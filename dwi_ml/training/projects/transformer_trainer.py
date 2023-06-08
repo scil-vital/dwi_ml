@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
-import logging
-from typing import List
 
 import torch
 
-from dwi_ml.models.projects.transforming_tractography import AbstractTransformerModel
-from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
-from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
-from dwi_ml.training.projects.trainers_for_generation import \
+from dwi_ml.training.with_generation.trainer import \
     DWIMLTrainerForTrackingOneInput
 
 

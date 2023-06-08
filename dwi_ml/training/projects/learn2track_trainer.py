@@ -7,7 +7,7 @@ import torch
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.tracking.propagation import propagate_multiple_lines
-from dwi_ml.training.projects.trainers_for_generation import \
+from dwi_ml.training.with_generation.trainer import \
     DWIMLTrainerForTrackingOneInput
 
 logger = logging.getLogger('trainer_logger')
@@ -72,8 +72,8 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
 
         def update_memory_after_removing_lines(can_continue: np.ndarray, _):
             nonlocal hidden_states
-            hidden_states = self.model.update_hidden_state(hidden_states,
-                                                           can_continue)
+            hidden_states = self.model.remove_lines_in_hidden_state(
+                hidden_states, can_continue)
 
         def get_dirs_at_last_pos(_lines: List[torch.Tensor], n_last_pos):
             nonlocal hidden_states
@@ -83,7 +83,8 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
                                                                ids_per_subj)
 
             _model_outputs, hidden_states = self.model(
-                batch_inputs, _lines, return_hidden=True, point_idx=-1)
+                batch_inputs, _lines, hidden_recurrent_states=hidden_states,
+                return_hidden=True, point_idx=-1)
 
             next_dirs = self.model.get_tracking_directions(
                 _model_outputs, algo='det', eos_stopping_thresh=0.5)

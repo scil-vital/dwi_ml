@@ -29,7 +29,7 @@ from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
 from dipy.io.stateful_tractogram import set_sft_logger_level
 
 from dwi_ml.data.hdf5.utils import (
-    add_basic_args, add_mri_processing_args, add_streamline_processing_args,
+    add_hdf5_creation_args, add_mri_processing_args, add_streamline_processing_args,
     prepare_hdf5_creator)
 from dwi_ml.experiment_utils.timer import Timer
 
@@ -38,7 +38,7 @@ def _parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
 
-    add_basic_args(p)
+    add_hdf5_creation_args(p)
     add_mri_processing_args(p)
     add_streamline_processing_args(p)
     add_overwrite_arg(p)
@@ -73,6 +73,11 @@ def main():
         raise p.error("The hdf5 file's extension should be .hdf5, but "
                       "received {}".format(ext))
     assert_outputs_exist(p, args, args.out_hdf5_file)
+
+    # Default value with arparser '+' not possible. Setting manually.
+    if args.compute_connectivity_matrix and \
+            args.connectivity_downsample_size is None:
+        args.connectivity_downsample_size = 20
 
     # Prepare creator and load config file.
     creator = prepare_hdf5_creator(args)

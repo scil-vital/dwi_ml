@@ -48,7 +48,8 @@ class SubjectDataAbstract(object):
         raise NotImplementedError
 
     @classmethod
-    def init_from_hdf(cls, subject_id: str, hdf_file, group_info=None):
+    def init_single_subject_from_hdf(
+            cls, subject_id: str, hdf_file, group_info=None):
         """Returns an instance of this class, initiated by sending only the
         hdf handle. The child class's method will define how to load the
         data based on the child data management."""
@@ -88,7 +89,8 @@ class SubjectData(SubjectDataAbstract):
         return self._sft_data_list
 
     @classmethod
-    def init_from_hdf(cls, subject_id: str, hdf_file, group_info=None):
+    def init_single_subject_from_hdf(
+            cls, subject_id: str, hdf_file, group_info=None):
         """
         Instantiating a single subject data: load info and use __init__
         """
@@ -102,13 +104,14 @@ class SubjectData(SubjectDataAbstract):
             logger.debug('        Loading volume group "{}": '.format(group))
             # Creating a SubjectMRIData or a LazySubjectMRIData based on
             # lazy or non-lazy version.
-            subject_mri_group_data = MRIData.init_from_hdf_info(
+            subject_mri_group_data = MRIData.init_mri_data_from_hdf_info(
                 hdf_file[subject_id][group])
             subject_mri_data_list.append(subject_mri_group_data)
 
         for group in streamline_groups:
             logger.debug("        Loading subject's streamlines")
-            sft_data = SFTData.init_from_hdf_info(hdf_file[subject_id][group])
+            sft_data = SFTData.init_sft_data_from_hdf_info(
+                hdf_file[subject_id][group])
             subject_sft_data_list.append(sft_data)
 
         subj_data = cls(subject_id,
@@ -140,7 +143,8 @@ class LazySubjectData(SubjectDataAbstract):
         self.is_lazy = True
 
     @classmethod
-    def init_from_hdf(cls, subject_id: str, hdf_file, group_info=None):
+    def init_single_subject_from_hdf(
+            cls, subject_id: str, hdf_file, group_info=None):
         """
         Instantiating a single subject data: NOT LOADING info and use __init__
         (so in short: this does basically nothing, the lazy data is kept
@@ -168,7 +172,6 @@ class LazySubjectData(SubjectDataAbstract):
     def mri_data_list(self) -> Union[List[LazyMRIData], None]:
         """As a property, this is only computed if called by the user.
         Returns a List[LazyMRIData]"""
-
         if self.hdf_handle is not None:
             if not self.hdf_handle.id.valid:
                 logger.warning("Tried to access subject's volumes but its "
@@ -176,7 +179,8 @@ class LazySubjectData(SubjectDataAbstract):
             mri_data_list = []
             for group in self.volume_groups:
                 hdf_group = self.hdf_handle[self.subject_id][group]
-                mri_data_list.append(LazyMRIData.init_from_hdf_info(hdf_group))
+                mri_data_list.append(
+                    LazyMRIData.init_mri_data_from_hdf_info(hdf_group))
 
             return mri_data_list
         else:
@@ -187,11 +191,16 @@ class LazySubjectData(SubjectDataAbstract):
     def sft_data_list(self) -> Union[List[LazySFTData], None]:
         """As a property, this is only computed if called by the user.
         Returns a List[LazyMRIData]"""
+        # toDo. Reloads the basic information (ex: origin, corner, etc)
+        #  everytime we acces a subject. They are lazy subjects! Why can't
+        #  we keep this list of lazysftdata in memory?
+
         if self.hdf_handle is not None:
             sft_data_list = []
             for group in self.streamline_groups:
                 hdf_group = self.hdf_handle[self.subject_id][group]
-                sft_data_list.append(LazySFTData.init_from_hdf_info(hdf_group))
+                sft_data_list.append(
+                    LazySFTData.init_sft_data_from_hdf_info(hdf_group))
 
             return sft_data_list
         else:

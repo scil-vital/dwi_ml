@@ -326,11 +326,11 @@ class MultisubjectSubset(Dataset):
     def _init_subj_from_hdf(self, hdf_handle, subject_id, volume_groups,
                             nb_features, streamline_groups):
         if self.is_lazy:
-            return LazySubjectData.init_from_hdf(
+            return LazySubjectData.init_single_subject_from_hdf(
                 subject_id, hdf_handle,
                 (volume_groups, nb_features, streamline_groups))
         else:
-            return SubjectData.init_from_hdf(
+            return SubjectData.init_single_subject_from_hdf(
                 subject_id, hdf_handle,
                 (volume_groups, nb_features, streamline_groups))
 

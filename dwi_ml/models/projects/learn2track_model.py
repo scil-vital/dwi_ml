@@ -386,7 +386,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         return copy_prev_dir
 
-    def update_hidden_state(self, hidden_recurrent_states, lines_to_keep):
+    def remove_lines_in_hidden_state(
+            self, hidden_recurrent_states, lines_to_keep):
+        """
+        Utilitary method to remove a few streamlines from the hidden
+        state.
+        """
         if self.rnn_model.rnn_torch_key == 'lstm':
             # LSTM: For each layer, states are tuples; (h_t, C_t)
             # Size of tensors are each [1, nb_streamlines, nb_neurons]

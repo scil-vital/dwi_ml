@@ -7,11 +7,15 @@ import numpy as np
 import torch
 from torch.nn import PairwiseDistance
 
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_triu_connectivity
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.projects.utils import prepare_tracking_mask
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.monitoring import BatchHistoryMonitor, TimeMonitor
+from dwi_ml.training.with_generation.batch_loader import \
+    DWIMLBatchLoaderWithConnectivity
 
 logger = logging.getLogger('train_logger')
 
@@ -26,6 +30,7 @@ VERY_FAR_THRESHOLD = 40.0
 
 class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
     model: ModelWithDirectionGetter
+    batch_loader: DWIMLBatchLoaderWithConnectivity
 
     def __init__(self, add_a_tracking_validation_phase: bool = False,
                  tracking_phase_frequency: int = 5,
@@ -59,19 +64,44 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                     self.tracking_mask.move_to(self.device)
 
         # -------- Monitors
-        self.tracking_valid_time_monitor = TimeMonitor()
+        self.tracking_valid_time_monitor = TimeMonitor(
+            'tracking_valid_time_monitor')
+
+        # A lot of exploratory metrics monitors:
 
         # Percentage of streamlines inside a radius
-        self.tracking_very_good_IS_monitor = BatchHistoryMonitor(weighted=True)
-        self.tracking_acceptable_IS_monitor = BatchHistoryMonitor(weighted=True)
-        self.tracking_very_far_IS_monitor = BatchHistoryMonitor(weighted=True)
+        self.tracking_very_good_IS_monitor = BatchHistoryMonitor(
+            'tracking_very_good_IS_monitor', weighted=True)
+        self.tracking_acceptable_IS_monitor = BatchHistoryMonitor(
+            'tracking_acceptable_IS_monitor', weighted=True)
+        self.tracking_very_far_IS_monitor = BatchHistoryMonitor(
+            'tracking_very_far_IS_monitor', weighted=True)
 
         # Point where the streamline start diverging from "acceptable"
-        self.tracking_valid_diverg_monitor = BatchHistoryMonitor(weighted=True)
+        self.tracking_valid_diverg_monitor = BatchHistoryMonitor(
+            'tracking_valid_diverg_monitor', weighted=True)
 
         # Final distance from expected point
-        self.tracking_mean_final_distance_monitor = BatchHistoryMonitor(weighted=True)
-        self.tracking_clipped_final_distance_monitor = BatchHistoryMonitor(weighted=True)
+        self.tracking_mean_final_distance_monitor = BatchHistoryMonitor(
+            'tracking_mean_final_distance_monitor', weighted=True)
+        self.tracking_clipped_final_distance_monitor = BatchHistoryMonitor(
+            'tracking_clipped_final_distance_monitor', weighted=True)
+
+        # Connectivity matrix accordance
+        self.tracking_connectivity_score_monitor = BatchHistoryMonitor(
+            'tracking_connectivity_score_monitor', weighted=True)
+
+        if self.add_a_tracking_validation_phase:
+            new_monitors = [self.tracking_valid_time_monitor,
+                            self.tracking_very_good_IS_monitor,
+                            self.tracking_acceptable_IS_monitor,
+                            self.tracking_very_far_IS_monitor,
+                            self.tracking_valid_diverg_monitor,
+                            self.tracking_mean_final_distance_monitor,
+                            self.tracking_clipped_final_distance_monitor,
+                            self.tracking_connectivity_score_monitor]
+            self.monitors += new_monitors
+            self.validation_monitors += new_monitors
 
     @property
     def params_for_checkpoint(self):
@@ -85,102 +115,12 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
 
         return p
 
-    def _update_states_from_checkpoint(self, current_states):
-        super()._update_states_from_checkpoint(current_states)
-        self.tracking_very_good_IS_monitor.set_state(
-           current_states['tracking_very_good_IS_monitor_state'])
-        self.tracking_acceptable_IS_monitor.set_state(
-            current_states['tracking_acceptable_IS_monitor_state'])
-        self.tracking_very_far_IS_monitor.set_state(
-            current_states['tracking_very_far_IS_monitor_state'])
-
-        self.tracking_valid_diverg_monitor.set_state(
-            current_states['tracking_valid_diverg_monitor_state'])
-
-        self.tracking_mean_final_distance_monitor.set_state(
-            current_states['tracking_valid_loss_monitor_state'])
-        self.tracking_clipped_final_distance_monitor.set_state(
-            current_states['tracking_clipped_valid_loss_monitor_state'])
-
-    def _prepare_checkpoint_info(self) -> dict:
-        checkpoint_info = super()._prepare_checkpoint_info()
-        checkpoint_info['current_states'].update({
-            'tracking_very_good_IS_monitor_state':
-                self.tracking_very_good_IS_monitor.get_state(),
-            'tracking_acceptable_IS_monitor_state':
-                self.tracking_acceptable_IS_monitor.get_state(),
-            'tracking_very_far_IS_monitor_state':
-                self.tracking_very_far_IS_monitor.get_state(),
-
-            'tracking_valid_diverg_monitor_state':
-                self.tracking_valid_diverg_monitor.get_state(),
-
-            'tracking_valid_loss_monitor_state':
-                self.tracking_mean_final_distance_monitor.get_state(),
-            'tracking_clipped_valid_loss_monitor_state':
-                self.tracking_clipped_final_distance_monitor.get_state(),
-        })
-        return checkpoint_info
-
-    def save_local_logs(self):
-        super().save_local_logs()
-
-        self._save_log_locally(
-            self.tracking_very_good_IS_monitor.average_per_epoch,
-            "tracking_validation_very_good_IS_per_epoch_{}.npy"
-            .format(VERY_CLOSE_THRESHOLD))
-        self._save_log_locally(
-            self.tracking_acceptable_IS_monitor.average_per_epoch,
-            "tracking_validation_acceptable_IS_per_epoch_{}.npy"
-            .format(ACCEPTABLE_THRESHOLD))
-        self._save_log_locally(
-            self.tracking_very_far_IS_monitor.average_per_epoch,
-            "tracking_validation_very_far_IS_per_epoch_{}.npy"
-            .format(VERY_FAR_THRESHOLD))
-
-        self._save_log_locally(
-            self.tracking_valid_diverg_monitor.average_per_epoch,
-            "tracking_validation_diverg_per_epoch.npy")
-
-        self._save_log_locally(
-            self.tracking_mean_final_distance_monitor.average_per_epoch,
-            "tracking_validation_loss_per_epoch.npy")
-        self._save_log_locally(
-            self.tracking_clipped_final_distance_monitor.average_per_epoch,
-            "tracking_clipped_validation_loss_per_epoch.npy")
-
-    def validate_one_epoch(self, epoch):
-        if self.add_a_tracking_validation_phase:
-            self.tracking_very_good_IS_monitor.start_new_epoch()
-            self.tracking_acceptable_IS_monitor.start_new_epoch()
-            self.tracking_very_far_IS_monitor.start_new_epoch()
-            self.tracking_valid_diverg_monitor.start_new_epoch()
-            self.tracking_mean_final_distance_monitor.start_new_epoch()
-            self.tracking_clipped_final_distance_monitor.start_new_epoch()
-            self.tracking_valid_time_monitor.start_new_epoch()
-
-        # This will run our modified "validate one batch" for each batch.
-        super().validate_one_epoch(epoch)
-
-        if self.add_a_tracking_validation_phase:
-            self.tracking_very_good_IS_monitor.end_epoch()
-            self.tracking_acceptable_IS_monitor.end_epoch()
-            self.tracking_very_far_IS_monitor.end_epoch()
-            self.tracking_valid_diverg_monitor.end_epoch()
-            self.tracking_mean_final_distance_monitor.end_epoch()
-            self.tracking_clipped_final_distance_monitor.end_epoch()
-            self.tracking_valid_time_monitor.end_epoch()
-
-            # Save info
-            if self.comet_exp:
-                self._update_comet_after_epoch('validation', epoch,
-                                               tracking_phase=True)
-
     def _get_latest_loss_to_supervise_best(self):
         if self.use_validation:
-            if False: # self.add_a_tracking_validation_phase:
+            if self.add_a_tracking_validation_phase:
                 # Compared to super, replacing by tracking_valid loss.
-                mean_epoch_loss = self.tracking_clipped_final_distance_monitor.average_per_epoch[-1]
+                mean_epoch_loss = \
+                    self.tracking_connectivity_score_monitor.average_per_epoch[-1]
 
                 # Could use IS instead, or non-clipped, or diverging point.
                 # Not implemented.
@@ -200,15 +140,23 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                             "from batch.")
                 (gen_n, mean_final_dist, mean_clipped_final_dist,
                  percent_IS_very_good, percent_IS_acceptable, percent_IS_very_far,
-                 diverging_pnt) = self.generate_from_one_batch(data)
+                 diverging_pnt, connectivity) = self.generate_from_one_batch(data)
 
-                self.tracking_very_good_IS_monitor.update(percent_IS_very_good, weight=n)
-                self.tracking_acceptable_IS_monitor.update(percent_IS_acceptable, weight=n)
-                self.tracking_very_far_IS_monitor.update(percent_IS_very_far, weight=n)
+                self.tracking_very_good_IS_monitor.update(
+                    percent_IS_very_good, weight=n)
+                self.tracking_acceptable_IS_monitor.update(
+                    percent_IS_acceptable, weight=n)
+                self.tracking_very_far_IS_monitor.update(
+                    percent_IS_very_far, weight=n)
 
-                self.tracking_mean_final_distance_monitor.update(mean_final_dist, weight=n)
-                self.tracking_clipped_final_distance_monitor.update(mean_clipped_final_dist, weight=n)
-                self.tracking_valid_diverg_monitor.update(diverging_pnt, weight=n)
+                self.tracking_mean_final_distance_monitor.update(
+                    mean_final_dist, weight=n)
+                self.tracking_clipped_final_distance_monitor.update(
+                    mean_clipped_final_dist, weight=n)
+                self.tracking_valid_diverg_monitor.update(
+                    diverging_pnt, weight=n)
+
+                self.tracking_connectivity_score_monitor.update(connectivity)
             elif len(self.tracking_mean_final_distance_monitor.average_per_epoch) == 0:
                 logger.info("Skipping tracking-like generation validation from "
                             "batch. No values yet: adding fake initial values.")
@@ -226,6 +174,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 # Bad mean dist = very far. ex, 100, or clipped.
                 self.tracking_mean_final_distance_monitor.update(100.0)
                 self.tracking_clipped_final_distance_monitor.update(ACCEPTABLE_THRESHOLD)
+
+                self.tracking_connectivity_score_monitor.update(1)
             else:
                 logger.info("Skipping tracking-like generation validation from "
                             "batch. Copying previous epoch's values.")
@@ -239,58 +189,6 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                     monitor.update(monitor.average_per_epoch[-1])
 
         return mean_loss, n
-
-    def _update_comet_after_epoch(self, context: str, epoch: int,
-                                  tracking_phase=False):
-        if tracking_phase:
-            torch.set_printoptions(precision=4)
-            np.set_printoptions(precision=4)
-
-            final_dist = self.tracking_mean_final_distance_monitor.average_per_epoch[-1]
-            clipped = self.tracking_clipped_final_distance_monitor.average_per_epoch[-1]
-            logger.info("   Mean final distance for this epoch: {}\n"
-                        "       (Clipped at {}: {})"
-                        .format(final_dist, ACCEPTABLE_THRESHOLD, clipped))
-
-            percent_IS_good = self.tracking_very_good_IS_monitor.average_per_epoch[-1]
-            percent_IS_ok = self.tracking_acceptable_IS_monitor.average_per_epoch[-1]
-            percent_IS_bad = self.tracking_very_far_IS_monitor.average_per_epoch[-1]
-
-            logger.info("Mean simili-IS ratio for this epoch:\n"
-                        "                          Threshold {}: {}\n"
-                        "                          Threshold {}: {}\n"
-                        "                          Threshold {}: {}"
-                        .format(VERY_CLOSE_THRESHOLD, percent_IS_good,
-                                ACCEPTABLE_THRESHOLD, percent_IS_ok,
-                                VERY_FAR_THRESHOLD, percent_IS_bad))
-
-            diverg = self.tracking_valid_diverg_monitor.average_per_epoch[-1]
-            logger.info("Mean diverging point for this epoch: {}\n"
-                        " (percentage of streamline where distance becomes >{}, "
-                        "or percentage above 100% for streamlines longer than "
-                        "expected)".format(diverg, ACCEPTABLE_THRESHOLD))
-
-            if self.comet_exp:
-                comet_context = self.comet_exp.validate
-                with comet_context():
-                    self.comet_exp.log_metric(
-                        "Mean final distance", final_dist, step=epoch)
-                    self.comet_exp.log_metric(
-                        "Mean final distance (clipped {})"
-                        .format(ACCEPTABLE_THRESHOLD), clipped, step=epoch)
-                    self.comet_exp.log_metric(
-                        "IS ratio at dist {}".format(VERY_CLOSE_THRESHOLD),
-                        percent_IS_good, step=epoch)
-                    self.comet_exp.log_metric(
-                        "IS ratio at dist {}".format(ACCEPTABLE_THRESHOLD),
-                        percent_IS_ok, step=epoch)
-                    self.comet_exp.log_metric(
-                        "IS ratio at dist {}".format(VERY_FAR_THRESHOLD),
-                        percent_IS_bad, step=epoch)
-                    self.comet_exp.log_metric(
-                        "Diverging point", diverg, step=epoch)
-
-        super()._update_comet_after_epoch(context, epoch)
 
     def generate_from_one_batch(self, data):
         # Data interpolation has not been done yet. GPU computations are done
@@ -308,9 +206,14 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         # (model is already moved). Using only the n first points
         lines = [s[0:min(len(s), self.tracking_phase_nb_steps_init), :]
                  for s in real_lines]
+
+        # Propagation: no backward tracking.
         self.model.set_context('tracking')
         lines = self.propagate_multiple_lines(lines, ids_per_subj)
         self.model.set_context('validation')
+
+        # 1. Connectivity scores
+        connectivity_score = self._compare_connectivity(lines, ids_per_subj)
 
         compute_mean_length = np.mean([len(s) for s in lines])
         logger.info("-> Average streamline length (nb pts) in this batch: {} \n"
@@ -323,18 +226,18 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         l2_loss = PairwiseDistance(p=2)
         final_dist = l2_loss(computed_last_pos, last_pos)
 
-        # Verify "IS ratio", i.e. percentage of streamlines ending inside a
+        # 2. Verify "IS ratio", i.e. percentage of streamlines ending inside a
         # predefined radius.
-        IS_ratio_good = torch.sum(final_dist > VERY_CLOSE_THRESHOLD) / len(lines) * 100
-        IS_ratio_ok = torch.sum(final_dist > ACCEPTABLE_THRESHOLD) / len(lines) * 100
-        IS_ratio_bad = torch.sum(final_dist > VERY_FAR_THRESHOLD) / len(lines) * 100
+        invalid_ratio_severe = torch.sum(final_dist > VERY_CLOSE_THRESHOLD) / len(lines) * 100
+        invalid_ratio_acceptable = torch.sum(final_dist > ACCEPTABLE_THRESHOLD) / len(lines) * 100
+        invalid_ratio_loose = torch.sum(final_dist > VERY_FAR_THRESHOLD) / len(lines) * 100
 
         final_dist_clipped = torch.clip(final_dist, min=None,
                                         max=ACCEPTABLE_THRESHOLD)
         final_dist = torch.mean(final_dist)
         final_dist_clipped = torch.mean(final_dist_clipped)
 
-        # Verify point where streamline starts diverging.
+        # 3. Verify point where streamline starts diverging.
         # 0% = error at first point --> really bad.
         # 100% = reached exactly the right point.
         # >100% = went too far (longer than expected).
@@ -358,14 +261,43 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 total_point += abs(100 - div_point)
         diverging_point = total_point / len(lines)
 
-        IS_ratio_good = IS_ratio_good.cpu().numpy().astype(np.float32)
-        IS_ratio_ok = IS_ratio_ok.cpu().numpy().astype(np.float32)
-        IS_ratio_bad = IS_ratio_bad.cpu().numpy().astype(np.float32)
+        invalid_ratio_severe = invalid_ratio_severe.cpu().numpy().astype(np.float32)
+        invalid_ratio_acceptable = invalid_ratio_acceptable.cpu().numpy().astype(np.float32)
+        invalid_ratio_loose = invalid_ratio_loose.cpu().numpy().astype(np.float32)
         final_dist = final_dist.cpu().numpy().astype(np.float32)
         final_dist_clipped = final_dist_clipped.cpu().numpy().astype(np.float32)
         diverging_point = np.asarray(diverging_point, dtype=np.float32)
         return (len(lines), final_dist, final_dist_clipped,
-                IS_ratio_good, IS_ratio_ok, IS_ratio_bad, diverging_point)
+                invalid_ratio_severe, invalid_ratio_acceptable, invalid_ratio_loose, diverging_point,
+                connectivity_score)
+
+    def _compare_connectivity(self, lines, ids_per_subj):
+        connectivity_matrices, volume_sizes, downsampled_sizes = \
+            self.batch_loader.load_batch_connectivity_matrices(ids_per_subj)
+
+        score = 0.0
+        for i, subj in enumerate(ids_per_subj.keys()):
+            real_matrix = connectivity_matrices[i]
+            volume_size = volume_sizes[i]
+            downsampled_size = downsampled_sizes[i]
+            _lines = lines[ids_per_subj[subj]]
+
+            batch_matrix = compute_triu_connectivity(
+                _lines, volume_size, downsampled_size,
+                binary=False, to_sparse_tensor=False, device=self.device)
+
+            # Where our batch has a 1, if there was really a one: score should
+            # be 0. Else, score should be 1.
+            # If two streamlines in a voxel, score is 0 or 2.
+
+            # Real matrices are saved as binary in create_hdf5.
+            where_one = np.where(batch_matrix > 0)
+            score += np.sum(batch_matrix[where_one] *
+                            (1.0 - real_matrix[where_one]))
+
+        # Average for batch
+        score = score / len(lines)
+        return score
 
     def propagate_multiple_lines(self, lines: List[torch.Tensor], ids_per_subj):
         assert self.model.step_size is not None, \

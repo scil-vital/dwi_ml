@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from typing import List
 
 import numpy as np
@@ -260,6 +261,93 @@ def weight_value_with_angle(values: List, streamlines: List = None,
         # loss^0 = 1. loss^1 = loss. Also adding 1.
         # But if values are < 1, pow becomes smaller.
         # Our losses tend toward 0.  Adding 1 before.
-        #values[i] = torch.pow(1.0 + values[i], angles + 1.0) - 1.0
+        # values[i] = torch.pow(1.0 + values[i], angles + 1.0) - 1.0
 
     return values
+
+
+def compute_triu_connectivity(
+        streamlines, volume_size, downsampled_volume_size,
+        binary: bool = False, to_sparse_tensor: bool = False, device=None):
+    """
+    Compute a connectivity matrix.
+
+    Parameters
+    ----------
+    streamlines: list of np arrays or list of tensors.
+        Streamlines, in vox space, corner origin.
+    volume_size: list
+        The 3D dimension of the reference volume.
+    downsampled_volume_size:
+        Either a 3D size or the size m of the m x m x m downsampled volume
+        coordinates for the connectivity matrix. This means that the matrix
+        will be a m^d x m^d triangular matrix. In 3D, with 20x20x20, this is an
+        8000 x 8000 matrix (triangular = half of it in memory). It probably
+        contains a lot of zeros with the background being included. Saved as
+        sparse.
+    binary: bool
+        If true, return a binary matrix.
+    to_sparse_tensor:
+        If true, return the sparse matrix.
+    device:
+        If true and to_sparse_tensor, the matrix will be hosted on device.
+    """
+    # Getting endpoint coordinates
+    #  + Fix types
+    volume_size = np.asarray(volume_size)
+    downsampled_volume_size = np.asarray(downsampled_volume_size)
+    if isinstance(streamlines[0], list):
+        start_values = [s[0] for s in streamlines]
+        end_values = [s[-1] for s in streamlines]
+    elif isinstance(streamlines[0], torch.Tensor):
+        start_values = [s[0, :].cpu().numpy() for s in streamlines]
+        end_values = [s[-1, :].cpu().numpy() for s in streamlines]
+    else:  # expecting numpy arrays
+        start_values = [s[0, :] for s in streamlines]
+        end_values = [s[-1, :] for s in streamlines]
+
+    assert len(downsampled_volume_size) == len(volume_size)
+    nb_dims = len(downsampled_volume_size)
+    nb_voxels_pre = np.prod(volume_size)
+    nb_voxels_post = np.prod(downsampled_volume_size)
+    logging.debug("Preparing connectivity matrix of downsampled volume: from "
+                  "{} to {}. Gives a matrix of size {} x {} rather than {} "
+                  "voxels)."
+                  .format(volume_size, downsampled_volume_size,
+                          nb_voxels_post, nb_voxels_post, nb_voxels_pre))
+
+    # Downsampling
+    mult_factor = downsampled_volume_size / volume_size
+    start_values = np.clip((start_values * mult_factor).astype(int),
+                           a_min=0, a_max=downsampled_volume_size - 1)
+    end_values = np.clip((end_values * mult_factor).astype(int),
+                         a_min=0, a_max=downsampled_volume_size - 1)
+
+    # Blocs go from 0 to m1*m2*m3.
+    start_block = np.ravel_multi_index(
+        [start_values[:, d] for d in range(nb_dims)], downsampled_volume_size)
+    end_block = np.ravel_multi_index(
+        [end_values[:, d] for d in range(nb_dims)], downsampled_volume_size)
+
+    total_size = np.prod(downsampled_volume_size)
+    matrix = np.zeros((total_size, total_size), dtype=int)
+    for s_start, s_end in zip(start_block, end_block):
+        matrix[s_start, s_end] += 1
+
+        # Either, at the end, sum lower triangular + upper triangular (except
+        # diagonal), or:
+        if s_end != s_start:
+            matrix[s_end, s_start] += 1
+
+    matrix = np.triu(matrix)
+    assert matrix.sum() == len(streamlines)
+
+    if binary:
+        matrix = matrix.astype(bool)
+
+    if to_sparse_tensor:
+        logging.debug("Converting matrix to sparse. Contained {}% of zeros."
+                      .format((1 - np.count_nonzero(matrix) / total_size) * 100))
+        matrix = torch.as_tensor(matrix, device=device).to_sparse()
+
+    return matrix

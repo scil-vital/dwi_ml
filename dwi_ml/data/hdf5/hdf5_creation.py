@@ -159,16 +159,17 @@ class HDF5Creator:
         self.step_size = step_size
         self.compress = compress
         self.compute_connectivity = compute_connectivity_matrix
-        if isinstance(downsampled_size_for_connectivity, List):
-            assert len(downsampled_size_for_connectivity) == 3, \
-                "Expecting to work with 3D volumes. Expecting connectivity " \
-                "downsample size to be a list of 3 values."
-            self.connectivity_downsample_size = downsampled_size_for_connectivity
-        else:
-            assert isinstance(downsampled_size_for_connectivity, int), \
-                "Expecting the connectivity matrix size to be either a 3D " \
-                "list or an integer, but got {}"\
-                .format(downsampled_size_for_connectivity)
+        if self.compute_connectivity:
+            if isinstance(downsampled_size_for_connectivity, List):
+                assert len(downsampled_size_for_connectivity) == 3, \
+                    "Expecting to work with 3D volumes. Expecting " \
+                    "connectivity downsample size to be a list of 3 values."
+                self.connectivity_downsample_size = downsampled_size_for_connectivity
+            else:
+                assert isinstance(downsampled_size_for_connectivity, int), \
+                    "Expecting the connectivity matrix size to be either " \
+                    "a 3D list or an integer, but got {}" \
+                    .format(downsampled_size_for_connectivity)
             self.connectivity_downsample_size = [downsampled_size_for_connectivity] * 3
 
         # Optional

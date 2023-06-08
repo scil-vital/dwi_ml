@@ -469,7 +469,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         #   restack when computing loss.  [Chosen here. See if we can improve]
         #   b) loop on direction getter. Stack when computing loss.
         if self._context == 'tracking':
-            outputs = outputs.detach()
+            # If needs to detach: error? Should be using witch torch.no_grad.
+            outputs = outputs
             # No need to actually unpad, we only take the last (unpadded)
             # point, newly created. (-1 for python indexing)
             if use_padding:  # Not all the same length (backward tracking)

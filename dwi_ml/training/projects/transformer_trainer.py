@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
+from typing import List
 
+import numpy as np
 import torch
+from dwi_ml.tracking.propagation import propagate_multiple_lines
 
 from dwi_ml.training.with_generation.trainer import \
     DWIMLTrainerForTrackingOneInput
@@ -13,34 +16,38 @@ class TransformerTrainer(DWIMLTrainerForTrackingOneInput):
         """
         super().__init__(**kwargs)
 
-    def run_model(self, batch_inputs, batch_streamlines):
-        dirs = self.model.format_directions(batch_streamlines)
+    def propagate_multiple_lines(self, lines: List[torch.Tensor], ids_per_subj):
+        assert self.model.step_size is not None, \
+            "We can't propagate compressed streamlines."
 
-        # Formatting the previous dirs for all points.
-        n_prev_dirs = self.model.format_previous_dirs(dirs, self.device)
+        # Getting the first inputs
+        tmp_lines = [line[:-1, :] for line in lines]
+        batch_inputs = self.batch_loader.load_batch_inputs(tmp_lines, ids_per_subj)
+        del tmp_lines
 
-        # Not keeping the last point: only useful to get the last direction
-        # (last target), but won't be used as an input.
-        if n_prev_dirs is not None:
-            n_prev_dirs = [s[:-1] for s in n_prev_dirs]
+        def update_memory_after_removing_lines(can_continue: np.ndarray, __):
+            nonlocal batch_inputs
+            batch_inputs = [inp for i, inp in enumerate(batch_inputs) if
+                            can_continue[i]]
 
-        try:
-            # Apply model. This calls our model's forward function
-            # (the hidden states are not used here, neither as input nor
-            # outputs. We need them only during tracking).
-            model_outputs, _ = self.model(batch_inputs, n_prev_dirs,
-                                          self.device)
-        except RuntimeError:
-            # Training RNNs with variable-length sequences on the GPU can
-            # cause memory fragmentation in the pytorch-managed cache,
-            # possibly leading to "random" OOM RuntimeError during
-            # training. Emptying the GPU cache seems to fix the problem for
-            # now. We don't do it every update because it can be time
-            # consuming.
-            torch.cuda.empty_cache()
-            model_outputs, _ = self.model(batch_inputs, n_prev_dirs,
-                                          self.device)
+        def get_dirs_at_last_pos(_lines: List[torch.Tensor], n_last_pos):
+            nonlocal batch_inputs
+            n_last_pos = [pos[None, :] for pos in n_last_pos]
+            latest_inputs = self.batch_loader.load_batch_inputs(
+                n_last_pos, ids_per_subj)
+            batch_inputs = [torch.vstack((first, last)) for first, last in
+                            zip(batch_inputs, latest_inputs)]
 
-        # Returning the directions too, to be re-used in compute_loss
-        # later instead of computing them twice.
-        return model_outputs, dirs
+            model_outputs = self.model(batch_inputs, _lines)
+            next_dirs = self.model.get_tracking_directions(
+                model_outputs, algo='det', eos_stopping_thresh=0.5)
+            return next_dirs
+
+        theta = 2 * np.pi  # theta = 360 degrees
+        max_nbr_pts = int(200 / self.model.step_size)
+        return propagate_multiple_lines(
+            lines, update_memory_after_removing_lines, get_dirs_at_last_pos,
+            theta=theta, step_size=self.model.step_size,
+            verify_opposite_direction=False, mask=self.tracking_mask,
+            max_nbr_pts=max_nbr_pts, append_last_point=False,
+            normalize_directions=True)

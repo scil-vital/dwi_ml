@@ -82,15 +82,14 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
             batch_inputs = self.batch_loader.load_batch_inputs(n_last_pos,
                                                                ids_per_subj)
 
-            _model_outputs, hidden_states = self.model(
+            model_outputs, hidden_states = self.model(
                 batch_inputs, _lines, hidden_recurrent_states=hidden_states,
                 return_hidden=True, point_idx=-1)
 
             next_dirs = self.model.get_tracking_directions(
-                _model_outputs, algo='det', eos_stopping_thresh=0.5)
+                model_outputs, algo='det', eos_stopping_thresh=0.5)
             return next_dirs
 
-        self.model.set_context('tracking')
         theta = 2 * np.pi  # theta = 360 degrees
         max_nbr_pts = int(200 / self.model.step_size)
         results = propagate_multiple_lines(
@@ -99,5 +98,4 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
             verify_opposite_direction=False, mask=self.tracking_mask,
             max_nbr_pts=max_nbr_pts, append_last_point=False,
             normalize_directions=True)
-        self.model.set_context('training')
         return results

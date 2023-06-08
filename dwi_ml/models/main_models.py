@@ -98,6 +98,10 @@ class MainModelAbstract(torch.nn.Module):
         assert context in ['training', 'tracking']
         self._context = context
 
+    @property
+    def context(self):
+        return self._context
+
     def move_to(self, device):
         """
         Careful. Calling model.to(a_device) does not influence the self.device.
@@ -514,11 +518,12 @@ class ModelWithDirectionGetter(MainModelAbstract):
 
         Returns
         -------
-        next_dir: list[array(3,)]
-            Numpy arrays with x,y,z value, one per streamline data point.
+        next_dir: torch.Tensor
+            A tensor of shape [n, 3] with the next direction for each output.
         """
-        return self.direction_getter.get_tracking_directions(
+        dirs = self.direction_getter.get_tracking_directions(
             model_outputs, algo, eos_stopping_thresh)
+        return dirs
 
     def compute_loss(self, model_outputs: List[Tensor], target_streamlines,
                      average_results=True, **kw):

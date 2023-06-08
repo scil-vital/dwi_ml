@@ -147,7 +147,7 @@ def _take_one_step_or_go_straight(
         next_dirs = torch.vstack(next_dirs)
 
     if normalize_directions:
-        next_dirs /= torch.linalg.norm(next_dirs, dim=-1)[:, None]
+        next_dirs = next_dirs / torch.linalg.norm(next_dirs, dim=-1)[:, None]
 
     if previous_dirs is not None:
         # Verify angle

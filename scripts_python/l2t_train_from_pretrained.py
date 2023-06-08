@@ -11,6 +11,7 @@ import os
 # comet_ml not used, but comet_ml requires to be imported before torch.
 # See bug report here https://github.com/Lightning-AI/lightning/issues/5829
 # Importing now to solve issues later.
+import comet_ml
 import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
@@ -20,8 +21,6 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg, add_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.models.projects.learn2track_utils import add_model_args
-from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
@@ -37,6 +36,11 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_mandatory_args_training_experiment(p)
+    p.add_argument('pretrained_model',
+                   help="Name of the pretrained experiment (from the same "
+                        "experiments path) from which to load the model. "
+                        "Should contain a 'best_model' folder with pickle "
+                        "information to load the model")
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     training_group = add_training_args(p, add_a_tracking_validation_phase=True)
@@ -49,8 +53,6 @@ def prepare_arg_parser():
         help="Value to which the gradient norms to avoid exploding gradients."
              "\nDefault = None (not clipping).")
 
-    add_model_args(p)
-
     return p
 
 
@@ -61,45 +63,12 @@ def init_from_args(args, sub_loggers_level):
     dataset = prepare_multisubjectdataset(args, load_testing=False,
                                           log_level=sub_loggers_level)
 
-    # Preparing the model
-    # (Direction getter)
-    if not args.dg_dropout and args.dropout:
-        args.dg_dropout = args.dropout
-    dg_args = check_args_direction_getter(args)
-    # (Nb features)
-    input_group_idx = dataset.volume_groups.index(args.input_group_name)
-    args.nb_features = dataset.nb_features[input_group_idx]
-    # Final model
-    with Timer("\n\nPreparing model", newline=True, color='yellow'):
-        # INPUTS: verifying args
-        model = Learn2TrackModel(
-            experiment_name=args.experiment_name,
-            step_size=args.step_size, compress_lines=args.compress,
-            # PREVIOUS DIRS
-            prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
-            nb_previous_dirs=args.nb_previous_dirs,
-            normalize_prev_dirs=args.normalize_prev_dirs,
-            # INPUTS
-            input_embedding_key=args.input_embedding_key,
-            input_embedding_size=args.input_embedding_size,
-            input_embedding_size_ratio=args.input_embedding_size_ratio,
-            nb_features=args.nb_features,
-            # RNN
-            rnn_key=args.rnn_key, rnn_layer_sizes=args.rnn_layer_sizes,
-            dropout=args.dropout,
-            use_layer_normalization=args.use_layer_normalization,
-            use_skip_connection=args.use_skip_connection,
-            start_from_copy_prev=args.start_from_copy_prev,
-            # TRACKING MODEL
-            dg_key=args.dg_key, dg_args=dg_args,
-            # Other
-            neighborhood_type=args.neighborhood_type,
-            neighborhood_radius=args.neighborhood_radius,
-            log_level=sub_loggers_level)
-
-        logging.info("Learn2track model final parameters:" +
-                     format_dict_to_str(model.params_for_checkpoint))
+    # Loading an existing model
+    logging.info("Loading existing model")
+    best_model_path = os.path.join(args.experiments_path,
+                                   args.pretrained_model, 'best_model')
+    model = Learn2TrackModel.load_params_and_state(
+        best_model_path, sub_loggers_level)
 
     # Preparing the batch samplers
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)
@@ -160,6 +129,11 @@ def main():
 
     trainer = init_from_args(args, sub_loggers_level)
 
+    # Supervising that we loaded everything correctly.
+    print("Validation 0 = Initial verification: pre-trained results!")
+    trainer.validate_one_epoch(-1)
+
+    print("Now starting training")
     run_experiment(trainer)
 
 

@@ -118,7 +118,7 @@ def init_from_args(args, sub_loggers_level):
             # (generation validation:)
             add_a_tracking_validation_phase=args.add_a_tracking_validation_phase,
             tracking_phase_frequency=args.tracking_phase_frequency,
-            tracking_phase_nb_steps_init=5,  # args.tracking_phase_nb_steps_init
+            tracking_phase_nb_steps_init=args.tracking_phase_nb_steps_init,
             tracking_phase_mask_group=args.tracking_mask,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,

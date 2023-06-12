@@ -221,7 +221,6 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             # 1. Also clipping final dist
             final_dist_clipped = torch.clip(final_dist, min=None,
                                             max=ACCEPTABLE_THRESHOLD)
-            final_dist = torch.mean(final_dist)
             final_dist_clipped = torch.mean(final_dist_clipped)
 
             # 2. Connectivity scores
@@ -235,6 +234,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 final_dist > ACCEPTABLE_THRESHOLD) / len(lines) * 100
             invalid_ratio_loose = torch.sum(
                 final_dist > VERY_FAR_THRESHOLD) / len(lines) * 100
+            final_dist = torch.mean(final_dist)
 
             # 4. Verify point where streamline starts diverging.
             # 0% = error at first point --> really bad.

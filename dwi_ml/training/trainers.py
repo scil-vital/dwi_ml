@@ -460,6 +460,9 @@ class DWIMLAbstractTrainer:
             trainer.max_epochs = new_max_epochs
 
         # Save params to json to help user remember.
+        current_states = checkpoint_state['current_states']
+        trainer._update_states_from_checkpoint(current_states)
+
         if new_patience:
             trainer.best_epoch_monitor.patience = new_patience
         logger.info("Starting from checkpoint! Starting from epoch #{}.\n"
@@ -470,8 +473,6 @@ class DWIMLAbstractTrainer:
                             trainer.best_epoch_monitor.best_epoch,
                             trainer.best_epoch_monitor.n_bad_epochs))
 
-        current_states = checkpoint_state['current_states']
-        trainer._update_states_from_checkpoint(current_states)
         return trainer
 
     def _update_states_from_checkpoint(self, current_states):

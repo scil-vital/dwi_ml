@@ -40,19 +40,15 @@ class DWIMLAbstractTrainer:
     """
     This Trainer class's train_and_validate() method:
         - Creates DataLoaders from the data_loaders. Collate_fn will be the
-        loader.load_batch() method, and the dataset will be
-        sampler.source_data.
-        - Trains each epoch by using compute_batch_loss, which should be
-        implemented in each project's child class.
+        found in the batch loader, and the dataset will be found in the data
+        sampler.
+        - Trains each epoch by using the model's loss computation method.
 
     Comet is used to save training information, but some logs will also be
     saved locally in the saving_path.
 
-    NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, TO CORNER.
+    NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, CORNER ORIGIN.
     """
-    # For now, this is ugly... But the option is there if you want.
-    save_logs_per_batch = False
-
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
@@ -323,14 +319,16 @@ class DWIMLAbstractTrainer:
 
     @property
     def params_for_checkpoint(self):
-        # These are the parameters necessary to use _init_, together with
-        # instantiated classes (model, batch loader, batch sampler).
-
+        """
+        Returns the parameters necessary to initialize an identical Trainer.
+        However, the trainer's state could need to be updated (see checkpoint
+        management).
+        """
         # Not saving experiment_path and experiment_name. Allowing user to
         # move the experiment on his computer between training sessions.
 
-        # Patience and patience delta will be taken from the best epoch monitor.
-
+        # Patience is not saved here: we manage it separately to allow the
+        # user to increase the patience when running again.
         params = {
             'learning_rates': self.learning_rates,
             'weight_decay': self.weight_decay,
@@ -347,8 +345,8 @@ class DWIMLAbstractTrainer:
 
     def save_params_to_json(self):
         """
-        Utility method to save the parameters to a json file in the same
-        folder as the experiment.
+        Save the trainer's parameters to a json file in the same folder as the
+        experiment.
         """
         now = datetime.now()
         json_filename = os.path.join(self.saving_path, "parameters_{}.json"
@@ -370,14 +368,12 @@ class DWIMLAbstractTrainer:
 
     def save_checkpoint(self):
         """
-        Save an experiment checkpoint that can be resumed from.
+        Saves an experiment checkpoint, with parameters and states.
         """
         logger.debug("Saving checkpoint...")
-
-        # Make checkpoint directory
         checkpoint_dir = os.path.join(self.saving_path, "checkpoint")
 
-        # Backup old checkpoint before saving, and erase it afterwards
+        # Backup old checkpoint before saving, and erase it afterward.
         to_remove = None
         if os.path.exists(checkpoint_dir):
             to_remove = os.path.join(self.saving_path, "checkpoint_old")
@@ -399,8 +395,11 @@ class DWIMLAbstractTrainer:
             shutil.rmtree(to_remove)
 
     def _prepare_checkpoint_info(self) -> dict:
-        # These are parameters that should be updated after instantiating cls.
-
+        """
+        To instantiate a Trainer, we need the initialization parameters
+        (self.params_for_checkpoint), and the states. This method returns
+        the dictionary of required states.
+        """
         # Note. batch sampler's rng state and batch loader's are the same.
         current_states = {
             # Rng value.
@@ -443,16 +442,13 @@ class DWIMLAbstractTrainer:
             batch_loader: DWIMLAbstractBatchLoader,
             checkpoint_state: dict, new_patience, new_max_epochs, log_level):
         """
-        During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
-        back offers a dict that can be used to instantiate an experiment and
-        set it at the same state as previously. (Current_epoch is updated +1).
-
-        Hint: If you want to use this in your child class, use:
-        experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
+        Loads checkpoint information (parameters and states) to instantiate
+        a Trainer. Current_epoch is updated +1.
         """
         trainer_params = checkpoint_state['params_for_init']
         trainer = cls(model=model, experiments_path=experiments_path,
-                      experiment_name=experiment_name, batch_sampler=batch_sampler,
+                      experiment_name=experiment_name,
+                      batch_sampler=batch_sampler,
                       batch_loader=batch_loader, from_checkpoint=True,
                       log_level=log_level, **trainer_params)
 
@@ -475,7 +471,22 @@ class DWIMLAbstractTrainer:
 
         return trainer
 
+    @staticmethod
+    def load_params_from_checkpoint(experiments_path: str, experiment_name: str):
+        total_path = os.path.join(
+            experiments_path, experiment_name, "checkpoint",
+            "checkpoint_state.pkl")
+        if not os.path.isfile(total_path):
+            raise FileNotFoundError('Checkpoint was not found! ({})'
+                                    .format(total_path))
+        checkpoint_state = torch.load(total_path)
+
+        return checkpoint_state
+
     def _update_states_from_checkpoint(self, current_states):
+        """
+        Updates all states from the checkpoint dictionary of states.
+        """
         # A. Rng value.
         # RNG:
         #  - numpy
@@ -507,7 +518,8 @@ class DWIMLAbstractTrainer:
 
     def _init_comet(self):
         """
-        For more information on comet, see our doc/Getting Started
+        Initialize comet's experiment. User's account and workspace must be
+        already set.
         """
         try:
             if self.comet_key:
@@ -550,11 +562,10 @@ class DWIMLAbstractTrainer:
 
     def estimate_nb_batches_per_epoch(self):
         """
-        Please override in your child class if you have a better way to
-        define the epochs sizes.
+        Counts the number of training / validation batches required to see all
+        the data (up to the maximum number of allowed batches).
 
-        Returns:
-             (nb_training_batches_per_epoch, nb_validation_batches_per_epoch)
+        Data must be already loaded to access the information.
         """
         streamline_group = self.batch_sampler.streamline_group_idx
         train_set = self.batch_sampler.dataset.training_set
@@ -585,16 +596,16 @@ class DWIMLAbstractTrainer:
 
     def train_and_validate(self):
         """
-        Train + validates the model (+ computes loss)
+        Trains + validates the model. Computes the training loss at each
+        training loop, and many validation metrics at each validation loop.
 
         - Starts comet,
         - Creates DataLoaders from the BatchSamplers,
         - For each epoch
             - uses _train_one_epoch and _validate_one_epoch,
-            - checks for earlyStopping if the loss is bad,
+            - saves a checkpoint,
+            - checks for earlyStopping if the loss is bad or patience is reached,
             - saves the model if the loss is good.
-        - Checks if allowed training time is exceeded.
-
         """
         logger.debug("Trainer {}: \nRunning the model {}.\n\n"
                      .format(type(self), type(self.model)))
@@ -677,8 +688,10 @@ class DWIMLAbstractTrainer:
                 break
 
     def _get_latest_loss_to_supervise_best(self):
-        # This can be overriden by child classes if you possesss other
-        # test metrics than the loss.
+        """
+        Defines the metric to be used to define the best model. Override if
+        you have other validation metrics.
+        """
         if self.use_validation:
             mean_epoch_loss = self.valid_local_loss_monitor.average_per_epoch[-1]
         else:
@@ -687,6 +700,9 @@ class DWIMLAbstractTrainer:
         return mean_epoch_loss
 
     def save_local_logs(self):
+        """
+        Save logs locally as numpy arrays.
+        """
         for monitor in self.monitors:
             if isinstance(monitor, BatchHistoryMonitor):
                 self._save_log_locally(monitor.average_per_epoch,
@@ -695,7 +711,15 @@ class DWIMLAbstractTrainer:
                 self._save_log_locally(monitor.epoch_durations,
                                        monitor.name + '_duration.npy')
 
+    def _save_log_locally(self, array: np.ndarray, fname: str):
+        np.save(os.path.join(self.log_dir, fname), array)
+
     def _clear_handles(self):
+        """
+        Trying to improve the handles management.
+        Todo. Improve again. CPU multiprocessing fails because of handles
+         management.
+        """
         # Make sure there are no existing HDF handles if using parallel workers
         if (self.nb_cpu_processes > 0 and
                 self.batch_sampler.context_subset.is_lazy):
@@ -706,11 +730,15 @@ class DWIMLAbstractTrainer:
         logger.debug('*** Computing back propagation')
         loss.backward()
 
-        self.fix_parameters()  # Ex: clip gradients
+        # Any other steps. Ex: clip gradients. Not implemented here.
+        # See Learn2track's Trainer for an example.
+        self.fix_parameters()
+
+        # Supervizing the gradient's norm.
         grad_norm = compute_gradient_norm(self.model.parameters())
 
         # Update parameters
-        # toDo. We could update only every n steps.
+        # Future work: We could update only every n steps.
         #  Effective batch size is n time bigger.
         #  See here https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
         self.optimizer.step()
@@ -723,7 +751,8 @@ class DWIMLAbstractTrainer:
 
     def train_one_epoch(self, epoch):
         """
-        Train one epoch of the model: loop on all batches (forward + backward).
+        Trains one epoch of the model: loops on all batches
+        (forward + backpropagation).
         """
         for monitor in self.training_monitors:
             monitor.start_new_epoch()
@@ -779,7 +808,7 @@ class DWIMLAbstractTrainer:
 
     def validate_one_epoch(self, epoch):
         """
-        Validate one epoch of the model: loop on all batches.
+        Validates one epoch of the model: loops on all batches.
         """
         for monitor in self.validation_monitors:
             monitor.start_new_epoch()
@@ -826,7 +855,8 @@ class DWIMLAbstractTrainer:
 
     def train_one_batch(self, data, epoch):
         """
-        Returns: The loss to be backpropagated.
+        Computes the loss for the current batch and updates monitors.
+        Returns the loss to be used for backpropagation.
         """
         # Encapsulated for easier management of child classes.
         mean_local_loss, n = self.run_one_batch(data)
@@ -835,20 +865,16 @@ class DWIMLAbstractTrainer:
         return mean_local_loss
 
     def validate_one_batch(self, data, epoch):
-        # Encapsulated for easier management of child classes.
+        """
+        Computes the loss(es) for the current batch and updates monitors.
+        """
         mean_local_loss, n = self.run_one_batch(data)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 
     def _update_comet_after_epoch(self, context: str, epoch: int):
         """
-        Update logs:
-            - logging to user
-            - get values from monitors and save final log locally.
-            - send mean data to comet
-
-        local_context: prefix when saving log. Training_ or Validate_ for
-        instance.
+        Sends monitors information to comet.
         """
         if context == 'training':
             monitors = self.training_monitors
@@ -871,6 +897,8 @@ class DWIMLAbstractTrainer:
             logs.append((value, monitor.name))
 
         if self.comet_exp:
+            # Comet context: will add train_(loss) or valid_(loss) to the
+            # monitors name in comet.
             if context == 'training':
                 comet_context = self.comet_exp.train
             else:  # context == 'validation':
@@ -887,6 +915,10 @@ class DWIMLAbstractTrainer:
                         log[1], log[0], epoch=0, step=epoch)
 
     def _save_best_model(self):
+        """
+        Saves the current state of the model in the best_model folder.
+        Saves the loss to a json folder.
+        """
         logger.info("   Best epoch yet! Saving model and loss history.")
 
         # Save model
@@ -907,25 +939,18 @@ class DWIMLAbstractTrainer:
 
     def run_one_batch(self, data):
         """
-        Run a batch of data through the model (calling its forward method)
-        and return the mean loss. If training, run the backward method too.
+        Runs a batch of data through the model (calling its forward method)
+        and returns the mean loss.
 
         Parameters
         ----------
         data : tuple of (List[StatefulTractogram], dict)
-            This is the output of the AbstractBatchLoader's
-            load_batch_streamlines() method. data is a tuple
+            Output of the batch loader's collate_fn.
+            With our basic BatchLoader class, data is a tuple
             - batch_sfts: one sft per subject
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines)
-
-        Returns
-        -------
-        mean_loss : float
-            The mean loss of the provided batch.
-        n: int
-            Total number of points for this batch.
         """
         raise NotImplementedError
 
@@ -940,25 +965,14 @@ class DWIMLAbstractTrainer:
         """
         pass
 
-    def _save_log_locally(self, array: np.ndarray, fname: str):
-        np.save(os.path.join(self.log_dir, fname), array)
-
-    @staticmethod
-    def load_params_from_checkpoint(experiments_path: str, experiment_name: str):
-        total_path = os.path.join(
-            experiments_path, experiment_name, "checkpoint",
-            "checkpoint_state.pkl")
-        if not os.path.isfile(total_path):
-            raise FileNotFoundError('Checkpoint was not found! ({})'
-                                    .format(total_path))
-        checkpoint_state = torch.load(total_path)
-
-        return checkpoint_state
-
     @staticmethod
     def check_stopping_cause(checkpoint_state, new_patience=None,
                              new_max_epochs=None):
-
+        """
+        This method should be used before starting the training. Verifies that
+        it makes sense to continue training based on number of epochs and
+        patience.
+        """
         current_epoch = checkpoint_state['current_states']['current_epoch']
 
         # 1. Check if early stopping had been triggered.
@@ -1017,7 +1031,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             - batch_sfts: one sft per subject
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
-              streamlines)
+              streamlines).
+        average_results: bool
+            If true, returns the averaged loss (as defined by the model).
 
         Returns
         -------

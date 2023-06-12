@@ -2,6 +2,8 @@
 import logging
 from typing import Tuple
 
+import numpy as np
+
 
 def _find_groups_info_for_subj(hdf_file, subj_id: str):
     """
@@ -25,10 +27,14 @@ def _find_groups_info_for_subj(hdf_file, subj_id: str):
         volume's last dimension).
     streamline_groups: List[str]
         The list of streamline groups for this subject.
+    contains_connectivity: np.ndarray
+        A list of boolean for each streamline_group stating if it contains the
+        pre-computed connectivity matrices for that subject.
     """
     volume_groups = []
     nb_features = []
     streamline_groups = []
+    contains_connectivity = []
 
     hdf_groups = hdf_file[subj_id]
     for hdf_group in hdf_groups:
@@ -39,6 +45,8 @@ def _find_groups_info_for_subj(hdf_file, subj_id: str):
                 hdf_file[subj_id][hdf_group].attrs['nb_features'])
         elif group_type == 'streamlines':
             streamline_groups.append(hdf_group)
+            found_matrix = 'connectivity_matrix' in hdf_file[subj_id][hdf_group]
+            contains_connectivity.append(found_matrix)
         else:
             raise NotImplementedError(
                 "So far, you can only add 'volume' or 'streamline' groups in "
@@ -46,7 +54,8 @@ def _find_groups_info_for_subj(hdf_file, subj_id: str):
                 "example. Your hdf5 contained group of type {} for subj {}"
                 .format(group_type, subj_id))
 
-    return volume_groups, nb_features, streamline_groups
+    contains_connectivity = np.asarray(contains_connectivity, dtype=bool)
+    return volume_groups, nb_features, streamline_groups, contains_connectivity
 
 
 def _compare_groups_info(volume_groups, nb_features, streamline_groups,
@@ -73,7 +82,7 @@ def _compare_groups_info(volume_groups, nb_features, streamline_groups,
                         .format(s, streamline_groups))
 
 
-def prepare_groups_info(subject_id: str, hdf_file, group_info=None):
+def prepare_groups_info(subject_id: str, hdf_file, ref_group_info=None):
     """
     Read the hdf5 file for this subject and get the groups information
     (volume and streamlines groups names, number of features for volumes).
@@ -81,11 +90,11 @@ def prepare_groups_info(subject_id: str, hdf_file, group_info=None):
     If group_info is given, compare subject's information with database
     expected information.
     """
-    volume_groups, nb_features, streamline_groups = \
+    volume_groups, nb_features, streamline_groups, contains_connectivity = \
         _find_groups_info_for_subj(hdf_file, subject_id)
 
-    if group_info is not None:
+    if ref_group_info is not None:
         _compare_groups_info(volume_groups, nb_features, streamline_groups,
-                             group_info)
+                             ref_group_info)
 
-    return volume_groups, nb_features, streamline_groups
+    return volume_groups, nb_features, streamline_groups, contains_connectivity

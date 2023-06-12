@@ -119,8 +119,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                         mask_interp='nearest')
                     self.tracking_mask.move_to(self.device)
 
-            # todo verify if available in hdf5
-            self.compute_connectivity = True
+            self.compute_connectivity = self.batch_loader.data_contains_connectivity
 
         # -------- Monitors
         # At training time: only the one metric used for training.

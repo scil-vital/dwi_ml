@@ -160,8 +160,8 @@ class LazySubjectData(SubjectDataAbstract):
             Tuple containing (volume_groups, nb_features, streamline_groups)
             for this subject.
         """
-        volume_groups, nb_features, streamline_groups = prepare_groups_info(
-            subject_id, hdf_file, group_info)
+        volume_groups, nb_features, streamline_groups, _ = \
+            prepare_groups_info(subject_id, hdf_file, group_info)
 
         logger.debug('     Lazy: not loading data.')
 

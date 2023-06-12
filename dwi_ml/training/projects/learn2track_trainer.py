@@ -2,11 +2,13 @@
 import logging
 from typing import List
 
+import h5py
 import numpy as np
 import torch
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.tracking.propagation import propagate_multiple_lines
+from dwi_ml.tracking.utils import prepare_tracking_mask
 from dwi_ml.training.with_generation.trainer import \
     DWIMLTrainerForTrackingOneInput
 
@@ -92,10 +94,24 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
 
         theta = 2 * np.pi  # theta = 360 degrees
         max_nbr_pts = int(200 / self.model.step_size)
-        results = propagate_multiple_lines(
-            lines, update_memory_after_removing_lines, get_dirs_at_last_pos,
-            theta=theta, step_size=self.model.step_size,
-            verify_opposite_direction=False, mask=self.tracking_mask,
-            max_nbr_pts=max_nbr_pts, append_last_point=False,
-            normalize_directions=True)
-        return results
+
+        final_lines = []
+        for subj_idx, line_idx in ids_per_subj.items():
+
+            with h5py.File(self.batch_loader.dataset.hdf5_file, 'r') as hdf_handle:
+                subj_id = self.batch_loader.context_subset.subjects[subj_idx]
+                logging.debug("Loading subj {} ({})'s tracking mask."
+                              .format(subj_idx, subj_id))
+                tracking_mask, _ = prepare_tracking_mask(
+                    hdf_handle, self.tracking_mask_group, subj_id=subj_id,
+                    mask_interp='nearest')
+                tracking_mask.move_to(self.device)
+
+            final_lines.extend(propagate_multiple_lines(
+                lines[line_idx], update_memory_after_removing_lines,
+                get_dirs_at_last_pos, theta=theta,
+                step_size=self.model.step_size, verify_opposite_direction=False,
+                mask=tracking_mask, max_nbr_pts=max_nbr_pts,
+                append_last_point=False, normalize_directions=True))
+
+        return final_lines

@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import prepare_neighborhood_vectors
@@ -377,8 +378,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 
 class MainModelOneInput(MainModelAbstract):
-    def prepare_batch_one_input(self, streamlines, subset, subj,
-                                input_group_idx, prepare_mask=False):
+    def prepare_batch_one_input(self, streamlines, subset: MultisubjectSubset,
+                                subj, input_group_idx, prepare_mask=False):
         """
         These params are passed by either the batch loader or the propagator,
         which manage the data.

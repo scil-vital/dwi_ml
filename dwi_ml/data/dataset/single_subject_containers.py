@@ -94,8 +94,8 @@ class SubjectData(SubjectDataAbstract):
         """
         Instantiating a single subject data: load info and use __init__
         """
-        volume_groups, nb_features, streamline_groups = prepare_groups_info(
-            subject_id, hdf_file, group_info)
+        (volume_groups, nb_features, streamline_groups, _) = \
+            prepare_groups_info(subject_id, hdf_file, group_info)
 
         subject_mri_data_list = []
         subject_sft_data_list = []

@@ -58,28 +58,31 @@ def _find_groups_info_for_subj(hdf_file, subj_id: str):
     return volume_groups, nb_features, streamline_groups, contains_connectivity
 
 
-def _compare_groups_info(volume_groups, nb_features, streamline_groups,
-                         group_info: Tuple):
+def _compare_groups_info(subject_group_info, ref_group_info: Tuple):
     """
-    Compares the three lists (volume_groups, nb_features, streamline_groups) of
-    one subject to the expected list for this database, included in group_info.
+    Compares the two tuple (volume_groups, nb_features, streamline_groups,
+    contains_connectivity) between one subject to the expected list for this
+    database, included in group_info.
     """
-    v, f, s = group_info
-    if volume_groups != v:
+    sv, sf, ss, sc = subject_group_info
+    rv, rf, rs, rc = ref_group_info
+    if not set(rv).issubset(set(sv)):
         logging.warning("Subject's hdf5 groups with attributes 'type' set as "
                         "'volume' are not the same as expected with this "
                         "dataset! Expected: {}. Found: {}"
-                        .format(v, volume_groups))
-    if nb_features != f:
+                        .format(rv, sv))
+
+    if not set(rf).issubset(set(sf)):  # not a good verification but ok for now.
         logging.warning("Among subject's hdf5 groups with attributes 'type' "
                         "set as 'volume', some data to not have the same "
                         "number of features as expected for this dataset! "
-                        "Expected: {}. Found: {}".format(f, nb_features))
-    if streamline_groups != s:
+                        "Expected: {}. Found: {}".format(rf, sf))
+
+    if not set(rs).issubset(set(ss)):
         logging.warning("Subject's hdf5 groups with attributes 'type' set as "
                         "'streamlines' are not the same as expected with this "
                         "dataset! Expected: {}. Found: {}"
-                        .format(s, streamline_groups))
+                        .format(rs, ss))
 
 
 def prepare_groups_info(subject_id: str, hdf_file, ref_group_info=None):
@@ -88,13 +91,18 @@ def prepare_groups_info(subject_id: str, hdf_file, ref_group_info=None):
     (volume and streamlines groups names, number of features for volumes).
 
     If group_info is given, compare subject's information with database
-    expected information.
+    expected information. If subject has more information than the reference,
+    (ex, non-useful volume groups), they will be ignored.
+
+    Returns
+    -------
+    subject_group_info = (volume_groups, nb_features,
+                          streamline_groups, contains_connectivity)
     """
-    volume_groups, nb_features, streamline_groups, contains_connectivity = \
-        _find_groups_info_for_subj(hdf_file, subject_id)
+    subject_group_info = _find_groups_info_for_subj(hdf_file, subject_id)
 
     if ref_group_info is not None:
-        _compare_groups_info(volume_groups, nb_features, streamline_groups,
-                             ref_group_info)
+        _compare_groups_info(subject_group_info, ref_group_info)
+        return ref_group_info
 
-    return volume_groups, nb_features, streamline_groups, contains_connectivity
+    return subject_group_info

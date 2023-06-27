@@ -234,6 +234,13 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         if self._context is None:
             raise ValueError("Please set context before usage.")
 
+        # Verifying the first input
+        assert inputs[0].shape[-1] == self.input_size, \
+            "Not the expected input size! Should be {} (i.e. {} features for " \
+            "each {} neighbor), but got {} (input shape {})." \
+            .format(self.input_size, self.nb_features, self.nb_neighbors + 1,
+                    inputs[0].shape[-1], inputs[0].shape)
+
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.
         unsorted_indices = None

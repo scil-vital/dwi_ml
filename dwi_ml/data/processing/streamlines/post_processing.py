@@ -254,14 +254,7 @@ def weight_value_with_angle(values: List, streamlines: List = None,
 
         # Mult choice:
         # We don't want to multiply by 0. Multiplying by angles + 1.
-        # values[i] = values[i] * (angles + 1.0)
-        values[i] = values[i] * (angles + 1.0)**2
-
-        # Pow choice:
-        # loss^0 = 1. loss^1 = loss. Also adding 1.
-        # But if values are < 1, pow becomes smaller.
-        # Our losses tend toward 0.  Adding 1 before.
-        # values[i] = torch.pow(1.0 + values[i], angles + 1.0) - 1.0
+        values[i] = values[i] * (angles + 1.0)
 
     return values
 

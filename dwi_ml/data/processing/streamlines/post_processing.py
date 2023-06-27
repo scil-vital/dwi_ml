@@ -272,12 +272,11 @@ def compute_triu_connectivity(
     volume_size: list
         The 3D dimension of the reference volume.
     downsampled_volume_size:
-        Either a 3D size or the size m of the m x m x m downsampled volume
-        coordinates for the connectivity matrix. This means that the matrix
-        will be a m^d x m^d triangular matrix. In 3D, with 20x20x20, this is an
-        8000 x 8000 matrix (triangular = half of it in memory). It probably
-        contains a lot of zeros with the background being included. Saved as
-        sparse.
+        The m1 x m2 x m3 = mm downsampled volume size for the connectivity matrix.
+        This means that the matrix will be a mm x mm triangular matrix.
+        In 3D, with 20x20x20, this is an 8000 x 8000 matrix (triangular). It
+        probably contains a lot of zeros with the background being included.
+        Can be saved as sparse.
     binary: bool
         If true, return a binary matrix.
     to_sparse_tensor:

@@ -75,9 +75,11 @@ def main():
     assert_outputs_exist(p, args, args.out_hdf5_file)
 
     # Default value with arparser '+' not possible. Setting manually.
-    if args.compute_connectivity_matrix and \
-            args.connectivity_downsample_size is None:
-        args.connectivity_downsample_size = 20
+    if args.compute_connectivity_matrix:
+        if args.connectivity_downsample_size is None:
+            args.connectivity_downsample_size = 20
+        elif len(args.connectivity_downsample_size) == 1:
+            args.connectivity_downsample_size = args.connectivity_downsample_size[0]
 
     # Prepare creator and load config file.
     creator = prepare_hdf5_creator(args)

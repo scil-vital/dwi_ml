@@ -163,7 +163,8 @@ class HDF5Creator:
             if isinstance(downsampled_size_for_connectivity, List):
                 assert len(downsampled_size_for_connectivity) == 3, \
                     "Expecting to work with 3D volumes. Expecting " \
-                    "connectivity downsample size to be a list of 3 values."
+                    "connectivity downsample size to be a list of 3 values, " \
+                    "but got {}.".format(downsampled_size_for_connectivity)
                 self.connectivity_downsample_size = downsampled_size_for_connectivity
             else:
                 assert isinstance(downsampled_size_for_connectivity, int), \

@@ -13,9 +13,8 @@ from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 from scilpy.tractograms.streamline_operations import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
-from dwi_ml.io_utils import add_logging_arg
-from dwi_ml.models.projects.transformer_models import \
-    AbstractTransformerModel
+from dwi_ml.arg_utils import add_logging_arg
+from dwi_ml.models.projects.transformer_models import AbstractTransformerModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 # Currently, with our quite long sequences compared to their example, this

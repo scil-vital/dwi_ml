@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from dwi_ml.gui.menu_new_or_exisiting import launch_main_menu
-from dwi_ml.gui.utils.window import start_dpg, show_and_end_dpg
+
+from dwi_ml.gui.menu_new_or_exisiting import prepare_main_menu
 
 
 def main():
 
-    start_dpg()
-    launch_main_menu()
-    show_and_end_dpg()
+    prepare_main_menu()
 
 
 if __name__ == '__main__':

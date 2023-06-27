@@ -19,7 +19,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_memory_args, add_logging_arg
+from dwi_ml.arg_utils import add_memory_args, add_logging_arg
 from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.models.projects.transformers_utils import (

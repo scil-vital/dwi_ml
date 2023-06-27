@@ -19,7 +19,7 @@ import torch.nn.functional
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.io_utils import add_resample_or_compress_arg
+from dwi_ml.arg_utils import add_resample_or_compress_arg
 from dwi_ml.models.projects.copy_previous_dirs import CopyPrevDirModel
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args, \
     check_args_direction_getter

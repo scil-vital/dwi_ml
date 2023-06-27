@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
-from dwi_ml.io_utils import add_resample_or_compress_arg
+from dwi_ml.arg_utils import add_resample_or_compress_arg
 
 
 def add_hdf5_creation_args(p: ArgumentParser):

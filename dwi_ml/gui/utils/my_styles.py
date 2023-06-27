@@ -15,8 +15,8 @@ fixed_window_options = {'no_move': True,
 
 def get_my_fonts_dictionary():
     current_path = __file__
-    gui_utils_path = Path(current_path).parent.absolute()
-    font_path = os.path.join(gui_utils_path, "NotoSerifCJKjp-Medium.otf")
+    gui_utils_path = Path(current_path).parent.parent.absolute()
+    font_path = os.path.join(gui_utils_path, "fonts/NotoSerifCJKjp-Medium.otf")
 
     with dpg.font_registry():
         # first argument ids the path to the .ttf or .otf file
@@ -33,106 +33,85 @@ def get_my_fonts_dictionary():
 def set_global_theme():
     # Copied from :
     # https://github.com/hoffstadt/DearPyGui_Ext/blob/master/dearpygui_ext/themes.py
+
+    # 4th value = alpha
+    white = (255, 255, 255, 255)
+    light_gray = (151, 151, 151, 255)
+    gray = (78, 78, 78, 255)
+    dark_gray = (50, 50, 50, 255)
+    black = (25, 25, 25, 255)
+    transparent = (0, 0, 0, 0)
+    blue_hover = (12, 203, 235, 103)
+    blue_background = (80, 150, 180, 255)
+    chosen_purple = (130, 75, 177, 255)
+    # dpg.show_style_editor()
+
     with dpg.theme() as global_theme:
         with dpg.theme_component(0):
-            dpg.add_theme_color(dpg.mvThemeCol_Text,
-                                (1.00 * 255, 1.00 * 255, 1.00 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TextDisabled,
-                                (0.50 * 255, 0.50 * 255, 0.50 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_WindowBg,
-                                (0.06 * 255, 0.06 * 255, 0.06 * 255, 0.94 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ChildBg,
-                                (0.00 * 255, 0.00 * 255, 0.00 * 255, 0.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_PopupBg,
-                                (0.08 * 255, 0.08 * 255, 0.08 * 255, 0.94 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_Border,
-                                (0.43 * 255, 0.43 * 255, 0.50 * 255, 0.50 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_BorderShadow,
-                                (0.00 * 255, 0.00 * 255, 0.00 * 255, 0.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,
-                                (0.16 * 255, 0.29 * 255, 0.48 * 255, 0.54 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.40 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.67 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBg,
-                                (0.04 * 255, 0.04 * 255, 0.04 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive,
-                                (0.16 * 255, 0.29 * 255, 0.48 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBgCollapsed,
-                                (0.00 * 255, 0.00 * 255, 0.00 * 255, 0.51 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg,
-                                (0.14 * 255, 0.14 * 255, 0.14 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg,
-                                (0.02 * 255, 0.02 * 255, 0.02 * 255, 0.53 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab,
-                                (0.31 * 255, 0.31 * 255, 0.31 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered,
-                                (0.41 * 255, 0.41 * 255, 0.41 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabActive,
-                                (0.51 * 255, 0.51 * 255, 0.51 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_CheckMark,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,
-                                (0.24 * 255, 0.52 * 255, 0.88 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_Button,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.40 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,
-                                (0.06 * 255, 0.53 * 255, 0.98 * 255, 1.00 * 255))
+
+            dpg.add_theme_color(dpg.mvThemeCol_Text, white)
+            dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, light_gray)
+
+            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, black)
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, black)
+            dpg.add_theme_color(dpg.mvThemeCol_PopupBg, black)
+
+            dpg.add_theme_color(dpg.mvThemeCol_Border, gray)
+            dpg.add_theme_color(dpg.mvThemeCol_BorderShadow, gray)
+
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, dark_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, chosen_purple)
+
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBg, black)
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, chosen_purple)
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBgCollapsed, black)
+
+            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg, dark_gray)
+
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg, dark_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab, gray)
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, light_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabActive, light_gray)
+
+            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_Button, blue_background)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, chosen_purple)
+
             dpg.add_theme_color(dpg.mvThemeCol_Header,
                                 (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.31 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.80 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_Separator,
-                                (0.43 * 255, 0.43 * 255, 0.50 * 255, 0.50 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_SeparatorHovered,
-                                (0.10 * 255, 0.40 * 255, 0.75 * 255, 0.78 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_SeparatorActive,
-                                (0.10 * 255, 0.40 * 255, 0.75 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ResizeGrip,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.20 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ResizeGripHovered,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.67 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ResizeGripActive,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.95 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_Tab,
-                                (0.18 * 255, 0.35 * 255, 0.58 * 255, 0.86 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TabHovered,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.80 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TabActive,
-                                (0.20 * 255, 0.41 * 255, 0.68 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused,
-                                (0.07 * 255, 0.10 * 255, 0.15 * 255, 0.97 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive,
-                                (0.14 * 255, 0.26 * 255, 0.42 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_DockingPreview,
-                                (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.70 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_DockingEmptyBg,
-                                (0.20 * 255, 0.20 * 255, 0.20 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_PlotLines,
-                                (0.61 * 255, 0.61 * 255, 0.61 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_PlotLinesHovered,
-                                (1.00 * 255, 0.43 * 255, 0.35 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram,
-                                (0.90 * 255, 0.70 * 255, 0.00 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_PlotHistogramHovered,
-                                (1.00 * 255, 0.60 * 255, 0.00 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg,
-                                (0.19 * 255, 0.19 * 255, 0.20 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TableBorderStrong,
-                                (0.31 * 255, 0.31 * 255, 0.35 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TableBorderLight,
-                                (0.23 * 255, 0.23 * 255, 0.25 * 255, 1.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TableRowBg,
-                                (0.00 * 255, 0.00 * 255, 0.00 * 255, 0.00 * 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,
-                                (1.00 * 255, 1.00 * 255, 1.00 * 255, 0.06 * 255))
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, chosen_purple)
+
+            dpg.add_theme_color(dpg.mvThemeCol_Separator, dark_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_SeparatorHovered, gray)
+            dpg.add_theme_color(dpg.mvThemeCol_SeparatorActive, gray)
+
+            dpg.add_theme_color(dpg.mvThemeCol_ResizeGrip, black)
+            dpg.add_theme_color(dpg.mvThemeCol_ResizeGripHovered, dark_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_ResizeGripActive, dark_gray)
+
+            dpg.add_theme_color(dpg.mvThemeCol_Tab, dark_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_TabHovered, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_TabActive, chosen_purple)
+            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused, dark_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive, chosen_purple)
+
+            dpg.add_theme_color(dpg.mvThemeCol_DockingPreview, blue_background)
+            dpg.add_theme_color(dpg.mvThemeCol_DockingEmptyBg, dark_gray)
+
+            dpg.add_theme_color(dpg.mvThemeCol_PlotLines, blue_background)
+            dpg.add_theme_color(dpg.mvThemeCol_PlotLinesHovered, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram, gray)
+            dpg.add_theme_color(dpg.mvThemeCol_PlotHistogramHovered, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, dark_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_TableBorderStrong, light_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_TableBorderLight, gray)
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBg, transparent)
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt, transparent)
             dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg,
                                 (0.26 * 255, 0.59 * 255, 0.98 * 255, 0.35 * 255))
             dpg.add_theme_color(dpg.mvThemeCol_DragDropTarget,

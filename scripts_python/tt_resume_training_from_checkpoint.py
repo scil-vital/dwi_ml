@@ -9,11 +9,13 @@ import os
 # Importing now to solve issues later.
 import comet_ml
 
+from dwi_ml.arg_utils import add_logging_arg
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
+from dwi_ml.io_utils import verify_which_model_in_path
 from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
+from dwi_ml.io_utils import verify_checkpoint_exists
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
 from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
@@ -54,18 +56,16 @@ def init_from_checkpoint(args, checkpoint_path):
 
     # Prepare model
     model_dir = os.path.join(checkpoint_path, 'model')
-    model_type = verify_which_model_in_path(model_dir)
-    print("Model's class: {}".format(model_type))
-    if model_type == 'OriginalTransformerModel':
-        cls = OriginalTransformerModel
-    elif model_type == 'TransformerSrcAndTgtModel':
-        cls = TransformerSrcAndTgtModel
-    elif model_type == 'TransformerSrcOnlyModel':
-        cls = TransformerSrcOnlyModel
-    else:
+    model_type, model_class = verify_which_model_in_path(model_dir)
+    logging.info("Model's class: {}".format(model_type))
+
+    if model_type not in [OriginalTransformerModel.__name__,
+                          TransformerSrcAndTgtModel.__name__,
+                          TransformerSrcOnlyModel.__name__]:
         raise ValueError("Model type not a recognized transformer Transformer"
                          "({})".format(model_type))
-    model = cls.load_model_from_params_and_state(model_dir, sub_loggers_level)
+    model = model_class.load_model_from_params_and_state(
+        model_dir, sub_loggers_level)
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
@@ -94,12 +94,8 @@ def main():
     logging.getLogger().setLevel(level=logging.INFO)
 
     # Verify if a checkpoint has been saved.
-    checkpoint_path = os.path.join(
-            args.experiments_path, args.experiment_name, "checkpoint")
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError("Experiment's checkpoint not found ({})."
-                                .format(checkpoint_path))
-
+    experiment_path = os.path.join(args.experiments_path, args.experiment_name)
+    checkpoint_path = verify_checkpoint_exists(experiment_path)
     trainer = init_from_checkpoint(args, checkpoint_path)
 
     run_experiment(trainer)

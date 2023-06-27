@@ -23,7 +23,7 @@ from scilpy.tracking.utils import (add_seeding_options,
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg
+from dwi_ml.arg_utils import add_logging_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.learn2track_tracker import RecurrentTracker

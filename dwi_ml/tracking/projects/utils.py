@@ -11,7 +11,7 @@ import numpy as np
 from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_arg_existing_experiment_path, add_memory_args
+from dwi_ml.arg_utils import add_arg_existing_experiment_path, add_memory_args
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.tracker import DWIMLAbstractTracker

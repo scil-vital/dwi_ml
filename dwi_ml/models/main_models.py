@@ -10,12 +10,12 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from dwi_ml.arg_utils import add_resample_or_compress_arg
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import prepare_neighborhood_vectors
 from dwi_ml.experiment_utils.prints import format_dict_to_str
-from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
 from dwi_ml.models.embeddings import keys_to_embeddings, NNEmbedding, NoEmbedding

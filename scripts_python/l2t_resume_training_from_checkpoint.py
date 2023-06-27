@@ -11,7 +11,8 @@ import comet_ml
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg
+from dwi_ml.arg_utils import add_logging_arg
+from dwi_ml.io_utils import verify_checkpoint_exists
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
@@ -82,13 +83,8 @@ def main():
     # user-defined level.
     logging.getLogger().setLevel(level=logging.INFO)
 
-    # Verify if a checkpoint has been saved.
-    checkpoint_path = os.path.join(
-            args.experiments_path, args.experiment_name, "checkpoint")
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError("Experiment's checkpoint not found ({})."
-                                .format(checkpoint_path))
-
+    experiment_path = os.path.join(args.experiments_path, args.experiment_name)
+    checkpoint_path = verify_checkpoint_exists(experiment_path)
     trainer = init_from_checkpoint(args, checkpoint_path)
 
     run_experiment(trainer)

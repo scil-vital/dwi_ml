@@ -23,7 +23,8 @@ from scilpy.tracking.utils import (add_seeding_options,
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
+from dwi_ml.arg_utils import add_logging_arg
+from dwi_ml.io_utils import verify_which_model_in_path
 from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
@@ -89,19 +90,16 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading model.")
         model_dir = os.path.join(args.experiment_path, 'best_model')
-        model_type = verify_which_model_in_path(model_dir)
-        print("Model's class: {}".format(model_type))
-        if model_type == 'OriginalTransformerModel':
-            cls = OriginalTransformerModel
-        elif model_type == 'TransformerSrcAndTgtModel':
-            cls = TransformerSrcAndTgtModel
-        elif model_type == 'TransformerSrcOnlyModel':
-            cls = TransformerSrcOnlyModel
-        else:
+        model_type, model_class = verify_which_model_in_path(model_dir)
+        logging.info("Model's class: {}".format(model_type))
+        if model_type not in [OriginalTransformerModel.__name__,
+                              TransformerSrcAndTgtModel.__name__,
+                              TransformerSrcOnlyModel.__name__]:
             raise ValueError("Model type not a recognized transformer Transformer"
                              "({})".format(model_type))
 
-        model = cls.load_model_from_params_and_state(model_dir, sub_logger_level)
+        model = model_class.load_model_from_params_and_state(
+            model_dir, sub_logger_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from dwi_ml.gui.menu_new_or_exisiting import launch_demo
+from dwi_ml.gui.main_menu import launch_demo
 
 
 def main():

@@ -22,3 +22,10 @@ def toggle_full_screen():
     # window inside.
     dpg.add_menu_item(label="Toggle Fullscreen",
                       callback=lambda: dpg.toggle_viewport_fullscreen())
+
+
+def callback_change_window(_, __, user_data):
+    current_window, next_window = user_data
+    dpg.hide_item(current_window)
+    dpg.show_item(next_window)
+    dpg.set_primary_window(next_window, True)

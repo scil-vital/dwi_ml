@@ -4,6 +4,11 @@ from argparse import ArgumentParser
 from scilpy.io.utils import add_processes_arg
 
 
+def add_args_to_parser(args, p):
+    for arg, val in args.items():
+        p.add_argument(arg, **val)
+
+
 def add_logging_arg(p):
     p.add_argument(
         '--logging', default='WARNING', metavar='level',

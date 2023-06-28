@@ -22,12 +22,11 @@ from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.arg_utils import add_logging_arg, add_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
-from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
+from dwi_ml.training.utils.batch_samplers import (get_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
                                                  prepare_batch_loader)
-from dwi_ml.training.utils.experiment import (
-    add_mandatory_args_experiment_and_hdf5_path)
+from dwi_ml.training.utils.experiment import get_mandatory_args_experiment_and_hdf5
 from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
     format_lr
 
@@ -35,13 +34,14 @@ from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    add_mandatory_args_experiment_and_hdf5_path(p)
+    args_dict = get_mandatory_args_experiment_and_hdf5()
+
     p.add_argument('pretrained_model',
                    help="Name of the pretrained experiment (from the same "
                         "experiments path) from which to load the model. "
                         "Should contain a 'best_model' folder with pickle "
                         "information to load the model")
-    add_args_batch_sampler(p)
+    get_args_batch_sampler(p)
     add_args_batch_loader(p)
     training_group = add_training_args(p, add_a_tracking_validation_phase=True)
     add_memory_args(p, add_lazy_options=True, add_rng=True)

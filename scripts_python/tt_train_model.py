@@ -26,12 +26,11 @@ from dwi_ml.models.projects.transformers_utils import (
     add_transformers_model_args)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
-from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
+from dwi_ml.training.utils.batch_samplers import (get_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
                                                  prepare_batch_loader)
-from dwi_ml.training.utils.experiment import (
-    add_mandatory_args_experiment_and_hdf5_path)
+from dwi_ml.training.utils.experiment import get_mandatory_args_experiment_and_hdf5
 from dwi_ml.training.utils.trainer import add_training_args, run_experiment, \
     format_lr
 
@@ -39,9 +38,9 @@ from dwi_ml.training.utils.trainer import add_training_args, run_experiment, \
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    add_mandatory_args_experiment_and_hdf5_path(p)
+    get_mandatory_args_experiment_and_hdf5(p)
     add_logging_arg(p)
-    add_args_batch_sampler(p)
+    get_args_batch_sampler(p)
     add_args_batch_loader(p)
     add_training_args(p, add_a_tracking_validation_phase=True)
 

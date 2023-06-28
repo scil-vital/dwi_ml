@@ -41,13 +41,14 @@ def set_global_theme():
     dark_gray = (50, 50, 50, 255)
     black = (25, 25, 25, 255)
     transparent = (0, 0, 0, 0)
-    blue_hover = (12, 203, 235, 103)
+    blue_hover = (12, 203, 235, 255)
     blue_background = (80, 150, 180, 255)
     chosen_purple = (130, 75, 177, 255)
     # dpg.show_style_editor()
 
     with dpg.theme() as global_theme:
         with dpg.theme_component(0):
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 5, 5)
 
             dpg.add_theme_color(dpg.mvThemeCol_Text, white)
             dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, light_gray)
@@ -59,7 +60,7 @@ def set_global_theme():
             dpg.add_theme_color(dpg.mvThemeCol_Border, gray)
             dpg.add_theme_color(dpg.mvThemeCol_BorderShadow, gray)
 
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, dark_gray)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, light_gray)
             dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, blue_hover)
             dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, chosen_purple)
 

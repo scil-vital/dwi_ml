@@ -8,11 +8,12 @@ import tempfile
 
 import nibabel as nib
 import numpy as np
-from dipy.io.stateful_tractogram import StatefulTractogram, Space, Origin
+from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.models.main_models import MainModelOneInput
+from dwi_ml.tracking.projects.utils import ALWAYS_VOX_SPACE, ALWAYS_CORNER
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import (
     create_test_batch_sampler, create_batch_loader, fetch_testing_data,
     ModelForTest)
@@ -92,8 +93,8 @@ def _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, suffix):
 
     # Save the last batch's SFT.
     logging.info("Saving subj's tractogram {}".format('test_batch1_' + suffix))
-    sft = StatefulTractogram(batch_streamlines, reference=ref, space=Space.VOX,
-                             origin=Origin('corner'))
+    sft = StatefulTractogram(batch_streamlines, reference=ref,
+                             space=ALWAYS_VOX_SPACE, origin=ALWAYS_CORNER)
 
     sft.data_per_streamline = {"seeds": [s[0] for s in batch_streamlines]}
     filename = os.path.join(results_folder, 'test_batch_' + suffix + '.trk')

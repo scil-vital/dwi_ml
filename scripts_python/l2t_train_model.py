@@ -11,7 +11,6 @@ import os
 # comet_ml not used, but comet_ml requires to be imported before torch.
 # See bug report here https://github.com/Lightning-AI/lightning/issues/5829
 # Importing now to solve issues later.
-import comet_ml
 import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
@@ -23,7 +22,6 @@ from dwi_ml.io_utils import add_logging_arg, add_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.models.projects.learn2track_utils import add_model_args
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
-from dwi_ml.tracking.utils import prepare_tracking_mask
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)

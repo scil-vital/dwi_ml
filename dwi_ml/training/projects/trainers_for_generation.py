@@ -11,7 +11,7 @@ from tqdm import tqdm
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
-from dwi_ml.tracking.utils import prepare_tracking_mask
+from dwi_ml.tracking.projects.utils import prepare_tracking_mask
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.monitoring import BatchHistoryMonitor, TimeMonitor
 

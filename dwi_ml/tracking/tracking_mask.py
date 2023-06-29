@@ -48,7 +48,7 @@ class TrackingMask:
         else:
             return torch_trilinear_interpolation(self.data, xyz)
 
-    def is_in_mask(self, xyz):
+    def is_vox_corner_in_mask(self, xyz):
         # Clipping to bound.
         xyz = torch.maximum(xyz, self.lower_bound)
         xyz = torch.minimum(xyz, self.higher_bound - eps)

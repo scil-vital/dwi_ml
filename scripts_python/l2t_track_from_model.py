@@ -28,14 +28,10 @@ from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.learn2track_tracker import RecurrentTracker
 from dwi_ml.tracking.tracking_mask import TrackingMask
-from dwi_ml.tracking.utils import (add_tracking_options,
-                                   prepare_seed_generator,
-                                   prepare_tracking_mask, track_and_save)
-
-# A decision should be made as if we should keep the last point (out of the
-# tracking mask). Currently keeping this as in Dipy, i.e. True. Could be
-# an option for the user.
-APPEND_LAST_POINT = True
+from dwi_ml.tracking.projects.utils import (add_tracking_options,
+                                            prepare_seed_generator,
+                                            prepare_tracking_mask, track_and_save,
+                                            APPEND_LAST_POINT)
 
 
 def build_argparser():

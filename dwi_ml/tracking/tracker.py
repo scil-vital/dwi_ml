@@ -7,10 +7,10 @@ import sys
 import traceback
 from typing import List
 
-from dipy.io.stateful_tractogram import Space, Origin
 from dipy.tracking.streamlinespeed import compress_streamlines
 import numpy as np
 import torch
+from dwi_ml.tracking.utils import prepare_step_size_vox
 from torch import Tensor
 from tqdm.contrib.logging import tqdm_logging_redirect
 
@@ -23,7 +23,6 @@ from dwi_ml.models.main_models import ModelWithDirectionGetter, \
     MainModelOneInput
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.tracking_mask import TrackingMask
-from dwi_ml.tracking.utils import prepare_step_size_vox
 
 logger = logging.getLogger('tracker_logger')
 
@@ -179,11 +178,6 @@ class DWIMLAbstractTracker:
         # Uses torch's module eval(), which "turns off" the training mode.
         self.model.eval()
         self.grad_context = torch.no_grad()
-
-        # Space and origin
-        # torch trilinear interpolation uses origin='corner', space=vox.
-        self.origin = Origin('corner')
-        self.space = Space.VOX
 
         # Nb points
         if self.min_nbr_pts <= 0:
@@ -374,15 +368,13 @@ class DWIMLAbstractTracker:
                 streamline = np.array(line, dtype='float32')
 
                 if self.compression_th and self.compression_th > 0:
-                    # Compressing. Threshold is in mm. Verifying space.
-                    if self.space == Space.VOX:
-                        # Equivalent of sft.to_voxmm:
-                        streamline *= self.seed_generator.voxres
-                        compress_streamlines(streamline, self.compression_th)
-                        # Equivalent of sft.to_vox:
-                        streamline /= self.seed_generator.voxres
-                    else:
-                        compress_streamlines(streamline, self.compression_th)
+                    # Compressing. Threshold is in mm. Considering that we work
+                    # in vox space, changing:
+                    # Equivalent of sft.to_voxmm:
+                    streamline *= self.seed_generator.voxres
+                    compress_streamlines(streamline, self.compression_th)
+                    # Equivalent of sft.to_vox:
+                    streamline /= self.seed_generator.voxres
 
                 streamlines.append(streamline)
 
@@ -438,14 +430,14 @@ class DWIMLAbstractTracker:
 
         logger.debug("Starting forward")
         self.prepare_forward(seeds)
-        lines = self.propagate_multiple_lines(lines)
+        lines = self._propagate_multiple_lines(lines)
 
         if not self.track_forward_only:
             logger.debug("Starting backward")
             lines, rej_idx = self.prepare_backward(lines)
             if rej_idx is not None and len(rej_idx) > 0:
                 seeds = [s for i, s in enumerate(seeds) if i not in rej_idx]
-            lines = self.propagate_multiple_lines(lines)
+            lines = self._propagate_multiple_lines(lines)
 
         # Clean streamlines
         # Max is already checked as stopping criteria.
@@ -456,7 +448,7 @@ class DWIMLAbstractTracker:
 
         return clean_lines, clean_seeds
 
-    def propagate_multiple_lines(self, lines: List[Tensor]):
+    def _propagate_multiple_lines(self, lines: List[Tensor]):
         return propagate_multiple_lines(
             lines, self.update_memory_after_removing_lines,
             self.get_next_dirs, self.theta, self.step_size,

@@ -199,7 +199,7 @@ def _verify_stopping_criteria(n_last_pos, lines, mask=None, max_nbr_pts=None):
             # continue.
             still_on = ~stopping
 
-            out_of_mask = ~mask.is_in_mask(n_last_pos[still_on]).cpu().numpy()
+            out_of_mask = ~mask.is_vox_corner_in_mask(n_last_pos[still_on]).cpu().numpy()
             if sum(out_of_mask) > 0:
                 logger.debug("{} streamlines stopping out of mask."
                              .format(sum(out_of_mask)))

@@ -7,10 +7,10 @@ def start_dpg():
     dpg.create_viewport(title='Welcome to dwi_ml', width=1300, height=800)
     global_theme = set_global_theme()
     dpg.bind_theme(global_theme)
+    dpg.setup_dearpygui()
 
 
 def show_and_end_dpg():
-    dpg.setup_dearpygui()
     dpg.show_viewport()
     dpg.set_primary_window("Primary Window", True)
     dpg.start_dearpygui()

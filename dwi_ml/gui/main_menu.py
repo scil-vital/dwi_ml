@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import time
 
 import dearpygui.dearpygui as dpg
 
@@ -7,6 +8,8 @@ from dwi_ml.gui.l2t_menus import open_l2t_from_checkpoint_window, \
     prepare_and_show_train_l2t_window
 from dwi_ml.gui.transformers_menus import open_tto_from_checkpoint_window, \
     open_ttst_from_checkpoint_window, open_tto_window, open_ttst_window
+from dwi_ml.gui.utils.gui_popup_message import show_infobox, \
+    simply_close_infobox
 from dwi_ml.gui.utils.inputs import assert_single_choice_file_dialog
 from dwi_ml.gui.utils.my_styles import get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import start_dpg, show_and_end_dpg
@@ -18,7 +21,6 @@ def file_dialog_ok_callback(sender, app_data):
     chosen_path = app_data['current_path']
     if sender == "file_dialog_resume_from_checkpoint":
         open_checkpoint_subwindow(chosen_path)
-    # else, nothing. We can access the value of the sender later.
 
 
 def file_dialog_cancel_callback(_, __):
@@ -60,8 +62,8 @@ def prepare_main_menu():
     # ---------
     titles = []
     with dpg.window(tag="Primary Window"):
-        main_title = dpg.add_text("                                               "
-                                  "                 WELCOME TO DWI_ML")
+        main_title = dpg.add_text("                                           "
+                                  "                     WELCOME TO DWI_ML")
 
         ##########
         # 1. Preparing the HDF5
@@ -114,7 +116,16 @@ def prepare_main_menu():
 def open_checkpoint_subwindow(chosen_path):
     # toDo: if raises a FileNotFoundError, show a pop-up warning?
     #  Currently, prints the warning in terminal.
-    checkpoint_path = verify_checkpoint_exists(chosen_path)
+    try:
+        checkpoint_path = verify_checkpoint_exists(chosen_path)
+    except FileNotFoundError:
+        print("SHOULD SHOW A WARNING")
+        show_infobox("Wrong experiment path!",
+                     "No checkpoint folder found in this directory! Is this "
+                     "really an experiment path? Please select another one."
+                     "\n\n"
+                     "(Chosen path: {})".format(chosen_path))
+        return
 
     model_dir = os.path.join(checkpoint_path, 'model')
     model_type = verify_which_model_in_path(model_dir)

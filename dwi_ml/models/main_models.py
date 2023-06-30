@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 from dwi_ml.data.processing.space.neighborhood import prepare_neighborhood_vectors
@@ -97,6 +98,10 @@ class MainModelAbstract(torch.nn.Module):
     def set_context(self, context):
         assert context in ['training', 'tracking']
         self._context = context
+
+    @property
+    def context(self):
+        return self._context
 
     def move_to(self, device):
         """
@@ -373,8 +378,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 
 class MainModelOneInput(MainModelAbstract):
-    def prepare_batch_one_input(self, streamlines, subset, subj,
-                                input_group_idx, prepare_mask=False):
+    def prepare_batch_one_input(self, streamlines, subset: MultisubjectSubset,
+                                subj, input_group_idx, prepare_mask=False):
         """
         These params are passed by either the batch loader or the propagator,
         which manage the data.
@@ -514,11 +519,12 @@ class ModelWithDirectionGetter(MainModelAbstract):
 
         Returns
         -------
-        next_dir: list[array(3,)]
-            Numpy arrays with x,y,z value, one per streamline data point.
+        next_dir: torch.Tensor
+            A tensor of shape [n, 3] with the next direction for each output.
         """
-        return self.direction_getter.get_tracking_directions(
+        dirs = self.direction_getter.get_tracking_directions(
             model_outputs, algo, eos_stopping_thresh)
+        return dirs
 
     def compute_loss(self, model_outputs: List[Tensor], target_streamlines,
                      average_results=True, **kw):

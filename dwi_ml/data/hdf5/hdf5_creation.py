@@ -3,13 +3,14 @@ import datetime
 import logging
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 from dipy.io.stateful_tractogram import set_sft_logger_level, Space
 from dipy.io.streamline import load_tractogram, save_tractogram
 from dipy.io.utils import is_header_compatible
 from dipy.tracking.utils import length
 import h5py
+
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
 from nested_lookup import nested_lookup
@@ -20,6 +21,8 @@ from scilpy.tractograms.tractogram_operations import concatenate_sft
 
 from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_triu_connectivity
 
 
 def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
@@ -106,7 +109,10 @@ class HDF5Creator:
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
                  std_mask: str, step_size: float = None,
-                 compress: float = None, enforce_files_presence: bool = True,
+                 compress: float = None,
+                 compute_connectivity_matrix: bool = False,
+                 downsampled_size_for_connectivity: Union[int, list] = 20,
+                 enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
         """
@@ -129,6 +135,11 @@ class HDF5Creator:
             Step size to resample streamlines. Default: None.
         compress: float
             Compress streamlines. Default: None.
+        compute_connectivity_matrix: bool
+            Compute connectivity matrix for each streamline group.
+            Default: False.
+        downsampled_size_for_connectivity: int or List
+            See compute_connectivity_matrix's doc.
         enforce_files_presence: bool
             If true, will stop if some files are not available for a subject.
             Default: True.
@@ -147,6 +158,20 @@ class HDF5Creator:
         self.groups_config = groups_config
         self.step_size = step_size
         self.compress = compress
+        self.compute_connectivity = compute_connectivity_matrix
+        if self.compute_connectivity:
+            if isinstance(downsampled_size_for_connectivity, List):
+                assert len(downsampled_size_for_connectivity) == 3, \
+                    "Expecting to work with 3D volumes. Expecting " \
+                    "connectivity downsample size to be a list of 3 values, " \
+                    "but got {}.".format(downsampled_size_for_connectivity)
+                self.connectivity_downsample_size = downsampled_size_for_connectivity
+            else:
+                assert isinstance(downsampled_size_for_connectivity, int), \
+                    "Expecting the connectivity matrix size to be either " \
+                    "a 3D list or an integer, but got {}" \
+                    .format(downsampled_size_for_connectivity)
+            self.connectivity_downsample_size = [downsampled_size_for_connectivity] * 3
 
         # Optional
         self.std_mask = std_mask  # (could be None)
@@ -556,12 +581,14 @@ class HDF5Creator:
             streamlines_group.attrs['dimensions'] = d
             streamlines_group.attrs['voxel_sizes'] = vs
             streamlines_group.attrs['voxel_order'] = vo
+            if self.compute_connectivity:
+                streamlines_group.attrs['downsampled_size'] = \
+                    self.connectivity_downsample_size
 
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
             if len(sft.data_per_streamline) > 0:
-                logging.debug('sft contained data_per_streamlines. Data not '
-                              'kept.')
+                logging.debug('sft contained data_per_streamlines. Data not kept.')
 
             # Accessing private Dipy values, but necessary.
             # We need to deconstruct the streamlines into arrays with
@@ -573,6 +600,18 @@ class HDF5Creator:
             streamlines_group.create_dataset('lengths',
                                              data=sft.streamlines._lengths)
             streamlines_group.create_dataset('euclidean_lengths', data=lengths)
+
+            if self.compute_connectivity:
+                # Can be reduced using sparse tensors notation... always
+                # minimum 50% of zeros! Then we could save separately
+                # the indices, values, size of the tensor. But unclear how
+                # much sparse they need to be to actually save memory.
+                # Skipping for now.
+                streamlines_group.create_dataset(
+                    'connectivity_matrix',
+                    data=compute_triu_connectivity(
+                        sft.streamlines, d, self.connectivity_downsample_size,
+                        binary=True, to_sparse_tensor=False))
 
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,
@@ -602,7 +641,7 @@ class HDF5Creator:
         final_tractogram : StatefulTractogram
             All streamlines in voxel space.
         output_lengths : List[float]
-            The euclidean length of each streamline
+            The Euclidean length of each streamline
         """
         tractograms = self.groups_config[group]['files']
 
@@ -621,7 +660,7 @@ class HDF5Creator:
 
         for instructions in tractograms:
             if instructions.endswith('/ALL'):
-                # instructions is to get all tractograms in given folder.
+                # instructions are to get all tractograms in given folder.
                 tractograms_dir = instructions.split('/ALL')
                 tractograms_dir = ''.join(tractograms_dir[:-1])
                 tractograms_sublist = [

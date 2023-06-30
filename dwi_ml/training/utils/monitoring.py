@@ -8,7 +8,8 @@ import numpy as np
 
 
 class TimeMonitor(object):
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name
         self.epoch_durations = []
         self._start_time = None
 
@@ -49,7 +50,8 @@ class BatchHistoryMonitor(object):
         loss_monitor.epochs_means  # returns the loss curve as a list
     """
 
-    def __init__(self, weighted: bool = False):
+    def __init__(self, name, weighted: bool = False):
+        self.name = name
         self.is_weighted = weighted
 
         # State:
@@ -58,7 +60,7 @@ class BatchHistoryMonitor(object):
         self.average_per_epoch = []
         self.current_epoch = -1
 
-    def update(self, value, weight=None):
+    def update(self, value, weight=1):
         """
         Note. Does not save the update if value is inf.
 
@@ -127,7 +129,7 @@ class BestEpochMonitor(object):
     number of epochs ("patience").
     """
 
-    def __init__(self, patience: int, patience_delta: float = 1e-6):
+    def __init__(self, name, patience: int, patience_delta: float = 1e-6):
         """
         Parameters
         -----------
@@ -137,6 +139,7 @@ class BestEpochMonitor(object):
             Precision term to define what we consider as "improving": when the
             loss is at least min_eps smaller than the previous best loss.
         """
+        self.name = name
         self.patience = patience
         self.min_eps = patience_delta
 

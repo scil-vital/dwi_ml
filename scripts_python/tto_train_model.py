@@ -43,7 +43,7 @@ def prepare_arg_parser():
     add_logging_arg(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
-    add_training_args(p)
+    add_training_args(p, add_a_tracking_validation_phase=True)
 
     # Specific to Transformers:
     gt = add_abstract_model_args(p)
@@ -102,8 +102,9 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         lr = format_lr(args.learning_rate)
         trainer = TransformerTrainer(
-            model, args.experiments_path, args.experiment_name,
-            batch_sampler, batch_loader,
+            model=model, experiments_path=args.experiments_path,
+            experiment_name=args.experiment_name, batch_sampler=batch_sampler,
+            batch_loader=batch_loader,
             # COMET
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
@@ -114,6 +115,11 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, patience_delta=args.patience_delta,
             from_checkpoint=False,
+            # (generation validation:)
+            add_a_tracking_validation_phase=args.add_a_tracking_validation_phase,
+            tracking_phase_frequency=args.tracking_phase_frequency,
+            tracking_phase_nb_steps_init=args.tracking_phase_nb_steps_init,
+            tracking_phase_mask_group=args.tracking_mask,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
             log_level=args.logging)

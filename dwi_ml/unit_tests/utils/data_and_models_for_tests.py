@@ -140,7 +140,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
 
     def get_tracking_directions(self, regressed_dirs, algo):
         if algo == 'det':
-            return regressed_dirs.detach()
+            return regressed_dirs
         elif algo == 'prob':
             raise NotImplementedError(
                 "Our test model uses (fake) regression and does not allow "

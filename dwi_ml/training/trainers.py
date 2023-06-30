@@ -40,19 +40,15 @@ class DWIMLAbstractTrainer:
     """
     This Trainer class's train_and_validate() method:
         - Creates DataLoaders from the data_loaders. Collate_fn will be the
-        loader.load_batch() method, and the dataset will be
-        sampler.source_data.
-        - Trains each epoch by using compute_batch_loss, which should be
-        implemented in each project's child class.
+        found in the batch loader, and the dataset will be found in the data
+        sampler.
+        - Trains each epoch by using the model's loss computation method.
 
     Comet is used to save training information, but some logs will also be
     saved locally in the saving_path.
 
-    NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, TO CORNER.
+    NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, CORNER ORIGIN.
     """
-    # For now, this is ugly... But the option is there if you want.
-    save_logs_per_batch = False
-
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
@@ -267,17 +263,31 @@ class DWIMLAbstractTrainer:
         # D. Monitors
         # grad_norm = The total norm (sqrt(sum(params**2))) of parameters
         # before gradient clipping, if any.
-        self.train_loss_monitor = BatchHistoryMonitor(weighted=True)
-        self.valid_loss_monitor = BatchHistoryMonitor(weighted=True)
-        self.grad_norm_monitor = BatchHistoryMonitor(weighted=False)
-        self.training_time_monitor = TimeMonitor()
-        self.validation_time_monitor = TimeMonitor()
-        if patience:
-            self.best_epoch_monitor = BestEpochMonitor(patience, patience_delta)
-        else:
-            # We won't use early stopping to stop the epoch, but we will use
-            # it as monitor of the best epochs.
-            self.best_epoch_monitor = BestEpochMonitor(patience=np.inf)
+
+        # Training: only one monitor.
+        self.train_loss_monitor = BatchHistoryMonitor(
+            'train_loss_monitor', weighted=True)
+
+        # Validation: As many supervision losses as we want.
+        self.valid_local_loss_monitor = BatchHistoryMonitor(
+            'valid_local_loss_monitor', weighted=True)
+        self.grad_norm_monitor = BatchHistoryMonitor(
+            'grad_norm_monitor', weighted=False)
+        self.training_time_monitor = TimeMonitor('training_time_monitor')
+        self.validation_time_monitor = TimeMonitor('validation_time_monitor')
+        if not patience:
+            patience = np.inf
+        self.best_epoch_monitor = BestEpochMonitor(
+            'best_epoch_monitor', patience, patience_delta)
+        self.monitors = [self.train_loss_monitor,
+                         self.valid_local_loss_monitor,
+                         self.grad_norm_monitor, self.training_time_monitor,
+                         self.validation_time_monitor, self.best_epoch_monitor]
+        self.training_monitors = [self.train_loss_monitor,
+                                  self.grad_norm_monitor,
+                                  self.training_time_monitor]
+        self.validation_monitors = [self.valid_local_loss_monitor,
+                                    self.validation_time_monitor]
 
         # E. Comet Experiment
         # Values will be instantiated in train().
@@ -309,14 +319,16 @@ class DWIMLAbstractTrainer:
 
     @property
     def params_for_checkpoint(self):
-        # These are the parameters necessary to use _init_, together with
-        # instantiated classes (model, batch loader, batch sampler).
-
+        """
+        Returns the parameters necessary to initialize an identical Trainer.
+        However, the trainer's state could need to be updated (see checkpoint
+        management).
+        """
         # Not saving experiment_path and experiment_name. Allowing user to
         # move the experiment on his computer between training sessions.
 
-        # Patience and patience delta will be taken from the best epoch monitor.
-
+        # Patience is not saved here: we manage it separately to allow the
+        # user to increase the patience when running again.
         params = {
             'learning_rates': self.learning_rates,
             'weight_decay': self.weight_decay,
@@ -333,9 +345,8 @@ class DWIMLAbstractTrainer:
 
     def save_params_to_json(self):
         """
-        Utility method to save the parameters to a json file in the same
-        folder as the experiment. Suggestion, call this after instantiating
-        your trainer.
+        Save the trainer's parameters to a json file in the same folder as the
+        experiment.
         """
         now = datetime.now()
         json_filename = os.path.join(self.saving_path, "parameters_{}.json"
@@ -357,14 +368,12 @@ class DWIMLAbstractTrainer:
 
     def save_checkpoint(self):
         """
-        Save an experiment checkpoint that can be resumed from.
+        Saves an experiment checkpoint, with parameters and states.
         """
         logger.debug("Saving checkpoint...")
-
-        # Make checkpoint directory
         checkpoint_dir = os.path.join(self.saving_path, "checkpoint")
 
-        # Backup old checkpoint before saving, and erase it afterwards
+        # Backup old checkpoint before saving, and erase it afterward.
         to_remove = None
         if os.path.exists(checkpoint_dir):
             to_remove = os.path.join(self.saving_path, "checkpoint_old")
@@ -386,33 +395,33 @@ class DWIMLAbstractTrainer:
             shutil.rmtree(to_remove)
 
     def _prepare_checkpoint_info(self) -> dict:
-        # These are parameters that should be updated after instantiating cls.
-
+        """
+        To instantiate a Trainer, we need the initialization parameters
+        (self.params_for_checkpoint), and the states. This method returns
+        the dictionary of required states.
+        """
         # Note. batch sampler's rng state and batch loader's are the same.
         current_states = {
-            # A. Rng value.
+            # Rng value.
             'torch_rng_state': torch.random.get_rng_state(),
             'torch_cuda_state':
                 torch.cuda.get_rng_state() if self.use_gpu else None,
             'sampler_np_rng_state': self.batch_sampler.np_rng.get_state(),
             'loader_np_rng_state': self.batch_loader.np_rng.get_state(),
-            # B. Current epoch.
+            # Current epoch.
             'current_epoch': self.current_epoch,
-            # C. Nb of batches per epoch.
+            # Nb of batches per epoch.
             'nb_batches_train': self.nb_batches_train,
             'nb_batches_valid': self.nb_batches_valid,
-            # D. Monitors
-            'best_epoch_monitoring_state': self.best_epoch_monitor.get_state(),
-            'train_loss_monitor_state': self.train_loss_monitor.get_state(),
-            'valid_loss_monitor_state': self.valid_loss_monitor.get_state(),
-            'grad_norm_monitor_state': self.grad_norm_monitor.get_state(),
-            'training_time_monitor_state': self.training_time_monitor.get_state(),
-            'validation_time_monitor_state': self.validation_time_monitor.get_state(),
-            # E. Comet Experiment
+            # Comet Experiment
             'comet_key': self.comet_key,
-            # F. Optimizer
+            # Optimizer
             'optimizer_state': self.optimizer.state_dict(),
         }
+
+        # Monitors
+        for monitor in self.monitors:
+            current_states[monitor.name + '_state'] = monitor.get_state()
 
         # Additional params are the parameters necessary to load data, batch
         # samplers/loaders (see the example script dwiml_train_model.py).
@@ -433,16 +442,13 @@ class DWIMLAbstractTrainer:
             batch_loader: DWIMLAbstractBatchLoader,
             checkpoint_state: dict, new_patience, new_max_epochs, log_level):
         """
-        During save_checkpoint(), checkpoint_state.pkl is saved. Loading it
-        back offers a dict that can be used to instantiate an experiment and
-        set it at the same state as previously. (Current_epoch is updated +1).
-
-        Hint: If you want to use this in your child class, use:
-        experiment, checkpoint_state = super(cls, cls).init_from_checkpoint(...
+        Loads checkpoint information (parameters and states) to instantiate
+        a Trainer. Current_epoch is updated +1.
         """
         trainer_params = checkpoint_state['params_for_init']
         trainer = cls(model=model, experiments_path=experiments_path,
-                      experiment_name=experiment_name, batch_sampler=batch_sampler,
+                      experiment_name=experiment_name,
+                      batch_sampler=batch_sampler,
                       batch_loader=batch_loader, from_checkpoint=True,
                       log_level=log_level, **trainer_params)
 
@@ -450,6 +456,9 @@ class DWIMLAbstractTrainer:
             trainer.max_epochs = new_max_epochs
 
         # Save params to json to help user remember.
+        current_states = checkpoint_state['current_states']
+        trainer._update_states_from_checkpoint(current_states)
+
         if new_patience:
             trainer.best_epoch_monitor.patience = new_patience
         logger.info("Starting from checkpoint! Starting from epoch #{}.\n"
@@ -460,11 +469,24 @@ class DWIMLAbstractTrainer:
                             trainer.best_epoch_monitor.best_epoch,
                             trainer.best_epoch_monitor.n_bad_epochs))
 
-        current_states = checkpoint_state['current_states']
-        trainer._update_states_from_checkpoint(current_states)
         return trainer
 
+    @staticmethod
+    def load_params_from_checkpoint(experiments_path: str, experiment_name: str):
+        total_path = os.path.join(
+            experiments_path, experiment_name, "checkpoint",
+            "checkpoint_state.pkl")
+        if not os.path.isfile(total_path):
+            raise FileNotFoundError('Checkpoint was not found! ({})'
+                                    .format(total_path))
+        checkpoint_state = torch.load(total_path)
+
+        return checkpoint_state
+
     def _update_states_from_checkpoint(self, current_states):
+        """
+        Updates all states from the checkpoint dictionary of states.
+        """
         # A. Rng value.
         # RNG:
         #  - numpy
@@ -483,24 +505,21 @@ class DWIMLAbstractTrainer:
         self.nb_batches_train = current_states['nb_batches_train']
         self.nb_batches_valid = current_states['nb_batches_valid']
 
-        # D. Monitors
-        self.best_epoch_monitor.set_state(current_states['best_epoch_monitoring_state'])
-        self.train_loss_monitor.set_state(current_states['train_loss_monitor_state'])
-        self.valid_loss_monitor.set_state(current_states['valid_loss_monitor_state'])
-        self.grad_norm_monitor.set_state(current_states['grad_norm_monitor_state'])
-        self.training_time_monitor.set_state(current_states['training_time_monitor_state'])
-        self.validation_time_monitor.set_state(current_states['validation_time_monitor_state'])
-
-        # E. Comet Experiment
+        # D. Comet Experiment
         # Experiment will be instantiated in train().
         self.comet_key = current_states['comet_key']
 
-        # F. Optimizer
+        # E. Optimizer
         self.optimizer.load_state_dict(current_states['optimizer_state'])
+
+        # F. Monitors
+        for monitor in self.monitors:
+            monitor.set_state(current_states[monitor.name + '_state'])
 
     def _init_comet(self):
         """
-        For more information on comet, see our doc/Getting Started
+        Initialize comet's experiment. User's account and workspace must be
+        already set.
         """
         try:
             if self.comet_key:
@@ -543,11 +562,10 @@ class DWIMLAbstractTrainer:
 
     def estimate_nb_batches_per_epoch(self):
         """
-        Please override in your child class if you have a better way to
-        define the epochs sizes.
+        Counts the number of training / validation batches required to see all
+        the data (up to the maximum number of allowed batches).
 
-        Returns:
-             (nb_training_batches_per_epoch, nb_validation_batches_per_epoch)
+        Data must be already loaded to access the information.
         """
         streamline_group = self.batch_sampler.streamline_group_idx
         train_set = self.batch_sampler.dataset.training_set
@@ -578,16 +596,16 @@ class DWIMLAbstractTrainer:
 
     def train_and_validate(self):
         """
-        Train + validates the model (+ computes loss)
+        Trains + validates the model. Computes the training loss at each
+        training loop, and many validation metrics at each validation loop.
 
         - Starts comet,
         - Creates DataLoaders from the BatchSamplers,
         - For each epoch
             - uses _train_one_epoch and _validate_one_epoch,
-            - checks for earlyStopping if the loss is bad,
+            - saves a checkpoint,
+            - checks for earlyStopping if the loss is bad or patience is reached,
             - saves the model if the loss is good.
-        - Checks if allowed training time is exceeded.
-
         """
         logger.debug("Trainer {}: \nRunning the model {}.\n\n"
                      .format(type(self), type(self.model)))
@@ -616,7 +634,7 @@ class DWIMLAbstractTrainer:
             if self.comet_exp:
                 self.comet_exp.set_epoch(epoch)
 
-            logger.info("******* STARTING : Epoch {} (i.e. #{}) *******"
+            logger.info("\n\n******* STARTING : Epoch {} (i.e. #{}) *******"
                         .format(epoch, epoch + 1))
 
             # Set learning rate to either current value or last value
@@ -670,26 +688,38 @@ class DWIMLAbstractTrainer:
                 break
 
     def _get_latest_loss_to_supervise_best(self):
+        """
+        Defines the metric to be used to define the best model. Override if
+        you have other validation metrics.
+        """
         if self.use_validation:
-            mean_epoch_loss = self.valid_loss_monitor.average_per_epoch[-1]
+            mean_epoch_loss = self.valid_local_loss_monitor.average_per_epoch[-1]
         else:
             mean_epoch_loss = self.train_loss_monitor.average_per_epoch[-1]
 
         return mean_epoch_loss
 
     def save_local_logs(self):
-        self._save_log_locally(self.train_loss_monitor.average_per_epoch,
-                               "training_loss_per_epoch.npy")
-        self._save_log_locally(self.valid_loss_monitor.average_per_epoch,
-                               "validation_loss_per_epoch.npy")
-        self._save_log_locally(self.grad_norm_monitor.average_per_epoch,
-                               "gradient_norm.npy")
-        self._save_log_locally(self.training_time_monitor.epoch_durations,
-                               "training_epochs_duration")
-        self._save_log_locally(self.validation_time_monitor.epoch_durations,
-                               "validation_epochs_duration")
+        """
+        Save logs locally as numpy arrays.
+        """
+        for monitor in self.monitors:
+            if isinstance(monitor, BatchHistoryMonitor):
+                self._save_log_locally(monitor.average_per_epoch,
+                                       monitor.name + '_per_epoch.npy')
+            elif isinstance(monitor, TimeMonitor):
+                self._save_log_locally(monitor.epoch_durations,
+                                       monitor.name + '_duration.npy')
+
+    def _save_log_locally(self, array: np.ndarray, fname: str):
+        np.save(os.path.join(self.log_dir, fname), array)
 
     def _clear_handles(self):
+        """
+        Trying to improve the handles management.
+        Todo. Improve again. CPU multiprocessing fails because of handles
+         management.
+        """
         # Make sure there are no existing HDF handles if using parallel workers
         if (self.nb_cpu_processes > 0 and
                 self.batch_sampler.context_subset.is_lazy):
@@ -700,11 +730,15 @@ class DWIMLAbstractTrainer:
         logger.debug('*** Computing back propagation')
         loss.backward()
 
-        self.fix_parameters()  # Ex: clip gradients
+        # Any other steps. Ex: clip gradients. Not implemented here.
+        # See Learn2track's Trainer for an example.
+        self.fix_parameters()
+
+        # Supervizing the gradient's norm.
         grad_norm = compute_gradient_norm(self.model.parameters())
 
         # Update parameters
-        # toDo. We could update only every n steps.
+        # Future work: We could update only every n steps.
         #  Effective batch size is n time bigger.
         #  See here https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
         self.optimizer.step()
@@ -717,11 +751,11 @@ class DWIMLAbstractTrainer:
 
     def train_one_epoch(self, epoch):
         """
-        Train one epoch of the model: loop on all batches (forward + backward).
+        Trains one epoch of the model: loops on all batches
+        (forward + backpropagation).
         """
-        self.training_time_monitor.start_new_epoch()
-        self.train_loss_monitor.start_new_epoch()
-        self.grad_norm_monitor.start_new_epoch()
+        for monitor in self.training_monitors:
+            monitor.start_new_epoch()
 
         # Setting contexts
         self.batch_loader.set_context('training')
@@ -754,13 +788,9 @@ class DWIMLAbstractTrainer:
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
                 with grad_context():
-                    mean_loss, n = self.run_one_batch(data)
+                    mean_loss = self.train_one_batch(data, epoch)
 
                 grad_norm = self.back_propagation(mean_loss)
-
-                # Update information and logs
-                mean_loss = mean_loss.cpu().item()
-                self.train_loss_monitor.update(mean_loss, weight=n)
                 self.grad_norm_monitor.update(grad_norm)
 
             # Explicitly delete iterator to kill threads and free memory before
@@ -768,9 +798,8 @@ class DWIMLAbstractTrainer:
             del train_iterator
 
         # Saving epoch's information
-        self.train_loss_monitor.end_epoch()
-        self.grad_norm_monitor.end_epoch()
-        self.training_time_monitor.end_epoch()
+        for monitor in self.training_monitors:
+            monitor.end_epoch()
         self._update_comet_after_epoch('training', epoch)
 
         all_n = self.train_loss_monitor.current_epoch_batch_weights
@@ -779,10 +808,10 @@ class DWIMLAbstractTrainer:
 
     def validate_one_epoch(self, epoch):
         """
-        Validate one epoch of the model: loop on all batches.
+        Validates one epoch of the model: loops on all batches.
         """
-        self.validation_time_monitor.start_new_epoch()
-        self.valid_loss_monitor.start_new_epoch()
+        for monitor in self.validation_monitors:
+            monitor.start_new_epoch()
 
         # Setting contexts
         # Turn gradients off (no back-propagation)
@@ -791,7 +820,6 @@ class DWIMLAbstractTrainer:
         self.batch_sampler.set_context('validation')
         self.model.set_context('validation')
         self.model.eval()
-        grad_context = torch.no_grad
 
         # Make sure there are no existing HDF handles if using parallel workers
         if (self.nb_cpu_processes > 0 and
@@ -813,49 +841,66 @@ class DWIMLAbstractTrainer:
                     break
 
                 # Validate this batch: forward propagation + loss
-                with grad_context():
-                    mean_loss, n = self.validate_one_batch(data, epoch)
-
-                mean_loss = mean_loss.cpu().item()
-
-                self.valid_loss_monitor.update(mean_loss, weight=n)
+                with torch.no_grad():
+                    self.validate_one_batch(data, epoch)
 
             # Explicitly delete iterator to kill threads and free memory before
             # running training again
             del valid_iterator
 
         # Save info
-        self.valid_loss_monitor.end_epoch()
-        self.validation_time_monitor.end_epoch()
+        for monitor in self.validation_monitors:
+            monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
 
-    def validate_one_batch(self, data, epoch):
+    def train_one_batch(self, data, epoch):
+        """
+        Computes the loss for the current batch and updates monitors.
+        Returns the loss to be used for backpropagation.
+        """
         # Encapsulated for easier management of child classes.
-        mean_loss, n = self.run_one_batch(data)
-        return mean_loss, n
+        mean_local_loss, n = self.run_one_batch(data)
+        self.train_loss_monitor.update(mean_local_loss.cpu().item(),
+                                       weight=n)
+        return mean_local_loss
+
+    def validate_one_batch(self, data, epoch):
+        """
+        Computes the loss(es) for the current batch and updates monitors.
+        """
+        mean_local_loss, n = self.run_one_batch(data)
+        self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
+                                             weight=n)
 
     def _update_comet_after_epoch(self, context: str, epoch: int):
         """
-        Update logs:
-            - logging to user
-            - get values from monitors and save final log locally.
-            - send mean data to comet
-
-        local_context: prefix when saving log. Training_ or Validate_ for
-        instance.
+        Sends monitors information to comet.
         """
         if context == 'training':
-            loss = self.train_loss_monitor.average_per_epoch[-1]
+            monitors = self.training_monitors
         elif context == 'validation':
-            loss = self.valid_loss_monitor.average_per_epoch[-1]
+            monitors = self.validation_monitors
         else:
-            raise ValueError("Unexpected context.")
-        logger.info("   Mean loss for this epoch: {}".format(loss))
+            raise ValueError("Unexpected context ({}). Expecting "
+                             "training or validation.")
+
+        logs = []
+        for monitor in monitors:
+            if isinstance(monitor, BatchHistoryMonitor):
+                value = monitor.average_per_epoch[-1]
+            elif isinstance(monitor, TimeMonitor):
+                value = monitor.epoch_durations[-1]
+            else:
+                continue
+            logger.info("   Mean {} for this epoch: {}"
+                        .format(monitor.name, value))
+            logs.append((value, monitor.name))
 
         if self.comet_exp:
+            # Comet context: will add train_(loss) or valid_(loss) to the
+            # monitors name in comet.
             if context == 'training':
                 comet_context = self.comet_exp.train
-                self._update_gradnorm_logs_after_epoch(comet_context, epoch)
             else:  # context == 'validation':
                 comet_context = self.comet_exp.validate
 
@@ -865,18 +910,15 @@ class DWIMLAbstractTrainer:
                 # Cheating. To have a correct plotting per epoch (no step)
                 # using step = epoch. In comet_ml, it is intended to be
                 # step = batch.
-                self.comet_exp.log_metric("loss_per_epoch", loss, epoch=0,
-                                          step=epoch)
-
-    def _update_gradnorm_logs_after_epoch(self, comet_context, epoch: int):
-        if self.comet_exp:
-            with comet_context():
-                self.comet_exp.log_metric(
-                    "mean_gradient_norm_per_epoch",
-                    self.grad_norm_monitor.average_per_epoch[epoch],
-                    epoch=None, step=epoch)
+                for log in logs:
+                    self.comet_exp.log_metric(
+                        log[1], log[0], epoch=0, step=epoch)
 
     def _save_best_model(self):
+        """
+        Saves the current state of the model in the best_model folder.
+        Saves the loss to a json folder.
+        """
         logger.info("   Best epoch yet! Saving model and loss history.")
 
         # Save model
@@ -897,25 +939,18 @@ class DWIMLAbstractTrainer:
 
     def run_one_batch(self, data):
         """
-        Run a batch of data through the model (calling its forward method)
-        and return the mean loss. If training, run the backward method too.
+        Runs a batch of data through the model (calling its forward method)
+        and returns the mean loss.
 
         Parameters
         ----------
         data : tuple of (List[StatefulTractogram], dict)
-            This is the output of the AbstractBatchLoader's
-            load_batch_streamlines() method. data is a tuple
+            Output of the batch loader's collate_fn.
+            With our basic BatchLoader class, data is a tuple
             - batch_sfts: one sft per subject
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines)
-
-        Returns
-        -------
-        mean_loss : float
-            The mean loss of the provided batch.
-        n: int
-            Total number of points for this batch.
         """
         raise NotImplementedError
 
@@ -930,31 +965,19 @@ class DWIMLAbstractTrainer:
         """
         pass
 
-
-    def _save_log_locally(self, array: np.ndarray, fname: str):
-        np.save(os.path.join(self.log_dir, fname), array)
-
-    @staticmethod
-    def load_params_from_checkpoint(experiments_path: str, experiment_name: str):
-        total_path = os.path.join(
-            experiments_path, experiment_name, "checkpoint",
-            "checkpoint_state.pkl")
-        if not os.path.isfile(total_path):
-            raise FileNotFoundError('Checkpoint was not found! ({})'
-                                    .format(total_path))
-        checkpoint_state = torch.load(total_path)
-
-        return checkpoint_state
-
     @staticmethod
     def check_stopping_cause(checkpoint_state, new_patience=None,
                              new_max_epochs=None):
-
+        """
+        This method should be used before starting the training. Verifies that
+        it makes sense to continue training based on number of epochs and
+        patience.
+        """
         current_epoch = checkpoint_state['current_states']['current_epoch']
 
         # 1. Check if early stopping had been triggered.
         best_monitor_state = \
-            checkpoint_state['current_states']['best_epoch_monitoring_state']
+            checkpoint_state['current_states']['best_epoch_monitor_state']
         bad_epochs = best_monitor_state['n_bad_epochs']
         if new_patience is None:
             # No new patience: checking if early stopping had been triggered.
@@ -994,7 +1017,7 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def run_one_batch(self, data):
+    def run_one_batch(self, data, average_results=True):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -1008,7 +1031,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             - batch_sfts: one sft per subject
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
-              streamlines)
+              streamlines).
+        average_results: bool
+            If true, returns the averaged loss (as defined by the model).
 
         Returns
         -------
@@ -1057,12 +1082,14 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         logger.debug('*** Computing loss')
         if self.model.loss_uses_streamlines:
-            mean_loss, n = self.model.compute_loss(model_outputs, targets)
+            results = self.model.compute_loss(model_outputs, targets,
+                                              average_results=average_results)
         else:
-            mean_loss, n = self.model.compute_loss(model_outputs)
+            results = self.model.compute_loss(model_outputs,
+                                              average_results=average_results)
 
         if self.use_gpu:
             log_gpu_memory_usage(logger)
 
         # The mean tensor is a single value. Converting to float using item().
-        return mean_loss, n
+        return results

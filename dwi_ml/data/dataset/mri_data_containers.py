@@ -44,7 +44,7 @@ class MRIDataAbstract(object):
         self._data = data
 
     @classmethod
-    def init_from_hdf_info(cls, hdf_group: h5py.Group):
+    def init_mri_data_from_hdf_info(cls, hdf_group: h5py.Group):
         """
         Allows initiating an instance of this class by sending only the
         hdf handle. This method will define how to load the data from it
@@ -74,7 +74,7 @@ class MRIData(MRIDataAbstract):
         super().__init__(data, voxres, affine)
 
     @classmethod
-    def init_from_hdf_info(cls, hdf_group: h5py.Group):
+    def init_mri_data_from_hdf_info(cls, hdf_group: h5py.Group):
         """
         Creating class instance from the hdf in cases where data is not
         loaded yet. Non-lazy = loading the data here.
@@ -106,7 +106,7 @@ class LazyMRIData(MRIDataAbstract):
         super().__init__(data, voxres, affine)
 
     @classmethod
-    def init_from_hdf_info(cls, hdf_group: h5py.Group):
+    def init_mri_data_from_hdf_info(cls, hdf_group: h5py.Group):
         """
         Creating class instance from the hdf in cases where data is not
         loaded yet. Not loading the data, but loading the voxres.

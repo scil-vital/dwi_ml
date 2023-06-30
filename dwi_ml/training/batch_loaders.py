@@ -5,9 +5,9 @@
 These classes define how to sample the streamlines available in the
 MultiSubjectData.
 
-AbstractBatchSampler:
+AbstractBatchLoader:
 
-- Define the load_batch method:
+- Defines the load_batch method:
     - Loads the streamlines associated to sampled ids. Can resample them.
 
     - Performs data augmentation (on-the-fly to avoid having to multiply data
@@ -21,9 +21,9 @@ AbstractBatchSampler:
 ----------
                         Implemented child classes
 
-BatchStreamlinesSamplerOneInput:
+BatchLoaderOneInput:
 
-- Redefines the load_batch method:
+- Defines the load_batch_inputs method:
     - Now also loads the input data under each point of the streamline (and
     possibly its neighborhood), for one input volume.
 

@@ -291,9 +291,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         Returns
         -------
-        next_dirs: list
-            A list of numpy arrays (one per streamline), each of size (1, 3):
-            the three coordinates of the next direction's vector.
+        next_dirs: torch.Tensor
+            A tensor of shape [n, 3] with the next direction for each output.
         """
         if algo == 'det':
             next_dirs = self._get_tracking_direction_det(
@@ -301,7 +300,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         else:
             next_dirs = self._sample_tracking_direction_prob(
                 outputs, eos_stopping_thresh)
-        return next_dirs.detach()
+        return next_dirs
 
 
 class AbstractRegressionDG(AbstractDirectionGetterModel):

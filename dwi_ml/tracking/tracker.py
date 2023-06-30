@@ -449,12 +449,13 @@ class DWIMLAbstractTracker:
         return clean_lines, clean_seeds
 
     def _propagate_multiple_lines(self, lines: List[Tensor]):
-        return propagate_multiple_lines(
-            lines, self.update_memory_after_removing_lines,
-            self.get_next_dirs, self.theta, self.step_size,
-            self.verify_opposite_direction, self.mask, self.max_nbr_pts,
-            append_last_point=self.append_last_point,
-            normalize_directions=self.normalize_directions)
+        with torch.no_grad():
+            return propagate_multiple_lines(
+                lines, self.update_memory_after_removing_lines,
+                self.get_next_dirs, self.theta, self.step_size,
+                self.verify_opposite_direction, self.mask, self.max_nbr_pts,
+                append_last_point=self.append_last_point,
+                normalize_directions=self.normalize_directions)
 
     def get_next_dirs(self, lines: List[Tensor], n_last_pos: List[Tensor]):
         """

@@ -46,6 +46,7 @@ class MultisubjectSubset(Dataset):
         self.volume_groups = []  # type: List[str]
         self.nb_features = []  # type: List[int]
         self.streamline_groups = []  # type: List[str]
+        self.contains_connectivity = []  # type: np.ndarray
 
         # The subjects data list will be either a SubjectsDataList or a
         # LazySubjectsDataList depending on MultisubjectDataset.is_lazy.
@@ -90,10 +91,11 @@ class MultisubjectSubset(Dataset):
                 s.hdf_handle = None
 
     def set_subset_info(self, volume_groups, nb_features, streamline_groups,
-                        step_size, compress):
+                        contains_connectivity, step_size, compress):
         self.volume_groups = volume_groups
-        self.streamline_groups = streamline_groups
         self.nb_features = nb_features
+        self.streamline_groups = streamline_groups
+        self.contains_connectivity = contains_connectivity
         self.step_size = step_size
         self.compress = compress
 
@@ -224,7 +226,6 @@ class MultisubjectSubset(Dataset):
         Load all subjects for this subjset (either training, validation or
         testing).
         """
-
         # Checking if there are any subjects to load
         subject_keys = sorted(hdf_handle.attrs[self.set_name + '_subjs'])
         if subj_id is not None:
@@ -256,6 +257,9 @@ class MultisubjectSubset(Dataset):
         lengths = [[] for _ in self.streamline_groups]
         lengths_mm = [[] for _ in self.streamline_groups]
 
+        ref_group_info = (self.volume_groups, self.nb_features,
+                          self.streamline_groups, self.contains_connectivity)
+
         # Using tqdm progress bar, load all subjects from hdf_file
         with logging_redirect_tqdm(loggers=[logging.root], tqdm_class=tqdm):
             for subj_id in tqdm(subject_keys, ncols=100, total=self.nb_subjects):
@@ -264,8 +268,7 @@ class MultisubjectSubset(Dataset):
                 # calling this method.
                 logger.debug("     Creating subject '{}'.".format(subj_id))
                 subj_data = self._init_subj_from_hdf(
-                    hdf_handle, subj_id, self.volume_groups, self.nb_features,
-                    self.streamline_groups)
+                    hdf_handle, subj_id, ref_group_info)
 
                 # Add subject to the list
                 logger.debug("     Adding it to the list of subjects.")
@@ -323,16 +326,13 @@ class MultisubjectSubset(Dataset):
         else:
             return SubjectsDataList(self.hdf5_file, logger)
 
-    def _init_subj_from_hdf(self, hdf_handle, subject_id, volume_groups,
-                            nb_features, streamline_groups):
+    def _init_subj_from_hdf(self, hdf_handle, subject_id, ref_group_info):
         if self.is_lazy:
-            return LazySubjectData.init_from_hdf(
-                subject_id, hdf_handle,
-                (volume_groups, nb_features, streamline_groups))
+            return LazySubjectData.init_single_subject_from_hdf(
+                subject_id, hdf_handle, ref_group_info)
         else:
-            return SubjectData.init_from_hdf(
-                subject_id, hdf_handle,
-                (volume_groups, nb_features, streamline_groups))
+            return SubjectData.init_single_subject_from_hdf(
+                subject_id, hdf_handle, ref_group_info)
 
 
 class MultiSubjectDataset:
@@ -348,7 +348,7 @@ class MultiSubjectDataset:
               'streamlines/lengths', 'streamlines/euclidean_lengths'.
     """
     def __init__(self, hdf5_file: str, lazy: bool,
-                 cache_size: int = 0, log_level=logging.root.level):
+                 cache_size: int = 0, log_level=None):
         """
         Params
         ------
@@ -367,11 +367,13 @@ class MultiSubjectDataset:
         # Dataset info
         self.hdf5_file = hdf5_file
 
-        logger.setLevel(log_level)
+        if log_level is not None:
+            logger.setLevel(log_level)
 
         self.volume_groups = []  # type: List[str]
         self.nb_features = []  # type: List[int]
         self.streamline_groups = []  # type: List[str]
+        self.streamlines_contain_connectivity = []
 
         self.is_lazy = lazy
         self.subset_cache_size = cache_size
@@ -445,15 +447,17 @@ class MultiSubjectDataset:
             # Loading the first training subject's group information.
             # Others should fit.
             one_subj = hdf_handle.attrs['training_subjs'][0]
-            group_info = \
-                prepare_groups_info(one_subj, hdf_handle, group_info=None)
-            (poss_volume_groups, nb_features, poss_strea_groups) = group_info
-            logger.info("        Possible volume groups are: {}"
-                        .format(poss_volume_groups))
-            logger.info("        Number of features in each of these groups: "
-                        "{}".format(nb_features))
-            logger.info("        Possible streamline groups are: {}"
-                        .format(poss_strea_groups))
+            (poss_volume_groups, nb_features, poss_strea_groups,
+             contains_connectivity) = prepare_groups_info(
+                one_subj, hdf_handle, ref_group_info=None)
+            logger.debug("Possible volume groups are: {}"
+                         .format(poss_volume_groups))
+            logger.debug("Number of features in each of these groups: {}"
+                         .format(nb_features))
+            logger.debug("Possible streamline groups are: {}"
+                         .format(poss_strea_groups))
+            logger.debug("Streamline groups containing a connectivity matrix: "
+                         "{}".format(contains_connectivity))
 
             # Verifying groups of interest
             if volume_groups is not None:
@@ -464,12 +468,12 @@ class MultiSubjectDataset:
                                      .format(missing_vol))
                 vol, indv, indposs = np.intersect1d(
                     volume_groups, poss_volume_groups, return_indices=True)
-                self.volume_groups = vol
+                self.volume_groups = list(vol)
                 self.nb_features = [nb_features[i] for i in indposs]
-                logger.info("Chosen volume groups are: {}"
+                logger.info("--> Chosen volume groups are: {}"
                             .format(self.volume_groups))
             else:
-                logger.info("Using all volume groups.")
+                logger.info("--> Using all volume groups.")
                 self.volume_groups = poss_volume_groups
                 self.nb_features = nb_features
 
@@ -479,14 +483,19 @@ class MultiSubjectDataset:
                     raise ValueError("Streamlines {} were not found in the "
                                      "first subject of your hdf5 file."
                                      .format(missing_str))
-                self.streamline_groups = np.intersect1d(streamline_groups,
-                                                        poss_strea_groups)
-                logger.info("Chosen streamline groups are: {}"
+                self.streamline_groups, _, ind = np.intersect1d(
+                    streamline_groups, poss_strea_groups, return_indices=True)
+                logger.info("--> Chosen streamline groups are: {}"
                             .format(self.streamline_groups))
+                self.streamlines_contain_connectivity = contains_connectivity[ind]
             else:
-                logger.info("Using all streamline groups.")
+                logger.info("--> Using all streamline groups.")
                 self.streamline_groups = poss_strea_groups
+                self.streamlines_contain_connectivity = contains_connectivity
 
+            group_info = (self.volume_groups, self.nb_features,
+                          self.streamline_groups,
+                          self.streamlines_contain_connectivity)
             self.training_set.set_subset_info(*group_info, step_size, compress)
             self.validation_set.set_subset_info(*group_info, step_size, compress)
             self.testing_set.set_subset_info(*group_info, step_size, compress)

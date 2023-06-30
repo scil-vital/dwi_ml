@@ -54,7 +54,13 @@ def add_training_args(p: argparse.ArgumentParser,
         training_group.add_argument(
             '--tracking_phase_frequency', type=int, default=5)
         training_group.add_argument(
-            '--tracking_mask')
+            '--tracking_mask',
+            help="Volume group to use as tracking mask during the generation "
+                 "phase.")
+        training_group.add_argument(
+            '--tracking_phase_nb_steps_init', type=int, default=5,
+            help="Number of segments copied from the 'real' streamlines "
+                 "before starting propagation during generation phases.")
 
     comet_g = p.add_argument_group("Comet")
     comet_g.add_argument(

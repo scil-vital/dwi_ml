@@ -11,7 +11,7 @@ from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
 from dwi_ml.io_utils import add_resample_or_compress_arg
 
 
-def add_basic_args(p: ArgumentParser):
+def add_hdf5_creation_args(p: ArgumentParser):
 
     # Positional arguments
     p.add_argument('dwi_ml_ready_folder',
@@ -73,6 +73,18 @@ def add_mri_processing_args(p: ArgumentParser):
 def add_streamline_processing_args(p: ArgumentParser):
     g = p.add_argument_group('Streamlines processing options:')
     add_resample_or_compress_arg(g)
+    g.add_argument(
+        '--compute_connectivity_matrix', action='store_true',
+        help="If set, computes the 3D connectivity matrix for each streamline "
+             "group. \nDefined from downsampled image, not from anatomy! \n"
+             "Ex: can be used at validation time with our trainer's "
+             "'generation-validation' step.")
+    g.add_argument(
+        '--connectivity_downsample_size',  metavar='m', type=int, nargs='+',
+        help="Number of 3D blocks (m x m x m) for the connectivity matrix. \n"
+             "(The matrix will be m^3 x m^3). If more than one values are "
+             "provided, expected to be one per dimension. \n"
+             "Default: 20x20x20.")
 
 
 def _initialize_intermediate_subdir(hdf5_file, save_intermediate):
@@ -127,7 +139,9 @@ def prepare_hdf5_creator(args):
     creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
                           training_subjs, validation_subjs, testing_subjs,
                           groups_config, args.std_mask, args.step_size,
-                          args.compress, args.enforce_files_presence,
+                          args.compress, args.compute_connectivity_matrix,
+                          args.connectivity_downsample_size,
+                          args.enforce_files_presence,
                           args.save_intermediate, intermediate_subdir)
 
     return creator

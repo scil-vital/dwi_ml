@@ -81,8 +81,9 @@ class Tester:
         # we don't verify streamline ids (loading all), and we don't split /
         # reverse streamlines. But we resample / compress.
         logging.info("Loading its streamlines as SFT.")
-        streamline_group_idx = self.subset.streamline_groups.index(
-            self.streamlines_group)
+        streamline_group_idx, = np.where(self.subset.streamline_groups ==
+                                         self.streamlines_group)
+        streamline_group_idx = streamline_group_idx[0]
         subj_data = self.subset.subjs_data_list.get_subj_with_handle(self.subj_idx)
         subj_sft_data = subj_data.sft_data_list[streamline_group_idx]
         sft = subj_sft_data.as_sft()

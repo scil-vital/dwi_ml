@@ -5,8 +5,9 @@ from typing import List
 import h5py
 import numpy as np
 import torch
+
+from dwi_ml.tracking.projects.utils import prepare_tracking_mask
 from dwi_ml.tracking.propagation import propagate_multiple_lines
-from dwi_ml.tracking.utils import prepare_tracking_mask
 
 from dwi_ml.training.with_generation.trainer import \
     DWIMLTrainerForTrackingOneInput

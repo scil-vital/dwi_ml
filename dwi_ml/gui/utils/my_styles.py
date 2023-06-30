@@ -53,7 +53,7 @@ def set_global_theme():
             dpg.add_theme_color(dpg.mvThemeCol_Text, white)
             dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, light_gray)
 
-            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, black)
+            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, dark_gray)
             dpg.add_theme_color(dpg.mvThemeCol_ChildBg, black)
             dpg.add_theme_color(dpg.mvThemeCol_PopupBg, black)
 

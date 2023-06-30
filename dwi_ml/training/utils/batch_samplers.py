@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import argparse
 import logging
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str

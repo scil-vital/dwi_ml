@@ -11,25 +11,43 @@ from dwi_ml.io_utils import verify_checkpoint_exists, verify_which_model_in_path
 from dwi_ml.training.utils.batch_samplers import get_args_batch_sampler
 from dwi_ml.training.utils.experiment import get_mandatory_args_training_experiment
 
-
-def _log(sender, app_data, user_data):
-    print(f"sender: {sender}, \t app_data: {app_data}, \t user_data: {user_data}")
-    print("Value: ", dpg.get_value(sender))
-
-
 style_input_item = {
-    'indent': 400,
+    'indent': 600,
     'width': 400,
-}
-style_input_item_show_log = {
-    'indent': 400,
-    'width': 400,
-    'callback': _log
 }
 style_help = {
     'indent': 100,
     'color': (151, 151, 151, 255)
 }
+arg_name_indent = 40
+nb_dots = 150
+
+
+def manage_visual_default(default, dtype):
+    if default is not None:
+        # Assert that default is the right type?
+        return default
+    else:
+        if dtype == str:
+            return ''
+        elif dtype == int:
+            return 0
+        elif dtype == float:
+            return 0.0
+        else:
+            raise ValueError("Data type {} not supported yet!".format(dtype))
+
+
+def _set_to_default_callback(sender, app_data, user_data):
+    default, dtype = user_data
+    if app_data:  # i.e. == True
+        nb_char = len('_default_checkbox')
+        dpg_item_name = sender[:-nb_char]
+        dpg.set_value(dpg_item_name, manage_visual_default(default, dtype))
+
+
+def _log_value_remove_check(sender, app_data, user_data):
+    dpg.set_value(sender + '_default_checkbox', False)
 
 
 def file_dialog_ok_callback(sender, app_data):
@@ -37,7 +55,6 @@ def file_dialog_ok_callback(sender, app_data):
     chosen_path = app_data['current_path']
     if sender == "file_dialog_resume_from_checkpoint":
         open_checkpoint_subwindow(chosen_path)
-
     # else, nothing. We can access the value of the sender later.
 
 
@@ -45,48 +62,104 @@ def file_dialog_cancel_callback(_, __):
     pass
 
 
-def add_args_to_gui(args):
-    for arg_name, params in args.items():
-        with dpg.group(horizontal=True):
-            # 1. Argument name
-            if arg_name[0:2] == '--':
-                dpg.add_text(arg_name + ('.' * 80), indent=40)
-            else:
-                dpg.add_text(arg_name + ' (**required)' + ('.' * 80), indent=40)
+def add_args_to_gui(args, section_name=None):
+    if section_name is not None:
+        dpg.add_text('\nExperiment:')
 
-            # 2. Argument value
-            if 'type' not in params or params['type'] == str:
-                if arg_name == 'experiments_path':
-                    # Show dialog
-                    dpg.add_button(
-                        label='Click here', tag=arg_name, **style_input_item,
-                        callback=lambda: dpg.show_item("file_dialog_experiments_path"))
-                elif arg_name == 'hdf5_file':
-                    dpg.add_button(
-                        label='Click here', tag=arg_name, **style_input_item,
-                        callback=lambda: dpg.show_item("file_dialog_hdf5_file"))
-                else:
-                    default = params['default'] if 'default' in params else None
-                    # ??? Hint not showing.
-                    dpg.add_input_text(hint='Please enter text', tag=arg_name,
-                                       **style_input_item_show_log,
-                                       default_value=default)
-            elif params['type'] == int:
-                default = params['default'] if 'default' in params else 0
-                dpg.add_input_int(**style_input_item_show_log, tag=arg_name,
-                                  default_value=default)
-            else:
-                dpg.add_text("To be added: " + arg_name, **style_input_item)
+    all_names = list(args.keys())
+    all_mandatory = [n for n in all_names if n[0] != '-']
+    all_options = [n for n in all_names if n[0] == '-']
 
-        # 3. Help.
-        dpg.add_text(params['help'], **style_help)
+    if len(all_mandatory) > 0:
+        with dpg.tree_node(label="Required", default_open=True):
+            for arg_name in all_mandatory:
+                _add_item_to_gui(arg_name, args[arg_name], required=True)
+
+    if len(all_options) > 0:
+        with dpg.tree_node(label="Options", default_open=False):
+            for arg_name in all_options:
+                _add_item_to_gui(arg_name, args[arg_name], required=False)
+
+
+def _add_item_to_gui(arg_name, params, required):
+    # Default value?
+    default_is_none = False
+    if 'default' not in params:
+        default_is_none = True
+
+    # User clicked on optional?
+    if not required:
+        item_options = {'callback': _log_value_remove_check}
+    else:
+        item_options = {}
+
+    with dpg.group(horizontal=True):
+        # 1. Argument name
+        dpg.add_text(arg_name + ('.' * nb_dots), indent=arg_name_indent)
+
+        # 2. Argument value
+        # Special cases for experiments_path and hdf5_file to open file dialogs.
+        if arg_name == 'experiments_path':
+            dpg.add_button(
+                label='Click here to select path',
+                tag=arg_name, **style_input_item,
+                callback=lambda: dpg.show_item("file_dialog_experiments_path"))
+        elif arg_name == 'hdf5_file':
+            dpg.add_button(
+                label='Click here to select file',
+                tag=arg_name, **style_input_item,
+                callback=lambda: dpg.show_item("file_dialog_hdf5_file"))
+        else:
+            dtype = _add_input_item_based_on_type(arg_name, params, item_options)
+
+            # 3. Ignore checkbox.
+            if not required:
+                default = None if default_is_none else params['default']
+                dpg.add_checkbox(label='Set to default: {}'.format(default),
+                                 default_value=True,
+                                 tag=arg_name + '_default_checkbox',
+                                 user_data=(default, dtype),
+                                 callback=_set_to_default_callback)
+
+    # 4. (Below: Help)
+    dpg.add_text(params['help'], **style_help)
+
+
+def _add_input_item_based_on_type(arg_name, params, item_options):
+    default = None if 'default' not in params else params['default']
+    dtype = params['type'] if 'type' in params else str
+
+    if 'choices' in params:
+        choices = list(params['choices'])
+        default = choices[0] if default is None else default
+        dpg.add_combo(choices, tag=arg_name, default_value=default,
+                      **style_input_item, **item_options)
+
+    elif dtype == str:
+        dpg.add_input_text(tag=arg_name,
+                           default_value=manage_visual_default(default, str),
+                           **style_input_item, **item_options)
+
+    elif dtype == int:
+        dpg.add_input_int(tag=arg_name,
+                          default_value=manage_visual_default(default, int),
+                          **style_input_item, **item_options)
+
+    else:
+        dpg.add_text("NOT MANAGED YET TYPE {} FOR ARG {}: "
+                     .format(dtype, arg_name), tag=arg_name,
+                     **style_input_item, **item_options)
+
+    return dtype
 
 
 def add_save_script_outfile():
-    dpg.add_text("\n\nScript output", indent=40)
-    dpg.add_text("Where to save the output script.", **style_help)
-    dpg.add_button(label='Click here', tag='output_script', **style_input_item,
-                   callback=lambda: dpg.show_item("file_dialog_output_script"))
+    dpg.add_text('\n\n')
+    with dpg.group(horizontal=True):
+        dpg.add_text("Script output", indent=arg_name_indent)
+        dpg.add_button(label='Click here to choose where to save your file',
+                       tag='output_script', indent=300, width=600,
+                       callback=lambda: dpg.show_item("file_dialog_output_script"))
     dpg.add_text("\n\n\n\n")
 
 
@@ -154,9 +227,8 @@ def prepare_and_show_train_l2t_window():
             dpg.bind_font(my_fonts['default'])
             dpg.bind_item_font(title, my_fonts['main_title'])  # NOT WORKING?
 
-            dpg.add_text('\nExperiment:')
             args = get_mandatory_args_training_experiment()
-            add_args_to_gui(args)
+            add_args_to_gui(args, 'Experiment')
 
             dpg.add_text('\nBatch sampler:')
             new_args = get_args_batch_sampler()
@@ -164,7 +236,7 @@ def prepare_and_show_train_l2t_window():
             args.update(new_args)
 
             add_save_script_outfile()
-            dpg.add_button(label='Create my script!', indent=900,
+            dpg.add_button(label='Create my script!', indent=1000,
                            tag='create_l2t_train_script',
                            callback=callback_ok_get_args,
                            user_data=args, height=50)

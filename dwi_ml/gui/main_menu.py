@@ -3,11 +3,26 @@ import os
 
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.sub_menus_train_model import \
-    prepare_and_show_train_l2t_window, open_tto_window, open_ttst_window, \
-    file_dialog_ok_callback, file_dialog_cancel_callback
+from dwi_ml.gui.l2t_menus import open_l2t_from_checkpoint_window, \
+    prepare_and_show_train_l2t_window
+from dwi_ml.gui.transformers_menus import open_tto_from_checkpoint_window, \
+    open_ttst_from_checkpoint_window, open_tto_window, open_ttst_window
+from dwi_ml.gui.utils.inputs import assert_single_choice_file_dialog
 from dwi_ml.gui.utils.my_styles import get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import start_dpg, show_and_end_dpg
+from dwi_ml.io_utils import verify_checkpoint_exists, verify_which_model_in_path
+
+
+def file_dialog_ok_callback(sender, app_data):
+    assert_single_choice_file_dialog(app_data)
+    chosen_path = app_data['current_path']
+    if sender == "file_dialog_resume_from_checkpoint":
+        open_checkpoint_subwindow(chosen_path)
+    # else, nothing. We can access the value of the sender later.
+
+
+def file_dialog_cancel_callback(_, __):
+    pass
 
 
 def prepare_main_menu():
@@ -52,18 +67,18 @@ def prepare_main_menu():
         # 1. Preparing the HDF5
         ##########
         titles.append(dpg.add_text("\n\nPrepare your data:"))
-        dpg.add_button(label="Create your hdf5", indent=50)
+        dpg.add_button(label="Create your hdf5 (to come)", indent=50)
 
         ##########
         # 2. Training
         ##########
         titles.append(dpg.add_text("\n\nTrain a new model:"))
         dpg.add_button(label="Learn2track", indent=50,
-                       callback=callback_train_l2t)
+                       callback=prepare_and_show_train_l2t_window)
         dpg.add_button(label="Transforming tractography: original model",
-                       indent=50, callback=callback_train_tto)
+                       indent=50, callback=open_tto_window)
         dpg.add_button(label="Transforming tractography: source-target model",
-                       indent=50, callback=callback_train_ttst)
+                       indent=50, callback=open_ttst_window)
 
         ##########
         # 3. Resume from checkpoint.
@@ -96,13 +111,20 @@ def prepare_main_menu():
     show_and_end_dpg()
 
 
-def callback_train_l2t():
-    prepare_and_show_train_l2t_window()
+def open_checkpoint_subwindow(chosen_path):
+    # toDo: if raises a FileNotFoundError, show a pop-up warning?
+    #  Currently, prints the warning in terminal.
+    checkpoint_path = verify_checkpoint_exists(chosen_path)
 
+    model_dir = os.path.join(checkpoint_path, 'model')
+    model_type = verify_which_model_in_path(model_dir)
+    print("Model's class: {}".format(model_type))
 
-def callback_train_tto():
-    open_tto_window()
-
-
-def callback_train_ttst():
-    open_ttst_window()
+    if model_type == 'Learn2TrackModel':
+        open_l2t_from_checkpoint_window()
+    elif model_type == 'OriginalTransformerModel':
+        open_tto_from_checkpoint_window()
+    elif model_type == 'TransformerSrcAndTgtModel':
+        open_ttst_from_checkpoint_window()
+    else:
+        raise ValueError("This type of model is not managed by our DWIML' GUI.")

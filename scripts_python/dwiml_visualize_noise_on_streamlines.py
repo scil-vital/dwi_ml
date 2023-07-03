@@ -25,7 +25,7 @@ from dwi_ml.data.processing.streamlines.data_augmentation import \
 from dwi_ml.data.processing.utils import add_noise_to_tensor
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5, \
     prepare_dataset_one_subj
-from dwi_ml.training.utils.batch_loaders import add_args_batch_loader
+from dwi_ml.training.utils.batch_loaders import get_args_batch_loader
 
 
 def prepare_arg_parser():
@@ -35,7 +35,7 @@ def prepare_arg_parser():
     p.add_argument('streamlines_group',
                    help="Streamline group to use as SFT for the given "
                         "subject in the hdf5.")
-    add_args_batch_loader(p)
+    get_args_batch_loader(p)
     p.add_argument('out_name',
                    help='Name of the modified SFT.')
     add_overwrite_arg(p)

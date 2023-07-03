@@ -16,7 +16,7 @@ from matplotlib import pyplot as plt
 from scilpy.io.utils import add_overwrite_arg
 
 from dwi_ml.arg_utils import add_logging_arg, add_arg_existing_experiment_path
-from dwi_ml.arg_utils import add_memory_args
+from dwi_ml.arg_utils import get_memory_args
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 
@@ -46,7 +46,7 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
 
     # Options
     p.add_argument('--batch_size', type=int)
-    add_memory_args(p)
+    get_memory_args(p)
 
     g = p.add_argument_group("Options to save loss as a colored SFT")
     g.add_argument('--save_colored_tractogram', metavar='out_name.trk',

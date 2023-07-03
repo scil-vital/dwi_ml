@@ -36,40 +36,53 @@ def add_arg_existing_experiment_path(p: ArgumentParser):
                         'parameters.json and a file best_model_state.pkl.)')
 
 
-def add_memory_args(p: ArgumentParser, add_lazy_options=False,
+def get_memory_args(add_lazy_options=False,
                     add_multiprocessing_option=True, add_rng=False):
-    g = p.add_argument_group("Memory usage")
+
+    args = {}
 
     # Multi-processing / GPU
+    gpu_arg = {
+        '--use_gpu': {
+            'action': 'store_true',
+            'help': "If set, use GPU for processing. Cannot be used "
+                    "together with --processes."}}
     if add_multiprocessing_option:
-        ram_options = g.add_mutually_exclusive_group()
-        # Parallel processing or GPU processing
-        add_processes_arg(ram_options)
-        ram_options.add_argument(
-            '--use_gpu', action='store_true',
-            help="If set, use GPU for processing. Cannot be used \ntogether "
-                 "with --processes.")
+        gpu_arg.update({
+            '--nbr_processes': {
+                'metavar': 'n', 'type': int, 'default': 1,
+                'help': "Number of sub-processes to start. Default: [%(default)s]"}
+        })
+
+        args.update({'exclusive_group': gpu_arg})
     else:
-        p.add_argument('--use_gpu', action='store_true',
-                       help="If set, use GPU for processing.")
+        args.update(gpu_arg)
 
     # RNG
     if add_rng:
-        g.add_argument('--rng', type=int, default=1234,
-                       help="Random seed. [1234]")
+        args.update({
+            '--rng': {
+                'type': int, 'default': 1234,
+                'help': "Random seed. [1234]"
+            }
+        })
 
     # Lazy + cache size
     if add_lazy_options:
-        g.add_argument(
-            '--cache_size', type=int, metavar='s', default=1,
-            help="Relevant only if lazy data is used. Size of the cache in "
-                 "terms\n of length of the queue (i.e. number of volumes). \n"
-                 "NOTE: Real cache size will actually be larger depending on "
-                 "use;\nthe training, validation and testing sets each have "
-                 "their cache. [1]")
-        g.add_argument(
-            '--lazy', action='store_true',
-            help="If set, do not load all the dataset in memory at once. "
-                 "Load \nonly what is needed for a batch.")
+        args.update({
+            '--cache_size': {
+                'metavar': 'n', 'type': int, 'default': 1,
+                'help': "Relevant only if lazy data is used. Size of the cache in "
+                        "terms\n of length of the queue (i.e. number of volumes). \n"
+                        "NOTE: Real cache size will actually be larger depending on "
+                        "use;\nthe training, validation and testing sets each have "
+                        "their cache. [1]"
+            },
+            '--lazy': {
+                'action': 'store_true',
+                'help': "If set, do not load all the dataset in memory at once. "
+                        "Load \nonly what is needed for a batch."
+            }
+        })
 
-    return g
+    return args

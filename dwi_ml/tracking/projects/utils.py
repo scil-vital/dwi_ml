@@ -11,7 +11,7 @@ import numpy as np
 from scilpy.tracking.seed import SeedGenerator
 
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.arg_utils import add_arg_existing_experiment_path, add_memory_args
+from dwi_ml.arg_utils import add_arg_existing_experiment_path, get_memory_args
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.tracker import DWIMLAbstractTracker
@@ -99,7 +99,7 @@ def add_tracking_options(p):
                           "with \n--skip 1,000,000.")
 
     # Memory options:
-    m_g = add_memory_args(p, add_lazy_options=True,
+    m_g = get_memory_args(p, add_lazy_options=True,
                           add_multiprocessing_option=True,
                           add_rng=True)
     m_g.add_argument('--simultaneous_tracking', type=int, default=1,

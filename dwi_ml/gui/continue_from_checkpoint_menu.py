@@ -4,31 +4,30 @@ import os
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.gui.l2t_menus import open_l2t_from_checkpoint_window
+
+from dwi_ml.gui.projects.l2t_from_checkpoint_menu import \
+    open_l2t_from_checkpoint_window
 from dwi_ml.gui.transformers_menus import open_tto_from_checkpoint_window, \
     open_ttst_from_checkpoint_window
-from dwi_ml.gui.utils.file_dialogs import params_file_dialogs
+from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
+    callback_file_dialog_single_file
 from dwi_ml.gui.utils.gui_popup_message import show_infobox
 from dwi_ml.io_utils import verify_checkpoint_exists, verify_which_model_in_path
 
 
-def file_dialog_callback_checkpoint(sender, app_data):
-    # assert_single_choice_file_dialog(app_data)
-    chosen_path = app_data['current_path']
-    _open_checkpoint_subwindow(chosen_path)
-
-
 def show_file_dialog_from_checkpoint():
-    if dpg.does_item_exist("file_dialog_resume_from_checkpoint"):
-        dpg.show_item("file_dialog_resume_from_checkpoint")
+    file_dialog_name = "file_dialog_resume_from_checkpoint"
+    if dpg.does_item_exist(file_dialog_name):
+        dpg.show_item(file_dialog_name)
     else:
         dpg.add_file_dialog(
-            directory_selector=True, tag="file_dialog_resume_from_checkpoint",
-            **params_file_dialogs, callback=file_dialog_callback_checkpoint)
+            directory_selector=True, tag=file_dialog_name,
+            file_count=1, **params_file_dialogs,
+            callback=callback_file_dialog_single_file,
+            user_data=_open_checkpoint_subwindow)
 
 
 def _open_checkpoint_subwindow(chosen_path):
-    # toDo: if raises a FileNotFoundError, show a pop-up warning?
-    #  Currently, prints the warning in terminal.
     try:
         checkpoint_path = verify_checkpoint_exists(chosen_path)
     except FileNotFoundError:

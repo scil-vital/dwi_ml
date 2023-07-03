@@ -4,13 +4,28 @@
 def get_mandatory_args_experiment_and_hdf5():
     args = {
         'experiments_path': {
-            'help': "Path where to save your experiment. \n"
-                    "Complete path will be experiments_path/experiment_name."},
+            'help': "Path where to save your experiment. Complete path will "
+                    "be: \n---> experiments_path/experiment_name."},
         'experiment_name': {
-            'help': 'Name for the experiment.'},
+            'help': 'Name of your experiment.'},
         'hdf5_file': {
             'help': 'Path to the .hdf5 dataset. Should contain both your '
-                    'training and \nvalidation subjects.'},
+                    'training and validation \nsubjects.'}}
+    return args
+
+
+def get_comet_args():
+    args = {
+        '--comet_workspace': {
+            'metavar': 'w',
+            'help': "Your comet workspace. If not set, comet.ml will not be "
+                    "used. See our docs: \n'Getting Started' for more "
+                    "information on comet and its API key."},
+        '--comet_project': {
+            'metavar': 'p',
+            'help': 'Send your experiment to a specific comet.ml project. '
+                    'If not set, it will be \nsent to Uncategorized '
+                    'Experiments.'}
     }
     return args
 

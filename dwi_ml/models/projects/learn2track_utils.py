@@ -1,8 +1,32 @@
 # -*- coding: utf-8 -*-
 import argparse
 
-from dwi_ml.models.embeddings import keys_to_embeddings
+from dwi_ml.arg_utils import get_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from dwi_ml.training.utils.batch_loaders import get_args_batch_loader
+from dwi_ml.training.utils.batch_samplers import get_args_batch_sampler
+from dwi_ml.training.utils.experiment import (
+    get_mandatory_args_experiment_and_hdf5, get_comet_args)
+from dwi_ml.training.utils.trainer import get_training_args
+
+
+def get_all_args_learn2track():
+    trainer_args = get_training_args(add_a_tracking_validation_phase=True)
+    trainer_args.update({
+        '--clip_grad': {
+            'type': float,
+            'help': "Value to which the gradient norms to avoid exploding "
+                    "gradients. \nDefault = None (not clipping)."}})
+
+    groups = {
+        'Experiment': get_mandatory_args_experiment_and_hdf5(),
+        'Batch sampler': get_args_batch_sampler(),
+        'Batch loader': get_args_batch_loader(),
+        'Trainer': trainer_args,
+        'Memory usage': get_memory_args(add_lazy_options=True, add_rng=True),
+        'Comet.ml': get_comet_args(),
+    }
+    return groups
 
 
 def add_model_args(p: argparse.ArgumentParser):

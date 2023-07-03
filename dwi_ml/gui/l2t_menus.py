@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.utils.argparser_equivalent_for_gui import add_args_to_gui, \
-    add_save_script_outfilename_item
 from dwi_ml.gui.utils.my_styles import fixed_window_options, \
     get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import callback_change_window
+from dwi_ml.models.projects.learn2track_utils import get_all_args_learn2track
 from dwi_ml.training.utils.batch_samplers import get_args_batch_sampler
-from dwi_ml.training.utils.experiment import get_mandatory_args_training_experiment
 
 
 def callback_ok_get_args_l2t(_, __, args):
@@ -42,18 +40,9 @@ def open_train_l2t_window():
             dpg.bind_font(my_fonts['default'])
             dpg.bind_item_font(title, my_fonts['main_title'])  # NOT WORKING?
 
-            args = get_mandatory_args_training_experiment()
-            add_args_to_gui(args, 'Experiment')
+            args = get_all_args_learn2track()
 
-            new_args = get_args_batch_sampler()
-            add_args_to_gui(new_args, 'Batch sampler')
-            args.update(new_args)
 
-            add_save_script_outfilename_item()
-            dpg.add_button(label='Create my script!', indent=1000,
-                           tag='create_l2t_train_script',
-                           callback=callback_ok_get_args_l2t,
-                           user_data=args, height=50)
 
 
 def _create_l2t_train_script(all_values):

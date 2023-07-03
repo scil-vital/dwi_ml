@@ -19,43 +19,27 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.arg_utils import add_logging_arg, add_memory_args, add_args_to_parser
+from dwi_ml.arg_utils import add_logging_arg, add_args_to_parser
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.models.projects.learn2track_utils import add_model_args
+from dwi_ml.models.projects.learn2track_utils import add_model_args, \
+    get_all_args_learn2track
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
-from dwi_ml.training.utils.batch_samplers import (get_args_batch_sampler,
-                                                  prepare_batch_sampler)
-from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
-                                                 prepare_batch_loader)
-from dwi_ml.training.utils.experiment import get_mandatory_args_experiment_and_hdf5
-from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
-    format_lr
+from dwi_ml.training.utils.batch_samplers import (prepare_batch_sampler)
+from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
+from dwi_ml.training.utils.trainer import run_experiment, format_lr
 
 
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
 
-    # Required values
-    args = get_mandatory_args_experiment_and_hdf5()
-    add_args_to_parser(args, p)
+    groups = get_all_args_learn2track()
+    for group, group_args in groups.items():
+        p.add_argument_group(groups[group])
+        add_args_to_parser(group_args, p)
 
-    # Batch sampler
-    args = get_args_batch_sampler()
-    g_batch_sampler = p.add_argument_group("Batch sampler:")
-    add_args_to_parser(args, g_batch_sampler)
-
-    add_args_batch_loader(p)
-    training_group = add_training_args(p, add_a_tracking_validation_phase=True)
-    add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_logging_arg(p)
-
-    # Additional arg for projects
-    training_group.add_argument(
-        '--clip_grad', type=float, default=None,
-        help="Value to which the gradient norms to avoid exploding gradients."
-             "\nDefault = None (not clipping).")
 
     add_model_args(p)
 

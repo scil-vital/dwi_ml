@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.utils.file_dialogs import params_file_dialogs
+from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
+    callback_file_dialog_single_file
 from dwi_ml.gui.utils.my_styles import fixed_window_options, \
     get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import callback_change_window
@@ -33,9 +34,11 @@ def open_menu_create_hdf5():
 
 
 def open_file_dialog_hdf5_create_dir():
-    if dpg.does_item_exist("file_dialog_hdf5_dir"):
-        dpg.show_item("file_dialog_hdf5_dir")
+    file_dialog_name = "file_dialog_hdf5_dir"
+    if dpg.does_item_exist(file_dialog_name):
+        dpg.show_item(file_dialog_name)
     else:
         dpg.add_file_dialog(
-            directory_selector=False, tag="file_dialog_hdf5_dir",
-            **params_file_dialogs, callback=UNDEFINED_YET)
+            directory_selector=False, tag=file_dialog_name,
+            **params_file_dialogs, callback=callback_file_dialog_single_file,
+            user_data=UNDEFINED_YET)

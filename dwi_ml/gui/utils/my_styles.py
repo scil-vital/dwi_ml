@@ -15,7 +15,7 @@ fixed_window_options = {'no_move': True,
 
 def get_my_fonts_dictionary():
     current_path = __file__
-    gui_utils_path = Path(current_path).parent.parent.absolute()
+    gui_utils_path = Path(current_path).parent.absolute()
     font_path = os.path.join(gui_utils_path, "fonts/NotoSerifCJKjp-Medium.otf")
 
     with dpg.font_registry():

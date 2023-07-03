@@ -8,79 +8,77 @@ from dwi_ml.experiment_utils.timer import Timer
 logger = logging.getLogger('train_logger')
 
 
-def add_training_args(p: argparse.ArgumentParser,
-                      add_a_tracking_validation_phase=False):
-    training_group = p.add_argument_group("Training")
-    training_group.add_argument(
-        '--learning_rate', metavar='r', nargs='+',
-        help="Learning rate. Can be set as a single float, or as a list of "
-             "[lr*step]. \n"
-             "Ex: '--learning_rate 0.001*3 0.0001' would set the lr to 0.001 "
-             "for the first \n3 epochs, and 0.0001 for the remaining epochs.\n"
-             "(torch's default = 0.001)")
-    training_group.add_argument(
-        '--lr_decrease_params', metavar='E L', nargs=2, type=float,
-        help="Parameters [E, L] to set the learning rate an exponential "
-             "decreasing curve. \nThe final curve will be "
-             "init_lr * exp(-x / r). The rate of \ndecrease, r, is defined in "
-             "order to ensure that the learning rate curve will hit \nvalue L "
-             "at epoch E.\n"
-             "learning_rate must be a single float value.")
-    training_group.add_argument(
-        '--weight_decay', type=float, default=0.01, metavar='v',
-        help="Add a weight decay penalty on the parameters (regularization "
-             "parameter)\n[0.01] (torch's default).")
-    training_group.add_argument(
-        '--optimizer', choices=['Adam', 'RAdam', 'SGD'], default='Adam',
-        help="Choice of torch optimizer amongst ['Adam', 'RAdam', 'SGD'].\n"
-             "Default: Adam.")
-    training_group.add_argument(
-        '--max_epochs', type=int, default=100, metavar='n',
-        help="Maximum number of epochs. [100]")
-    training_group.add_argument(
-        '--patience', type=int, default=20, metavar='n',
-        help="Use early stopping. Defines the number of epochs after which \n"
-             "the model should stop if the loss hasn't improved. \n"
-             "Default: same as max_epochs.")
-    training_group.add_argument(
-        '--patience_delta', type=float, default=1e-6, metavar='eps',
-        help="Limit difference between two validation losses to consider that "
-             "\nthe model improved between the two epochs.")
-    training_group.add_argument(
-        '--max_batches_per_epoch_training', type=int, default=1000,
-        metavar='n',
-        help="Maximum number of batches per epoch. This will help avoid long\n"
-             "epochs, to ensure that we save checkpoints regularly. [1000]")
-    training_group.add_argument(
-        '--max_batches_per_epoch_validation', type=int, default=1000,
-        metavar='n',
-        help="Maximum number of batches per epoch during validation.")
+def get_training_args(add_a_tracking_validation_phase=False):
+    args = {
+        '--learning_rate': {
+            'metavar': 'r', 'nargs': '+', 'type': float,
+            'help': "Learning rate. Basic usage: a single float value. "
+                    "(torch's 'default' : 0.001) \n"
+                    "Can also be a list of [lr * nb_epochs, final_lr]. Ex: "
+                    "'--learning_rate 0.001*3 0.0001' \nwould set the lr to "
+                    "0.001 for the first 3 epochs, and to 0.0001 for the "
+                    "remaining epochs."},
+        '--lr_decrease_params': {
+            'metavar': 'E L', 'nargs': 2, 'type': float,
+            'help': "Parameters [E, L] to set the learning rate an exponential "
+                    "decreasing curve. \nThe final curve will be "
+                    "init_lr * exp(-x / r). The rate of \ndecrease, r, is "
+                    "defined in order to ensure that the learning rate curve "
+                    "will hit \nvalue L at epoch E.\n"
+                    "learning_rate must be a single float value."},
+        '--weight_decay': {
+            'type': float, 'default': 0.01, 'metavar': 'v',
+            'help': "Adds a weight decay penalty on the parameters "
+                    "(regularization parameter) \n(torch's default: 0.01)."},
+        '--optimizer': {
+            'choices': ['Adam', 'RAdam', 'SGD'], 'default': 'Adam',
+            'help': "Choice of torch optimizer amongst ['Adam', 'RAdam', "
+                    "'SGD']. Default: Adam."},
+        '--max_epochs': {
+            'type': int, 'default': 100, 'metavar': 'n',
+            'help': "Maximum number of epochs. Default: 100, for no good "
+                    "reason."},
+        '--patience': {
+            'type': int, 'default': 20, 'metavar': 'n',
+            'help': "Use early stopping. Defines the number of epochs after "
+                    "which the model \nshould stop if the loss hasn't "
+                    "improved. Default: 20, for no good reason."},
+        '--patience_delta': {
+            'type': float, 'default': 1e-6, 'metavar': 'eps',
+            'help': "Limit difference between two validation losses to consider "
+                    "that the model \nimproved between the two epochs."},
+        '--max_batches_per_epoch_training': {
+            'type': int, 'default': 1000, 'metavar': 'n',
+            'help': "Maximum number of batches per epoch. This will 'help' "
+                    "avoid long epochs, \nto ensure that we save checkpoints "
+                    "regularly. Default: 1000, for no good reason."},
+        '--max_batches_per_epoch_validation': {
+            'type': int, 'default': 1000, 'metavar': 'n',
+            'help': "Idem, for validation."}
+    }
 
     if add_a_tracking_validation_phase:
-        training_group.add_argument(
-            '--add_a_tracking_validation_phase', action='store_true')
-        training_group.add_argument(
-            '--tracking_phase_frequency', type=int, default=5)
-        training_group.add_argument(
-            '--tracking_mask',
-            help="Volume group to use as tracking mask during the generation "
-                 "phase.")
-        training_group.add_argument(
-            '--tracking_phase_nb_segments_init', type=int, default=5,
-            help="Number of segments copied from the 'real' streamlines "
-                 "before starting propagation during generation phases.")
-
-    comet_g = p.add_argument_group("Comet")
-    comet_g.add_argument(
-        '--comet_workspace', metavar='w',
-        help='Your comet workspace. If not set, comet.ml will not be used.\n'
-             'See our docs/Getting Started for more information on comet \n'
-             'and its API key.')
-    comet_g.add_argument(
-        '--comet_project', metavar='p',
-        help='Send your experiment to a specific comet.ml project. If not \n'
-             'set, it will be sent to Uncategorized Experiments.')
-    return training_group
+        args.update({
+            '--add_a_tracking_validation_phase': {
+                'action': 'store_true',
+                'help': "Adds a generation part to the validation phase: "
+                        "generates streamline starting at \nthe validation "
+                        "batch's starting point, and compare ending points "
+                        "with expected \nvalues."},
+            '--tracking_phase_frequency': {
+                'type': int, 'default': 1,
+                'help': "The tracking-validation phase can be done every N "
+                        "epochs. Default: 1."},
+            '--tracking_mask': {
+                'help': "Volume group to use as tracking mask during the "
+                        "generation phase. Required if \n"
+                        "--add_a_tracking_validation_phase is set."},
+            '--tracking_phase_nb_segments_init': {
+                'type': int, 'default': 5,
+                'help': "Number of segments copied from the 'real' streamlines "
+                        "before starting \npropagation during generation phases."}
+        })
+    return args
 
 
 def format_lr(lr_arg):

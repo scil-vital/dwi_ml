@@ -8,31 +8,33 @@ from dwi_ml.training.with_generation.batch_loader import \
     DWIMLBatchLoaderWithConnectivity
 
 
-def add_args_batch_loader(p: argparse.ArgumentParser):
-    # STREAMLINES PREPROCESSING
-    bl_g = p.add_argument_group("Batch loader")
-    bl_g.add_argument(
-        '--noise_gaussian_size_forward', type=float, metavar='s', default=0.,
-        help="If set, add random Gaussian noise to streamline coordinates \n"
-             "with given variance. This corresponds to the std of the \n"
-             "Gaussian. [0]\n**Make sure noise is smaller than your step size "
-             "to avoid \nflipping direction! (We can't verify if --step_size "
-             "is not \nspecified here, but if it is, we limit noise to \n"
-             "+/- 0.5 * step-size.).\n"
-             "** We also limit noise to +/- 2 * noise_gaussian_size.\n"
-             "Suggestion: 0.1 * step-size.")
-    bl_g.add_argument(
-        '--split_ratio', type=float, metavar='r', default=0.,
-        help="Percentage of streamlines to randomly split into 2, in each \n"
-             "batch (keeping both segments as two independent streamlines). \n"
-             "The reason for cutting is to help the ML algorithm to track "
-             "from \nthe middle of WM by having already seen half-streamlines."
-             "\nIf you are using interface seeding, this is not necessary. "
-             "[0]")
-    bl_g.add_argument(
-        '--reverse_ratio', type=float, metavar='r', default=0.,
-        help="Percentage of streamlines to randomly reverse in each batch. "
-             "[0]")
+def get_args_batch_loader():
+    args = {
+        '--noise_gaussian_size_forward': {
+            'type': float, 'metavar': 's', 'default': 0.,
+            'help': "If set, adds random Gaussian noise to streamline "
+                    "coordinates. This corresponds \nto the std of the "
+                    "Gaussian. Default: 0.0 (no noise). Suggestion: 0.1 * "
+                    "step-size.\n"
+                    "**Make sure noise is smaller than your step size to "
+                    "avoid flipping direction! \n"
+                    "**We also limit noise to +/- 2 * std."},
+        '--split_ratio': {
+            'type': float, 'metavar': 'r', 'default': 0.,
+            'help': "Ratio (percentage) of streamlines to randomly split "
+                    "into two segments in each \nbatch (keeping both segments "
+                    "as two independent streamlines). \n"
+                    "**Hint: The reason for cutting is to help the ML "
+                    "algorithm to track from the middle \nof WM by having "
+                    "already seen half-streamlines. If you are using "
+                    "interface \nseeding, this is probably not necessary. "
+                    "Default: 0.0."},
+        '--reverse_ratio': {
+            'type': float, 'metavar': 'r', 'default': 0.,
+            'help': "Ratio (percentage) of streamlines to randomly reverse in "
+                    "each batch. Default: 0.0."}
+    }
+    return args
 
 
 def prepare_batch_loader(dataset, model, args, sub_loggers_level):

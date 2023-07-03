@@ -11,10 +11,10 @@ def get_args_batch_sampler():
         '--batch_size_training': {
             'type': int, 'default': 1000, 'metavar': 's',
             'help': "Batch size. Unit must be spectified (through "
-                    "batch_size_units).\nThe total size your computer will "
-                    "accept depends on the type of \ninput data. You will "
-                    "need to test this value. [100]\nSuggestion: in "
-                    "nb_streamlines: 100. In length_mm: 10000. \n"},
+                    "batch_size_units). The total size \nyour computer will "
+                    "accept depends on the type of input data. You will "
+                    "need to \ntest this value. Default: 100. Suggestion: in "
+                    "nb_streamlines: 100. In \nlength_mm: 10000."},
         '--batch_size_validation': {
             'type': int, 'default': 1000, 'metavar': 's',
             'help': "Idem; batch size during validation."},
@@ -24,18 +24,17 @@ def get_args_batch_sampler():
             'help': "One of 'nb_streamlines' or 'length_mm'."},
         '--nb_streamlines_per_chunk': {
             'type': int, 'metavar': 'n',
-            'help': "Only used with  batch_size_units='length_mm'. Chunks of "
-                    "n streamlines are \nsampled at once, their size is "
+            'help': "Only used with  batch_size_units in 'length_mm'. Chunks "
+                    "of n streamlines are \nsampled at once, their size is "
                     "checked, and then number of streamlines is \najusted "
                     "until below batch_size."},
         '--nb_subjects_per_batch': {
             'type': int, 'metavar': 'n',
             'help': "Maximum number of different subjects from which to load "
                     "data in each batch. \nThis should help avoid loading too "
-                    "many inputs in memory, particularly for \nlazy data. If "
-                    "not set, we will use true random sampling. \n"
-                    "Suggestion, 5. \n**Note: Will influence the cache if the "
-                    "cache_manager is used."},
+                    "many inputs in memory, particularly for lazy \ndata. If "
+                    "not set, we will use true random sampling. "
+                    "Suggestion: 5."},
         '--cycles': {
             'type': int, 'metavar': 'c',
             'help': "Relevant only if nb_subject_per_batch is set. Number of "

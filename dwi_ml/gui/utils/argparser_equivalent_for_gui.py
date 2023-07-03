@@ -13,7 +13,7 @@ arg_name_indent = 40
 nb_dots = 150
 
 
-def manage_visual_default(default, dtype):
+def _manage_visual_default(default, dtype):
     if default is not None:
         # Assert that default is the right type?
         return default
@@ -28,49 +28,92 @@ def manage_visual_default(default, dtype):
             raise ValueError("Data type {} not supported yet!".format(dtype))
 
 
-def set_to_default_callback(sender, app_data, user_data):
+def _set_to_default_callback(sender, app_data, user_data):
     default, dtype = user_data
     if app_data:  # i.e. == True
         nb_char = len('_default_checkbox')
         dpg_item_name = sender[:-nb_char]
-        dpg.set_value(dpg_item_name, manage_visual_default(default, dtype))
+        dpg.set_value(dpg_item_name, _manage_visual_default(default, dtype))
 
 
-def log_value_remove_check(sender, _, __):
+def _log_value_and_remove_check(sender, _, __):
     dpg.set_value(sender + '_default_checkbox', False)
 
 
-def add_args_to_gui(args, section_name=None):
-    if section_name is not None:
-        dpg.add_text('\n' + section_name + ':')
+def _log_value_exclusive_group(sender, _, elements_in_group):
+    raise NotImplementedError
 
-    all_names = list(args.keys())
-    all_mandatory = [n for n in all_names if n[0] != '-']
-    all_options = [n for n in all_names if n[0] == '-']
+def _add_input_item_based_on_type(arg_name, params, item_options):
+    default = None if 'default' not in params else params['default']
+    dtype = params['type'] if 'type' in params else str
 
-    if len(all_mandatory) > 0:
-        with dpg.tree_node(label="Required", default_open=True):
-            for arg_name in all_mandatory:
-                _add_item_to_gui(arg_name, args[arg_name], required=True)
+    if 'choices' in params:
+        choices = list(params['choices'])
+        default = choices[0] if default is None else default
+        dpg.add_combo(choices, tag=arg_name, default_value=default,
+                      **style_input_item, **item_options)
 
-    if len(all_options) > 0:
-        with dpg.tree_node(label="Options", default_open=False):
-            for arg_name in all_options:
-                _add_item_to_gui(arg_name, args[arg_name], required=False)
+    elif 'action' in params:
+        if params['action'] == 'store_true':
+            # Could add a checkbox, but could not make it beautiful.
+            dpg.add_combo(['True', 'False'], default_value='False',
+                          tag=arg_name, **style_input_item, **item_options)
+        else:
+            raise NotImplementedError("NOT READY FOR TYPE TYPE: action: {}"
+                                      .format(params['action']))
 
+    elif dtype == str:
+        dpg.add_input_text(tag=arg_name,
+                           default_value=_manage_visual_default(default, str),
+                           **style_input_item, **item_options)
 
-def _add_item_to_gui(arg_name, params, required):
-    # Default value?
-    default_is_none = False
-    if 'default' not in params:
-        default_is_none = True
+    elif dtype == int:
+        dpg.add_input_int(tag=arg_name,
+                          default_value=_manage_visual_default(default, int),
+                          **style_input_item, **item_options)
 
-    # User clicked on optional?
-    if not required:
-        item_options = {'callback': log_value_remove_check}
+    elif dtype == float:
+        dpg.add_input_float(tag=arg_name, format= '%.7f',
+                            default_value=_manage_visual_default(default, float),
+                            **style_input_item, **item_options)
+
     else:
-        item_options = {}
+        dpg.add_text("NOT MANAGED YET TYPE {} FOR ARG {}: "
+                     .format(dtype, arg_name), tag=arg_name,
+                     **style_input_item, **item_options)
 
+    return dtype
+
+
+def _add_item_to_group(arg_name, params, required):
+    if arg_name == 'exclusive_group':
+        raise NotImplementedError
+        with dpg.tree_node(label="Select one", default_open=True):
+            item_options = {'callback': _log_value_exclusive_group,
+                            'user_data': group}
+            set_to_default_options = {'callback': _set_to_default_callback}
+            for sub_item, sub_params in params.items():
+                required = sub_item[0] != '-'
+                _add_item_to_gui(sub_item, sub_params, required)
+    else:
+        # No group.
+        if not required:
+            # User modified optional value? Else keep default.
+            # Default value? Else, we need to manage "None".
+            item_options = {'callback': _log_value_and_remove_check}
+            set_to_default_options = {'callback': _set_to_default_callback}
+            other_user_data = None
+        else:
+            item_options = {}
+            set_to_default_options = {}
+            other_user_data = None
+
+        _add_item_to_gui(arg_name, params, required, item_options,
+                         set_to_default_options)
+
+
+def _add_item_to_gui(arg_name, params, required, item_options,
+                     set_to_default_option):
     with dpg.group(horizontal=True):
         # 1. Argument name
         dpg.add_text(arg_name + ('.' * nb_dots), indent=arg_name_indent)
@@ -92,50 +135,33 @@ def _add_item_to_gui(arg_name, params, required):
 
             # 3. Ignore checkbox.
             if not required:
-                default = None if default_is_none else params['default']
+                default = None if 'default' not in params else params['default']
                 dpg.add_checkbox(label='Set to default: {}'.format(default),
                                  default_value=True,
                                  tag=arg_name + '_default_checkbox',
-                                 user_data=(default, dtype),
-                                 callback=set_to_default_callback)
+                                 user_data = (default, dtype, other_user_data),
+                                 **set_to_default_option)
 
     # 4. (Below: Help)
     dpg.add_text(params['help'], **style_help)
 
 
-def _add_input_item_based_on_type(arg_name, params, item_options):
-    default = None if 'default' not in params else params['default']
-    dtype = params['type'] if 'type' in params else str
+def add_args_to_gui(args, section_name=None):
+    if section_name is not None:
+        dpg.add_text('\n' + section_name)
 
-    if 'choices' in params:
-        choices = list(params['choices'])
-        default = choices[0] if default is None else default
-        dpg.add_combo(choices, tag=arg_name, default_value=default,
-                      **style_input_item, **item_options)
+    all_names = list(args.keys())
 
-    elif dtype == str:
-        dpg.add_input_text(tag=arg_name,
-                           default_value=manage_visual_default(default, str),
-                           **style_input_item, **item_options)
+    all_mandatory = [n for n in all_names if (n != 'exclusive_group' and
+                                              n[0] != '-')]
+    all_options = [n for n in all_names if (n == 'exclusive_group' or
+                                            n[0] == '-')]
+    if len(all_mandatory) > 0:
+        with dpg.tree_node(label="Required", default_open=False):
+            for arg_name in all_mandatory:
+                _add_item_to_group(arg_name, args[arg_name], required=True)
 
-    elif dtype == int:
-        dpg.add_input_int(tag=arg_name,
-                          default_value=manage_visual_default(default, int),
-                          **style_input_item, **item_options)
-
-    else:
-        dpg.add_text("NOT MANAGED YET TYPE {} FOR ARG {}: "
-                     .format(dtype, arg_name), tag=arg_name,
-                     **style_input_item, **item_options)
-
-    return dtype
-
-
-def add_save_script_outfilename_item():
-    dpg.add_text('\n\n')
-    with dpg.group(horizontal=True):
-        dpg.add_text("Script output", indent=arg_name_indent)
-        dpg.add_button(label='Click here to choose where to save your file',
-                       tag='output_script', indent=300, width=600,
-                       callback=lambda: dpg.show_item("file_dialog_output_script"))
-    dpg.add_text("\n\n\n\n")
+    if len(all_options) > 0:
+        with dpg.tree_node(label="Options", default_open=False):
+            for arg_name in all_options:
+                _add_item_to_group(arg_name, args[arg_name], required=False)

@@ -96,16 +96,16 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
     """
     def __init__(self,
                  experiment_name: str,
-                 step_size: Union[float, None], compress_lines: Union[float, None],
+                 # Target preprocessing params for the batch loader + tracker
+                 step_size: Union[float, None],
+                 compress_lines: Union[float, None],
                  # INPUTS IN ENCODER
                  nb_features: int, embedding_key_x: str, embedding_size_x: int,
-                 # TARGETS IN DECODER
-                 token_type: str, embedding_key_t: str, embedding_size_t: int,
                  # GENERAL TRANSFORMER PARAMS
                  max_len: int, positional_encoding_key: str,
                  d_model: int, ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
-                 norm_first: bool, start_from_copy_prev: bool,
+                 norm_first: bool,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: dict,
                  # Other
@@ -124,14 +124,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             Default: 'no_embedding'.
         embedding_size_x: int
             Embedding size for x. In the base model, must be d_model.
-        token_type: str
-            Either 'as_label' or the name of the sphere to convert to classes.
-            Used for SOS addition.
-        embedding_key_t: str,
-            Target embedding, with the same choices as above.
-            Default: 'no_embedding'.
-        embedding_size_t: int
-            Embedding size for t. In the base model, must be d_model.
         max_len: int
             Maximal sequence length. This is only used in the positional
             encoding. During the forward call, batches are only padded to the
@@ -179,20 +171,16 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         self.nb_features = nb_features
         self.embedding_key_x = embedding_key_x
-        self.token_type = token_type
-        self.embedding_key_t = embedding_key_t
         self.max_len = max_len
         self.positional_encoding_key = positional_encoding_key
         self.d_model = d_model
         self.embedding_size_x = embedding_size_x
-        self.embedding_size_t = embedding_size_t
         self.nheads = nheads
         self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size \
             else d_model // 2
         self.dropout_rate = dropout_rate
         self.activation = activation
         self.norm_first = norm_first
-        self.start_from_copy_prev = start_from_copy_prev
 
         # ----------- Checks
         assert embedding_size_x > 3, \
@@ -201,9 +189,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         if self.embedding_key_x not in keys_to_embeddings.keys():
             raise ValueError("Embedding choice for x data not understood: {}"
                              .format(self.embedding_key_x))
-        if self.embedding_key_t not in keys_to_embeddings.keys():
-            raise ValueError("Embedding choice for targets not understood: {}"
-                             .format(self.embedding_key_t))
         if self.positional_encoding_key not in \
                 keys_to_positional_encodings.keys():
             raise ValueError("Positional encoding choice not understood: {}"
@@ -217,27 +202,17 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # prepares its own dropout elsewhere, and direction getter too.
         self.dropout = Dropout(self.dropout_rate)
 
-        # 1. x embedding
+        # 1. x embedding layer
         input_size = nb_features * (self.nb_neighbors + 1)
         cls_x = keys_to_embeddings[self.embedding_key_x]
         self.embedding_layer_x = cls_x(input_size, self.embedding_size_x)
 
-        # 2. positional encoding
+        # 2. positional encoding layer
         cls_p = keys_to_positional_encodings[self.positional_encoding_key]
         self.position_encoding_layer = cls_p(embedding_size_x, dropout_rate,
                                              max_len)
 
-        # 3. target embedding
-        cls_t = keys_to_embeddings[self.embedding_key_t]
-        if token_type == 'as_label':
-            self.token_sphere = None
-            target_features = 4
-        else:
-            dipy_sphere = get_sphere(token_type)
-            self.token_sphere = TorchSphere(dipy_sphere)
-            # nb classes = nb_vertices + SOS
-            target_features = len(self.token_sphere.vertices) + 1
-        self.embedding_layer_t = cls_t(target_features, embedding_size_t)
+        # 3. target embedding layer: See child class with Target
 
         # 4. Transformer: See child classes
 
@@ -250,7 +225,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         self.instantiate_direction_getter(d_model)
 
         assert self.loss_uses_streamlines
-        self.forward_uses_streamlines = True
 
     @property
     def params_for_checkpoint(self):
@@ -262,8 +236,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         p.update({
             'nb_features': int(self.nb_features),
             'embedding_key_x': self.embedding_key_x,
-            'token_type': self.token_type,
-            'embedding_key_t': self.embedding_key_t,
             'max_len': self.max_len,
             'positional_encoding_key': self.positional_encoding_key,
             'dropout_rate': self.dropout_rate,
@@ -271,7 +243,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             'nheads': self.nheads,
             'ffnn_hidden_size': self.ffnn_hidden_size,
             'norm_first': self.norm_first,
-            'start_from_copy_prev': self.start_from_copy_prev
         })
 
         return p
@@ -279,33 +250,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
     def set_context(self, context):
         assert context in ['training', 'validation', 'tracking', 'visu']
         self._context = context
-
-    def move_to(self, device):
-        super().move_to(device)
-        if self.token_sphere is not None:
-            self.token_sphere.move_to(device)
-
-    def _prepare_targets_forward(self, batch_streamlines):
-        """
-        batch_streamlines: List[Tensors]
-        during_loss: bool
-            If true, this is called during loss computation, and only EOS is
-            added.
-        during_foward: bool
-            If True, this is called in the forward method, and both
-            EOS and SOS are added.
-        """
-        batch_dirs = compute_directions(batch_streamlines)
-
-        if self.token_type == 'as_label':
-            batch_dirs = add_label_as_last_dim(batch_dirs,
-                                               add_sos=True, add_eos=False)
-        else:
-            batch_dirs = convert_dirs_to_class(
-                batch_dirs, self.token_sphere,
-                add_sos=True, add_eos=False, to_one_hot=True)
-
-        return batch_dirs
 
     def _generate_future_mask(self, sz):
         """DO NOT USE FLOAT, their code had a bug (see issue #92554. Fixed in
@@ -366,6 +310,96 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
     def forward(self, inputs: List[torch.tensor],
                 input_streamlines: List[torch.tensor], return_weights=False,
                 average_heads=False):
+        raise NotImplementedError
+
+
+class AbstractTransformerModelWithTarget(AbstractTransformerModel):
+    def __init__(self,
+                 # TARGETS IN DECODER
+                 token_type: str, embedding_key_t: str, embedding_size_t: int,
+                 start_from_copy_prev: bool,
+                 **kwargs):
+        """
+        token_type: str
+            Either 'as_label' or the name of the sphere to convert to classes.
+            Used for SOS addition.
+        embedding_key_t: str,
+            Target embedding, with the same choices as above.
+            Default: 'no_embedding'.
+        embedding_size_t: int
+            Embedding size for t. In the base model, must be d_model.
+        """
+        super().__init__(**kwargs)
+
+        self.token_type = token_type
+        self.embedding_key_t = embedding_key_t
+        self.embedding_size_t = embedding_size_t
+        self.start_from_copy_prev = start_from_copy_prev
+
+        # Checks.
+        if self.embedding_key_t not in keys_to_embeddings.keys():
+            raise ValueError("Embedding choice for targets not understood: {}"
+                             .format(self.embedding_key_t))
+
+        # 3. Target embedding.
+        cls_t = keys_to_embeddings[self.embedding_key_t]
+        if token_type == 'as_label':
+            self.token_sphere = None
+            target_features = 4
+        else:
+            dipy_sphere = get_sphere(token_type)
+            self.token_sphere = TorchSphere(dipy_sphere)
+            # nb classes = nb_vertices + SOS
+            target_features = len(self.token_sphere.vertices) + 1
+        self.embedding_layer_t = cls_t(target_features, embedding_size_t)
+
+        self.forward_uses_streamlines = True
+
+    @property
+    def params_for_checkpoint(self):
+        """
+        Every parameter necessary to build the different layers again from a
+        checkpoint.
+        """
+        p = super().params_for_checkpoint
+        p.update({
+            'token_type': self.token_type,
+            'embedding_key_t': self.embedding_key_t,
+            'start_from_copy_prev': self.start_from_copy_prev
+        })
+
+        return p
+
+    def move_to(self, device):
+        super().move_to(device)
+        if self.token_sphere is not None:
+            self.token_sphere.move_to(device)
+
+    def _prepare_targets_forward(self, batch_streamlines):
+        """
+        batch_streamlines: List[Tensors]
+        during_loss: bool
+            If true, this is called during loss computation, and only EOS is
+            added.
+        during_foward: bool
+            If True, this is called in the forward method, and both
+            EOS and SOS are added.
+        """
+        batch_dirs = compute_directions(batch_streamlines)
+
+        if self.token_type == 'as_label':
+            batch_dirs = add_label_as_last_dim(batch_dirs,
+                                               add_sos=True, add_eos=False)
+        else:
+            batch_dirs = convert_dirs_to_class(
+                batch_dirs, self.token_sphere,
+                add_sos=True, add_eos=False, to_one_hot=True)
+
+        return batch_dirs
+
+    def forward(self, inputs: List[torch.tensor],
+                input_streamlines: List[torch.tensor], return_weights=False,
+                average_heads=False):
         """
         Params
         ------
@@ -374,7 +408,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             [nb_input_points, nb_features].
         input_streamlines: list[Tensor]
             Streamline coordinates. One tensor per streamline. Size of each
-            tensor = [nb_input_points + 1, 3]. Directions will be computed to
+            tensor = [nb_input_points, 3]. Directions will be computed to
             obtain targets of the same lengths. Then, directions are used for
             two things:
             - As input to the decoder. This input is generally the shifted
@@ -500,28 +534,10 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         return outputs
 
-    def run_embedding(self, inputs, targets, use_padding, batch_max_len):
-        """
-        Pad + concatenate.
-        Embedding. (Add SOS token to target.)
-        Positional encoding.
-        """
-        # toDo: Test faster:
-        #   1) stack (2D), embed, unstack, pad_and_stack (3D)
-        #   2) loop on streamline to embed, pad_and_stack
-        #   3) pad_and_stack, then embed (but we might embed many zeros that
-        #      will be masked in attention anyway)
-        # Inputs
-        inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
-        inputs = self.embedding_layer_x(inputs)
-        inputs = self.position_encoding_layer(inputs)
-
-        # Targets
-        targets = pad_and_stack_batch(targets, use_padding, batch_max_len)
-        targets = self.embedding_layer_t(targets)
-        targets = self.position_encoding_layer(targets)
-
-        return inputs, targets
+    def _run_main_layer_forward(
+            self, embed_x: torch.Tensor, embed_t: torch.Tensor, masks: Tuple,
+            return_weights: bool, average_heads: bool):
+        raise NotImplementedError
 
     def copy_prev_dir(self, dirs):
         if 'regression' in self.dg_key:
@@ -560,13 +576,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         return copy_prev_dirs
 
-    def _run_main_layer_forward(
-            self, embed_x: torch.Tensor, embed_t: torch.Tensor, masks: Tuple,
-            return_weights: bool, average_heads: bool):
-        raise NotImplementedError
 
-
-class OriginalTransformerModel(AbstractTransformerModel):
+class OriginalTransformerModel(AbstractTransformerModelWithTarget):
     """
     We can use torch.nn.Transformer.
     We will also compare with
@@ -647,6 +658,29 @@ class OriginalTransformerModel(AbstractTransformerModel):
         })
         return p
 
+    def run_embedding(self, inputs, targets, use_padding, batch_max_len):
+        """
+        Pad + concatenate.
+        Embedding. (Add SOS token to target.)
+        Positional encoding.
+        """
+        # toDo: Test faster:
+        #   1) stack (2D), embed, unstack, pad_and_stack (3D)
+        #   2) loop on streamline to embed, pad_and_stack
+        #   3) pad_and_stack, then embed (but we might embed many zeros that
+        #      will be masked in attention anyway)
+        # Inputs
+        inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
+        inputs = self.embedding_layer_x(inputs)
+        inputs = self.position_encoding_layer(inputs)
+
+        # Targets
+        targets = pad_and_stack_batch(targets, use_padding, batch_max_len)
+        targets = self.embedding_layer_t(targets)
+        targets = self.position_encoding_layer(targets)
+
+        return inputs, targets
+
     def _run_main_layer_forward(self, embed_x, embed_t, masks,
                                 return_weights, average_heads):
         """Original Main transformer
@@ -669,25 +703,24 @@ class OriginalTransformerModel(AbstractTransformerModel):
         return outputs, (sa_weights_encoder, sa_weights_decoder, mha_weights)
 
 
-class TransformerSrcAndTgtModel(AbstractTransformerModel):
+class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
     """
     Decoder only. Concatenate source + target together as input.
     See https://arxiv.org/abs/1905.06596 and
     https://proceedings.neurips.cc/paper/2018/file/4fb8a7a22a82c80f2c26fe6c1e0dcbb3-Paper.pdf
     + discussion with Hugo.
 
-                                                        direction getter
-                                                              |
-                                                  -------| take 1/2 |
-                                                  |    Norm      x2 |
-                                                  |    Skip      x2 |
-                                                  |  Dropout     x2 |
-                                                  |2-layer FFNN  x2 |
-                                                  |        |        |
-                                                  |   Norm       x2 |
-                                                  |   Skip       x2 |
-                                                  |  Dropout     x2 |
-                                                  | Masked Att.  x2 |
+                                                  direction getter
+                                                          |
+                                                  |    Norm       |
+                                                  |    Skip       |
+                                                  |  Dropout      |
+                                                  |2-layer FFNN   |
+                                                  |       |       |
+                                                  |   Norm        |
+                                                  |   Skip        |
+                                                  |  Dropout      |
+                                                  | Masked Att.   |
                                                   -------------------
                                                            |
                                              [ emb_choice_x ; emb_choice_y ]
@@ -771,3 +804,45 @@ class TransformerSrcAndTgtModel(AbstractTransformerModel):
             return_weights=return_weights, average_heads=average_heads)
 
         return outputs, (sa_weights,)
+
+
+class TransformerSrcOnlyModel(AbstractTransformerModel):
+    def __init__(self, n_layers_d: int, embedding_size_x: int, **kw):
+        """
+        Args
+        ----
+        n_layers_d: int
+            Number of encoding layers in the decoder. [6]
+        embedding_size_x: int
+            Embedding size for the input. Embedding size for the target will
+            be d_model - input.
+        """
+        super().__init__(d_model=embedding_size_x,
+                         embedding_size_x=embedding_size_x, **kw)
+
+        # ----------- Additional params
+        self.n_layers_d = n_layers_d
+
+        # ----------- Additional instantiations
+        # We say "decoder only" from the logical point of view, but code-wise
+        # it is actually "encoder only". A decoder would need output from the
+        # encoder.
+        logger.debug("Instantiating Transformer...")
+        # The d_model is the same; points are not concatenated together.
+        # It is the max_len that is modified: The sequences are concatenated
+        # one beside the other.
+        main_layer_encoder = ModifiedTransformerEncoderLayer(
+            self.d_model, self.nheads, dim_feedforward=self.ffnn_hidden_size,
+            dropout=self.dropout_rate, activation=self.activation,
+            batch_first=True, norm_first=self.norm_first)
+        self.modified_torch_transformer = ModifiedTransformerEncoder(
+            main_layer_encoder, n_layers_d, norm=None)
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
+        p.update({
+            'n_layers_d': self.n_layers_d,
+            'embedding_size_x': self.embedding_size_x,
+        })
+        return p

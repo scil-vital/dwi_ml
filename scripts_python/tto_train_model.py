@@ -46,8 +46,8 @@ def prepare_arg_parser():
     add_training_args(p, add_a_tracking_validation_phase=True)
 
     # Specific to Transformers:
-    gt = add_abstract_model_args(p)
-    add_tto_model_args(gt)
+    groups = add_abstract_model_args(p)
+    add_tto_model_args(*groups)
 
     add_memory_args(p, add_lazy_options=True, add_rng=True)
 
@@ -73,11 +73,11 @@ def init_from_args(args, sub_loggers_level):
             experiment_name=args.experiment_name,
             step_size=args.step_size, compress_lines=args.compress,
             # Targets in decoder:
-            token_type=args.token_type,
+            sos_token_type=args.SOS_token_type,
             # Concerning inputs:
             max_len=args.max_len, nb_features=args.nb_features,
             positional_encoding_key=args.position_encoding,
-            embedding_key_x=args.data_embedding,
+            embedding_key_x=args.embedding_key_x,
             embedding_key_t=args.target_embedding,
             # Torch's transformer parameters
             d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,

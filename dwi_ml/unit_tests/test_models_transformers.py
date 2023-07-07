@@ -19,7 +19,7 @@ def _prepare_original_model():
         experiment_name='test', step_size=0.5, compress_lines=None,
         nb_features=4, d_model=4, max_len=5,
         log_level='DEBUG', positional_encoding_key='sinusoidal',
-        token_type='as_label', embedding_key_x='nn_embedding',
+        sos_token_type='as_label', embedding_key_x='nn_embedding',
         embedding_key_t='nn_embedding', ffnn_hidden_size=None, nheads=1,
         dropout_rate=0., activation='relu', norm_first=False, n_layers_e=1,
         n_layers_d=1, dg_key='cosine-regression', dg_args=None,
@@ -32,10 +32,10 @@ def _prepare_ttst_model():
     model = TransformerSrcAndTgtModel(
         experiment_name='test',  step_size=0.5, compress_lines=None,
         nb_features=4, max_len=5, embedding_size_x=4, embedding_size_t=1,
-        log_level='DEBUG', token_type='repulsion100',
+        log_level='DEBUG', sos_token_type='repulsion100',
         positional_encoding_key='sinusoidal', embedding_key_x='nn_embedding',
         embedding_key_t='nn_embedding', ffnn_hidden_size=None, nheads=1,
-        dropout_rate=0., activation='relu', norm_first=False, n_layers_d=1,
+        dropout_rate=0., activation='relu', norm_first=False, n_layers_e=1,
         dg_key='cosine-regression', dg_args=None, neighborhood_type=None,
         neighborhood_radius=None, start_from_copy_prev=False)
     return model

@@ -12,7 +12,6 @@ def start_dpg():
 
 def show_and_end_dpg():
     dpg.show_viewport()
-    dpg.set_primary_window("Primary Window", True)
     dpg.start_dearpygui()
     dpg.destroy_context()
 

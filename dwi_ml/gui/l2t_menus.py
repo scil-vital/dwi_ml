@@ -18,10 +18,10 @@ def callback_ok_get_args_l2t(_, __, args):
 
     print("ALL VALUES: ")
     print(all_values)
-    create_l2t_train_script(all_values)
+    _create_l2t_train_script(all_values)
 
 
-def prepare_and_show_train_l2t_window():
+def open_train_l2t_window():
     main_window = dpg.get_active_window()
     dpg.hide_item(main_window)
 
@@ -56,7 +56,7 @@ def prepare_and_show_train_l2t_window():
                            user_data=args, height=50)
 
 
-def create_l2t_train_script(all_values):
+def _create_l2t_train_script(all_values):
     script = "l2t_train_model.py "
     for arg_name, value in all_values.items():
         if value is not None:

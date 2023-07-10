@@ -18,9 +18,6 @@ MAX_LEN = 400  # During tracking, if we allow 200mm * 0.5 step size = 400 points
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run('ttst_track_from_model.py', '--help')
-    assert ret.success
-
     ret = script_runner.run('ttst_visualize_loss.py', '--help')
     assert ret.success
 
@@ -77,21 +74,9 @@ def test_execution(script_runner, experiments_path):
 
     logging.info("************ TESTING TRACKING FROM MODEL ************")
     whole_experiment_path = os.path.join(experiments_path, experiment_name)
-    out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
 
-    seeding_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
-    tracking_mask_group = TEST_EXPECTED_VOLUME_GROUPS[1]
     input_group = TEST_EXPECTED_VOLUME_GROUPS[0]
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
-
-    ret = script_runner.run(
-        'ttst_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
-        input_group, out_tractogram, seeding_mask_group,
-        '--algo', 'det', '--nt', '2', '--rng_seed', '0',
-        '--min_length', '0', '--subset', 'training',
-        '--max_length', str(MAX_LEN * 0.5), '--step', '0.5',
-        '--tracking_mask_group', tracking_mask_group)
-    assert ret.success
 
     # Test visu loss
     out_tractogram = os.path.join(experiments_path, 'colored_tractogram.trk')

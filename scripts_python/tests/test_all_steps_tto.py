@@ -25,7 +25,7 @@ def test_help_option(script_runner):
         'tt_resume_training_from_checkpoint.py', '--help')
     assert ret.success
 
-    ret = script_runner.run('tto_track_from_model.py', '--help')
+    ret = script_runner.run('tt_track_from_model.py', '--help')
     assert ret.success
 
     ret = script_runner.run('tto_visualize_loss.py', '--help')
@@ -97,7 +97,7 @@ def test_execution(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     ret = script_runner.run(
-        'tto_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+        'tt_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
         input_group, out_tractogram, seeding_mask_group,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0',
         '--min_length', '0', '--subset', 'training', '--logging', 'DEBUG',

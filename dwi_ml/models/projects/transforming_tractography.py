@@ -102,6 +102,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                  # INPUTS IN ENCODER
                  nb_features: int, embedding_key_x: str, embedding_size_x: int,
                  # GENERAL TRANSFORMER PARAMS
+                 d_model: int,
                  max_len: int, positional_encoding_key: str,
                  ffnn_hidden_size: Union[int, None],
                  nheads: int, dropout_rate: float, activation: str,
@@ -180,8 +181,13 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         self.dropout_rate = dropout_rate
         self.activation = activation
         self.norm_first = norm_first
-        self.d_model, self.ffnn_hidden_size = \
-            self._define_d_model(ffnn_hidden_size)
+        self.d_model = d_model
+        self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size \
+            else d_model // 2
+
+        assert d_model // self.nheads == float(d_model) / self.nheads, \
+            "d_model (=embedding_size_x, {}) must be divisible by nheads " \
+            "({})".format(d_model, self.nheads)
 
         # ----------- Checks
         assert embedding_size_x > 3, \
@@ -224,19 +230,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         assert self.loss_uses_streamlines
 
-    def _define_d_model(self, ffnn_hidden_size):
-        # In the original model + SrcOnly model: d_model = embedding_size_x
-        d_model = self.embedding_size_x
-
-        ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size \
-            else d_model // 2
-
-        assert d_model // self.nheads == float(d_model) / self.nheads, \
-            "d_model (=embedding_size_x, {}) must be divisible by nheads " \
-            "({})".format(d_model, self.nheads)
-
-        return d_model, ffnn_hidden_size
-
     @property
     def params_for_checkpoint(self):
         """
@@ -248,6 +241,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             'nb_features': int(self.nb_features),
             'embedding_key_x': self.embedding_key_x,
             'embedding_size_x': self.embedding_size_x,
+            'd_model': self.d_model,
             'max_len': self.max_len,
             'n_layers_e': self.n_layers_e,
             'positional_encoding_key': self.positional_encoding_key,
@@ -330,6 +324,7 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
     def __init__(self,
                  # TARGETS IN DECODER
                  sos_token_type: str, embedding_key_t: str,
+                 embedding_size_t: int,
                  start_from_copy_prev: bool, **kwargs):
         """
         token_type: str
@@ -343,6 +338,7 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
 
         self.sos_token_type = sos_token_type
         self.embedding_key_t = embedding_key_t
+        self.embedding_size_t = embedding_size_t
         self.start_from_copy_prev = start_from_copy_prev
 
         # Checks.
@@ -360,12 +356,10 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
             self.token_sphere = TorchSphere(dipy_sphere)
             # nb classes = nb_vertices + SOS
             self.target_features = len(self.token_sphere.vertices) + 1
-        self.embedding_layer_t = self._prepare_embedding_layer_t(cls_t)
+        self.embedding_layer_t = cls_t(self.target_features,
+                                       self.embedding_size_t)
 
         self.forward_uses_streamlines = True
-
-    def _prepare_embedding_layer_t(self, cls_t):
-        raise NotImplementedError
 
     @property
     def params_for_checkpoint(self):
@@ -377,6 +371,7 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
         p.update({
             'sos_token_type': self.sos_token_type,
             'embedding_key_t': self.embedding_key_t,
+            'embedding_size_t': self.embedding_size_t,
             'start_from_copy_prev': self.start_from_copy_prev
         })
 
@@ -626,7 +621,9 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
         n_layers_d: int
             Number of encoding layers in the decoder. [6]
         """
-        super().__init__(embedding_size_x=d_model, **kw)
+        super().__init__(embedding_size_x=d_model,
+                         embedding_size_t=d_model,
+                         d_model=d_model, **kw)
 
         # ----------- Additional params
         self.n_layers_d = n_layers_d
@@ -658,17 +655,12 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
             encoder, decoder, batch_first=True,
             norm_first=self.norm_first)
 
-    def _prepare_embedding_layer_t(self, cls_t):
-        return cls_t(self.target_features, self.d_model)
-
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
         del p['embedding_size_x']
-        p.update({
-            'n_layers_d': self.n_layers_d,
-            'd_model': self.d_model,
-        })
+        del p['embedding_size_t']
+        p['n_layers_d'] = self.n_layers_d
         return p
 
     def run_embedding(self, inputs, targets, use_padding, batch_max_len):
@@ -739,17 +731,10 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
                                              [ emb_choice_x ; emb_choice_y ]
 
     """
-    def __init__(self, embedding_size_t, **kw):
-        """
-        Args
-        ----
-        embedding_size_t: int
-            Embedding size for the target. Total d_model will be
-            embedding_size_x + embedding_size_t.
-        """
-        self.embedding_size_t = embedding_size_t
-
-        super().__init__(**kw)
+    def __init__(self, embedding_size_x: int, embedding_size_t: int, **kw):
+        super().__init__(embedding_size_x=embedding_size_x,
+                         embedding_size_t=embedding_size_t,
+                         d_model=embedding_size_x + embedding_size_t, **kw)
 
         # ----------- Additional instantiations
         logger.debug("Instantiating Transformer...")
@@ -760,30 +745,14 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
         self.modified_torch_transformer = ModifiedTransformerEncoder(
             main_layer_encoder, self.n_layers_e, norm=None)
 
-    def _define_d_model(self, ffnn_hidden_size):
-        # In this model, d_model is the concatenation of inputs and targets.
-        d_model = self.embedding_size_x + self.embedding_size_t
-
-        ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size \
-            else d_model // 2
-
-        assert d_model // self.nheads == float(d_model) / self.nheads, \
-            "d_model (embedding_size_x + embedding_size_t = {}) must be " \
-            "divisible by nheads ({})" \
-            .format(d_model, self.nheads)
-
-        return d_model, ffnn_hidden_size
-
-    def _prepare_embedding_layer_t(self, cls_t):
-        return cls_t(self.target_features, self.embedding_size_t)
-
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
-        p.update({
-            'embedding_size_t': self.embedding_size_t
-        })
+        del p['d_model']
         return p
+
+    def _prepare_embedding_layer_t(self, cls_t):
+        return cls_t(self.target_features, self.embedding_size_t)
 
     def run_embedding(self, inputs: List[torch.Tensor], targets, use_padding,
                       batch_max_len):
@@ -823,8 +792,9 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
 
 
 class TransformerSrcOnlyModel(AbstractTransformerModel):
-    def __init__(self, **kw):
-        super().__init__(**kw)
+    def __init__(self, d_model, **kw):
+        super().__init__(embedding_size_x=d_model,
+                         d_model=d_model, **kw)
 
         # ----------- Additional instantiations
         # We say "decoder only" from the logical point of view, but code-wise
@@ -840,3 +810,8 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
             batch_first=True, norm_first=self.norm_first)
         self.modified_torch_transformer = ModifiedTransformerEncoder(
             main_layer_encoder, self.n_layers_e, norm=None)
+
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
+        del p['embedding_size_x']
+        return p

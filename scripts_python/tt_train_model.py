@@ -21,10 +21,9 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_memory_args, add_logging_arg
 from dwi_ml.models.projects.transforming_tractography import \
-    OriginalTransformerModel
-from dwi_ml.models.projects.transformers_utils import (add_abstract_model_args,
-                                                       add_tto_model_args,
-                                                       perform_checks)
+    OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
+from dwi_ml.models.projects.transformers_utils import (
+    add_transformers_model_args, perform_checks)
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
@@ -46,8 +45,7 @@ def prepare_arg_parser():
     add_training_args(p, add_a_tracking_validation_phase=True)
 
     # Specific to Transformers:
-    groups = add_abstract_model_args(p)
-    add_tto_model_args(*groups)
+    add_transformers_model_args(p)
 
     add_memory_args(p, add_lazy_options=True, add_rng=True)
 
@@ -55,6 +53,42 @@ def prepare_arg_parser():
 
 
 def init_from_args(args, sub_loggers_level):
+
+    # Specific args depending on the chosen model.
+    if args.model == 'TTST':
+        cls = TransformerSrcAndTgtModel
+        if args.embedding_size_x is None or args.embedding_size_t is None:
+            raise ValueError("Both --embedding_size_x and embedding_size_t "
+                             "must be given for this model.")
+        if args.d_model is not None:
+            raise ValueError("--d_model must not be used with this model.")
+        specific_args = {'embedding_size_x': args.embedding_size_x,
+                         'embedding_size_t': args.embedding_size_t}
+    else:
+        if args.embedding_size_x is not None or args.embedding_size_t is not None:
+            raise ValueError(
+                "--embedding_size_x and --embedding_size_t must not be used "
+                "with this model.")
+        if args.d_model is None:
+            raise ValueError("--d_model must be given for this model.")
+
+        if args.model == 'TTO':
+            cls = OriginalTransformerModel
+            specific_args = {'d_model': args.d_model,
+                             'n_layers_d': args.n_layers_d or args.n_layers_e}
+        else:
+            cls = TransformerSrcOnlyModel
+            specific_args = {'d_model': args.d_model}
+
+    if args.model == 'TTS':
+        # No target.
+        logging.debug("TTS model: target never used as input. Ignoring "
+                      "target embedding key and size, if given.")
+    else:
+        specific_args.update({'embedding_key_t': args.target_embedding,
+                              'sos_token_type': args.SOS_token_type,
+                              'start_from_copy_prev': args.start_from_copy_prev})
+
     torch.manual_seed(args.rng)  # Set torch seed
 
     # Prepare the dataset
@@ -69,28 +103,25 @@ def init_from_args(args, sub_loggers_level):
     args.nb_features = dataset.nb_features[input_group_idx]
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
-        model = OriginalTransformerModel(
+        model = cls(
             experiment_name=args.experiment_name,
             step_size=args.step_size, compress_lines=args.compress,
-            # Targets in decoder:
-            sos_token_type=args.SOS_token_type,
             # Concerning inputs:
             max_len=args.max_len, nb_features=args.nb_features,
             positional_encoding_key=args.position_encoding,
             embedding_key_x=args.embedding_key_x,
-            embedding_key_t=args.target_embedding,
             # Torch's transformer parameters
-            d_model=args.d_model, ffnn_hidden_size=args.ffnn_hidden_size,
+            ffnn_hidden_size=args.ffnn_hidden_size,
             nheads=args.nheads, dropout_rate=args.dropout_rate,
             activation=args.activation, norm_first=args.norm_first,
-            n_layers_e=args.n_layers_e, n_layers_d=args.n_layers_e,
-            start_from_copy_prev=args.start_from_copy_prev,
+            n_layers_e=args.n_layers_e,
             # Direction getter
             dg_key=args.dg_key, dg_args=dg_args,
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
-            log_level=sub_loggers_level)
+            log_level=sub_loggers_level,
+            **specific_args)
 
         logging.info("Transformer (original) model final parameters:" +
                      format_dict_to_str(model.params_for_checkpoint))

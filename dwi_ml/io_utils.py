@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
+import os
 from argparse import ArgumentParser
 
 from scilpy.io.utils import add_processes_arg
+
 
 def add_logging_arg(p):
     p.add_argument(
@@ -67,3 +69,13 @@ def add_memory_args(p: ArgumentParser, add_lazy_options=False,
                  "Load \nonly what is needed for a batch.")
 
     return g
+
+
+def verify_which_model_in_path(model_dir):
+    model_type_txt = os.path.join(model_dir, 'model_type.txt')
+
+    with open(model_type_txt, 'r') as txt_file:
+        model_type = txt_file.readlines()
+
+    model_type = model_type[0].replace('\n', '')
+    return model_type

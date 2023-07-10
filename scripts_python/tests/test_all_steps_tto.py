@@ -22,7 +22,7 @@ def test_help_option(script_runner):
     assert ret.success
 
     ret = script_runner.run(
-        'tto_resume_training_from_checkpoint.py', '--help')
+        'tt_resume_training_from_checkpoint.py', '--help')
     assert ret.success
 
     ret = script_runner.run('tto_track_from_model.py', '--help')
@@ -65,7 +65,7 @@ def test_execution(script_runner, experiments_path):
 
     logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
     ret = script_runner.run(
-        'tto_resume_training_from_checkpoint.py',
+        'tt_resume_training_from_checkpoint.py',
         experiments_path, 'test_experiment', '--new_max_epochs', '2')
     assert ret.success
 

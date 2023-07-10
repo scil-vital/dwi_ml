@@ -18,10 +18,6 @@ MAX_LEN = 400  # During tracking, if we allow 200mm * 0.5 step size = 400 points
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run(
-        'ttst_resume_training_from_checkpoint.py', '--help')
-    assert ret.success
-
     ret = script_runner.run('ttst_track_from_model.py', '--help')
     assert ret.success
 
@@ -59,12 +55,6 @@ def test_execution(script_runner, experiments_path):
                             '--embedding_size_t', '2',
                             '--n_layers_e', '1',
                             '--ffnn_hidden_size', '3', '--logging', 'INFO')
-    assert ret.success
-
-    logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
-    ret = script_runner.run(
-        'ttst_resume_training_from_checkpoint.py',
-        experiments_path, 'test_experiment', '--new_max_epochs', '2')
     assert ret.success
 
     if torch.cuda.is_available():

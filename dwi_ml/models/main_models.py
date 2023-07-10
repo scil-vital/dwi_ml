@@ -145,6 +145,10 @@ class MainModelAbstract(torch.nn.Module):
             json_file.write(json.dumps(self.params_for_checkpoint, indent=4,
                                        separators=(',', ': ')))
 
+        name = os.path.join(model_dir, "model_type.txt")
+        with open(name, 'w') as txt_file:
+            txt_file.write(str(self.__class__.__name__))
+
         # Save model
         torch.save(model_state, os.path.join(model_dir, "model_state.pkl"))
 

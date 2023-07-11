@@ -117,7 +117,7 @@ def prepare_tracker(parser, args):
             save_seeds=args.save_seeds, rng_seed=args.rng_seed,
             track_forward_only=args.track_forward_only,
             step_size_mm=args.step_size, algo=args.algo, theta=theta,
-            use_gpu=args.use_gpu,
+            use_gpu=args.use_gpu, eos_stopping_thresh=args.eos_stop,
             simultaneous_tracking=args.simultaneous_tracking,
             append_last_point=APPEND_LAST_POINT,
             log_level=args.logging)

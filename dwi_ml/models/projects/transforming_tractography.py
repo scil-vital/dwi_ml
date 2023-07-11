@@ -363,15 +363,15 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         # Remember lengths to unpad outputs later.
         # (except during tracking, we only keep the last output, but still
         # verifying if any length exceeds the max allowed).
-        unpad_lengths = np.asarray([len(i) for i in inputs])
+        input_lengths = np.asarray([len(i) for i in inputs])
 
-        if np.any(unpad_lengths > self.max_len):
+        if np.any(input_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
                              "length for sequences ({})".format(self.max_len))
 
         # ----------- Padding params
-        use_padding = not np.all(unpad_lengths == unpad_lengths[0])
-        batch_max_len = np.max(unpad_lengths)
+        use_padding = not np.all(input_lengths == input_lengths[0])
+        batch_max_len = np.max(input_lengths)
         if CLEAR_CACHE:
             now = time()
             logging.debug("Transformer: Maximal length in batch is {}"
@@ -381,7 +381,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             logging.debug("Cleared cache in {} secs.".format(now2 - now))
 
         # ----------- Prepare masks
-        masks = self._prepare_masks(unpad_lengths, use_padding, batch_max_len)
+        masks = self._prepare_masks(input_lengths, use_padding, batch_max_len)
 
         # Compute targets (= directions) for the decoder.
         nb_streamlines = len(inputs)
@@ -404,36 +404,64 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             data, masks, return_weights, average_heads)
 
         # Here, data = one tensor, padded.
-        # outputs size = [nb streamlines, max_len, d_model].
         # Unpad now and either
         #   a) combine everything for the direction getter, then unstack and
         #   restack when computing loss.  [Chosen here. See if we can improve]
         #   b) loop on direction getter. Stack when computing loss.
+        # !!!     outputs size now  = [nb streamlines, max_len, d_model].
+        #         input size to dg  = [nb points total, d_model]
+        #         final output size = [nb points total, regression or
+        #                                           classification output size]
         if self._context == 'tracking':
-            # If needs to detach: error? Should be using witch torch.no_grad.
-            outputs = outputs
-            # No need to actually unpad, we only take the last (unpadded)
-            # point, newly created. (-1 for python indexing)
-            if use_padding:  # Not all the same length (backward tracking)
-                outputs = [outputs[i, unpad_lengths[i] - 1, :]
+            # No need to actually unpad, we only take the last unpadded point
+            # Ignoring both the beginning of the streamline (redundant from
+            # previous tracking step) and the end of the streamline (padded
+            # points).
+            if use_padding:
+                # Not all the same length (ex, backward tracking)
+                # Taking output at the last coordinate = len(input) - 1
+                # (-1 for python indexing)
+                outputs = [outputs[i, input_lengths[i] - 1, :]
                            for i in range(nb_streamlines)]
+
+                # Stacking for the direction getter.
                 outputs = torch.vstack(outputs)
-            else:  # All the same length (ex, during forward tracking)
+
+            else:
+                # All the same length (ex, during forward tracking)
+                # Keeping stacked.
                 outputs = outputs[:, -1, :]
+
+            # if start_from_copy_prev: using last one only
+            # (could improve implementation here to skip it).
+            # never padded
+            if constant_output is not None:
+                constant_output = [c[-1, :] for c in constant_output]
+                constant_output = torch.vstack(constant_output)
         else:
-            # We take all (unpadded) points.
-            outputs = [outputs[i, 0:unpad_lengths[i], :]
+            # We take all unpadded points.
+            # Reminder. Each output will be the same length as the streamline,
+            # i.e. one output per coordinate. It's the trainer's job to remove
+            # the last coordinate if we don't need it (if no EOS).
+            # Ignoring results at padded points.
+            outputs = [outputs[i, 0:input_lengths[i], :]
                        for i in range(nb_streamlines)]
+
+            # Stacking for the direction getter.
             outputs = torch.vstack(outputs)
 
-        # 3. Direction getter
-        # Outputs will be all streamlines merged.
-        # To compute loss = ok. During tracking, we will need to split back.
-        outputs = self.direction_getter(outputs)
-        outputs = constant_output + outputs
+            if constant_output is not None:  # ex, start_from_copy_prev:
+                constant_output = torch.vstack(constant_output)
 
+        # 3. Direction getter
+        outputs = self.direction_getter(outputs)
+
+        if constant_output is not None:
+            outputs = constant_output + outputs
+
+        # Splitting back. During tracking: only one point per streamline.
         if self._context != 'tracking':
-            outputs = list(torch.split(outputs, list(unpad_lengths)))
+            outputs = list(torch.split(outputs, list(input_lengths)))
 
         if return_weights:
             return outputs, weights
@@ -489,7 +517,7 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
     def _prepare_data(self, inputs, _):
         # Nothing to do. Ignoring targets.
         # No constant value to be added to output.
-        return inputs, 0.0
+        return inputs, None
 
     def _run_embeddings(self, inputs, use_padding, batch_max_len):
         return self._run_input_embedding(inputs, use_padding, batch_max_len)
@@ -576,6 +604,12 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
     def _prepare_data(self, inputs, input_streamlines):
         targets = compute_directions(input_streamlines)
 
+        # Start from copy prev option.
+        # Output is either itself or classes, but using output's sphere, not
+        # necessarily the same as sos_token_sphere.
+        copy_prev_dir = None
+        if self.start_from_copy_prev:
+            copy_prev_dir = self.format_prev_dir_(targets)
         if self.sos_token_type == 'as_label':
             targets = add_label_as_last_dim(targets,
                                             add_sos=True, add_eos=False)
@@ -583,11 +617,6 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
             targets = convert_dirs_to_class(targets, self.token_sphere,
                                             add_sos=True, add_eos=False,
                                             to_one_hot=True)
-
-        # Start from copy prev option.
-        copy_prev_dir = 0.0
-        if self.start_from_copy_prev:
-            copy_prev_dir = self.copy_prev_dir(targets)
 
         return (inputs, targets), copy_prev_dir
 
@@ -601,7 +630,15 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
                                 average_heads):
         raise NotImplementedError
 
-    def copy_prev_dir(self, dirs):
+    def format_prev_dir_(self, dirs):
+        """
+        Format the previous direction at each point. (To add to output).
+        At first coordinate: unkown. Using 0,0,0.
+
+        If output is logits of classes: adding a one-hot vector with value
+        6 on the right index (because sigmoid(6) is big). Always using value
+        0 for the EOS class, if any.
+        """
         if 'regression' in self.dg_key:
             # Regression: The latest previous dir will be used as skip
             # connection on the output.
@@ -619,6 +656,14 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
                 dirs, self.direction_getter.torch_sphere, smooth_labels=False,
                 add_sos=False, add_eos=False, to_one_hot=True)
 
+            # Not adding a EOS point, but adding a EOS class with value 0.
+            if self.direction_getter.add_eos:
+                copy_prev_dirs = [torch.nn.functional.pad(cp, [0, 1, 0, 0])
+                                  for cp in copy_prev_dirs]
+
+            # Making the one from one-hot important for the sigmoid.
+            copy_prev_dirs = [c * 6.0 for c in copy_prev_dirs]
+
         elif self.dg_key == 'smooth-sphere-classification':
             raise NotImplementedError
         elif 'gaussian' in self.dg_key:
@@ -631,10 +676,6 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
         # Add zeros as previous dir at the first position
         copy_prev_dirs = [torch.nn.functional.pad(cp, [0, 0, 1, 0])
                           for cp in copy_prev_dirs]
-        copy_prev_dirs = torch.vstack(copy_prev_dirs)
-
-        # Making the one from one-hot important for the sigmoid.
-        copy_prev_dirs = copy_prev_dirs * 6.0
 
         return copy_prev_dirs
 

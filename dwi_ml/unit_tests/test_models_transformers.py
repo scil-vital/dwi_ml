@@ -7,10 +7,10 @@ from dwi_ml.models.projects.transforming_tractography import (
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel)
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch
 
-(batch_x_training, batch_x_tracking,
- batch_s_training, batch_s_tracking) = create_test_batch()
-total_nb_points_training = sum([len(s) for s in batch_s_training])
-nb_streamlines = len(batch_x_training)
+(batch_x_various_lengths, batch_x_same_lengths,
+ batch_s_various_lengths, batch_s_same_lengths) = create_test_batch()
+total_nb_points_training = sum([len(s) for s in batch_s_various_lengths])
+nb_streamlines = len(batch_x_various_lengths)
 
 
 def _prepare_original_model():
@@ -35,7 +35,7 @@ def _prepare_ttst_model():
         # norm_first
         # dg_key
         # eos
-        # neighborhood
+        # neighborhood --> No. The number of features is fixed in our fake data
         # start from copy prev
         experiment_name='test',  step_size=0.5, compress_lines=None,
         nb_features=4, max_len=5, embedding_size_x=4, embedding_size_t=2,
@@ -44,7 +44,7 @@ def _prepare_ttst_model():
         embedding_key_t='nn_embedding', ffnn_hidden_size=6, nheads=1,
         dropout_rate=0., activation='relu', norm_first=True, n_layers_e=1,
         dg_key='sphere-classification', dg_args={'add_eos': True},
-        neighborhood_type='axes', neighborhood_radius=[1, 2],
+        neighborhood_type=None, neighborhood_radius=None,
         start_from_copy_prev=True)
     return model
 
@@ -65,7 +65,7 @@ def _run_original_model(model):
     logging.debug("\n****** Training")
     model.set_context('training')
     # Testing forward. (Batch size = 2)
-    output, weights = model(batch_x_training, batch_s_training,
+    output, weights = model(batch_x_various_lengths, batch_s_various_lengths,
                             return_weights=True)
     assert len(output) == nb_streamlines
     assert output[0].shape[1] == 3  # Here, regression, should output x, y, z
@@ -76,9 +76,10 @@ def _run_original_model(model):
     assert not isnan(output[0][0, 0])
 
     # Testing tracking
-    logging.debug("\n****** Tracking")
+    # Using batch with same lengths: mimicking forward tracking.
+    logging.debug("\n****** Tracking one step, forward tracking")
     model.set_context('tracking')
-    output = model(batch_x_tracking, batch_s_tracking)
+    output = model(batch_x_same_lengths, batch_s_same_lengths)
     assert output.shape[0] == nb_streamlines
     assert output.shape[1] == 3  # Here, regression, should output x, y, z
     assert not isnan(output[0, 0])
@@ -90,23 +91,26 @@ def _run_ttst_model(model):
     # Testing forward.
     logging.debug("\n****** Training")
     model.set_context('training')
-    output, weights = model(batch_x_training, batch_s_training,
+    output, weights = model(batch_x_various_lengths, batch_s_various_lengths,
                             return_weights=True)
     assert len(output) == nb_streamlines
-    assert output[0].shape[1] == 3  # Here, regression, should output x, y, z
+    # Here, classification, output should be our sphere's size (724) + 1 for
+    # EOS.
+    assert output[0].shape[1] == 725
     assert len(weights) == 1  # Should get weights for encoder self-attention
     assert not isnan(output[0][0, 0])
     for weight in weights:
         assert weight is not None
 
     # Testing tracking
-    logging.debug("\n****** Tracking")
+    # This time, using batch with various lengths: mimicking backward tracking.
+    logging.debug("\n****** Tracking one step, backward tracking")
     model.set_context('tracking')
-    output = model(batch_x_tracking, batch_s_tracking)
+    output = model(batch_x_various_lengths, batch_s_various_lengths)
 
     # Output is not split.
     assert output.shape[0] == nb_streamlines
-    assert output.shape[1] == 3  # Here, regression, should output x, y, z
+    assert output.shape[1] == 725
     assert not isnan(output[0, 0])
 
 
@@ -114,7 +118,7 @@ def _run_tts_model(model):
     # Testing forward.
     logging.debug("\n****** Training")
     model.set_context('training')
-    output, weights = model(batch_x_training, None, return_weights=True)
+    output, weights = model(batch_x_various_lengths, None, return_weights=True)
     assert len(output) == nb_streamlines
     assert output[0].shape[1] == 3  # Here, regression, should output x, y, z
     assert len(weights) == 1  # Should get weights for encoder self-attention
@@ -123,9 +127,9 @@ def _run_tts_model(model):
         assert weight is not None
 
     # Testing tracking
-    logging.debug("\n****** Tracking")
+    logging.debug("\n****** Tracking one step")
     model.set_context('tracking')
-    output = model(batch_x_tracking, batch_s_tracking)
+    output = model(batch_x_same_lengths, batch_s_same_lengths)
 
     # Output is not split.
     assert output.shape[0] == nb_streamlines
@@ -136,24 +140,18 @@ def _run_tts_model(model):
 def test_models():
     logging.debug("\n\nOriginal model!\n"
                   "-----------------------------")
-
     model = _prepare_original_model()
     _run_original_model(model)
 
-    # Note. output[0].shape[0] ==> Depends if we unpad sequences.
+    logging.debug("\n\nSource and target model!\n"
+                  "-----------------------------")
+    model = _prepare_ttst_model()
+    _run_ttst_model(model)
 
     logging.debug("\n\nSource only model!\n"
                   "-----------------------------")
-
     model = _prepare_tts_model()
     _run_tts_model(model)
-
-
-    logging.debug("\n\nSource and target model!\n"
-                  "-----------------------------")
-
-    model = _prepare_ttst_model()
-    _run_ttst_model(model)
 
 
 if __name__ == '__main__':

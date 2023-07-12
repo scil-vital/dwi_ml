@@ -203,8 +203,16 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         if self.weight_loss_with_angle:
             loss = list(torch.split(loss, lengths))
-            loss = weight_value_with_angle(
-                values=loss, streamlines=None, dirs=line_dirs)
+            if self.add_eos:
+                eos_loss = [line_loss[-1] for line_loss in loss]
+                loss = [line_loss[:-1] for line_loss in loss]
+                loss = weight_value_with_angle(
+                    values=loss, streamlines=None, dirs=line_dirs)
+                for i in range(len(loss)):
+                    loss[i] = torch.hstack((loss[i], eos_loss[i]))
+            else:
+                loss = weight_value_with_angle(
+                    values=loss, streamlines=None, dirs=line_dirs)
             if not self.compress_loss:
                 if average_results:
                     loss = torch.hstack(loss)

@@ -246,6 +246,8 @@ def weight_value_with_angle(values: List, streamlines: List = None,
     elif dirs is None:
         dirs = compute_directions(streamlines)
 
+    assert np.array_equal([len(v) for v in values], [len(d) for d in dirs])
+
     zero = torch.as_tensor(0.0, device=dirs[0].device)
     for i, line_dirs in enumerate(dirs):
         angles = compute_angles(line_dirs, degrees=True)

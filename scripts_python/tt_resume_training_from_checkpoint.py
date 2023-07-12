@@ -11,38 +11,21 @@ import comet_ml
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.models.projects.transforming_tractography import TransformerSrcAndTgtModel
+from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
+from dwi_ml.models.projects.transforming_tractography import \
+    OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
-from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
 from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
+from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
+from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
 
 
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument('experiments_path',
-                   help='Path from where to load your experiment, and where to'
-                        'save new results.\nComplete path will be '
-                        'experiments_path/experiment_name.')
-    p.add_argument('experiment_name',
-                   help='If given, name for the experiment. Else, model will '
-                        'decide the name to \ngive based on time of day.')
-
-    p.add_argument('--new_patience', type=int, metavar='new_p',
-                   help='If a checkpoint exists, patience can be increased '
-                        'to allow experiment \nto continue if the allowed '
-                        'number of bad epochs has been previously reached.')
-    p.add_argument('--new_max_epochs', type=int,
-                   metavar='new_max',
-                   help='If a checkpoint exists, max_epochs can be increased '
-                        'to allow experiment \nto continue if the allowed '
-                        'number of epochs has been previously reached.')
-
-    p.add_argument('--logging', dest='logging_choice', default='WARNING',
-                   choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
-                   help="Logging level. Note that, for readability, not all "
-                        "debug logs are printed in DEBUG mode.")
+    add_args_resuming_experiment(p)
+    add_logging_arg(p)
 
     return p
 
@@ -62,13 +45,24 @@ def init_from_checkpoint(args, checkpoint_path):
     dataset = prepare_multisubjectdataset(args_data)
 
     # Setting log level to INFO maximum for sub-loggers, else it become ugly
-    sub_loggers_level = args.logging_choice
-    if args.logging_choice == 'DEBUG':
+    sub_loggers_level = args.logging
+    if args.logging == 'DEBUG':
         sub_loggers_level = 'INFO'
 
     # Prepare model
-    model = TransformerSrcAndTgtModel.load_params_and_state(
-        os.path.join(checkpoint_path, 'model'), sub_loggers_level)
+    model_dir = os.path.join(checkpoint_path, 'model')
+    model_type = verify_which_model_in_path(model_dir)
+    print("Model's class: {}".format(model_type))
+    if model_type == 'OriginalTransformerModel':
+        cls = OriginalTransformerModel
+    elif model_type == 'TransformerSrcAndTgtModel':
+        cls = TransformerSrcAndTgtModel
+    elif model_type == 'TransformerSrcOnlyModel':
+        cls = TransformerSrcOnlyModel
+    else:
+        raise ValueError("Model type not a recognized transformer Transformer"
+                         "({})".format(model_type))
+    model = cls.load_params_and_state(model_dir, sub_loggers_level)
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
@@ -84,7 +78,7 @@ def init_from_checkpoint(args, checkpoint_path):
             model, args.experiments_path, args.experiment_name,
             batch_sampler,  batch_loader,
             checkpoint_state, args.new_patience, args.new_max_epochs,
-            args.logging_choice)
+            args.logging)
     return trainer
 
 

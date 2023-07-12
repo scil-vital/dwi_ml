@@ -31,8 +31,12 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
-    def __init__(self, experiment_name: str, step_size: float = None,
-                 compress_lines: float = False, log_level=logging.root.level):
+    def __init__(self, experiment_name: str,
+                 # Target preprocessing params for the batch loader + tracker
+                 step_size: float = None,
+                 compress_lines: float = False,
+                 # Other
+                 log_level=logging.root.level):
         """
         Params
         ------
@@ -41,17 +45,17 @@ class MainModelAbstract(torch.nn.Module):
         step_size : float
             Constant step size that every streamline should have between points
             (in mm). Default: None.
-            Note that you probably already fixed a step size when
-            creating your dataset, but you could use a different one here if
-            you wish. Training / testing / tracking will be performed on
-            resampled streamlined. When using an existing model in various
-            scripts, you will often have the option to modify this value, but
-            it is probably not recommanded.
+            The preprocessing steps are performed by the batch loader or by
+            the tracker, but it probably influences strongly how the model
+            performs, particularly in sequence-based models, as it changes the
+            length of streamlines.
+            When using an existing model in various scripts, you will often
+            have the option to modify this value, but it is probably not
+            recommanded.
         compress_streamlines: float
             If set, compress streamlines to that tolerance error. Cannot be
-            used together with step_size. Once again, the choice can be
-            different here than chosen when creating the hdf5. Default: False.
-            * Do not counfound with direction getters' compress_loss param.
+            used together with step_size. This model cannot be used for
+            tracking.
         log_level: str
             Level of the model logger. Default: root's level.
         """
@@ -140,6 +144,10 @@ class MainModelAbstract(torch.nn.Module):
         with open(name, 'w') as json_file:
             json_file.write(json.dumps(self.params_for_checkpoint, indent=4,
                                        separators=(',', ': ')))
+
+        name = os.path.join(model_dir, "model_type.txt")
+        with open(name, 'w') as txt_file:
+            txt_file.write(str(self.__class__.__name__))
 
         # Save model
         torch.save(model_state, os.path.join(model_dir, "model_state.pkl"))

@@ -23,9 +23,9 @@ from scilpy.tracking.utils import (add_seeding_options,
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg
+from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
 from dwi_ml.models.projects.transforming_tractography import \
-    OriginalTransformerModel
+    OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.transformer_tracker import \
     TransformerTracker
@@ -89,9 +89,20 @@ def prepare_tracker(parser, args):
             streamline_groups=[])
 
         logging.info("Loading model.")
-        model = OriginalTransformerModel.load_params_and_state(
-            os.path.join(args.experiment_path, 'best_model'),
-            log_level=sub_logger_level)
+        model_dir = os.path.join(args.experiment_path, 'best_model')
+        model_type = verify_which_model_in_path(model_dir)
+        print("Model's class: {}".format(model_type))
+        if model_type == 'OriginalTransformerModel':
+            cls = OriginalTransformerModel
+        elif model_type == 'TransformerSrcAndTgtModel':
+            cls = TransformerSrcAndTgtModel
+        elif model_type == 'TransformerSrcOnlyModel':
+            cls = TransformerSrcOnlyModel
+        else:
+            raise ValueError("Model type not a recognized transformer Transformer"
+                             "({})".format(model_type))
+
+        model = cls.load_params_and_state(model_dir, sub_logger_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 
@@ -106,7 +117,7 @@ def prepare_tracker(parser, args):
             save_seeds=args.save_seeds, rng_seed=args.rng_seed,
             track_forward_only=args.track_forward_only,
             step_size_mm=args.step_size, algo=args.algo, theta=theta,
-            use_gpu=args.use_gpu,
+            use_gpu=args.use_gpu, eos_stopping_thresh=args.eos_stop,
             simultaneous_tracking=args.simultaneous_tracking,
             append_last_point=APPEND_LAST_POINT,
             log_level=args.logging)

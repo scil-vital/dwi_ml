@@ -174,16 +174,19 @@ def _verify_stopping_criteria(n_last_pos, lines, mask=None, max_nbr_pts=None):
     mask can be None, or if you want to check bounds, you can set an empty mask
     (with mask.data = None).
     """
+    # Checking NaN values.
+    # I.e. invalid direction AND could not just copy previous because it also
+    # didn't exist, ex, at the seed point.
+    stopping = torch.isnan(torch.sum(n_last_pos, dim=1)).cpu().numpy()
 
     # Checking total length. During forward: all the same length. Not
     # during backward.
     if max_nbr_pts is not None:
-        stopping = np.asarray([len(s) for s in lines]) == max_nbr_pts
+        too_long = np.asarray([len(s) for s in lines]) == max_nbr_pts
         if sum(stopping) > 0:
             logger.debug("{} streamlines stopping after reaching max nb "
                          "points ({})".format(sum(stopping), max_nbr_pts))
-    else:
-        stopping = np.zeros(len(lines), dtype=bool)
+        stopping = np.logical_or(stopping, too_long)
 
     # Checking if out of bound using seeding mask
     if mask is not None:

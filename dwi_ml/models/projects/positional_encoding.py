@@ -43,14 +43,17 @@ class SinusoidalPositionalEncoding(AbstractPositionalEncoding):
     def __init__(self, d_model: int, dropout_rate, max_len: int = 2048):
         super().__init__(d_model, dropout_rate, max_len)
 
-        assert d_model > 3, "Current computation of the Sinusoidal " \
+        assert d_model > 3, "Current implementation of the Sinusoidal " \
                             "Positional encoding requires a d_model of size " \
                             "> 3."
+        assert d_model % 2 == 0, "Current implementation of the Sinusoidal " \
+                                 "Positional encoding requires an even d_model," \
+                                 "but we got {}".format(d_model)
 
         # Compute the sinusoidal embedding parameter
-        position = torch.arange(max_len).unsqueeze(1)
+        position = torch.arange(max_len).unsqueeze(1)  # shape: max_len x 1.
         div_term = torch.exp(torch.arange(0, d_model, 2) *
-                             (-math.log(10000.0) / d_model))
+                             (-math.log(10000.0) / d_model))  # len: d_model / 2
         pos_emb = torch.zeros(1, max_len, d_model)
         pos_emb[0, :, 0::2] = torch.sin(position * div_term)
         pos_emb[0, :, 1::2] = torch.cos(position * div_term)

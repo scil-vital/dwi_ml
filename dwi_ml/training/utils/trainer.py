@@ -11,7 +11,7 @@ logger = logging.getLogger('train_logger')
 def get_training_args(add_a_tracking_validation_phase=False):
     args = {
         '--learning_rate': {
-            'metavar': 'r', 'nargs': '+', 'type': float,
+            'metavar': 'r', 'nargs': '+', 'type': float, 'default': 0.001,
             'help': "Learning rate. Basic usage: a single float value. "
                     "(torch's 'default' : 0.001) \n"
                     "Can also be a list of [lr * nb_epochs, final_lr]. Ex: "

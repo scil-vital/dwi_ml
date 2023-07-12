@@ -11,6 +11,18 @@ fixed_window_options = {'no_move': True,
                         'no_title_bar': True,
                         'pos': [0, 0]
                         }
+# 4th value = alpha
+white = (255, 255, 255, 255)
+light_gray = (151, 151, 151, 255)
+gray = (78, 78, 78, 255)
+dark_gray = (50, 50, 50, 255)
+black = (25, 25, 25, 255)
+transparent = (0, 0, 0, 0)
+blue_hover = (12, 203, 235, 255)
+blue_background = (80, 150, 180, 255)
+chosen_purple = (130, 75, 177, 255)
+pink_for_tests = (210, 8, 252, 255)
+# dpg.show_style_editor()
 
 
 def get_my_fonts_dictionary():
@@ -30,21 +42,34 @@ def get_my_fonts_dictionary():
     return my_fonts
 
 
-def set_global_theme():
+def create_non_modified_theme():
+    link_theme = dpg.add_theme()
+    with dpg.theme_component(0, parent=link_theme):
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, light_gray)
+
+    return link_theme
+
+
+def create_none_theme():
+    link_theme = dpg.add_theme()
+    with dpg.theme_component(0, parent=link_theme):
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, gray)
+        # transparent font?
+
+    return link_theme
+
+
+def create_modified_theme():
+    link_theme = dpg.add_theme()
+    with dpg.theme_component(0, parent=link_theme):
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, chosen_purple)
+
+    return link_theme
+
+
+def get_global_theme():
     # Copied from :
     # https://github.com/hoffstadt/DearPyGui_Ext/blob/master/dearpygui_ext/themes.py
-
-    # 4th value = alpha
-    white = (255, 255, 255, 255)
-    light_gray = (151, 151, 151, 255)
-    gray = (78, 78, 78, 255)
-    dark_gray = (50, 50, 50, 255)
-    black = (25, 25, 25, 255)
-    transparent = (0, 0, 0, 0)
-    blue_hover = (12, 203, 235, 255)
-    blue_background = (80, 150, 180, 255)
-    chosen_purple = (130, 75, 177, 255)
-    # dpg.show_style_editor()
 
     with dpg.theme() as global_theme:
         with dpg.theme_component(0):
@@ -54,7 +79,7 @@ def set_global_theme():
             dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, light_gray)
 
             dpg.add_theme_color(dpg.mvThemeCol_WindowBg, dark_gray)
-            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, black)
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, dark_gray)
             dpg.add_theme_color(dpg.mvThemeCol_PopupBg, black)
 
             dpg.add_theme_color(dpg.mvThemeCol_Border, gray)

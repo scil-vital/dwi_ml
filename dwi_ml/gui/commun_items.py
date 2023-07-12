@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import dearpygui.dearpygui as dpg
+
 from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
     callback_file_dialog_single_file
 

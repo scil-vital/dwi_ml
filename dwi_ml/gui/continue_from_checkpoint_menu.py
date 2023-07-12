@@ -4,7 +4,6 @@ import os
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.gui.l2t_menus import open_l2t_from_checkpoint_window
-
 from dwi_ml.gui.projects.l2t_from_checkpoint_menu import \
     open_l2t_from_checkpoint_window
 from dwi_ml.gui.transformers_menus import open_tto_from_checkpoint_window, \

@@ -105,7 +105,7 @@ def prepare_tracker(parser, args):
             step_size_mm=args.step_size, algo=args.algo, theta=theta,
             use_gpu=args.use_gpu, eos_stopping_thresh=args.eos_stop,
             simultaneous_tracking=args.simultaneous_tracking,
-            append_last_point=APPEND_LAST_POINT,
+            append_last_point=args.append_last_point,
             log_level=args.logging.upper())
 
     return tracker, ref

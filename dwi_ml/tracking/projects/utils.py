@@ -83,6 +83,14 @@ def add_tracking_options(p):
                              "\nstop the propagation if the EOS class's "
                              "probability is the class with maximal "
                              "probability, no mather its value.")
+    stop_g.add_argument(
+        '--do_not_append_last_point', dest='append_last_point',
+        action='store_false',
+        help="Do not add the last point (once out of the tracking mask) to \n"
+             "the streamline. Default: append them. This is the default in \n"
+             "Dipy too. Note that points obtained after an invalid direction \n"
+             "(based on the propagator's definition of invalid; ex when \n"
+             "angle is too sharp of sh_threshold not reached) are never added.")
 
     r_g = p.add_argument_group('  Random seeding options')
     r_g.add_argument('--rng_seed', type=int,

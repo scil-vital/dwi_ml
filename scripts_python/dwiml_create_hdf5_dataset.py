@@ -28,9 +28,8 @@ from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
 
 from dipy.io.stateful_tractogram import set_sft_logger_level
 
-from dwi_ml.data.hdf5.utils import (
-    add_hdf5_creation_args, add_mri_processing_args, add_streamline_processing_args,
-    prepare_hdf5_creator)
+from dwi_ml.arg_utils import add_logging_arg, add_args_groups_to_parser
+from dwi_ml.data.hdf5.utils import (prepare_hdf5_creator, get_hdf5_args_groups)
 from dwi_ml.experiment_utils.timer import Timer
 
 
@@ -38,10 +37,10 @@ def _parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
 
-    add_hdf5_creation_args(p)
-    add_mri_processing_args(p)
-    add_streamline_processing_args(p)
+    groups = get_hdf5_args_groups()
+    add_args_groups_to_parser(groups, p)
     add_overwrite_arg(p)
+    add_logging_arg(p)
 
     return p
 

@@ -19,10 +19,10 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.arg_utils import add_logging_arg, add_args_to_parser
+from dwi_ml.arg_utils import add_logging_arg, add_args_groups_to_parser
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.models.projects.learn2track_utils import add_model_args, \
-    get_all_args_learn2track
+    get_all_args_groups_learn2track
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_samplers import (prepare_batch_sampler)
@@ -34,10 +34,8 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
 
-    groups = get_all_args_learn2track()
-    for group, group_args in groups.items():
-        p.add_argument_group(groups[group])
-        add_args_to_parser(group_args, p)
+    groups = get_all_args_groups_learn2track()
+    add_args_groups_to_parser(groups, p)
 
     add_logging_arg(p)
 

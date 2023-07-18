@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from dwi_ml.arg_utils import add_resample_or_compress_arg
+from dwi_ml.arg_utils import get_resample_or_compress_arg
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
@@ -97,7 +97,7 @@ class MainModelAbstract(torch.nn.Module):
 
     @staticmethod
     def add_args_main_model(p):
-        add_resample_or_compress_arg(p)
+        get_resample_or_compress_arg(p)
 
     def set_context(self, context):
         assert context in ['training', 'tracking']

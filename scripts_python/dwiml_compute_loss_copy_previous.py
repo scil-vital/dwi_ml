@@ -19,7 +19,7 @@ import torch.nn.functional
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.arg_utils import add_resample_or_compress_arg
+from dwi_ml.arg_utils import get_resample_or_compress_arg
 from dwi_ml.models.projects.copy_previous_dirs import CopyPrevDirModel
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args, \
     check_args_direction_getter
@@ -42,7 +42,7 @@ def prepare_arg_parser():
                    help="If set, do not compute the loss at the first point "
                         "of the streamline. \nElse (default) compute it with "
                         "previous dir = 0.")
-    add_resample_or_compress_arg(p)
+    get_resample_or_compress_arg(p)
 
     add_direction_getter_args(p)
 

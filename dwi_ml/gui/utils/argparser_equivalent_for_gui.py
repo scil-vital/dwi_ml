@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+from typing import Dict
+
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.utils.my_styles import create_non_modified_theme, \
-    create_none_theme, create_modified_theme
+from dwi_ml.gui.utils.my_styles import get_none_theme, get_non_modified_theme, \
+    get_modified_theme, get_required_theme
 
 style_input_item = {
     'indent': 600,
@@ -13,31 +15,7 @@ style_help = {
     'color': (151, 151, 151, 255)
 }
 arg_name_indent = 40
-nb_dots = 150
-global_non_modified_theme = None
-global_modified_theme = None
-global_none_theme = None
-
-
-def _non_modified_theme() -> int:
-    global global_non_modified_theme
-    if global_non_modified_theme is None:
-        global_non_modified_theme = create_non_modified_theme()
-    return global_non_modified_theme
-
-
-def _none_theme() -> int:
-    global global_none_theme
-    if global_none_theme is None:
-        global_none_theme = create_none_theme()
-    return global_none_theme
-
-
-def _modified_theme() -> int:
-    global global_modified_theme
-    if global_modified_theme is None:
-        global_modified_theme = create_modified_theme()
-    return global_modified_theme
+NB_DOTS = 150
 
 
 def _manage_gui_default(default, dtype):
@@ -68,12 +46,12 @@ def _checkbox_set_to_default_callback(sender, app_data, user_data):
         dpg.set_value(arg_name, _manage_gui_default(default, dtype))
 
         if default is None:
-            dpg.bind_item_theme(arg_name, _none_theme())
+            dpg.bind_item_theme(arg_name, get_none_theme())
         else:
-            dpg.bind_item_theme(arg_name, _non_modified_theme())
+            dpg.bind_item_theme(arg_name, get_non_modified_theme())
 
     else:
-        dpg.bind_item_theme(arg_name, _modified_theme())
+        dpg.bind_item_theme(arg_name, get_modified_theme())
 
         if exclusive_group is not None:
             # Choosing this one: checking other values.
@@ -81,17 +59,19 @@ def _checkbox_set_to_default_callback(sender, app_data, user_data):
                 if a != arg_name:
                     dpg.set_value(a + '_default_checkbox', True)
                     # to do: set correct default.
-                    dpg.bind_item_theme(a, _non_modified_theme())
+                    dpg.bind_item_theme(a, get_non_modified_theme())
 
 
 def _log_value_and_remove_check(sender, _, __):
-    # Value logging is done automatically.
-
     # Changing background color
-    dpg.bind_item_theme(sender, _modified_theme())
+    dpg.bind_item_theme(sender, get_modified_theme())
 
     # Removing check.
     dpg.set_value(sender + '_default_checkbox', False)
+
+
+def _log_value(sender, _, __):
+    dpg.bind_item_theme(sender, get_modified_theme())
 
 
 def _log_value_exclusive_group(sender, _, elements_in_group):
@@ -101,10 +81,11 @@ def _log_value_exclusive_group(sender, _, elements_in_group):
     for a in elements_in_group:
         if a != sender:
             dpg.set_value(a + '_default_checkbox', True)
-            dpg.bind_item_theme(a, _non_modified_theme())
+            dpg.bind_item_theme(a, get_non_modified_theme())
 
 
-def _add_input_item_based_on_type(arg_name, params, callback_options=None):
+def _add_input_item_based_on_type(arg_name, params, required,
+                                  callback_options=None):
     if callback_options is None:
         callback_options = {}
 
@@ -117,16 +98,21 @@ def _add_input_item_based_on_type(arg_name, params, callback_options=None):
         item = dpg.add_combo(choices, tag=arg_name, default_value=gui_default,
                              **style_input_item, **callback_options)
 
-    elif 'action' in params:
-        if params['action'] == 'store_true':
-            # Could add a checkbox, but could not make it beautiful.
-            default = False
-            item = dpg.add_combo(['True', 'False'], default_value='False',
-                                 tag=arg_name, **style_input_item,
-                                 **callback_options)
-        else:
-            raise NotImplementedError("NOT READY FOR GUI TYPE: action: {}"
-                                      .format(params['action']))
+    elif dtype == bool or 'action' in params:
+        if 'action' in params:
+            if params['action'] == 'store_true':
+                default = True
+            elif params['action'] == 'store_false':
+                default = False
+            else:
+                raise ValueError("ACTION {} NOT MANAGED YET"
+                                 .format(params['action']))
+
+        # Could add a checkbox, but could not make it beautiful.
+        tmp_default = str(default) if default is not None else None
+        item = dpg.add_combo(['True', 'False'], default_value=tmp_default,
+                             tag=arg_name, **style_input_item,
+                             **callback_options)
 
     elif dtype == str:
         item = dpg.add_input_text(tag=arg_name,
@@ -139,7 +125,7 @@ def _add_input_item_based_on_type(arg_name, params, callback_options=None):
                                  **style_input_item, **callback_options)
 
     elif dtype == float:
-        item = dpg.add_input_float(tag=arg_name, format= '%.7f',
+        item = dpg.add_input_float(tag=arg_name, format='%.7f',
                                    default_value=_manage_gui_default(default, float),
                                    **style_input_item, **callback_options)
 
@@ -149,18 +135,20 @@ def _add_input_item_based_on_type(arg_name, params, callback_options=None):
                             **style_input_item, **callback_options)
 
     if default is None:
-        dpg.bind_item_theme(item, _none_theme())
+        if required:
+            dpg.bind_item_theme(item, get_required_theme())
+        else:
+            dpg.bind_item_theme(item, get_none_theme())
     else:
-        dpg.bind_item_theme(item, _non_modified_theme())
+        dpg.bind_item_theme(item, get_non_modified_theme())
 
     return dtype, default
 
 
 def _add_item_to_group(arg_name, params, required):
-    if arg_name == 'exclusive_group':
+    if arg_name == 'mutually_exclusive_group':
         with dpg.tree_node(label="Select maximum one", default_open=True,
                            indent=40):
-            # toDo: verify required group.
             exclusive_args = list(params.keys())
             for sub_item, sub_params in params.items():
                 assert sub_item[0] == '-', "Parameter {} is in an exclusive " \
@@ -192,7 +180,16 @@ def _add_item_to_gui(arg_name, params, required, exclusive_group=None):
 
     with dpg.group(horizontal=True):
         # 1. Argument name
-        dpg.add_text(arg_name + ('.' * nb_dots), indent=arg_name_indent)
+        if 'metavar' in params:
+            m = params['metavar']
+        else:
+            if 'action' in params and params['action'] in ['store_true', 'store_false']:
+                m = ''
+            else:
+                m = arg_name.replace('-', '').upper()
+
+        suffix = '   ' + m + ('.' * (NB_DOTS - len(m)))
+        dpg.add_text(arg_name + suffix, indent=arg_name_indent)
 
         # 2. Argument value
         # Special cases for experiments_path and hdf5_file to open file dialogs.
@@ -207,13 +204,15 @@ def _add_item_to_gui(arg_name, params, required, exclusive_group=None):
                 tag=arg_name, **style_input_item,
                 callback=lambda: dpg.show_item("file_dialog_hdf5_file"))
         else:
-            if exclusive_group is None:
+            if required:
+                item_options = {'callback': _log_value}
+            elif exclusive_group is None:
                 item_options = {'callback': _log_value_and_remove_check}
             else:
                 item_options = {'callback': _log_value_exclusive_group,
                                 'user_data': exclusive_group}
             dtype, default = _add_input_item_based_on_type(
-                arg_name, params, item_options)
+                arg_name, params, required, item_options)
 
             # 3. Ignore checkbox.
             if not required:
@@ -227,27 +226,31 @@ def _add_item_to_gui(arg_name, params, required, exclusive_group=None):
     dpg.add_text(params['help'], **style_help)
 
 
-def add_args_to_gui(args):
+def add_args_groups_to_gui(args: Dict[str, Dict]):
     """
     args: dict of dicts.
         keys are groups. values are dicts of argparser equivalents.
     """
-    for group, group_args in args.items():
-        dpg.add_text('\n' + group + ':')
+    for group_name, group_args_dict in args.items():
+        dpg.add_text('\n' + group_name + ':')
 
-        all_names = list(group_args.keys())
+        # Verifying all arg names in this group
+        #  (or sub-args in the case of mutually_exclusive_group)
+        all_names = list(group_args_dict.keys())
         all_mandatory = [n for n in all_names if
-                         (n != 'exclusive_group' and n[0] != '-')]
+                         (n != 'mutually_exclusive_group' and n[0] != '-')]
         all_options = [n for n in all_names if
-                       (n == 'exclusive_group' or n[0] == '-')]
+                       (n == 'mutually_exclusive_group' or n[0] == '-')]
+
+        # Separating required and optional
         if len(all_mandatory) > 0:
-            with dpg.tree_node(label="Required", default_open=False):
+            with dpg.tree_node(label="Required", default_open=True):
                 for arg_name in all_mandatory:
-                    _add_item_to_group(arg_name, group_args[arg_name],
+                    _add_item_to_group(arg_name, group_args_dict[arg_name],
                                        required=True)
 
         if len(all_options) > 0:
             with dpg.tree_node(label="Options", default_open=False):
                 for arg_name in all_options:
-                    _add_item_to_group(arg_name, group_args[arg_name],
+                    _add_item_to_group(arg_name, group_args_dict[arg_name],
                                        required=False)

@@ -3,10 +3,10 @@ import os
 
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.l2t_menus import open_l2t_from_checkpoint_window
+from dwi_ml.gui.projects.l2t_menus import open_l2t_from_checkpoint_window
 from dwi_ml.gui.projects.l2t_from_checkpoint_menu import \
     open_l2t_from_checkpoint_window
-from dwi_ml.gui.transformers_menus import open_tto_from_checkpoint_window, \
+from dwi_ml.gui.projects.transformers_menus import open_tto_from_checkpoint_window, \
     open_ttst_from_checkpoint_window
 from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
     callback_file_dialog_single_file

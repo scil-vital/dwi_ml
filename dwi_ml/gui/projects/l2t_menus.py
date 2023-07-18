@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.utils.argparser_equivalent_for_gui import add_args_to_gui
+from dwi_ml.gui.utils.argparser_equivalent_for_gui import add_args_groups_to_gui
 from dwi_ml.gui.utils.my_styles import fixed_window_options, \
     get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import callback_change_window
-from dwi_ml.models.projects.learn2track_utils import get_all_args_learn2track
+from dwi_ml.models.projects.learn2track_utils import get_all_args_groups_learn2track
 
 
 def callback_ok_get_args_l2t(_, __, args):
@@ -40,8 +40,8 @@ def open_train_l2t_window():
             dpg.bind_font(my_fonts['default'])
             dpg.bind_item_font(title, my_fonts['main_title'])  # NOT WORKING?
 
-            args = get_all_args_learn2track()
-            add_args_to_gui(args)
+            args = get_all_args_groups_learn2track()
+            add_args_groups_to_gui(args)
 
 
 def _create_l2t_train_script(all_values):

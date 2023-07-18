@@ -17,13 +17,6 @@ def show_and_end_dpg():
     dpg.destroy_context()
 
 
-def toggle_full_screen():
-    # Not working: toggles fullscreen for the main viewport, but not for the
-    # window inside.
-    dpg.add_menu_item(label="Toggle Fullscreen",
-                      callback=lambda: dpg.toggle_viewport_fullscreen())
-
-
 def callback_change_window(_, __, user_data):
     current_window, next_window = user_data
     dpg.hide_item(current_window)

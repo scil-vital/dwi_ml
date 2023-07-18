@@ -22,7 +22,49 @@ blue_hover = (12, 203, 235, 255)
 blue_background = (80, 150, 180, 255)
 chosen_purple = (130, 75, 177, 255)
 pink_for_tests = (210, 8, 252, 255)
+required_red = (242, 8, 8, 255)
 # dpg.show_style_editor()
+
+
+global_non_modified_theme = None
+global_modified_theme = None
+global_none_theme = None
+global_required_theme = None
+
+
+def _create_item_theme(color):
+    link_theme = dpg.add_theme()
+    with dpg.theme_component(0, parent=link_theme):
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, color)
+    return link_theme
+
+
+def get_non_modified_theme() -> int:
+    global global_non_modified_theme
+    if global_non_modified_theme is None:
+        global_non_modified_theme = _create_item_theme(light_gray)
+    return global_non_modified_theme
+
+
+def get_none_theme() -> int:
+    global global_none_theme
+    if global_none_theme is None:
+        global_none_theme = _create_item_theme(gray)
+    return global_none_theme
+
+
+def get_modified_theme() -> int:
+    global global_modified_theme
+    if global_modified_theme is None:
+        global_modified_theme = _create_item_theme(chosen_purple)
+    return global_modified_theme
+
+
+def get_required_theme() -> int:
+    global global_required_theme
+    if global_required_theme is None:
+        global_required_theme = _create_item_theme(required_red)
+    return global_required_theme
 
 
 def get_my_fonts_dictionary():
@@ -40,31 +82,6 @@ def get_my_fonts_dictionary():
                 'title': title_font,
                 'main_title': main_title_font}
     return my_fonts
-
-
-def create_non_modified_theme():
-    link_theme = dpg.add_theme()
-    with dpg.theme_component(0, parent=link_theme):
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, light_gray)
-
-    return link_theme
-
-
-def create_none_theme():
-    link_theme = dpg.add_theme()
-    with dpg.theme_component(0, parent=link_theme):
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, gray)
-        # transparent font?
-
-    return link_theme
-
-
-def create_modified_theme():
-    link_theme = dpg.add_theme()
-    with dpg.theme_component(0, parent=link_theme):
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, chosen_purple)
-
-    return link_theme
 
 
 def get_global_theme():

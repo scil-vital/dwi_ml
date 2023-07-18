@@ -4,9 +4,16 @@ from argparse import ArgumentParser
 from scilpy.io.utils import add_processes_arg
 
 
-def add_args_to_parser(args, p):
-    for arg, val in args.items():
-        p.add_argument(arg, **val)
+def add_args_groups_to_parser(groups, p: ArgumentParser):
+    for group_name, group_args in groups.items():
+        g = p.add_argument_group(groups[group_name])
+        for arg, val in group_args.items():
+            if arg == 'mutually_exclusive_group':
+                meg = g.add_mutually_exclusive_group()
+                for sub_arg, sub_val in val.items():
+                    meg.add_argument(sub_arg, **sub_val)
+            else:
+                g.add_argument(arg, **val)
 
 
 def add_logging_arg(p):
@@ -17,16 +24,21 @@ def add_logging_arg(p):
              "are printed in DEBUG mode, only the main ones.")
 
 
-def add_resample_or_compress_arg(p: ArgumentParser):
-    g = p.add_mutually_exclusive_group()
-    g.add_argument(
-        '--step_size', type=float, metavar='s',
-        help="Step size to resample the data (in mm). Default: None")
-    g.add_argument(
-        '--compress', type=float, metavar='r', const=0.01, nargs='?',
-        help="Compression ratio. Default: None. Default if set: 0.01.\n"
-             "If neither step_size nor compress are chosen, streamlines "
-             "will be kept \nas they are.")
+def get_resample_or_compress_arg():
+    args = {
+        'mutually_exclusive_group': {
+            '--step_size': {
+                'type': float, 'metavar': 's',
+                'help': "Step size to resample the data (in mm). Default: None"},
+            '--compress': {
+                'type': float, 'metavar': 'r', 'const': 0.01, 'nargs': '?',
+                'help': "Compression ratio. Default: None. Default if set: 0.01.\n"
+                        "If neither step_size nor compress are chosen, streamlines "
+                        "will be kept \nas they are."
+            }
+        }
+    }
+    return args
 
 
 def add_arg_existing_experiment_path(p: ArgumentParser):
@@ -38,7 +50,6 @@ def add_arg_existing_experiment_path(p: ArgumentParser):
 
 def get_memory_args(add_lazy_options=False,
                     add_multiprocessing_option=True, add_rng=False):
-
     args = {}
 
     # Multi-processing / GPU
@@ -54,7 +65,7 @@ def get_memory_args(add_lazy_options=False,
                 'help': "Number of sub-processes to start. Default: [%(default)s]"}
         })
 
-        args.update({'exclusive_group': gpu_arg})
+        args.update({'mutually_exclusive_group': gpu_arg})
     else:
         args.update(gpu_arg)
 

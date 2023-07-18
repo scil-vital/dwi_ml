@@ -1,11 +1,24 @@
 # -*- coding: utf-8 -*-
 import dearpygui.dearpygui as dpg
 
+from dwi_ml.data.hdf5.utils import get_hdf5_args_groups
+from dwi_ml.gui.utils.argparser_equivalent_for_gui import add_args_groups_to_gui
 from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
     callback_file_dialog_single_file
 from dwi_ml.gui.utils.my_styles import fixed_window_options, \
     get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import callback_change_window
+
+
+def callback_ok_get_argshdf5(_, __, args):
+    # user_data = args
+    all_values = {}
+    for arg_name in args.keys():
+        all_values[arg_name] = dpg.get_value(arg_name)
+
+    print("ALL VALUES: ")
+    print(all_values)
+    create_hdf5_creation_script(all_values)
 
 
 def open_menu_create_hdf5():
@@ -31,6 +44,9 @@ def open_menu_create_hdf5():
 
             dpg.add_button(label="Choose saving path", indent=50,
                            callback=open_file_dialog_hdf5_create_dir)
+
+            args = get_hdf5_args_groups()
+            add_args_groups_to_gui(args)
 
 
 def open_file_dialog_hdf5_create_dir():

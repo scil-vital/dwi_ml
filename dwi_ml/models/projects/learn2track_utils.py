@@ -10,7 +10,7 @@ from dwi_ml.training.utils.experiment import (
 from dwi_ml.training.utils.trainer import get_training_args
 
 
-def get_all_args_learn2track():
+def get_all_args_groups_learn2track():
     trainer_args = get_training_args(add_a_tracking_validation_phase=True)
     trainer_args.update({
         '--clip_grad': {

@@ -8,83 +8,91 @@ import os
 from pathlib import Path
 
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
-from dwi_ml.arg_utils import add_resample_or_compress_arg
+from dwi_ml.arg_utils import get_resample_or_compress_arg
 
 
-def add_hdf5_creation_args(p: ArgumentParser):
+def get_hdf5_args_groups():
+    groups = {
+        'Main HDF5 properties': _main_hdf5_creation_args(),
+        'Volumes processing options': _mri_processing_args(),
+        'Streamlines processing options': _streamline_processing_args()
+    }
+    return groups
 
+
+def _main_hdf5_creation_args():
     # Positional arguments
-    p.add_argument('dwi_ml_ready_folder',
-                   help="Path to the folder containing the data. \n"
-                        "-> Should follow description in our doc, here: \n"
-                        "-> https://dwi-ml.readthedocs.io/en/latest/"
-                        "creating_hdf5.html")
-    p.add_argument('out_hdf5_file',
-                   help="Path and name of the output hdf5 file.\n If "
-                        "--save_intermediate is set, the intermediate files "
-                        "will be saved in \nthe same location, in a folder "
-                        "name based on date and hour of creation.\n"
-                        "If it already exists, use -f to allow overwriting.")
-    p.add_argument('config_file',
-                   help="Path to the json config file defining the groups "
-                        "wanted in your hdf5. \n"
-                        "-> Should follow description in our doc, here: \n"
-                        "-> https://dwi-ml.readthedocs.io/en/latest/"
-                        "creating_hdf5.html")
-    p.add_argument('training_subjs',
-                   help="txt file containing the list of subjects ids to use "
-                        "for training.")
-    p.add_argument('validation_subjs',
-                   help="txt file containing the list of subjects ids to use "
-                        "for validation.")
-    p.add_argument('testing_subjs',
-                   help="txt file containing the list of subjects ids to use "
-                        "for testing.")
-
-    # Optional arguments
-    p.add_argument('--enforce_files_presence', type=bool, default=True,
-                   metavar="True/False",
-                   help='If True, the process will stop if one file is '
-                        'missing for a subject. \nChecks are not made for '
-                        'option "ALL" for streamline groups.\nDefault: True')
-    p.add_argument('--save_intermediate', action="store_true",
-                   help="If set, save intermediate processing files for "
-                        "each subject inside the \nhdf5 folder, in sub-"
-                        "folders named subjid_intermediate.")
-
-    p.add_argument('--logging',
-                   choices=['error', 'warning', 'info', 'debug'],
-                   default='warning',
-                   help="Logging level. [warning]")
+    args = {
+        'dwi_ml_ready_folder': {
+            'help': "Path to the folder containing the data. Should follow "
+                    "description \nin our doc, here: "
+                    "https://dwi-ml.readthedocs.io/en/latest/creating_hdf5.html"},
+        'out_hdf5_file': {
+            'help': "Path and name of the output hdf5 file. If "
+                    "--save_intermediate is set, the \nintermediate files "
+                    "will be saved in the same location, in a folder "
+                    "name based \non date and hour of creation."},
+        'config_file': {
+            'help': "Path to the json config file defining the groups "
+                    "wanted in your hdf5. Should \nfollow description in our "
+                    "doc, here: \n https://dwi-ml.readthedocs.io/en/latest/"
+                    "creating_hdf5.html"},
+        'training_subjs': {
+            'help': "A text file containing the list of subjects ids to use "
+                    "for training."},
+        'validation_subjs': {
+            'help': "A text file containing the list of subjects ids to use "
+                    "for validation."},
+        'testing_subjs': {
+            'help': "A text file containing the list of subjects ids to use "
+                    "for testing."},
+        '--enforce_files_presence': {
+            'type': bool, 'default': True, 'metavar': "True/False",
+            'help': 'If True, the process will stop if one file is '
+                    'missing for a subject. Checks are not \nmade for '
+                    'option "ALL" for streamline groups. Default: True'},
+        '--save_intermediate': {
+            'action': "store_true",
+            'help': "If set, save intermediate processing files for each "
+                    "subject inside the hdf5 folder, \nin sub-folders named "
+                    "subjid_intermediate."
+        }
+    }
+    return args
 
 
-def add_mri_processing_args(p: ArgumentParser):
-    g = p.add_argument_group('Volumes processing options:')
-    g.add_argument(
-        '--std_mask', nargs='+', metavar='m',
-        help="Mask defining the voxels used for data standardization. \n"
-             "-> Should be the name of a file inside dwi_ml_ready/{subj_id}.\n"
-             "-> You may add wildcards (*) that will be replaced by the "
-             "subject's id. \n"
-             "-> If none is given, all non-zero voxels will be used.\n"
-             "-> If more than one are given, masks will be combined.")
+def _mri_processing_args():
+    args = {
+        '--std_mask': {
+            'nargs': '+', 'metavar': 'm',
+            'help': "Mask defining the voxels used for data standardization. "
+                    "Should be the name of a \nfile inside each "
+                    "dwi_ml_ready/{subj_id}. You may add wildcards (*) that "
+                    "will \nbe replaced by the subject's id. If none is "
+                    "given, all non-zero voxels will be used. \n"
+                    "If more than one are given, masks will be combined."}
+    }
+    return args
 
 
-def add_streamline_processing_args(p: ArgumentParser):
-    g = p.add_argument_group('Streamlines processing options:')
-    add_resample_or_compress_arg(g)
-    g.add_argument(
-        '--compute_connectivity_matrix', action='store_true',
-        help="If set, computes the 3D connectivity matrix for each streamline "
-             "group. \nDefined from downsampled image, not from anatomy! \n"
-             "Ex: can be used at validation time with our trainer's "
-             "'generation-validation' step.")
-    g.add_argument(
-        '--connectivity_downsample_size',  metavar='m', type=int, nargs='+',
-        help="Number of 3D blocks (m x m x m) for the connectivity matrix. \n"
-             "(The matrix will be m^3 x m^3). If more than one values are "
-             "provided, expected to be one per dimension. \n"
-             "Default: 20x20x20.")
+def _streamline_processing_args():
+    args = {
+        '--compute_connectivity_matrix': {
+            'action': 'store_true',
+            'help': "If set, computes the 3D connectivity matrix for each "
+                    "streamline group. Defined \nfrom downsampled image (i.e. "
+                    "block, not from anatomy! \n"
+                    "Hint: can be used at validation time with our trainer's "
+                    "'generation-validation' step."},
+        '--connectivity_downsample_size': {
+            'metavar': 'm', 'type': int, 'nargs': '+',
+            'help': "Number of 3D blocks (m x m x m) for the connectivity "
+                    "matrix. (The matrix \nwill be m^3 x m^3). If more than "
+                    "one values are provided, expected to be one \nper "
+                    "dimension. Default if not set: 20x20x20."}
+    }
+    args.update(get_resample_or_compress_arg())
+    return args
 
 
 def _initialize_intermediate_subdir(hdf5_file, save_intermediate):

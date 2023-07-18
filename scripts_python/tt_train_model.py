@@ -16,7 +16,7 @@ import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.arg_utils import get_memory_args, add_logging_arg
+from dwi_ml.arg_utils import get_memory_args, get_logging_arg
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
@@ -39,7 +39,7 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     get_mandatory_args_experiment_and_hdf5(p)
-    add_logging_arg(p)
+    get_logging_arg(p)
     get_args_batch_sampler(p)
     get_args_batch_loader(p)
     get_training_args(p, add_a_tracking_validation_phase=True)

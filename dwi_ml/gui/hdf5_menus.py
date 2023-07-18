@@ -2,23 +2,13 @@
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.data.hdf5.utils import get_hdf5_args_groups
-from dwi_ml.gui.utils.argparser_equivalent_for_gui import add_args_groups_to_gui
-from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
-    callback_file_dialog_single_file
+from dwi_ml.gui.utils.argparser_equivalent_for_gui import add_args_groups_to_gui, \
+    style_input_item, get_all_values
+from dwi_ml.gui.utils.file_dialogs import add_single_file_dialog, \
+    add_single_folder_dialog
 from dwi_ml.gui.utils.my_styles import fixed_window_options, \
     get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import callback_change_window
-
-
-def callback_ok_get_argshdf5(_, __, args):
-    # user_data = args
-    all_values = {}
-    for arg_name in args.keys():
-        all_values[arg_name] = dpg.get_value(arg_name)
-
-    print("ALL VALUES: ")
-    print(all_values)
-    create_hdf5_creation_script(all_values)
 
 
 def open_menu_create_hdf5():
@@ -42,19 +32,53 @@ def open_menu_create_hdf5():
             dpg.bind_font(my_fonts['default'])
             dpg.bind_item_font(title, my_fonts['main_title'])  # NOT WORKING?
 
-            dpg.add_button(label="Choose saving path", indent=50,
-                           callback=open_file_dialog_hdf5_create_dir)
+            # Creating required file dialogs
+            # - dwi_ml_ready_folder
+            # - out_hdf5_file => .hdf5
+            # - config_file => .json
+            # - subjects lists => .txt
+            add_single_folder_dialog('dwi_ml_ready_folder')
+            add_single_file_dialog('out_hdf5_file', extensions=['.hdf5'])
+            add_single_file_dialog('config_file', extensions=['.json'])
+            for subjs in ['training_subjs', 'validation_subjs', 'testing_subjs']:
+                add_single_file_dialog(subjs, extensions=['.txt'])
+            add_single_file_dialog('hdf5_creation_script', extensions=['.sh'])
 
-            args = get_hdf5_args_groups()
-            add_args_groups_to_gui(args)
+            # Ok! Adding all buttons
+            groups = get_hdf5_args_groups()
+            add_args_groups_to_gui(
+                groups, existing_file_dialogs=[
+                    'dwi_ml_ready_folder', 'out_hdf5_file', 'config_file',
+                    'training_subjs', 'validation_subjs', 'testing_subjs'])
+
+            dpg.add_text("\n\n\n\n")
+            with dpg.group(horizontal=True):
+                dpg.add_button(
+                    label='Click here to select path', **style_input_item,
+                    callback=lambda: dpg.show_item('hdf5_creation_script'))
+
+                dpg.add_button(
+                    label='OK! Create my script!', indent=1005, width=200,
+                    height=100, callback=_create_hdf5_creation_script,
+                    user_data=groups)
 
 
-def open_file_dialog_hdf5_create_dir():
-    file_dialog_name = "file_dialog_hdf5_dir"
-    if dpg.does_item_exist(file_dialog_name):
-        dpg.show_item(file_dialog_name)
-    else:
-        dpg.add_file_dialog(
-            directory_selector=False, tag=file_dialog_name,
-            **params_file_dialogs, callback=callback_file_dialog_single_file,
-            user_data=UNDEFINED_YET)
+def _create_hdf5_creation_script(sender, app_data, user_data):
+    all_values = get_all_values(user_data)
+
+    if not all_values:
+        # An error occured
+        return
+
+    # Create script
+    script_out_file = dpg.get_value('hdf5_creation_script')
+
+    print("WILL WRITE:")
+    print('dwiml_create_hdf5_dataset.py ' + '\n'.join(all_values))
+
+    print("IN : ", script_out_file)
+
+    raise NotImplementedError
+    with open(script_out_file, 'w') as f:
+        f.write('dwiml_create_hdf5_dataset.py \n')
+        f.writelines(all_values)

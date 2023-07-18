@@ -3,7 +3,7 @@
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
-    callback_file_dialog_single_file
+    callback_single_file_dialog
 
 
 # ----------- Common experiment args:
@@ -20,7 +20,7 @@ def open_file_dialog_hdf5_file(sub_callback=None):
                 label="Please select your HDF5 file",
                 directory_selector=False, tag=file_dialog_name,
                 file_count=1, **params_file_dialogs,
-                callback=callback_file_dialog_single_file,
+                callback=callback_single_file_dialog,
                 user_data=sub_callback):
             dpg.add_file_extension(".hdf5", custom_text="[hdf5 file]")
 
@@ -33,12 +33,13 @@ def open_file_dialog_experiments_path(sub_callback=None):
         dpg.add_file_dialog(
             directory_selector=True, tag=file_dialog_name,
             file_count=1, **params_file_dialogs,
-            callback=callback_file_dialog_single_file,
+            callback=callback_single_file_dialog,
             user_data=sub_callback)
 
 
 # ----------- Common GUI buttons:
 def open_file_dialog_script_path():
+    raise NotImplementedError
 
 
 def add_button_get_arg_values_save_bash_script(args, save_script_method):

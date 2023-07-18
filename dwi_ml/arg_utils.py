@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 from argparse import ArgumentParser
 
-from scilpy.io.utils import add_processes_arg
-
 
 def add_args_groups_to_parser(groups, p: ArgumentParser):
     for group_name, group_args in groups.items():
@@ -16,12 +14,22 @@ def add_args_groups_to_parser(groups, p: ArgumentParser):
                 g.add_argument(arg, **val)
 
 
-def add_logging_arg(p):
-    p.add_argument(
-        '--logging', default='WARNING', metavar='level',
-        choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
-        help="Logging level. Note that, for readability, not all debug logs \n"
-             "are printed in DEBUG mode, only the main ones.")
+def get_logging_arg():
+    return {
+        '--logging': {
+            'default': 'WARNING', 'metavar': 'level',
+            'choices': ['ERROR', 'WARNING', 'INFO', 'DEBUG'],
+            'help': "Logging level. Note that, for readability, not all "
+                    "debug logs \nare printed in DEBUG mode, only the main "
+                    "ones."}
+    }
+
+
+def get_overwrite_arg():
+    return {'-f': {
+        'dest': 'overwrite', 'action': 'store_true',
+        'help': 'Force overwriting of the output files.'}
+    }
 
 
 def get_resample_or_compress_arg():

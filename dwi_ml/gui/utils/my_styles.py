@@ -36,6 +36,7 @@ def _create_item_theme(color):
     link_theme = dpg.add_theme()
     with dpg.theme_component(0, parent=link_theme):
         dpg.add_theme_color(dpg.mvThemeCol_FrameBg, color)
+        dpg.add_theme_color(dpg.mvThemeCol_Button, color)
     return link_theme
 
 

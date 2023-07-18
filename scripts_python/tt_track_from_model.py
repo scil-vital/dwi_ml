@@ -21,7 +21,7 @@ from scilpy.tracking.utils import (add_seeding_options,
                                    verify_streamline_length_options,
                                    verify_seed_options, add_out_options)
 
-from dwi_ml.arg_utils import add_logging_arg
+from dwi_ml.arg_utils import get_logging_arg
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import verify_which_model_in_path
@@ -49,7 +49,7 @@ def build_argparser():
     add_seeding_options(p)
     add_out_options(p)
 
-    add_logging_arg(p)
+    get_logging_arg(p)
 
     return p
 

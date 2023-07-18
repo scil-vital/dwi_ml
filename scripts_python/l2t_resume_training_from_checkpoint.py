@@ -11,7 +11,7 @@ import comet_ml
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.arg_utils import add_logging_arg
+from dwi_ml.arg_utils import get_logging_arg
 from dwi_ml.io_utils import verify_checkpoint_exists
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
@@ -26,7 +26,7 @@ def prepare_arg_parser():
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_args_resuming_experiment(p)
 
-    add_logging_arg(p)
+    get_logging_arg(p)
 
     return p
 

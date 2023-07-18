@@ -19,7 +19,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.arg_utils import add_logging_arg, get_memory_args
+from dwi_ml.arg_utils import get_logging_arg, get_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_samplers import (get_args_batch_sampler,
@@ -45,7 +45,7 @@ def prepare_arg_parser():
     get_args_batch_loader(p)
     training_group = get_training_args(p, add_a_tracking_validation_phase=True)
     get_memory_args(p, add_lazy_options=True, add_rng=True)
-    add_logging_arg(p)
+    get_logging_arg(p)
 
     # Additional arg for projects
     training_group.add_argument(

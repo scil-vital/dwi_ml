@@ -3,6 +3,7 @@ from typing import Dict
 
 import dearpygui.dearpygui as dpg
 
+from dwi_ml.gui.utils.gui_popup_message import show_infobox
 from dwi_ml.gui.utils.my_styles import get_none_theme, get_non_modified_theme, \
     get_modified_theme, get_required_theme
 
@@ -101,9 +102,9 @@ def _add_input_item_based_on_type(arg_name, params, required,
     elif dtype == bool or 'action' in params:
         if 'action' in params:
             if params['action'] == 'store_true':
-                default = True
-            elif params['action'] == 'store_false':
                 default = False
+            elif params['action'] == 'store_false':
+                default = True
             else:
                 raise ValueError("ACTION {} NOT MANAGED YET"
                                  .format(params['action']))
@@ -145,7 +146,7 @@ def _add_input_item_based_on_type(arg_name, params, required,
     return dtype, default
 
 
-def _add_item_to_group(arg_name, params, required):
+def _add_item_to_group(arg_name, params, existing_file_dialogs, required):
     if arg_name == 'mutually_exclusive_group':
         with dpg.tree_node(label="Select maximum one", default_open=True,
                            indent=40):
@@ -155,13 +156,14 @@ def _add_item_to_group(arg_name, params, required):
                                            "group, so NOT required, but its " \
                                            "name does not start with '-'" \
                                            .format(sub_item)
-                _add_item_to_gui(sub_item, sub_params, required=False,
-                                 exclusive_group=exclusive_args)
+                _add_item_to_gui(sub_item, sub_params, existing_file_dialogs,
+                                 required=False, exclusive_group=exclusive_args)
     else:
-        _add_item_to_gui(arg_name, params, required)
+        _add_item_to_gui(arg_name, params, existing_file_dialogs, required)
 
 
-def _add_item_to_gui(arg_name, params, required, exclusive_group=None):
+def _add_item_to_gui(arg_name, params, existing_file_dialogs, required,
+                     exclusive_group=None):
     """
     arg_name: str
         Name of the argument (ex: --some_arg).
@@ -179,31 +181,30 @@ def _add_item_to_gui(arg_name, params, required, exclusive_group=None):
         raise ValueError("Required elements cannot be in an exclusive group.")
 
     with dpg.group(horizontal=True):
-        # 1. Argument name
+        # 1. Argument name + metavar
         if 'metavar' in params:
             m = params['metavar']
+        elif required or 'action' in params and \
+                params['action'] in ['store_true', 'store_false']:
+            m = ''
         else:
-            if 'action' in params and params['action'] in ['store_true', 'store_false']:
-                m = ''
-            else:
-                m = arg_name.replace('-', '').upper()
+            m = arg_name.replace('-', '').upper()
 
         suffix = '   ' + m + ('.' * (NB_DOTS - len(m)))
         dpg.add_text(arg_name + suffix, indent=arg_name_indent)
 
         # 2. Argument value
-        # Special cases for experiments_path and hdf5_file to open file dialogs.
-        if arg_name == 'experiments_path':
+        if existing_file_dialogs is None:
+            existing_file_dialogs = []
+        if arg_name in existing_file_dialogs:
+            # Special cases for known arguments that require a file dialog.
             dpg.add_button(
-                label='Click here to select path',
-                tag=arg_name, **style_input_item,
-                callback=lambda: dpg.show_item("file_dialog_experiments_path"))
-        elif arg_name == 'hdf5_file':
-            dpg.add_button(
-                label='Click here to select file',
-                tag=arg_name, **style_input_item,
-                callback=lambda: dpg.show_item("file_dialog_hdf5_file"))
+                tag=arg_name + '_button',
+                label='Click here to select path', **style_input_item,
+                callback=lambda: dpg.show_item(arg_name))
         else:
+
+            # Other cases: depending on type.
             if required:
                 item_options = {'callback': _log_value}
             elif exclusive_group is None:
@@ -226,12 +227,12 @@ def _add_item_to_gui(arg_name, params, required, exclusive_group=None):
     dpg.add_text(params['help'], **style_help)
 
 
-def add_args_groups_to_gui(args: Dict[str, Dict]):
+def add_args_groups_to_gui(groups: Dict[str, Dict], existing_file_dialogs=None):
     """
     args: dict of dicts.
         keys are groups. values are dicts of argparser equivalents.
     """
-    for group_name, group_args_dict in args.items():
+    for group_name, group_args_dict in groups.items():
         dpg.add_text('\n' + group_name + ':')
 
         # Verifying all arg names in this group
@@ -247,10 +248,79 @@ def add_args_groups_to_gui(args: Dict[str, Dict]):
             with dpg.tree_node(label="Required", default_open=True):
                 for arg_name in all_mandatory:
                     _add_item_to_group(arg_name, group_args_dict[arg_name],
-                                       required=True)
+                                       existing_file_dialogs, required=True)
 
         if len(all_options) > 0:
             with dpg.tree_node(label="Options", default_open=False):
                 for arg_name in all_options:
                     _add_item_to_group(arg_name, group_args_dict[arg_name],
-                                       required=False)
+                                       existing_file_dialogs, required=False)
+
+
+def _get_one_value_verify_ok(arg_name, params):
+    # 1. Checking it this is a file dialog.
+    info = dpg.get_item_info(arg_name)
+    if info['type'] == 'mvAppItemType::mvFileDialog':
+        user_data = dpg.get_item_user_data(arg_name)
+
+        if user_data is None:
+            user_data = "TMP FAKE PATH -- WILL SHOW ERROR INFOBOX"
+            return user_data
+            show_infobox("Missing argument",
+                         "Required argument {} was not filled in! "
+                         "Please select a path in the file dialog."
+                         .format(arg_name))
+            return 'stop_process'
+        chosen_path = user_data[arg_name]
+        return chosen_path
+
+    # 2. If not required, we have a checkbox. Let's see if it exists.
+    print("Verifying checkbox for ", arg_name)
+    checked = dpg.get_value(arg_name + '_default_checkbox')
+    print("Found checkbox value: ", checked)
+
+    value = dpg.get_value(arg_name)
+    print("Raw value is", value)
+    if checked is None:
+        # No checkbox = required value.
+        print("REQUIRED ARG.", dpg.get_item_callback(arg_name))
+        if value is None:
+            return "TMP FAKE VALUE -- WILL SHOW ERROR BOX"
+            show_infobox("Missing argument",
+                         "Required argument {} was not filled in!"
+                         .format(arg_name))
+            return 'stop_process'
+        return value
+    elif checked:
+        # We use the default value.
+        return None
+    else:
+        # Not checked = not using default value.
+        return arg_name + '  ' + str(value)
+
+
+def get_all_values(groups: Dict[str, Dict], split_every=50):
+
+    values = ['    ']
+    for group_name, group_args in groups.items():
+        for arg_name, params in group_args.items():
+            if split_every is not None and len(values[-1]) > split_every:
+                values[-1] += "  \\"
+                values.append('    ')
+
+            if arg_name == 'mutually_exclusive_group':
+                chosen_value = None
+                for sub_arg_name, sub_params in params.items():
+                    tmp_value = _get_one_value_verify_ok(sub_arg_name, params)
+                    if tmp_value is not None:
+                        if chosen_value is not None:
+                            raise ValueError(
+                                "TWO MUTUALLY EXCLUSIVE VALUE CHOSEN. SHOULD "
+                                "NOT HAPPEN. IMPLEMENTATION ERROR.")
+                        chosen_value = tmp_value
+                if chosen_value is not None:
+                    values[-1] += chosen_value
+            else:
+                values[-1] = _get_one_value_verify_ok(arg_name, params)
+
+    return values

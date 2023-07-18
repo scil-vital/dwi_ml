@@ -15,7 +15,7 @@ from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
 from scilpy.io.utils import add_overwrite_arg
 
-from dwi_ml.arg_utils import add_logging_arg, add_arg_existing_experiment_path
+from dwi_ml.arg_utils import get_logging_arg, add_arg_existing_experiment_path
 from dwi_ml.arg_utils import get_memory_args
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
@@ -79,7 +79,7 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
     g.add_argument('--pick_idx', type=int, nargs='*')
 
     add_overwrite_arg(p)
-    add_logging_arg(p)
+    get_logging_arg(p)
 
 
 def prepare_colors_from_loss(

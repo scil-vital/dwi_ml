@@ -8,15 +8,20 @@ import os
 from pathlib import Path
 
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
-from dwi_ml.arg_utils import get_resample_or_compress_arg
+from dwi_ml.arg_utils import get_resample_or_compress_arg, get_overwrite_arg, \
+    get_logging_arg
 
 
 def get_hdf5_args_groups():
     groups = {
         'Main HDF5 properties': _main_hdf5_creation_args(),
         'Volumes processing options': _mri_processing_args(),
-        'Streamlines processing options': _streamline_processing_args()
+        'Streamlines processing options': _streamline_processing_args(),
+        'Others': {}
     }
+    groups['Others'].update(get_overwrite_arg())
+    groups['Others'].update(get_logging_arg())
+
     return groups
 
 

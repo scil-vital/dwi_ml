@@ -23,12 +23,11 @@ import logging
 import os
 from pathlib import Path
 
-from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
-                             assert_outputs_exist)
-
 from dipy.io.stateful_tractogram import set_sft_logger_level
 
-from dwi_ml.arg_utils import add_logging_arg, add_args_groups_to_parser
+from scilpy.io.utils import (assert_inputs_exist, assert_outputs_exist)
+
+from dwi_ml.arg_utils import add_args_groups_to_parser
 from dwi_ml.data.hdf5.utils import (prepare_hdf5_creator, get_hdf5_args_groups)
 from dwi_ml.experiment_utils.timer import Timer
 
@@ -39,8 +38,6 @@ def _parse_args():
 
     groups = get_hdf5_args_groups()
     add_args_groups_to_parser(groups, p)
-    add_overwrite_arg(p)
-    add_logging_arg(p)
 
     return p
 

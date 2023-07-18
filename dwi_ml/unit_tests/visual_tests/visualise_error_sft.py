@@ -14,7 +14,7 @@ from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
 from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.arg_utils import get_resample_or_compress_arg, add_logging_arg
+from dwi_ml.arg_utils import get_resample_or_compress_arg, get_logging_arg
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 blue = [2., 75., 252.]
@@ -63,7 +63,7 @@ def build_argparser_visu_error(skip_exp=False):
     add_reference_arg(p)
     add_bbox_arg(p)
     add_overwrite_arg(p)
-    add_logging_arg(p)
+    get_logging_arg(p)
 
     return p
 

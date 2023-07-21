@@ -9,7 +9,7 @@ from dwi_ml.gui.projects.l2t_from_checkpoint_menu import \
 from dwi_ml.gui.projects.transformers_menus import open_tto_from_checkpoint_window, \
     open_ttst_from_checkpoint_window
 from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
-    callback_single_file_dialog
+    _callback_single_file_dialog, add_single_folder_dialog
 from dwi_ml.gui.utils.gui_popup_message import show_infobox
 from dwi_ml.io_utils import verify_checkpoint_exists, verify_which_model_in_path
 
@@ -19,11 +19,9 @@ def show_file_dialog_from_checkpoint():
     if dpg.does_item_exist(file_dialog_name):
         dpg.show_item(file_dialog_name)
     else:
-        dpg.add_file_dialog(
-            directory_selector=True, tag=file_dialog_name,
-            file_count=1, **params_file_dialogs,
-            callback=callback_single_file_dialog,
-            user_data=_open_checkpoint_subwindow)
+        add_single_folder_dialog(tag=file_dialog_name,
+                                 sub_callback=_open_checkpoint_subwindow)
+        dpg.show_item(file_dialog_name)
 
 
 def _open_checkpoint_subwindow(chosen_path):

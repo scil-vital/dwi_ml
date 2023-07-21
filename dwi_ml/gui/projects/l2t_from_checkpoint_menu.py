@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.utils.my_styles import fixed_window_options
+from dwi_ml.gui.utils.my_styles import STYLE_FIXED_WINDOW
 
 
 def open_l2t_from_checkpoint_window():
-    with dpg.window(**fixed_window_options):
+    with dpg.window(**STYLE_FIXED_WINDOW):
         dpg.add_text("NOT READY")

@@ -4,13 +4,24 @@ from pathlib import Path
 
 import dearpygui.dearpygui as dpg
 
+STYLE_FIXED_WINDOW = {'no_move': True,
+                      'no_collapse': True,
+                      'no_close': True,
+                      'no_title_bar': True,
+                      'pos': [0, 0]
+                      }
+STYLE_INPUT_ITEM = {
+    'indent': 600,
+    'width': 400,
+}
+STYLE_ARGPARSE_HELP = {
+    'indent': 100,
+    'color': (151, 151, 151, 255)
+}
+INDENT_ARGPARSE_NAME = 40
+NB_DOTS = 150
 
-fixed_window_options = {'no_move': True,
-                        'no_collapse': True,
-                        'no_close': True,
-                        'no_title_bar': True,
-                        'pos': [0, 0]
-                        }
+# Defining a few colors. For help, use dpg.show_style_editor()
 # 4th value = alpha
 white = (255, 255, 255, 255)
 light_gray = (151, 151, 151, 255)
@@ -23,9 +34,9 @@ blue_background = (80, 150, 180, 255)
 chosen_purple = (130, 75, 177, 255)
 pink_for_tests = (210, 8, 252, 255)
 required_red = (242, 8, 8, 255)
-# dpg.show_style_editor()
 
-
+# Defining values that will be used as global constants to avoid re-defining
+# many times the same theme for each item.
 global_non_modified_theme = None
 global_modified_theme = None
 global_none_theme = None

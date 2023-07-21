@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.utils.argparser_equivalent_for_gui import add_args_groups_to_gui
-from dwi_ml.gui.utils.my_styles import fixed_window_options, \
+from dwi_ml.gui.utils.argparse_to_gui import add_args_groups_to_gui
+from dwi_ml.gui.utils.my_styles import STYLE_FIXED_WINDOW, \
     get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import callback_change_window
 from dwi_ml.models.projects.learn2track_utils import get_all_args_groups_learn2track
@@ -30,7 +30,7 @@ def prepare_and_show_train_l2t_window():
     else:
         # Create the Learn2track window.
         my_fonts = get_my_fonts_dictionary()
-        with dpg.window(**fixed_window_options,
+        with dpg.window(**STYLE_FIXED_WINDOW,
                         tag='train_l2t_window',
                         no_open_over_existing_popup=False) as l2t_window:
             dpg.set_primary_window(l2t_window, True)

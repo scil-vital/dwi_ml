@@ -80,6 +80,9 @@ def test_learn2track_cnn():
 
     # Testing forward. No previous dirs
     model.set_context('training')
+    # pretending that we have 27 neighbors.
+    for i, line_input in enumerate(batch_x):
+        batch_x[i] = line_input.repeat(1, 27)
     model(batch_x, batch_s)
 
 

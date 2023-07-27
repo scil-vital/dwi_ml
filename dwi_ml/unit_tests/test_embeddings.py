@@ -2,48 +2,65 @@
 # -*- coding: utf-8 -*-
 import logging
 
+import numpy as np
 import torch
 
-from dwi_ml.models.embeddings_on_tensors import \
-    keys_to_embeddings as keys_on_tensors
-
-
-def _verify_all_outputs(input_data, keys_to_embeddings, nb_features):
-    logging.debug("Input is:\n{}".format(input_data))
-
-    logging.debug('    Testing identity embedding...')
-    cls = keys_to_embeddings['no_embedding']
-    model = cls(nb_features_in=nb_features, nb_features_out=nb_features)
-    output = model(input_data)
-    logging.debug('    ==> Should return itself. Output is:\n{}'
-                  .format(output))
-    if isinstance(output, torch.Tensor):
-        assert torch.equal(input_data, output)
-    else:
-        assert torch.equal(input_data.data, output.data)
-
-    logging.debug('    Testing neural network embedding, ...')
-    cls = keys_to_embeddings['nn_embedding']
-    model = cls(nb_features_in=nb_features, nb_features_out=8)
-    output = model(input_data)
-    logging.debug('    ==> Should return output of size 8. Result is:\n{}'
-                  .format(output))
-    if isinstance(output, torch.Tensor):
-        nb_outputs, size_outputs = output.size()
-    else:
-        nb_outputs, size_outputs = output.data.size()
-    assert size_outputs == 8
+from dwi_ml.models.embeddings import keys_to_embeddings
 
 
 def test_embeddings():
     logging.getLogger().setLevel(level='DEBUG')
 
-    logging.debug("Unit test: embeddings on tensors")
+    BATCH_SIZE = 2
+    NB_FEATURES_IN = 3
+    NB_FEATURES_OUT = 7
+    IMAGE_SHAPE = np.asarray([4, 5, 6])
 
     # Two inputs with 3 features
-    tensor_a = torch.as_tensor([[0.0, 1.0, 2.2],
-                                [10.3, 11.4, 12.5]])
-    _verify_all_outputs(tensor_a, keys_on_tensors, nb_features=3)
+    input_data = torch.rand([BATCH_SIZE, NB_FEATURES_IN])
+    logging.debug("Input is:\n{}".format(input_data))
+
+    # 1. No embedding
+    logging.debug('---------------------------------')
+    logging.debug('    Testing identity embedding...')
+    cls = keys_to_embeddings['no_embedding']
+    model = cls(nb_features_in=NB_FEATURES_IN, nb_features_out=NB_FEATURES_IN)
+    output = model(input_data)
+    logging.debug('    ==> Should return itself. Output is:\n{}'.format(output))
+    assert torch.equal(input_data, output)
+
+    # 2. NN embedding
+    logging.debug('---------------------------------')
+    logging.debug('    Testing neural network embedding, ...')
+    cls = keys_to_embeddings['nn_embedding']
+    model = cls(nb_features_in=NB_FEATURES_IN, nb_features_out=NB_FEATURES_OUT)
+    output = model(input_data)
+    logging.debug('    ==> Should return output of size {}. Result is:\n{}'
+                  .format(NB_FEATURES_OUT, output.shape))
+    nb_outputs, size_outputs = output.size()
+    assert size_outputs == NB_FEATURES_OUT
+
+    # 3. CNN embedding
+    logging.debug('---------------------------------')
+    logging.debug('    Testing CNN embedding, ...')
+    input_data = torch.rand([BATCH_SIZE, *IMAGE_SHAPE, NB_FEATURES_IN])
+    logging.debug("3D input: of shape {}".format(input_data.shape))
+
+    cls = keys_to_embeddings['cnn_embedding']
+    model = cls(nb_features_in=NB_FEATURES_IN, nb_features_out=NB_FEATURES_OUT,
+                kernel_size=3, image_shape=IMAGE_SHAPE)
+
+    # New input data: 3D image
+    output = model(input_data)
+    logging.debug('    ==> With kernel_size 3 (no padding, stride 1), should '
+                  'return output \nof size dim - 2 on each side, for a total '
+                  'of {}. Computed expected shape is {}. \nResulting flattened '
+                  'shape should be {}: {}'
+                  .format(IMAGE_SHAPE - 2, model.out_image_shape,
+                          np.prod(IMAGE_SHAPE - 2), output.shape[1]))
+    assert np.array_equal(IMAGE_SHAPE - 2, model.out_image_shape)
+    assert output.shape[1] == np.prod(IMAGE_SHAPE - 2)
+    assert output.shape[-1] == NB_FEATURES_OUT
 
 
 if __name__ == '__main__':

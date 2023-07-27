@@ -18,7 +18,7 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
+from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
 logger = logging.getLogger('model_logger')
@@ -453,6 +453,10 @@ class MainModelOneInput(MainModelAbstract):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
             return subj_x_data, input_mask
+
+        print("subj_x_data", subj_x_data)
+        print("coords_torch", coords_torch)
+        exit(1)
         return subj_x_data
 
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 import torch
@@ -95,7 +95,8 @@ class NoEmbedding(EmbeddingAbstract):
 
 class CNNEmbedding(EmbeddingAbstract):
     def __init__(self, nb_features_in: int, nb_features_out: int,
-                 kernel_size: int, image_shape: Tuple):
+                 kernel_size: Union[int, Tuple[int, int, int]],
+                 image_shape: Tuple[int, int, int]):
         """
         Applies a 3D convolution. For now: a single layer.
 
@@ -107,43 +108,61 @@ class CNNEmbedding(EmbeddingAbstract):
             input_size is thus nb_features * nb_neighboors).
         nb_features_out: int
             Size of the output = number of out_channels = number of filters.
-        kernel_size: int
+        kernel_size: int, or a tuple of 3 ints
             Size of the kernel (will be a 3D [k, k, k] kernel).
         image_shape: (int, int, int)
             Size of the image.
         """
         super().__init__(nb_features_in, nb_features_out, key='cnn_embedding')
 
+        if not isinstance(kernel_size, int):
+            raise NotImplementedError("Need to verify order of the 3D kernel "
+                                      "size.")
+        self.in_image_shape = np.asarray(image_shape)
+        self.cnn_layer = torch.nn.Conv3d(
+            nb_features_in, nb_features_out, kernel_size=kernel_size)
+
+        # Computing values, just to help user.
+        out_image_shape = [0] * 3
+        padding = 0
+        stride = 1
+        dilation = 1
+        # Using default stride=1, padding=0, dilation=1, etc.
+        # Output size formula is given here:
+        # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
+        numerator = \
+            self.in_image_shape + 2 * padding - dilation * (kernel_size - 1) - 1
+        self.out_image_shape = np.floor(numerator / stride + 1)
+        self.out_flattened_size = int(np.prod(out_image_shape))
+
+    def forward(self, inputs: Tensor):
+        """
+        Expected inputs shape: (batch size, x, y, z, channels)
+          (We will reorder to torch's input shape.)
+        Outputs shape: (batch size, x2, y2, x2, c2)
+        """
         # Torch:
-        # Input size = (N, C1, D1, H1, W1)
-        # Output size = (N, C2, D2, H2, W2)
+        #   Note that depth is first, but we can pretend it is (N, C, X, Y, Z).
+        #   3D operation is the same.
+        # Input size = (N, C1, D1, H1, W1)  --> (B, C1, X1, Y1, Z1)
+        # Output size = (N, C2, D2, H2, W2) --> (B, C2, X2, Y2, Z2)
         #     N = Batch size.
         #     C = Number of channels
         #     D = Depth of image
         #     H = Height of image
         #     W = Width of image
-        # kernel size = one int, or a tuple of 3 ints.
-        self.in_image_shape = list(image_shape)
-        self.cnn_layer = torch.nn.Conv3d(
-            nb_features_in, nb_features_out, kernel_size=kernel_size)
+        assert inputs.shape[-1] == self.nb_features_in
+        assert np.array_equal(inputs.shape[1:4], self.in_image_shape), \
+            "Expecting inputs of shape {} ({} channels per voxel), but "\
+            "received {}.".format(self.in_image_shape, self.nb_features_in,
+                                  inputs.shape[2:])
 
-        out_image_shape = [0] * 3
-        padding = 0
-        stride = 1
-        dilation=1
-        # Using default stride=1, padding=0, dilation=1, etc.
-        # Output size formula is given here:
-        # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
-        for i in range(3):
-            numerator = self.in_image_shape[i] + 2 * padding - \
-                        dilation * (kernel_size - 1) - 1
-            out_image_shape[i] = np.floor(numerator / stride + 1)
-        self.out_flattened_size = np.prod(out_image_shape)
-
-    def forward(self, inputs: Tensor):
-        assert inputs.shape[1] == self.nb_features_in
-        assert np.all(inputs.shape[2:] == self.in_image_shape)
-        raise NotImplementedError
+        inputs = torch.permute(inputs, (0, 4, 1, 2, 3))
+        outputs = self.cnn_layer(inputs)
+        outputs = torch.permute(outputs, (0, 2, 3, 4, 1))
+        # Current shape = (B, X2, Y2, Z2, C2)
+        outputs = torch.flatten(outputs, start_dim=1, end_dim=3)
+        return outputs
 
 
 keys_to_embeddings = {'no_embedding': NoEmbedding,

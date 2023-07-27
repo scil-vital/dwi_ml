@@ -10,7 +10,7 @@ from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions, compute_n_previous_dirs
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     convert_dirs_to_class
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
+from dwi_ml.models.embeddings import keys_to_embeddings as \
     keys_to_tensor_embeddings, NoEmbedding
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelWithDirectionGetter,
@@ -168,6 +168,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.embedding_dropout = torch.nn.Dropout(self.dropout)
 
         # 3. Stacked RNN
+        print(" ------------> STACKED: ", self.input_embedding_size)
         rnn_input_size = self.input_embedding_size
         if self.nb_previous_dirs > 0:
             rnn_input_size += self.prev_dirs_embedding_size
@@ -299,8 +300,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # Formatting the n previous dirs for last point or all
         n_prev_dirs = compute_n_previous_dirs(
-            dirs, self.nb_previous_dirs, point_idx=point_idx,
-            device=self.device)
+            dirs, self.nb_previous_dirs, point_idx=point_idx, device=self.device)
 
         # Start from copy prev option.
         copy_prev_dir = 0.0
@@ -323,9 +323,13 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # Avoiding unpacking and packing back if not needed.
         if self.nb_previous_dirs > 0 or not isinstance(
                 self.input_embedding, NoEmbedding):
+            inputs = inputs.data
 
             # Embedding. Shape of inputs: nb_pts_total * embedding_size
-            inputs = self.input_embedding(inputs.data)
+            if self.input_embedding_key == 'cnn_embedding':
+                # We need to reshape flattened inputs into a neighborhood.
+                # Batch has been prepared in self.prepare_batch_one_input.
+            inputs = self.input_embedding(inputs)
             inputs = self.embedding_dropout(inputs)
 
             # ==== 3. Concat with previous dirs ====

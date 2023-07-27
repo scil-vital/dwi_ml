@@ -86,10 +86,10 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             There is the possibility to compute this additional step only every
             X epochs.
         tracking_phase_nb_steps_init: int
-            Number of initial points to keep in the validation step. Adding
+            Number of initial segments to keep in the validation step. Adding
             enough should ensure that the generated streamlines go in the same
             direction as the "true" validation streamline to generate good
-            metrics.
+            metrics. Adding 0 : only the seed point is kept.
         tracking_phase_mask_group: str
             Name of the volume group to use as tracking mask.
         """
@@ -97,6 +97,9 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
 
         self.add_a_tracking_validation_phase = add_a_tracking_validation_phase
         self.tracking_phase_frequency = tracking_phase_frequency
+        if tracking_phase_nb_steps_init < 0:
+            raise ValueError("Number of initial segments for the generation "
+                             "validation phase cannot be negative.")
         self.tracking_phase_nb_steps_init = tracking_phase_nb_steps_init
         self.tracking_mask_group = tracking_phase_mask_group
 
@@ -239,8 +242,9 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                       for line in real_lines]
         last_pos = torch.vstack([line[-1, :] for line in real_lines])
 
-        # Starting from the n first points
-        lines = [s[0:min(len(s), self.tracking_phase_nb_steps_init), :]
+        # Starting from the n first segments.
+        # Ex: 1 segment = seed + 1 point = 2 points = s[0:2]
+        lines = [s[0:min(len(s), self.tracking_phase_nb_steps_init + 1), :]
                  for s in real_lines]
 
         # Propagation: no backward tracking.

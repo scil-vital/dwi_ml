@@ -42,7 +42,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  normalize_prev_dirs: bool,
                  # INPUTS
                  input_embedding_key: str, input_embedding_size: Union[int, None],
-                 input_embedding_size_ratio: Union[float, None],
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
                  use_skip_connection: bool, use_layer_normalization: bool,
@@ -69,9 +68,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         input_embedding_size: int
             Output embedding size for the input. If None, will be set to
             input_size.
-        input_embedding_size_ratio: float
-            Other possibility to define input_embedding_size, which then equals
-            [ratio * (nb_features * (nb_neighbors+1))]
         rnn_key: str
             Either 'LSTM' or 'GRU'.
         rnn_layer_sizes: List[int]
@@ -133,14 +129,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # 2. Input embedding
         self.input_size = nb_features * (self.nb_neighbors + 1)
-        if input_embedding_size and input_embedding_size_ratio:
-            raise ValueError("You must only give one value, either "
-                             "input_embedding_size or "
-                             "input_embedding_size_ratio")
-        elif input_embedding_size_ratio:
-            self.input_embedding_size = int(self.input_size *
-                                            input_embedding_size_ratio)
-        elif input_embedding_size:
+        if input_embedding_size:
             self.input_embedding_size = input_embedding_size
         else:
             self.input_embedding_size = self.input_size
@@ -187,7 +176,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             'nb_features': int(self.nb_features),
             'input_embedding_key': self.input_embedding_key,
             'input_embedding_size': int(self.input_embedding_size),
-            'input_embedding_size_ratio': None,
             'rnn_key': self.rnn_model.rnn_torch_key,
             'rnn_layer_sizes': self.rnn_model.layer_sizes,
             'use_skip_connection': self.rnn_model.use_skip_connection,

@@ -43,7 +43,6 @@ def test_learn2track():
                              normalize_prev_dirs=True,
                              input_embedding_key='no_embedding',
                              input_embedding_size=None,
-                             input_embedding_size_ratio=None,
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,
                              start_from_copy_prev=False,

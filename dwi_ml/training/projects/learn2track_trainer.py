@@ -67,10 +67,13 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
 
         # Running the beginning of the streamlines to get the hidden states
         # (using one less point. The next will be done during propagation).
-        tmp_lines = [line[:-1, :] for line in lines]
-        inputs = self.batch_loader.load_batch_inputs(tmp_lines, ids_per_subj)
-        _, hidden_states = self.model(inputs, tmp_lines, return_hidden=True)
-        del tmp_lines
+        if self.tracking_phase_nb_segments_init > 0:
+            tmp_lines = [line[:-1, :] for line in lines]
+            inputs = self.batch_loader.load_batch_inputs(tmp_lines, ids_per_subj)
+            _, hidden_states = self.model(inputs, tmp_lines, return_hidden=True)
+            del tmp_lines, inputs
+        else:
+            hidden_states = None
 
         def update_memory_after_removing_lines(can_continue: np.ndarray, _):
             nonlocal hidden_states

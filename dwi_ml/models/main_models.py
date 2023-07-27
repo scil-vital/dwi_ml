@@ -318,8 +318,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
             prev_dirs_emb_cls = keys_to_embeddings[prev_dirs_embedding_key]
             # Preparing layer!
             self.prev_dirs_embedding = prev_dirs_emb_cls(
-                input_size=nb_previous_dirs * 3,
-                output_size=self.prev_dirs_embedding_size)
+                nb_features_in=nb_previous_dirs * 3,
+                nb_features_out=self.prev_dirs_embedding_size)
         else:
             self.prev_dirs_embedding_size = None
             if prev_dirs_embedding_size:

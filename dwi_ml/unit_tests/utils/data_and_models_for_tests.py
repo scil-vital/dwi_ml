@@ -39,9 +39,9 @@ def fetch_testing_data():
     return testing_data_dir
 
 
-def create_test_batch():
-    logging.debug("Creating batch: 2 streamlines, the first has 3 points "
-                  "and the second, 2. Input: 4 features per point.")
+def create_test_batch_2lines_4features():
+    # 2 streamlines, the first has 3 points and the second, 2.
+    # Input: 4 features per point.
 
     # dwi1 : data for the 3 first points
     flattened_dwi1 = torch.as_tensor([[10., 11., 12., 13.],

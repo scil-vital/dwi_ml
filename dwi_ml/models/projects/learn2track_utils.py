@@ -34,10 +34,21 @@ def add_model_args(p: argparse.ArgumentParser):
              "defined with --input_embedding_size. Note that initial inputs "
              "are: \nFor CNN: nb of MRI features. Kernel size must be defined. "
              "\nFor NN: nb of MRI features * nb neighbors (flattened data).")
-    inputs_g.add_argument(
+    em = inputs_g.add_mutually_exclusive_group()
+    em.add_argument(
         '--input_embedding_size', type=int, metavar='s',
         help="Size of the output after passing the previous dirs through the "
-             "embedding layer. \nDefault: embedding_size=input_size.")
+             "embedding layer. \nDefault: embedding_size=input_size.\n"
+             "For CNN: this is the number of filters.")
+    em.add_argument(
+        '--nb_cnn_fiters', type=int, metavar='f',
+        help="For CNN: embedding size will depend on the CNN parameters "
+             "(number of filters, but also stride, padding, etc.). CNN "
+             "output will be flattened.")
+    inputs_g.add_argument(
+        '--kernel_size', type=int, metavar='k',
+        help='In the case of CNN embedding, size of the 3D filter matrix '
+             '(kernel). Will be of shape kxkxk.')
 
     rnn_g = p.add_argument_group("Learn2track model: RNN layer")
     rnn_g.add_argument(

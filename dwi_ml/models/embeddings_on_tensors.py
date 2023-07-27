@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+from typing import Tuple
+
+import numpy as np
 import torch
 from torch import Tensor
 
@@ -21,7 +24,8 @@ Hint: To use on packed sequences:
 
 
 class EmbeddingAbstract(torch.nn.Module):
-    def __init__(self, nb_features_in: int, nb_features_out: int):
+    def __init__(self, nb_features_in: int, nb_features_out: int,
+                 key: str = ''):
         """
         Params
         -------
@@ -35,6 +39,7 @@ class EmbeddingAbstract(torch.nn.Module):
         super().__init__()
         self.nb_features_in = nb_features_in
         self.nb_features_out = nb_features_out
+        self.key = key
 
     @property
     def params_for_checkpoint(self):
@@ -48,6 +53,7 @@ class EmbeddingAbstract(torch.nn.Module):
         params = {
             'nb_features_in': int(self.nb_features_in),
             'nb_features_out': int(self.nb_features_out),
+            'key': self.key
         }
         return params
 
@@ -57,17 +63,9 @@ class EmbeddingAbstract(torch.nn.Module):
 
 class NNEmbedding(EmbeddingAbstract):
     def __init__(self, nb_features_in, nb_features_out: int):
-        super().__init__(nb_features_in, nb_features_out)
+        super().__init__(nb_features_in, nb_features_out, key='nn_embedding')
         self.linear = torch.nn.Linear(self.nb_features_in, self.nb_features_out)
         self.relu = torch.nn.ReLU()
-
-    @property
-    def params_for_checkpoint(self):
-        params = super().params_for_checkpoint  # type: dict
-        params.update({
-            'key': 'nn_embedding'
-        })
-        return params
 
     def forward(self, inputs: Tensor):
         # Calling forward.
@@ -85,7 +83,7 @@ class NoEmbedding(EmbeddingAbstract):
                              "output_size but you gave {} and {}"
                              .format(nb_features_in, nb_features_out))
 
-        super().__init__(nb_features_in, nb_features_out)
+        super().__init__(nb_features_in, nb_features_out, key='no_embedding')
         self.identity = torch.nn.Identity()
 
     def forward(self, inputs: Tensor = None):
@@ -94,19 +92,12 @@ class NoEmbedding(EmbeddingAbstract):
         result = self.identity(inputs)
         return result
 
-    @property
-    def params_for_checkpoint(self):
-        params = super().params_for_checkpoint  # type: dict
-        params.update({
-            'key': 'no_embedding'
-        })
-        return params
-
 
 class CNNEmbedding(EmbeddingAbstract):
-    def __init__(self, nb_features_in: int, nb_features_out: int, kernel_size: int):
+    def __init__(self, nb_features_in: int, nb_features_out: int,
+                 kernel_size: int, image_shape: Tuple):
         """
-        Applies a 3D convolution.
+        Applies a 3D convolution. For now: a single layer.
 
         Parameters
         ----------
@@ -114,13 +105,14 @@ class CNNEmbedding(EmbeddingAbstract):
             Size should refer to the number of features per voxel. (Contrary to
             other embeddings, where data in each neighborhood is flattened and
             input_size is thus nb_features * nb_neighboors).
-
         nb_features_out: int
-            Size of the output.
+            Size of the output = number of out_channels = number of filters.
         kernel_size: int
-            Size of the kernel.
+            Size of the kernel (will be a 3D [k, k, k] kernel).
+        image_shape: (int, int, int)
+            Size of the image.
         """
-        super().__init__(nb_features_in, nb_features_out)
+        super().__init__(nb_features_in, nb_features_out, key='cnn_embedding')
 
         # Torch:
         # Input size = (N, C1, D1, H1, W1)
@@ -130,19 +122,27 @@ class CNNEmbedding(EmbeddingAbstract):
         #     D = Depth of image
         #     H = Height of image
         #     W = Width of image
-        self.cnn_layer = torch.nn.Conv3d(nb_features_in, nb_features_out,
-                                         kernel_size=(kernel_size,))
+        # kernel size = one int, or a tuple of 3 ints.
+        self.in_image_shape = list(image_shape)
+        self.cnn_layer = torch.nn.Conv3d(
+            nb_features_in, nb_features_out, kernel_size=kernel_size)
 
-    @property
-    def params_for_checkpoint(self):
-        params = super().params_for_checkpoint  # type: dict
-        other_parameters = {
-            'layers': 'non-defined-yet',
-            'key': 'cnn_embedding'
-        }
-        return params.update(other_parameters)
+        out_image_shape = [0] * 3
+        padding = 0
+        stride = 1
+        dilation=1
+        # Using default stride=1, padding=0, dilation=1, etc.
+        # Output size formula is given here:
+        # https://pytorch.org/docs/stable/generated/torch.nn.Conv3d.html
+        for i in range(3):
+            numerator = self.in_image_shape[i] + 2 * padding - \
+                        dilation * (kernel_size - 1) - 1
+            out_image_shape[i] = np.floor(numerator / stride + 1)
+        self.out_flattened_size = np.prod(out_image_shape)
 
     def forward(self, inputs: Tensor):
+        assert inputs.shape[1] == self.nb_features_in
+        assert np.all(inputs.shape[2:] == self.in_image_shape)
         raise NotImplementedError
 
 

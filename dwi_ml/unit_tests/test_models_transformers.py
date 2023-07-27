@@ -5,10 +5,10 @@ from torch import isnan, set_printoptions
 
 from dwi_ml.models.projects.transforming_tractography import (
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel)
-from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch
+from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch_2lines_4features
 
 (batch_x_various_lengths, batch_x_same_lengths,
- batch_s_various_lengths, batch_s_same_lengths) = create_test_batch()
+ batch_s_various_lengths, batch_s_same_lengths) = create_test_batch_2lines_4features()
 total_nb_points_training = sum([len(s) for s in batch_s_various_lengths])
 nb_streamlines = len(batch_x_various_lengths)
 

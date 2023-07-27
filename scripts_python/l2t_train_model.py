@@ -82,7 +82,7 @@ def init_from_args(args, sub_loggers_level):
             # INPUTS
             input_embedding_key=args.input_embedding_key,
             input_embedding_size=args.input_embedding_size,
-            nb_features=args.nb_features,
+            nb_features=args.nb_features, kernel_size=args.kernel_size,
             # RNN
             rnn_key=args.rnn_key, rnn_layer_sizes=args.rnn_layer_sizes,
             dropout=args.dropout,

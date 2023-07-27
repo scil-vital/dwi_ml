@@ -13,7 +13,7 @@ def _verify_all_outputs(input_data, keys_to_embeddings, nb_features):
 
     logging.debug('    Testing identity embedding...')
     cls = keys_to_embeddings['no_embedding']
-    model = cls(input_size=nb_features, output_size=nb_features)
+    model = cls(nb_features_in=nb_features, nb_features_out=nb_features)
     output = model(input_data)
     logging.debug('    ==> Should return itself. Output is:\n{}'
                   .format(output))
@@ -24,7 +24,7 @@ def _verify_all_outputs(input_data, keys_to_embeddings, nb_features):
 
     logging.debug('    Testing neural network embedding, ...')
     cls = keys_to_embeddings['nn_embedding']
-    model = cls(input_size=nb_features, output_size=8)
+    model = cls(nb_features_in=nb_features, nb_features_out=8)
     output = model(input_data)
     logging.debug('    ==> Should return output of size 8. Result is:\n{}'
                   .format(output))

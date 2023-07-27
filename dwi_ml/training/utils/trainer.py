@@ -58,7 +58,7 @@ def add_training_args(p: argparse.ArgumentParser,
             help="Volume group to use as tracking mask during the generation "
                  "phase.")
         training_group.add_argument(
-            '--tracking_phase_nb_steps_init', type=int, default=5,
+            '--tracking_phase_nb_segments_init', type=int, default=5,
             help="Number of segments copied from the 'real' streamlines "
                  "before starting propagation during generation phases.")
 

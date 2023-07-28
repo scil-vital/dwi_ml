@@ -83,6 +83,7 @@ def init_from_args(args, sub_loggers_level):
             input_embedding_key=args.input_embedding_key,
             input_embedding_size=args.input_embedding_size,
             nb_features=args.nb_features, kernel_size=args.kernel_size,
+            nb_cnn_filters=args.nb_cnn_filters,
             # RNN
             rnn_key=args.rnn_key, rnn_layer_sizes=args.rnn_layer_sizes,
             dropout=args.dropout,
@@ -94,6 +95,7 @@ def init_from_args(args, sub_loggers_level):
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
+            neighborhood_resolution=args.neighborhood_resolution,
             log_level=sub_loggers_level)
 
         logging.info("Learn2track model final parameters:" +

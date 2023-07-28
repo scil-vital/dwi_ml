@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from time import time
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Optional
 
 from dipy.data import get_sphere
 import numpy as np
@@ -17,7 +17,7 @@ from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithDirectionGetter,
                                        ModelWithNeighborhood)
-from dwi_ml.models.projects.positional_encoding import keys_to_positional_encodings
+from dwi_ml.models.positional_encoding import keys_to_positional_encodings
 from dwi_ml.models.utils.transformers_from_torch import (
     ModifiedTransformer,
     ModifiedTransformerEncoder, ModifiedTransformerEncoderLayer,
@@ -110,8 +110,9 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: dict,
                  # Other
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, List[float], None],
+                 neighborhood_type: Optional[str] = None,
+                 neighborhood_radius: Optional[int] = None,
+                 neighborhood_resolution: Optional[float] = None,
                  log_level=logging.root.level):
         """
         Args
@@ -168,6 +169,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             # Neighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
+            neighborhood_resolution=neighborhood_resolution,
             # Tracking
             dg_key=dg_key, dg_args=dg_args)
 

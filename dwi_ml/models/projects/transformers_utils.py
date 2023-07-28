@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from dwi_ml.models.embeddings import keys_to_embeddings
-from dwi_ml.models.projects.positional_encoding import (
+from dwi_ml.models.positional_encoding import (
     keys_to_positional_encodings)
 from dwi_ml.models.projects.transforming_tractography import (
     AbstractTransformerModel)
@@ -31,12 +31,18 @@ def add_transformers_model_args(p):
         choices=keys_to_embeddings.keys(), metavar='key',
         help="Type of data embedding to use. One of 'no_embedding', \n"
              "'nn_embedding' (default) or 'cnn_embedding'.")
-    gx.add_argument(
+    em = gx.add_mutually_exclusive_group()
+    em.add_argument(
         '--embedding_size_x', type=int, metavar='n',
-        help="REQUIRED FOR TTST MODELS: \n"
+        help="REQUIRED FOR TTST MODELS (or nb_cnn_filters if applicable): \n"
              "(For TTO and TTS models, embedding size is d_model)"
              "Embedding size for x. Total d_model will be \n"
              "embedding_size_x + embedding_size_t.")
+    em.add_argument(
+        '--nb_cnn_filters', type=int, metavar='f',
+        help="For CNN: embedding size will depend on the CNN parameters "
+             "(number of filters, but also stride, padding, etc.). CNN "
+             "output will be flattened.")
     gx.add_argument(
         '--position_encoding', default='sinusoidal', metavar='key',
         choices=keys_to_positional_encodings.keys(),

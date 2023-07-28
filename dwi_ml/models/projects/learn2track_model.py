@@ -6,6 +6,7 @@ import torch
 from torch.nn.utils.rnn import invert_permutation, PackedSequence, \
     pack_sequence, unpack_sequence
 
+from dwi_ml.data.processing.space.neighborhood import unflatten_neighborhood
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions, compute_n_previous_dirs
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
@@ -15,7 +16,7 @@ from dwi_ml.models.embeddings import keys_to_embeddings as \
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelWithDirectionGetter,
     ModelWithNeighborhood, MainModelOneInput)
-from dwi_ml.models.projects.stacked_rnn import StackedRNN
+from dwi_ml.models.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
@@ -142,17 +143,20 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             if self.input_embedding_size is not None:
                 raise ValueError(
                     "You should not use input embedding size with CNN embedding."
-                    "Rather, use the nb_filters.")
+                    "Rather, use the nb_filters and kernel_size.")
             if self.neighborhood_type != 'grid':
                 raise ValueError(
                     "CNN embedding should be used with a grid-like "
                     "neighborhood.")
-            # Kernel size cannot be bigger than the number of points.
-            # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
-            if self.kernel_size > 2 * self.neighborhood_radius + 1:
+            if self.kernel_size is None:
+                raise ValueError("Kernel size must be defined to use CNN "
+                                 "embedding")
+            elif self.kernel_size > 2 * self.neighborhood_radius + 1:
+                # Kernel size cannot be bigger than the number of points.
+                # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
                 raise ValueError(
                     "CNN kernel size is bigger than the neighborhood size."
-                    "Not expected.")
+                    "Not expected, as we are not padding the data.")
         else:
             if self.nb_cnn_filters is not None:
                 raise ValueError("Nb CNN filters should not be used when "
@@ -166,18 +170,31 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # 2. Input embedding
         # In the case of CNN, we will re-build the neighborhood.
-        self.input_embedding = self._prepare_input_embedding()
+        input_embedding_cls = keys_to_tensor_embeddings[self.input_embedding_key]
+        if self.input_embedding_key == 'cnn_embedding':
+            neighb_size = 2 * self.neighborhood_radius + 1
+            self.input_embedding = input_embedding_cls(
+                nb_features_in=self.nb_features,
+                nb_features_out=self.nb_cnn_filters,
+                kernel_size=self.kernel_size, image_shape=[neighb_size]*3)
+
+            # output size is computed:
+            self.computed_input_embedding_size = self.input_embedding.out_flattened_size
+        else:
+            # If not defined: default embedding size = input size.
+            self.computed_input_embedding_size = self.input_embedding_size or self.input_size
+            self.input_embedding = input_embedding_cls(
+                nb_features_in=self.input_size,
+                nb_features_out=self.computed_input_embedding_size)
         self.embedding_dropout = torch.nn.Dropout(self.dropout)
 
         # 3. Stacked RNN
-        print(" ------------> STACKED: ", self.input_embedding_size)
-        rnn_input_size = self.input_embedding_size
         if self.nb_previous_dirs > 0:
-            rnn_input_size += self.prev_dirs_embedding_size
+            self.computed_input_embedding_size += self.prev_dirs_embedding_size
         if len(rnn_layer_sizes) == 1:
             dropout = 0.0  # Not used in RNN. Avoiding the warning.
         self.rnn_model = StackedRNN(
-            rnn_key, rnn_input_size, rnn_layer_sizes,
+            rnn_key, self.computed_input_embedding_size, rnn_layer_sizes,
             use_skip_connection=use_skip_connection,
             use_layer_normalization=use_layer_normalization, dropout=dropout)
 
@@ -192,26 +209,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         self.forward_uses_streamlines = True
 
-    def _prepare_input_embedding(self):
-        input_embedding_cls = keys_to_tensor_embeddings[self.input_embedding_key]
-
-        if self.input_embedding_key == 'cnn_embedding':
-            neighb_size = 2 * self.neighborhood_radius + 1
-            embedding_layer = input_embedding_cls(
-                nb_features_in=self.nb_features,
-                nb_features_out=self.nb_cnn_filters,
-                kernel_size=self.kernel_size,
-                image_shape=[neighb_size]*3)
-            # output size is computed:
-            self.input_embedding_size = embedding_layer.out_flattened_size
-        else:
-            # If not defined: default output size = input size.
-            self.input_embedding_size = self.input_embedding_size or self.input_size
-            embedding_layer = input_embedding_cls(
-                nb_features_in=self.input_size,
-                nb_features_out=self.input_embedding_size)
-        return embedding_layer
-
     def set_context(self, context):
         assert context in ['training', 'validation', 'tracking', 'visu',
                            'preparing_backward']
@@ -225,8 +222,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         params.update({
             'nb_features': int(self.nb_features),
             'input_embedding_key': self.input_embedding_key,
-            'input_embedding_size': int(self.input_embedding_size),
+            'input_embedding_size': self.input_embedding_size,
             'kernel_size': self.kernel_size,
+            'nb_cnn_filters': self.nb_cnn_filters,
             'rnn_key': self.rnn_model.rnn_torch_key,
             'rnn_layer_sizes': self.rnn_model.layer_sizes,
             'use_skip_connection': self.rnn_model.use_skip_connection,
@@ -331,7 +329,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             if self.input_embedding_key == 'cnn_embedding':
                 # We need to reshape flattened inputs into a neighborhood.
                 # Batch has been prepared in self.prepare_batch_one_input.
-                raise NotImplementedError
+                inputs = unflatten_neighborhood(
+                    inputs, self.neighborhood_vectors, self.neighborhood_type,
+                    self.neighborhood_radius, self.neighborhood_resolution)
             inputs = self.input_embedding(inputs)
             inputs = self.embedding_dropout(inputs)
 

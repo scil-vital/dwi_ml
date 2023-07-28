@@ -31,9 +31,9 @@ def add_model_args(p: argparse.ArgumentParser):
         default='no_embedding',
         help="Type of model for the inputs embedding layer.\n"
              "Default: no_embedding (identity model). Embedded size may be "
-             "defined with --input_embedding_size. Note that initial inputs "
-             "are: \nFor CNN: nb of MRI features. Kernel size must be defined. "
-             "\nFor NN: nb of MRI features * nb neighbors (flattened data).")
+             "defined with \n--input_embedding_size. Note that initial inputs "
+             "are: \n- For CNN: nb of MRI features. Kernel size must be defined. "
+             "\n- For NN: nb of MRI features * nb neighbors (flattened data).")
     em = inputs_g.add_mutually_exclusive_group()
     em.add_argument(
         '--input_embedding_size', type=int, metavar='s',
@@ -41,9 +41,9 @@ def add_model_args(p: argparse.ArgumentParser):
              "embedding layer. \nDefault: embedding_size=input_size.\n"
              "For CNN: this is the number of filters.")
     em.add_argument(
-        '--nb_cnn_fiters', type=int, metavar='f',
+        '--nb_cnn_filters', type=int, metavar='f',
         help="For CNN: embedding size will depend on the CNN parameters "
-             "(number of filters, but also stride, padding, etc.). CNN "
+             "(number of filters, but \nalso stride, padding, etc.). CNN "
              "output will be flattened.")
     inputs_g.add_argument(
         '--kernel_size', type=int, metavar='k',

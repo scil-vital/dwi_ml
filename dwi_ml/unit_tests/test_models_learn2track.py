@@ -5,7 +5,7 @@ from torch.nn.utils.rnn import pack_sequence
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.models.projects.stacked_rnn import StackedRNN, ADD_SKIP_TO_OUTPUT
+from dwi_ml.models.stacked_rnn import StackedRNN, ADD_SKIP_TO_OUTPUT
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch_2lines_4features
 
 batch_x, _, batch_s, _ = create_test_batch_2lines_4features()

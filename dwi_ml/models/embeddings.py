@@ -123,7 +123,6 @@ class CNNEmbedding(EmbeddingAbstract):
             nb_features_in, nb_features_out, kernel_size=kernel_size)
 
         # Computing values, just to help user.
-        out_image_shape = [0] * 3
         padding = 0
         stride = 1
         dilation = 1
@@ -133,7 +132,7 @@ class CNNEmbedding(EmbeddingAbstract):
         numerator = \
             self.in_image_shape + 2 * padding - dilation * (kernel_size - 1) - 1
         self.out_image_shape = np.floor(numerator / stride + 1)
-        self.out_flattened_size = int(np.prod(out_image_shape))
+        self.out_flattened_size = int(np.prod(self.out_image_shape) * nb_features_out)
 
     def forward(self, inputs: Tensor):
         """
@@ -161,7 +160,9 @@ class CNNEmbedding(EmbeddingAbstract):
         outputs = self.cnn_layer(inputs)
         outputs = torch.permute(outputs, (0, 2, 3, 4, 1))
         # Current shape = (B, X2, Y2, Z2, C2)
-        outputs = torch.flatten(outputs, start_dim=1, end_dim=3)
+        outputs = torch.flatten(outputs, start_dim=1, end_dim=4)
+
+        # Final shape: (B, X2*Y2*Z2*C2)
         return outputs
 
 

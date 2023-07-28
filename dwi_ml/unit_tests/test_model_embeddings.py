@@ -59,8 +59,7 @@ def test_embeddings():
                   .format(IMAGE_SHAPE - 2, model.out_image_shape,
                           np.prod(IMAGE_SHAPE - 2), output.shape[1]))
     assert np.array_equal(IMAGE_SHAPE - 2, model.out_image_shape)
-    assert output.shape[1] == np.prod(IMAGE_SHAPE - 2)
-    assert output.shape[-1] == NB_FEATURES_OUT
+    assert output.shape[-1] == np.prod(IMAGE_SHAPE - 2) * NB_FEATURES_OUT
 
 
 if __name__ == '__main__':

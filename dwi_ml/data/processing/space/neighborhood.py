@@ -167,7 +167,7 @@ def extend_coordinates_with_neighborhood(
     return flat_coords, tiled_vectors
 
 
-def _unflatten_neighborhood_tensor(
+def unflatten_neighborhood(
         data_in_neighb: torch.Tensor, neighb_vect, neighb_type, neighb_rad,
         neighb_res):
 
@@ -186,7 +186,8 @@ def _unflatten_neighborhood_tensor(
     # The way we perform our interpolation, we get:
     # n1 - f1, n1 - f2, ....,  n2 - f1, n2 - f2, ...
     unflattened = \
-        torch.zeros((nb_points, out_size, out_size, out_size, nb_features))
+        torch.zeros((nb_points, out_size, out_size, out_size, nb_features),
+                    device=data_in_neighb.device)
     for n, grid_n in enumerate(neighb_vect):
         # Ex: coordinate (0,0,0) is at the center of the neighb, i.e. neigh_rad.
         idx = grid_n + neighb_rad
@@ -194,15 +195,3 @@ def _unflatten_neighborhood_tensor(
             data_in_neighb[:, n*nb_features:(n+1)*nb_features]
 
     return unflattened
-
-
-def unflatten_neighborhood(
-        data_in_neighb: Union[torch.Tensor, List[torch.Tensor]],
-        neighb_vect, neighb_type, neighb_rad, neighb_res):
-    if isinstance(data_in_neighb, list):
-        return [_unflatten_neighborhood_tensor(
-            d, neighb_vect, neighb_type, neighb_rad, neighb_res) for d in
-                data_in_neighb]
-    else:
-        return _unflatten_neighborhood_tensor(
-            data_in_neighb, neighb_vect, neighb_type, neighb_rad, neighb_res)

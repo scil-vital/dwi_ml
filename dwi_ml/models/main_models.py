@@ -387,7 +387,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 class MainModelOneInput(MainModelAbstract):
     def prepare_batch_one_input(self, streamlines, subset: MultisubjectSubset,
-                                subj, input_group_idx, prepare_mask=False):
+                                subj_idx, input_group_idx, prepare_mask=False):
         """
         These params are passed by either the batch loader or the propagator,
         which manage the data.
@@ -420,7 +420,7 @@ class MainModelOneInput(MainModelAbstract):
         # If data is lazy, get volume from cache or send to cache if
         # it wasn't there yet.
         data_tensor = subset.get_volume_verify_cache(
-            subj, input_group_idx, device=self.device)
+            subj_idx, input_group_idx, device=self.device)
 
         # Prepare the volume data
         # Coord_torch contain the coords after interpolation, possibly clipped
@@ -454,9 +454,6 @@ class MainModelOneInput(MainModelAbstract):
 
             return subj_x_data, input_mask
 
-        print("subj_x_data", subj_x_data)
-        print("coords_torch", coords_torch)
-        exit(1)
         return subj_x_data
 
 

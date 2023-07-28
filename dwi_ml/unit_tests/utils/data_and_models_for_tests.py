@@ -4,7 +4,6 @@ import os
 from typing import List
 
 import torch
-from torch.nn.utils.rnn import pack_sequence, unpack_sequence
 
 from scilpy.io.fetcher import fetch_data, get_home
 

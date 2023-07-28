@@ -200,7 +200,8 @@ class ModelWithNeighborhood(MainModelAbstract):
     Adds tools to work with neighborhoods.
     """
     def __init__(self, neighborhood_type: str = None,
-                 neighborhood_radius=None, **kw):
+                 neighborhood_radius: int = None,
+                 neighborhood_resolution: float = None, **kw):
         """
         Params
         ------
@@ -211,21 +212,21 @@ class ModelWithNeighborhood(MainModelAbstract):
         neighborhood_type: str
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
-        neighborhood_radius: Union[int, float, Iterable[float]]
-            For usage explanation, see prepare_neighborhood_information.
-            Default: None.
+        neighborhood_radius: int
+        neighborhood_resolution: float
         """
         super().__init__(**kw)
 
         # Possible neighbors for each input.
         self.neighborhood_radius = neighborhood_radius
         self.neighborhood_type = neighborhood_type
+        self.neighborhood_resolution = neighborhood_resolution
         self.neighborhood_vectors = prepare_neighborhood_vectors(
-            neighborhood_type, neighborhood_radius)
+            neighborhood_type, neighborhood_radius, neighborhood_resolution)
 
         # Reminder. nb neighbors does not include origin.
         self.nb_neighbors = len(self.neighborhood_vectors) if \
-            self.neighborhood_vectors is not None else 0
+            self.neighborhood_vectors is not None else 1
 
     def move_to(self, device):
         super().move_to(device)
@@ -241,21 +242,22 @@ class ModelWithNeighborhood(MainModelAbstract):
             '--neighborhood_type', choices=['axes', 'grid'],
             help="If set, add neighborhood vectors either with the 'axes' "
                  "or 'grid' option to \nthe input(s).\n"
-                 "- 'axes': lies on a sphere. Uses a list of 6 positions (up, "
-                 "down, left, right, \nbehind, in front) at exactly "
-                 "neighborhood_radius voxels from tracking point.\n"
+                 "- 'axes': lies on a sphere. Uses a list of 7 positions "
+                 "(current, up, down, left, right, \nbehind, in front) at "
+                 "exactly neighborhood_radius voxels from tracking point.\n"
                  "- 'grid': Uses a list of vectors pointing to points "
                  "surrounding the origin \nthat mimic the original voxel "
                  "grid, in voxel space.")
         p.add_argument(
-            '--neighborhood_radius', type=float,
-            metavar='r', nargs='+',
-            help="- With type 'axes', radius must be a float or a list[float] "
-                 "(it will then be a \nmulti-radius neighborhood (lying on "
-                 "concentring spheres).\n"
-                 "- With type 'grid': radius must be a single int value, the "
-                 "radius in number of \nvoxels. Ex: with radius 1, this is "
-                 "26 points. With radius 2, it's 124 points.")
+            '--neighborhood_radius', type=int, metavar='r',
+            help="The radius. For the axes option: a radius of 1 = 7 "
+                 "neighbhors, a radius of 2 = 13. \nFor the grid option: a "
+                 "radius of 1 = 27 neighbors, a radius of 2 = 125.")
+        p.add_argument(
+            '--neighborhood_resolution', type=float, metavar='r',
+            help="Resolution between each layer of neighborhood, in voxel "
+                 "space as compared to the MRI data. \n"
+                 "Ex: 0.5 one neighborhood every half voxel.")
 
     @property
     def params_for_checkpoint(self):
@@ -263,6 +265,7 @@ class ModelWithNeighborhood(MainModelAbstract):
         p.update({
             'neighborhood_type': self.neighborhood_type,
             'neighborhood_radius': self.neighborhood_radius,
+            'neighborhood_resolution': self.neighborhood_resolution
         })
         return p
 

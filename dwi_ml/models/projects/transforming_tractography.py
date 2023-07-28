@@ -210,7 +210,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         self.dropout = Dropout(self.dropout_rate)
 
         # 1. x embedding layer
-        input_size = nb_features * (self.nb_neighbors + 1)
+        input_size = nb_features * self.nb_neighbors
         cls_x = keys_to_embeddings[self.embedding_key_x]
         self.embedding_layer_x = cls_x(input_size, self.embedding_size_x)
 

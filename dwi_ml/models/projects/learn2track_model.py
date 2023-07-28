@@ -50,8 +50,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  # Other
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, List[float], None],
+                 neighborhood_type: Optional[str] = None,
+                 neighborhood_radius: Optional[int] = None,
+                 neighborhood_resolution: Optional[float] = None,
                  log_level=logging.root.level):
         """
         Params
@@ -109,6 +110,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             # For modelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
+            neighborhood_resolution=neighborhood_resolution,
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
             prev_dirs_embedding_size=prev_dirs_embedding_size,
@@ -127,7 +129,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # Right now input is always flattened (interpolation is implemented
         # that way). For CNN, we will rearrange it ourselves.
-        self.input_size = nb_features * (self.nb_neighbors + 1)
+        self.input_size = nb_features * self.nb_neighbors
 
         # ----------- Checks
         if dropout < 0 or dropout > 1:
@@ -146,7 +148,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                     "CNN embedding should be used with a grid-like "
                     "neighborhood.")
             # Kernel size cannot be bigger than the number of points.
-            # Per size, if neighborhood_radius in n, nb of voxels in 2*n + 1.
+            # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
             if self.kernel_size > 2 * self.neighborhood_radius + 1:
                 raise ValueError(
                     "CNN kernel size is bigger than the neighborhood size."
@@ -279,7 +281,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         assert inputs[0].shape[-1] == self.input_size, \
             "Not the expected input size! Should be {} (i.e. {} features for " \
             "each of the {} neighbors), but got {} (input shape {})." \
-            .format(self.input_size, self.nb_features, self.nb_neighbors + 1,
+            .format(self.input_size, self.nb_features, self.nb_neighbors,
                     inputs[0].shape[-1], inputs[0].shape)
 
         # Making sure we can use default 'enforce_sorted=True' with packed
@@ -329,6 +331,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             if self.input_embedding_key == 'cnn_embedding':
                 # We need to reshape flattened inputs into a neighborhood.
                 # Batch has been prepared in self.prepare_batch_one_input.
+                raise NotImplementedError
             inputs = self.input_embedding(inputs)
             inputs = self.embedding_dropout(inputs)
 

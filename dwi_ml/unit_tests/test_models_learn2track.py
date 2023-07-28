@@ -73,7 +73,8 @@ def test_learn2track_cnn():
                              use_layer_normalization=True, dropout=0.,
                              start_from_copy_prev=False,
                              dg_key='cosine-regression', dg_args=None,
-                             neighborhood_type='grid', neighborhood_radius=1)
+                             neighborhood_type='grid', neighborhood_radius=1,
+                             neighborhood_resolution=1)
 
     logging.info("Learn2track model final parameters:" +
                  format_dict_to_str(model.params_for_checkpoint))
@@ -92,7 +93,6 @@ if __name__ == '__main__':
     print("---------------------------------------")
     print("Stacked RNN")
     print("---------------------------------------")
-
     test_stacked_rnn()
 
     print("\n---------------------------------------")

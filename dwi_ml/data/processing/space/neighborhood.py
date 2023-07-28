@@ -85,8 +85,7 @@ def get_neighborhood_vectors_axes(radius: int, resolution: float):
     tmp_axes = np.identity(3)
     unit_axes = np.concatenate((tmp_axes, -tmp_axes))
 
-    radiuses = np.asarray(range(radius)) * resolution
-
+    radiuses = np.asarray(range(1, radius + 1)) * resolution
     neighborhood_vectors = []
     for r in radiuses:
         neighborhood_vectors.extend(unit_axes * r)
@@ -168,52 +167,42 @@ def extend_coordinates_with_neighborhood(
     return flat_coords, tiled_vectors
 
 
-def _unflatten_neighborhood_tensor(data_in_neighb: torch.Tensor, neighb):
+def _unflatten_neighborhood_tensor(
+        data_in_neighb: torch.Tensor, neighb_vect, neighb_type, neighb_rad,
+        neighb_res):
+
     # When we do our interpolation, each tensor is one neighborhood per
     # coordinate.
+    assert neighb_type == 'grid'
     nb_points = data_in_neighb.shape[0]
-    nb_neighb = len(neighb)
-
-    # 1. Verifying that we have a grid neighborhood.
-    # Rounding because, np.cbrt(27) = 3.0000000000000004
-    out_size = np.round(np.cbrt(nb_neighb), decimals=6)
-    assert out_size % 2 == 1, "Expecting a grid neighborhood to be able to " \
-                              "unflatten. Not sure it is the case here! \n" \
-                              "Number of neighbors should be 1, 27, 125, etc. " \
-                              "but got {}".format(out_size)
-    out_size = int(out_size)
-
-    # 2. Finding the number of features.
-    # Each point a list of len nb_neighbors * nb_features
-    assert data_in_neighb.shape[1] % nb_neighb == 0, \
-        "Data to be unflattend does not contain a multiple of expected " \
-        "neighborhood size."
+    nb_neighb = len(neighb_vect)
+    out_size = int(neighb_rad * 2 + 1)
     nb_features = int(data_in_neighb.shape[1] / nb_neighb)
 
-    # 3. Grid is equally sampled, with a 'voxel size' defined by user.
-    raise NotImplementedError
+    # Grid is equally sampled, with a 'voxel size' defined by user.
+    # Coordinates are as indices.
+    neighb_vect = (neighb_vect / neighb_res).to(dtype=int)
 
-    # 4.
     # The way we perform our interpolation, we get:
     # n1 - f1, n1 - f2, ....,  n2 - f1, n2 - f2, ...
     unflattened = \
         torch.zeros((nb_points, out_size, out_size, out_size, nb_features))
-    for n, neibh_n in enumerate(neighb):
-        print("NEIGH ", neibh_n)
-        print("GETTING", data_in_neighb[:, n*nb_features:(n+1)*nb_features])
-        print("INSIDE", unflattened[:, neibh_n[0], neibh_n[1], neibh_n[2], :])
-        unflattened[:, neibh_n[0], neibh_n[1], neibh_n[2], :] = \
+    for n, grid_n in enumerate(neighb_vect):
+        # Ex: coordinate (0,0,0) is at the center of the neighb, i.e. neigh_rad.
+        idx = grid_n + neighb_rad
+        unflattened[:, idx[0], idx[1], idx[2], :] = \
             data_in_neighb[:, n*nb_features:(n+1)*nb_features]
 
-    print(data_in_neighb)
-    print(data_in_neighb.shape)
-    raise NotImplementedError
+    return unflattened
 
 
 def unflatten_neighborhood(
-        data_in_neighb: Union[torch.Tensor, List[torch.Tensor]], neighb):
+        data_in_neighb: Union[torch.Tensor, List[torch.Tensor]],
+        neighb_vect, neighb_type, neighb_rad, neighb_res):
     if isinstance(data_in_neighb, list):
-        return [_unflatten_neighborhood_tensor(d, neighb) for d in
+        return [_unflatten_neighborhood_tensor(
+            d, neighb_vect, neighb_type, neighb_rad, neighb_res) for d in
                 data_in_neighb]
     else:
-        return _unflatten_neighborhood_tensor(data_in_neighb, neighb)
+        return _unflatten_neighborhood_tensor(
+            data_in_neighb, neighb_vect, neighb_type, neighb_rad, neighb_res)

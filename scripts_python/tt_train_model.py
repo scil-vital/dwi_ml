@@ -20,7 +20,7 @@ from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_memory_args, add_logging_arg
-from dwi_ml.models.projects.transforming_tractography import \
+from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.models.projects.transformers_utils import (
     add_transformers_model_args)
@@ -54,39 +54,35 @@ def prepare_arg_parser():
 
 
 def init_from_args(args, sub_loggers_level):
+    
+    if args.input_embedded_size is None:
+        raise ValueError("--input_embedded_size must be given!")
+    specific_args = {}
 
     # Specific args depending on the chosen model.
     if args.model == 'TTST':
         cls = TransformerSrcAndTgtModel
-        if args.embedding_size_x is None or args.embedding_size_t is None:
-            raise ValueError("Both --embedding_size_x and embedding_size_t "
-                             "must be given for this model.")
-        if args.d_model is not None:
-            raise ValueError("--d_model must not be used with this model.")
-        specific_args = {'embedding_size_x': args.embedding_size_x,
-                         'embedding_size_t': args.embedding_size_t}
+        if args.target_embedded_size is None:
+            raise ValueError("target_embedded_size must be given for this model.")
+        specific_args['target_embedded_size'] = args.target_embedded_size
     else:
-        if args.embedding_size_x is not None or args.embedding_size_t is not None:
+        # Models TTO or TTS:
+        if args.target_embedded_size is not None:
             raise ValueError(
-                "--embedding_size_x and --embedding_size_t must not be used "
-                "with this model.")
-        if args.d_model is None:
-            raise ValueError("--d_model must be given for this model.")
+                "--target_embedded_size must not be used with this model.")
 
         if args.model == 'TTO':
             cls = OriginalTransformerModel
-            specific_args = {'d_model': args.d_model,
-                             'n_layers_d': args.n_layers_d or args.n_layers_e}
+            specific_args = {'n_layers_d': args.n_layers_d or args.n_layers_e}
         else:
             cls = TransformerSrcOnlyModel
-            specific_args = {'d_model': args.d_model}
 
     if args.model == 'TTS':
         # No target.
         logging.debug("TTS model: target never used as input. Ignoring "
                       "target embedding key and size, if given.")
     else:
-        specific_args.update({'embedding_key_t': args.target_embedding,
+        specific_args.update({'target_embedding_key': args.target_embedding_key,
                               'sos_token_type': args.SOS_token_type,
                               'start_from_copy_prev': args.start_from_copy_prev})
 
@@ -110,7 +106,9 @@ def init_from_args(args, sub_loggers_level):
             # Concerning inputs:
             max_len=args.max_len, nb_features=args.nb_features,
             positional_encoding_key=args.position_encoding,
-            embedding_key_x=args.embedding_key_x,
+            input_embedding_key=args.input_embedding_key,
+            input_embedded_size = args.input_embedded_size,
+            nb_cnn_filters=args.nb_cnn_filters, kernel_size=args.kernel_size,
             # Torch's transformer parameters
             ffnn_hidden_size=args.ffnn_hidden_size,
             nheads=args.nheads, dropout_rate=args.dropout_rate,
@@ -121,8 +119,7 @@ def init_from_args(args, sub_loggers_level):
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
-            log_level=sub_loggers_level,
-            **specific_args)
+            log_level=sub_loggers_level, **specific_args)
 
         logging.info("Transformer (original) model final parameters:" +
                      format_dict_to_str(model.params_for_checkpoint))

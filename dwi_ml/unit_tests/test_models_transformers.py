@@ -3,7 +3,7 @@ import logging
 
 from torch import isnan, set_printoptions
 
-from dwi_ml.models.projects.transforming_tractography import (
+from dwi_ml.models.projects.transformer_models import (
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel)
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch_2lines_4features
 
@@ -17,13 +17,14 @@ def _prepare_original_model():
     # Using defaults from script
     model = OriginalTransformerModel(
         experiment_name='test', step_size=0.5, compress_lines=None,
-        nb_features=4, d_model=4, max_len=5,
+        nb_features=4, input_embedded_size=4, max_len=5,
         log_level='DEBUG', positional_encoding_key='sinusoidal',
-        sos_token_type='as_label', embedding_key_x='nn_embedding',
-        embedding_key_t='nn_embedding', ffnn_hidden_size=None, nheads=1,
+        sos_token_type='as_label', input_embedding_key='nn_embedding',
+        target_embedding_key='nn_embedding', ffnn_hidden_size=None, nheads=1,
         dropout_rate=0., activation='relu', norm_first=False, n_layers_e=1,
         n_layers_d=1, dg_key='cosine-regression', dg_args=None,
         neighborhood_type=None, neighborhood_radius=None,
+        nb_cnn_filters=None, kernel_size=None,
         start_from_copy_prev=False)
     return model
 
@@ -38,13 +39,14 @@ def _prepare_ttst_model():
         # neighborhood --> No. The number of features is fixed in our fake data
         # start from copy prev
         experiment_name='test',  step_size=0.5, compress_lines=None,
-        nb_features=4, max_len=5, embedding_size_x=4, embedding_size_t=2,
+        nb_features=4, max_len=5, input_embedded_size=4, target_embedded_size=2,
         log_level='DEBUG', sos_token_type='repulsion100',
-        positional_encoding_key='sinusoidal', embedding_key_x='nn_embedding',
-        embedding_key_t='nn_embedding', ffnn_hidden_size=6, nheads=1,
+        positional_encoding_key='sinusoidal', input_embedding_key='nn_embedding',
+        target_embedding_key='nn_embedding', ffnn_hidden_size=6, nheads=1,
         dropout_rate=0., activation='relu', norm_first=True, n_layers_e=1,
         dg_key='sphere-classification', dg_args={'add_eos': True},
         neighborhood_type=None, neighborhood_radius=None,
+        nb_cnn_filters=None, kernel_size=None,
         start_from_copy_prev=True)
     return model
 
@@ -53,11 +55,12 @@ def _prepare_tts_model():
     model = TransformerSrcOnlyModel(
         experiment_name='test',  step_size=0.5, compress_lines=None,
         nb_features=4, max_len=5, log_level='DEBUG',
-        positional_encoding_key='sinusoidal', embedding_key_x='nn_embedding',
+        input_embedded_size=4,
+        positional_encoding_key='sinusoidal', input_embedding_key='nn_embedding',
         ffnn_hidden_size=None, nheads=1, dropout_rate=0., activation='relu',
         norm_first=False, n_layers_e=1, dg_key='cosine-regression',
         dg_args=None, neighborhood_type=None, neighborhood_radius=None,
-        d_model=4)
+        nb_cnn_filters=None, kernel_size=None)
     return model
 
 

@@ -14,7 +14,7 @@ from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
 from dwi_ml.io_utils import add_logging_arg
-from dwi_ml.models.projects.transforming_tractography import \
+from dwi_ml.models.projects.transformer_models import \
     AbstractTransformerModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 

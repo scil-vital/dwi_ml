@@ -605,7 +605,7 @@ class ModelWithInputEmbedding(MainModelAbstract):
 
         # Preparing layer variable now but not instantiated. User must provide
         # input size.
-        self.input_embedding = None
+        self.input_embedding_layer = None
         self.computed_input_embedded_size = None
 
         # ----------- Checks
@@ -663,22 +663,38 @@ class ModelWithInputEmbedding(MainModelAbstract):
                     "Not expected, as we are not padding the data.")
 
             neighb_size = 2 * self.neighborhood_radius + 1
-            self.input_embedding = input_embedding_cls(
+            self.input_embedding_layer = input_embedding_cls(
                 nb_features_in=nb_features,
                 nb_features_out=self.nb_cnn_filters,
                 kernel_size=self.kernel_size,
                 image_shape=[neighb_size]*3)
-            self.computed_input_embedded_size = self.input_embedding.out_flattened_size
+            self.computed_input_embedded_size = \
+                self.input_embedding_layer.out_flattened_size
         else:
             input_size = nb_features
             if isinstance(self, ModelWithNeighborhood):
                 input_size = nb_features * self.nb_neighbors
 
             # If not defined: default embedding size = input size.
-            self.computed_input_embedded_size = self.input_embedded_size or input_size
-            self.input_embedding = input_embedding_cls(
+            self.computed_input_embedded_size = \
+                self.input_embedded_size or input_size
+            self.input_embedding_layer = input_embedding_cls(
                 nb_features_in=input_size,
                 nb_features_out=self.computed_input_embedded_size)
+
+    @property
+    def params_for_checkpoint(self):
+        # Every parameter necessary to build the different layers again.
+        # during checkpoint state saving.
+        params = super().params_for_checkpoint
+        params.update({
+            'input_embedding_key': self.input_embedding_key,
+            'input_embedded_size': self.input_embedded_size,
+            'kernel_size': self.kernel_size,
+            'nb_cnn_filters': self.nb_cnn_filters,
+        })
+
+        return params
 
     @property
     def computed_params_for_display(self):

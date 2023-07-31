@@ -190,10 +190,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         params = super().params_for_checkpoint
         params.update({
             'nb_features': int(self.nb_features),
-            'input_embedding_key': self.input_embedding_key,
-            'input_embedded_size': self.input_embedded_size,
-            'kernel_size': self.kernel_size,
-            'nb_cnn_filters': self.nb_cnn_filters,
             'rnn_key': self.rnn_model.rnn_torch_key,
             'rnn_layer_sizes': self.rnn_model.layer_sizes,
             'use_skip_connection': self.rnn_model.use_skip_connection,
@@ -302,7 +298,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # Avoiding unpacking and packing back if not needed.
         if self.nb_previous_dirs > 0 or not isinstance(
-                self.input_embedding, NoEmbedding):
+                self.input_embedding_layer, NoEmbedding):
             inputs = inputs.data
 
             # Embedding. Shape of inputs: nb_pts_total * embedding_size
@@ -312,7 +308,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                 inputs = unflatten_neighborhood(
                     inputs, self.neighborhood_vectors, self.neighborhood_type,
                     self.neighborhood_radius, self.neighborhood_resolution)
-            inputs = self.input_embedding(inputs)
+            inputs = self.input_embedding_layer(inputs)
             inputs = self.embedding_dropout(inputs)
 
             # ==== 3. Concat with previous dirs ====

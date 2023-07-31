@@ -24,7 +24,7 @@ from scilpy.tracking.utils import (add_seeding_options,
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
-from dwi_ml.models.projects.transforming_tractography import \
+from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.transformer_tracker import \

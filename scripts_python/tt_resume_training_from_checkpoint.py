@@ -12,7 +12,7 @@ import comet_ml
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
-from dwi_ml.models.projects.transforming_tractography import \
+from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler

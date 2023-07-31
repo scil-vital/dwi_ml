@@ -8,7 +8,7 @@ import torch
 
 from scilpy.io.utils import assert_outputs_exist
 
-from dwi_ml.models.projects.transforming_tractography import \
+from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel
 
 # Currently, with our quite long sequences compared to their example, this

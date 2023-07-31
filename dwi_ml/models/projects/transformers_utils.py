@@ -2,7 +2,7 @@
 from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.positional_encoding import (
     keys_to_positional_encodings)
-from dwi_ml.models.projects.transforming_tractography import (
+from dwi_ml.models.projects.transformer_models import (
     AbstractTransformerModel)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 
@@ -25,24 +25,13 @@ def add_transformers_model_args(p):
     # Step_size / compress
     AbstractTransformerModel.add_args_main_model(p)
 
-    gx = p.add_argument_group("Embedding of the input (X)")
-    gx.add_argument(
-        '--embedding_key_x', default='nn_embedding',
-        choices=keys_to_embeddings.keys(), metavar='key',
-        help="Type of data embedding to use. One of 'no_embedding', \n"
-             "'nn_embedding' (default) or 'cnn_embedding'.")
-    em = gx.add_mutually_exclusive_group()
-    em.add_argument(
-        '--embedding_size_x', type=int, metavar='n',
-        help="REQUIRED FOR TTST MODELS (or nb_cnn_filters if applicable): \n"
-             "(For TTO and TTS models, embedding size is d_model)"
-             "Embedding size for x. Total d_model will be \n"
-             "embedding_size_x + embedding_size_t.")
-    em.add_argument(
-        '--nb_cnn_filters', type=int, metavar='f',
-        help="For CNN: embedding size will depend on the CNN parameters "
-             "(number of filters, but also stride, padding, etc.). CNN "
-             "output will be flattened.")
+    gx = p.add_argument_group(
+        "Embedding of the input (X)",
+        "Note that the input_embedding_size is required for TTST models "
+        "(or nb_cnn_filters if applicable). \nTotal d_model will be"
+        "embedding_size_x + embedding_size_t.\n"
+        "For TTO and TTS models, input embedding size becomes d_model")
+    AbstractTransformerModel.add_args_input_embedding(gx)
     gx.add_argument(
         '--position_encoding', default='sinusoidal', metavar='key',
         choices=keys_to_positional_encodings.keys(),
@@ -60,13 +49,13 @@ def add_transformers_model_args(p):
              "on the chosen sphere, and \nan additional class is added for "
              "SOS.")
     gt.add_argument(
-        '--target_embedding', default='nn_embedding',
+        '--target_embedding_key', default='nn_embedding',
         choices=keys_to_embeddings.keys(), metavar='key',
         help="Type of data embedding to use. One of 'no_embedding', \n"
              "'nn_embedding' (default) or 'cnn_embedding'.")
     gt.add_argument(
-        '--embedding_size_t', type=int, metavar='n',
-        help="REQUIRED FOR TTST MODEL: Embedding size for t. \n"
+        '--target_embedded_size', type=int, metavar='n',
+        help="Embedding size for targets (for TTST only). \n"
              "Total d_model will be embedding_size_x + embedding_size_t.")
 
     gtt = p.add_argument_group(title='Transformer: main layers')
@@ -80,12 +69,6 @@ def add_transformers_model_args(p):
              " - TTST: Encoder only. Input and previous direction "
              "concatenated. (TTST for 'Source + Target'). See [1].\n"
              "[1]: https://arxiv.org/abs/1905.06596")
-    gtt.add_argument(
-        '--d_model', type=int, metavar='n',
-        help="REQUIRED FOR TTO AND TTS MODELS:\n"
-             "Output size that will kept constant in all layers to allow skip "
-             "connections\n (embedding size, ffnn output size, attention size)."
-             "\nDefault in Vaswani: 4096.")
     gtt.add_argument(
         '--max_len', type=int, default=1000, metavar='n',
         help="Longest sequence allowed. Other sequences will be zero-padded \n"

@@ -555,6 +555,7 @@ class DWIMLAbstractTrainer:
                 self.comet_exp.log_parameters(self.batch_sampler.params_for_checkpoint)
                 self.comet_exp.log_parameters(self.batch_loader.params_for_checkpoint)
                 self.comet_exp.log_parameters(self.model.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.model.computed_params_for_display)
                 self.comet_key = self.comet_exp.get_key()
                 # Couldn't find how to set log level. Getting it directly.
                 comet_log = logging.getLogger("comet_ml")

@@ -128,6 +128,11 @@ class MainModelAbstract(torch.nn.Module):
             'compress_lines': self.compress_lines,
         }
 
+    @property
+    def computed_params_for_display(self):
+        p = {}
+        return p
+
     def save_params_and_state(self, model_dir):
         model_state = self.state_dict()
 
@@ -233,6 +238,12 @@ class ModelWithNeighborhood(MainModelAbstract):
         if self.neighborhood_vectors is not None:
             self.neighborhood_vectors = self.neighborhood_vectors.to(
                 device, non_blocking=True)
+
+    @property
+    def computed_params_for_display(self):
+        p = super().computed_params_for_display
+        p['nb_neighbors'] = self.nb_neighbors
+        return p
 
     @staticmethod
     def add_neighborhood_args_to_parser(p: argparse.PARSER):

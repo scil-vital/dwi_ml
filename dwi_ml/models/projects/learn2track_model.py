@@ -228,6 +228,16 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         return params
 
+    @property
+    def computed_params_for_display(self):
+        p = super().computed_params_for_display
+        p.update({
+            'input_size': self.input_size,
+            'stacked_RNN_input_size': self.computed_input_embedding_size,
+            'stacked_RNN_output_size': self.rnn_model.output_size
+        })
+        return p
+
     def forward(self, inputs: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
                 hidden_recurrent_states: tuple = None, return_hidden=False,

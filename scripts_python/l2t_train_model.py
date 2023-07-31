@@ -101,6 +101,9 @@ def init_from_args(args, sub_loggers_level):
         logging.info("Learn2track model final parameters:" +
                      format_dict_to_str(model.params_for_checkpoint))
 
+        logging.info("Computed parameters:" +
+                     format_dict_to_str(model.computed_params_for_display))
+
     # Preparing the batch samplers
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)
     batch_loader = prepare_batch_loader(dataset, model, args, sub_loggers_level)

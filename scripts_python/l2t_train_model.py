@@ -81,7 +81,7 @@ def init_from_args(args, sub_loggers_level):
             normalize_prev_dirs=args.normalize_prev_dirs,
             # INPUTS
             input_embedding_key=args.input_embedding_key,
-            input_embedding_size=args.input_embedding_size,
+            input_embedded_size=args.input_embedded_size,
             nb_features=args.nb_features, kernel_size=args.kernel_size,
             nb_cnn_filters=args.nb_cnn_filters,
             # RNN

@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import List, Union
+from typing import List, Union, Optional
 
 import numpy as np
 import torch
@@ -18,7 +18,7 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
-from dwi_ml.models.embeddings import keys_to_embeddings
+from dwi_ml.models.embeddings import keys_to_embeddings, NNEmbedding, NoEmbedding
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
 logger = logging.getLogger('model_logger')
@@ -359,12 +359,16 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
     @staticmethod
     def add_args_model_with_pd(p):
+        # CNN embedding makes no sense for previous dir
+        _keys_to_embeddings = {'no_embedding': NoEmbedding,
+                               'nn_embedding': NNEmbedding}
+
         p.add_argument(
             '--nb_previous_dirs', type=int, default=0, metavar='n',
             help="Concatenate the n previous streamline directions to the "
                  "input vector. \nDefault: 0")
         p.add_argument(
-            '--prev_dirs_embedding_key', choices=keys_to_embeddings.keys(),
+            '--prev_dirs_embedding_key', choices=_keys_to_embeddings.keys(),
             default='no_embedding',
             help="Type of model for the previous directions embedding layer.\n"
                  "Default: no_embedding (identity model).")
@@ -569,3 +573,142 @@ class ModelWithDirectionGetter(MainModelAbstract):
     def move_to(self, device):
         super().move_to(device)
         self.direction_getter.move_to(device)
+
+
+class ModelWithInputEmbedding(MainModelAbstract):
+    def __init__(self, input_embedding_key: str,
+                 input_embedded_size: Union[int, None],
+                 nb_cnn_filters: Optional[int],
+                 kernel_size: Optional[int], **kw):
+        """
+        Parameters
+        ----------
+        input_embedding_key: str
+            Key to an embedding class (one of
+            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
+            Default: 'no_embedding'.
+        input_embedded_size: int
+            Output embedding size for the input. If None, will be set to
+            input_size.
+        nb_cnn_filters: int
+            Number of filters in the CNN. Output size at each voxel.
+        kernel_size: int
+            Used only with CNN embedding. Size of the 3D filter matrix.
+            Will be of shape [k, k, k].
+        """
+        super().__init__(**kw)
+
+        self.input_embedding_key = input_embedding_key
+        self.input_embedded_size = input_embedded_size
+        self.nb_cnn_filters = nb_cnn_filters
+        self.kernel_size = kernel_size
+
+        # Preparing layer variable now but not instantiated. User must provide
+        # input size.
+        self.input_embedding = None
+        self.computed_input_embedded_size = None
+
+        # ----------- Checks
+        if self.input_embedding_key not in keys_to_embeddings.keys():
+            raise ValueError("Embedding choice for x data not understood: {}"
+                             .format(self.embedding_key_x))
+
+        if self.input_embedding_key == 'cnn_embedding':
+            # For CNN: make sure that neighborhood is included.
+            if not isinstance(self, ModelWithNeighborhood):
+                raise ValueError("CNN embedding cannot be used without a "
+                                 "neighborhood. Add ModelWithNeighborhood as "
+                                 "parent to your model class.")
+            # We will eventually need to verify that neighborhood type is
+            # 'grid', but waiting for all super().__init__ calls to be done.
+            # We will verify at instantiation.
+
+            if self.input_embedded_size is not None:
+                raise ValueError(
+                    "You should not use input_embedded_size with CNN embedding."
+                    "Rather, use the nb_filters and kernel_size.")
+
+            if self.kernel_size is None:
+                raise ValueError("Kernel size must be defined to use CNN "
+                                 "embedding")
+            # Again: We will verify kernel_size when neighorhood is done
+            # preparing in super().__init__
+        else:
+            # NN embedding or identity embedding:
+            if self.nb_cnn_filters is not None:
+                raise ValueError("Nb CNN filters should not be used when "
+                                 "embedding is not CNN.")
+            if self.kernel_size is not None:
+                raise ValueError("CNN kernel_size should not be used when "
+                                 "embedding is not CNN.")
+
+    def instantiate_input_embedding(self, nb_features):
+        """
+        Parameters
+        ----------
+        nb_features: int
+            Number of features per voxel.
+        """
+        input_embedding_cls = keys_to_embeddings[self.input_embedding_key]
+
+        if self.input_embedding_key == 'cnn_embedding':
+            if self.neighborhood_type != 'grid':
+                raise ValueError(
+                    "CNN embedding should be used with a grid-like neighborhood.")
+            if self.kernel_size > 2 * self.neighborhood_radius + 1:
+                # Kernel size cannot be bigger than the number of points.
+                # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
+                raise ValueError(
+                    "CNN kernel size is bigger than the neighborhood size."
+                    "Not expected, as we are not padding the data.")
+
+            neighb_size = 2 * self.neighborhood_radius + 1
+            self.input_embedding = input_embedding_cls(
+                nb_features_in=nb_features,
+                nb_features_out=self.nb_cnn_filters,
+                kernel_size=self.kernel_size,
+                image_shape=[neighb_size]*3)
+            self.computed_input_embedded_size = self.input_embedding.out_flattened_size
+        else:
+            input_size = nb_features
+            if isinstance(self, ModelWithNeighborhood):
+                input_size = nb_features * self.nb_neighbors
+
+            # If not defined: default embedding size = input size.
+            self.computed_input_embedded_size = self.input_embedded_size or input_size
+            self.input_embedding = input_embedding_cls(
+                nb_features_in=input_size,
+                nb_features_out=self.computed_input_embedded_size)
+
+    @property
+    def computed_params_for_display(self):
+        p = super().computed_params_for_display
+        p['computed_input_embedded_size'] = self.computed_input_embedded_size
+        return p
+
+    @staticmethod
+    def add_args_input_embedding(p):
+        p.add_argument(
+            '--input_embedding_key', choices=keys_to_embeddings.keys(),
+            default='no_embedding',
+            help="Type of model for the inputs embedding layer.\n"
+                 "Default: no_embedding (identity model). Embedded size may "
+                 "be defined with \n--input_embedded_size. Note that initial "
+                 "inputs are: \n- For CNN: nb of MRI features. Kernel size "
+                 "must be defined. \n- For NN: nb of MRI features * nb "
+                 "neighbors (flattened data).")
+        em = p.add_mutually_exclusive_group()
+        em.add_argument(
+            '--input_embedded_size', type=int, metavar='s',
+            help="Size of the output after passing the previous dirs through "
+                 "the embedding layer. \nDefault: embedding_size=input_size.\n"
+                 "For CNN: this is the number of filters.")
+        em.add_argument(
+            '--nb_cnn_filters', type=int, metavar='f',
+            help="For CNN: embedding size will depend on the CNN parameters "
+                 "(number of filters, but \nalso stride, padding, etc.). CNN "
+                 "output will be flattened.")
+        p.add_argument(
+            '--kernel_size', type=int, metavar='k',
+            help='In the case of CNN embedding, size of the 3D filter matrix '
+                 '(kernel). Will be of shape kxkxk.')

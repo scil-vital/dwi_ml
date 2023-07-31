@@ -98,13 +98,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
         """
-        if prev_dirs_embedding_key == 'no_embedding':
-            if prev_dirs_embedding_size is None:
-                prev_dirs_embedding_size = 3 * nb_previous_dirs
-            elif prev_dirs_embedding_size != 3 * nb_previous_dirs:
-                raise ValueError("To use identity embedding, the output size "
-                                 "must be the same as the input size!")
-
         super().__init__(
             experiment_name=experiment_name, step_size=step_size,
             compress_lines=compress_lines, log_level=log_level,

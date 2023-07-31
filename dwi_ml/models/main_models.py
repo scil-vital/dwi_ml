@@ -299,14 +299,28 @@ class ModelWithPreviousDirections(MainModelAbstract):
         """
         super().__init__(**kw)
 
+        if nb_previous_dirs > 0:
+            # Define default values: identity embedding.
+            if prev_dirs_embedding_key is None:
+                prev_dirs_embedding_key = 'no_embedding'
+
+            if prev_dirs_embedding_key == 'no_embedding':
+                if prev_dirs_embedding_size is None:
+                    prev_dirs_embedding_size = 3 * nb_previous_dirs
+                elif prev_dirs_embedding_size != 3 * nb_previous_dirs:
+                    raise ValueError("To use identity embedding, the output size "
+                                     "must be the same as the input size!"
+                                     "Expecting {}".format(3 * nb_previous_dirs))
+
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
         self.prev_dirs_embedding_size = prev_dirs_embedding_size
         self.normalize_prev_dirs = normalize_prev_dirs
 
         if self.nb_previous_dirs > 0:
-            if (prev_dirs_embedding_key is not None and
-                    prev_dirs_embedding_size is None):
+            # With previous direction: verify embedding choices
+
+            if prev_dirs_embedding_size is None:
                 raise ValueError(
                     "To use an embedding class, you must provide its output size")
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
@@ -315,19 +329,17 @@ class ModelWithPreviousDirections(MainModelAbstract):
                                  .format(self.prev_dirs_embedding_key,
                                          keys_to_embeddings.keys()))
 
-            if prev_dirs_embedding_size is None:
-                self.prev_dirs_embedding_size = nb_previous_dirs * 3
-
             prev_dirs_emb_cls = keys_to_embeddings[prev_dirs_embedding_key]
             # Preparing layer!
             self.prev_dirs_embedding = prev_dirs_emb_cls(
                 nb_features_in=nb_previous_dirs * 3,
                 nb_features_out=self.prev_dirs_embedding_size)
         else:
-            self.prev_dirs_embedding_size = None
+            # No previous direction:
             if prev_dirs_embedding_size:
                 logging.warning("Previous dirs embedding size was defined but "
                                 "no previous directions are used!")
+            self.prev_dirs_embedding_size = None
             self.prev_dirs_embedding = None
 
         # To tell our trainer what to send to the forward / loss methods.

@@ -121,6 +121,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.start_from_copy_prev = start_from_copy_prev
 
         # ----------- Checks
+        if dropout < 0 or dropout > 1:
+            raise ValueError('The dropout rate must be between 0 and 1.')
+
         if self.input_embedding_key not in keys_to_tensor_embeddings.keys():
             raise ValueError("Embedding choice for x data not understood: {}"
                              .format(self.embedding_key_x))

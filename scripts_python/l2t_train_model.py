@@ -64,8 +64,6 @@ def init_from_args(args, sub_loggers_level):
 
     # Preparing the model
     # (Direction getter)
-    if not args.dg_dropout and args.dropout:
-        args.dg_dropout = args.dropout
     dg_args = check_args_direction_getter(args)
     # (Nb features)
     input_group_idx = dataset.volume_groups.index(args.input_group_name)

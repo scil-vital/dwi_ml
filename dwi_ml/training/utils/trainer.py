@@ -66,15 +66,16 @@ def get_training_args(add_a_tracking_validation_phase=False):
                         "batch's starting point, and compare ending points "
                         "with expected \nvalues."},
             '--tracking_phase_frequency': {
-                'type': int, 'default': 1,
+                'type': int, 'default': 1, 'metavar': 'f',
                 'help': "The tracking-validation phase can be done every N "
                         "epochs. Default: 1."},
             '--tracking_mask': {
+                'metavar': 'm',
                 'help': "Volume group to use as tracking mask during the "
                         "generation phase. Required if \n"
                         "--add_a_tracking_validation_phase is set."},
             '--tracking_phase_nb_segments_init': {
-                'type': int, 'default': 5,
+                'type': int, 'default': 5, 'metavar': 'n',
                 'help': "Number of segments copied from the 'real' streamlines "
                         "before starting \npropagation during generation phases."}
         })

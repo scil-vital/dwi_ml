@@ -14,8 +14,7 @@ from dwi_ml.data.processing.streamlines.sos_eos_management import \
 from dwi_ml.data.processing.streamlines.post_processing import compute_directions
 from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.embeddings import keys_to_embeddings
-from dwi_ml.models.main_models import (MainModelOneInput,
-                                       ModelWithDirectionGetter,
+from dwi_ml.models.main_models import (ModelWithDirectionGetter,
                                        ModelWithNeighborhood,
                                        ModelOneInputWithEmbedding)
 from dwi_ml.models.positional_encoding import keys_to_positional_encodings
@@ -571,7 +570,7 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
 
     def _run_embeddings(self, inputs, use_padding, batch_max_len):
         return self._run_input_embedding(inputs, use_padding, batch_max_len)
-    
+
     def _run_position_encoding(self, inputs):
         inputs = self.position_encoding_layer(inputs)
         inputs = self.dropout(inputs)

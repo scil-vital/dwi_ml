@@ -13,42 +13,29 @@ import os
 # Importing now to solve issues later.
 import comet_ml
 import torch
+from dwi_ml.models.projects.transformers_utils import get_all_groups_transformers
+from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
+from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
+from dwi_ml.training.utils.trainer import format_lr, run_experiment
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.arg_utils import get_memory_args, get_logging_arg
+from dwi_ml.arg_utils import add_args_groups_to_parser
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
-from dwi_ml.models.projects.transformers_utils import (
-    add_transformers_model_args)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
-from dwi_ml.training.utils.batch_samplers import (get_args_batch_sampler,
-                                                  prepare_batch_sampler)
-from dwi_ml.training.utils.batch_loaders import (get_args_batch_loader,
-                                                 prepare_batch_loader)
-from dwi_ml.training.utils.experiment import get_mandatory_args_experiment_and_hdf5
-from dwi_ml.training.utils.trainer import get_training_args, run_experiment, \
-    format_lr
 
 
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    get_mandatory_args_experiment_and_hdf5(p)
-    get_logging_arg(p)
-    get_args_batch_sampler(p)
-    get_args_batch_loader(p)
-    get_training_args(p, add_a_tracking_validation_phase=True)
 
-    # Specific to Transformers:
-    add_transformers_model_args(p)
-
-    get_memory_args(p, add_lazy_options=True, add_rng=True)
-
+    groups = get_all_groups_transformers()
+    add_args_groups_to_parser(groups, p)
     return p
 
 

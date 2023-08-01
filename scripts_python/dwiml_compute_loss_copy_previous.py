@@ -21,7 +21,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.arg_utils import get_resample_or_compress_arg
 from dwi_ml.models.projects.copy_previous_dirs import CopyPrevDirModel
-from dwi_ml.models.utils.direction_getters import add_direction_getter_args, \
+from dwi_ml.models.utils.direction_getters import get_direction_getter_args, \
     check_args_direction_getter
 from dwi_ml.testing.projects.copy_prev_dirs_tester import TesterCopyPrevDir
 from dwi_ml.testing.visu_loss import \
@@ -44,7 +44,7 @@ def prepare_arg_parser():
                         "previous dir = 0.")
     get_resample_or_compress_arg(p)
 
-    add_direction_getter_args(p)
+    get_direction_getter_args(p)
 
     return p
 

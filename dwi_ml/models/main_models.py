@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import argparse
 import json
 import logging
 import os
@@ -10,7 +9,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from dwi_ml.arg_utils import get_resample_or_compress_arg
+from dwi_ml.arg_utils import get_resample_or_compress_arg, assert_no_same_args
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
@@ -19,7 +18,7 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
 from dwi_ml.models.embeddings import keys_to_embeddings, NNEmbedding, NoEmbedding
-from dwi_ml.models.utils.direction_getters import add_direction_getter_args
+from dwi_ml.models.utils.direction_getters import get_direction_getter_args
 
 logger = logging.getLogger('model_logger')
 
@@ -96,8 +95,12 @@ class MainModelAbstract(torch.nn.Module):
         self._context = None
 
     @staticmethod
-    def add_args_main_model(p):
-        get_resample_or_compress_arg(p)
+    def get_args_main_model():
+        # The experiment name and log level are dealt with by the
+        # main experiment parameters.
+
+        # Only args here are: step_size / compress
+        return get_resample_or_compress_arg()
 
     def set_context(self, context):
         assert context in ['training', 'tracking']
@@ -303,29 +306,36 @@ class ModelWithNeighborhood(MainModelAbstract):
         return p
 
     @staticmethod
-    def add_neighborhood_args_to_parser(p: argparse.PARSER):
-        # The experiment name and log level are dealt with by the
-        # main experiment parameters.
-        p.add_argument(
-            '--neighborhood_type', choices=['axes', 'grid'],
-            help="If set, add neighborhood vectors either with the 'axes' "
-                 "or 'grid' option to \nthe input(s).\n"
-                 "- 'axes': lies on a sphere. Uses a list of 7 positions "
-                 "(current, up, down, left, right, \nbehind, in front) at "
-                 "exactly neighborhood_radius voxels from tracking point.\n"
-                 "- 'grid': Uses a list of vectors pointing to points "
-                 "surrounding the origin \nthat mimic the original voxel "
-                 "grid, in voxel space.")
-        p.add_argument(
-            '--neighborhood_radius', type=int, metavar='r',
-            help="The radius. For the axes option: a radius of 1 = 7 "
-                 "neighbhors, a radius of 2 = 13. \nFor the grid option: a "
-                 "radius of 1 = 27 neighbors, a radius of 2 = 125.")
-        p.add_argument(
-            '--neighborhood_resolution', type=float, metavar='r',
-            help="Resolution between each layer of neighborhood, in voxel "
-                 "space as compared to the MRI data. \n"
-                 "Ex: 0.5 one neighborhood every half voxel.")
+    def get_neighborhood_args():
+        args = {
+            '--neighborhood_type': {
+                'choices': ['axes', 'grid'],
+                'help':
+                    "If set, add neighborhood vectors either with the 'axes' "
+                    "or 'grid' option to \nthe input(s).\n"
+                    "- 'axes': lies on a sphere. Uses a list of 7 positions "
+                    "(current, up, down, left, right, \nbehind, in front) at "
+                    "exactly neighborhood_radius voxels from tracking point.\n"
+                    "- 'grid': Uses a list of vectors pointing to points "
+                    "surrounding the origin \nthat mimic the original voxel "
+                    "grid, in voxel space."},
+            '--neighborhood_radius': {
+                'type': int, 'metavar': 'r',
+                'help':
+                    "The radius. For the axes option: a radius of 1 = 7 "
+                    "neighbhors, a radius of 2 = 13. \nFor the grid option: a "
+                    "radius of 1 = 27 neighbors, a radius of 2 = 125."},
+            '--neighborhood_resolution': {
+                'type': float, 'metavar': 'r',
+                'help':
+                    "Resolution between each layer of neighborhood, in voxel "
+                    "space as compared to the MRI data. \n"
+                    "Ex: 0.5 one neighborhood every half voxel."
+
+            }
+        }
+
+        return args
 
     @property
     def params_for_checkpoint(self):
@@ -415,31 +425,35 @@ class ModelWithPreviousDirections(MainModelAbstract):
             self.forward_uses_streamlines = True
 
     @staticmethod
-    def add_args_model_with_pd(p):
+    def get_args_model_with_pd():
         # CNN embedding makes no sense for previous dir
         _keys_to_embeddings = {'no_embedding': NoEmbedding,
                                'nn_embedding': NNEmbedding}
+        args = {
+            '--nb_previous_dirs': {
+                'type': int, 'default': 0, 'metavar': 'n',
+                'help': "Concatenate the n previous streamline directions to the "
+                        "input vector. \nDefault: 0"},
+            '--prev_dirs_embedding_key': {
+                'choices': _keys_to_embeddings.keys(), 'default': 'no_embedding',
+                'help': "Type of model for the previous directions embedding "
+                        "layer. \nDefault: no_embedding (identity model)."},
+            '--prev_dirs_embedding_size': {
+                'type': int, 'metavar': 's',
+                'help':
+                    "Size of the output after passing the previous dirs through "
+                    "the embedding \nlayer. (Total size. Ex: "
+                    "--nb_previous_dirs 3, --prev_dirs_embedding_size 8 \n"
+                    "would compact 9 features into 8.) "
+                    "Default: nb_previous_dirs*3."},
+            '--normalize_prev_dirs': {
+                'action': 'store_true',
+                'help': "If true, normalize the previous directions (before the "
+                        "embedding layer,\n if any, and before adding to the "
+                        "input."}
+        }
 
-        p.add_argument(
-            '--nb_previous_dirs', type=int, default=0, metavar='n',
-            help="Concatenate the n previous streamline directions to the "
-                 "input vector. \nDefault: 0")
-        p.add_argument(
-            '--prev_dirs_embedding_key', choices=_keys_to_embeddings.keys(),
-            default='no_embedding',
-            help="Type of model for the previous directions embedding layer.\n"
-                 "Default: no_embedding (identity model).")
-        p.add_argument(
-            '--prev_dirs_embedded_size', type=int, metavar='s',
-            help="Size of the output after passing the previous dirs through "
-                 "the embedding \nlayer. (Total size. Ex: "
-                 "--nb_previous_dirs 3, --prev_dirs_embedded_size 8 \n"
-                 "would compact 9 features into 8.) "
-                 "Default: nb_previous_dirs*3.")
-        p.add_argument(
-            '--normalize_prev_dirs', action='store_true',
-            help="If true, normalize the previous directions (before the "
-                 "embedding layer,\n if any, and before adding to the input.")
+        return args
 
     @classmethod
     def _load_params(cls, model_dir):
@@ -730,32 +744,43 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         return p
 
     @staticmethod
-    def add_args_input_embedding(p, default_embedding='no_embedding'):
-        p.add_argument(
-            '--input_embedding_key', choices=keys_to_embeddings.keys(),
-            default=default_embedding,
-            help="Type of model for the inputs embedding layer.\n"
-                 "Default: no_embedding (identity model). Embedded size may "
-                 "be defined with \n--input_embedded_size. Note that initial "
-                 "inputs are: \n- For CNN: nb of MRI features. Kernel size "
-                 "must be defined. \n- For NN: nb of MRI features * nb "
-                 "neighbors (flattened data).")
-        em = p.add_mutually_exclusive_group()
-        em.add_argument(
-            '--input_embedded_size', type=int, metavar='s',
-            help="For NN: Size of the output after passing the previous dirs "
-                 "through the embedding layer. Required for nn_embedding.")
-        em.add_argument(
-            '--nb_cnn_filters', type=int, metavar='f', nargs='+',
-            help="For CNN: embedding size will depend on the CNN parameters "
-                 "(number of filters, kernel size, but \nalso stride, padding, "
-                 "etc.). CNN output will be flattened.\n"
-                 "With more than one values, there will be more than one CNN "
-                 "layer. --kernel_size must have the same number of values.")
-        p.add_argument(
-            '--kernel_size', type=int, metavar='k', nargs='+',
-            help='In the case of CNN embedding, size of the 3D filter matrix '
-                 '(kernel). Will be of shape kxkxk. See also --nb_cnn_filters.')
+    def get_args_input_embedding(default_embedding='no_embedding'):
+        args = {
+            '--input_embedding_key': {
+                'choices': keys_to_embeddings.keys(), 'metavar': 'k',
+                'default': default_embedding,
+                'help':
+                    "Type of model for the inputs embedding layer.\n"
+                    "Default: " + default_embedding + ". Embedded size may "
+                    "be defined with --input_embedded_size. \nNote that initial "
+                    "inputs are: \n- For CNN: nb of MRI features. Kernel size "
+                    "must be defined. \n- For NN: nb of MRI features * nb "
+                    "neighbors (flattened data)."},
+            'mutually_exclusive_group_embed_size': {
+                '--input_embedded_size': {
+                    'type': int, 'metavar': 's',
+                    'help':
+                        "For NN: Size of the output after passing the previous "
+                        "dirs through the embedding layer. Required for "
+                        "nn_embedding."},
+                '--nb_cnn_filters': {
+                    'type': int, 'metavar': 'f', 'nargs': '+',
+                    'help':
+                        "For CNN: embedding size will depend on the CNN "
+                        "parameters (number of filters, but \nalso stride, "
+                        "padding, etc.). CNN output will be flattened. \n"
+                        "With more than one values, there will be more than one "
+                        "CNN layer. \nThen, --kernel_size must have the same "
+                        "number of values."}},
+            '--kernel_size': {
+                'type': int, 'metavar': 'k',
+                'help': 'In the case of CNN embedding, size of the 3D filter '
+                        'matrix (kernel). Will be of shape kxkxk. See also '
+                        '--nb_cnn_filters.'
+            }
+        }
+
+        return args
 
 
 class ModelWithDirectionGetter(MainModelAbstract):
@@ -765,6 +790,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
     - Added option to save the estimated outputs after a batch to compare
       with targets (in the case of regression).
     """
+
     def __init__(self, dg_key: str = 'cosine-regression',
                  dg_args: dict = None, **kw):
         """
@@ -804,8 +830,8 @@ class ModelWithDirectionGetter(MainModelAbstract):
             input_size=dg_input_size, **self.dg_args)
 
     @staticmethod
-    def add_args_tracking_model(p):
-        add_direction_getter_args(p)
+    def get_args_tracking_model():
+        return get_direction_getter_args()
 
     @property
     def params_for_checkpoint(self):

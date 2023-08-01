@@ -3,6 +3,7 @@ from typing import Dict
 
 import dearpygui.dearpygui as dpg
 
+from dwi_ml.arg_utils import variable_names
 from dwi_ml.gui.utils.file_dialogs import add_file_dialog_input_group
 from dwi_ml.gui.utils.inputs import change_none_to_gui_default, \
     add_input_item_based_on_type
@@ -95,15 +96,14 @@ def _verify_mutually_exclusive_and_add_item(
     """
     Verify it item is a mutually exclusive group before adding it.
     """
-    if arg_name == 'mutually_exclusive_group':
+    if 'mutually_exclusive_group' in arg_name:
         with dpg.tree_node(label="Select maximum one", default_open=True,
                            indent=40):
             exclusive_args = list(params.keys())
             for sub_item, sub_params in params.items():
-                assert sub_item[0] == '-', "Parameter {} is in an exclusive " \
-                                           "group, so NOT required, but its " \
-                                           "name does not start with '-'" \
-                                           .format(sub_item)
+                assert sub_item[0] == '-', \
+                    "Parameter {} is in an exclusive group, so NOT required, " \
+                    "but its name does not start with '-'".format(sub_item)
                 _add_item_to_gui(sub_item, sub_params, known_file_dialogs,
                                  required=False, exclusive_group=exclusive_args)
     else:
@@ -193,11 +193,9 @@ def add_args_groups_to_gui(groups: Dict[str, Dict], known_file_dialogs=None):
 
         # Verifying all arg names in this group
         #  (or sub-args in the case of mutually_exclusive_group)
-        all_names = list(group_args_dict.keys())
-        all_mandatory = [n for n in all_names if
-                         (n != 'mutually_exclusive_group' and n[0] != '-')]
-        all_options = [n for n in all_names if
-                       (n == 'mutually_exclusive_group' or n[0] == '-')]
+        all_names = variable_names(group_args_dict)
+        all_mandatory = [n for n in all_names if n[0] != '-']
+        all_options = [n for n in all_names if n[0] == '-']
 
         # Separating required and optional
         if len(all_mandatory) > 0:

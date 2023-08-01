@@ -4,14 +4,40 @@ from argparse import ArgumentParser
 
 def add_args_groups_to_parser(groups, p: ArgumentParser):
     for group_name, group_args in groups.items():
-        g = p.add_argument_group(groups[group_name])
-        for arg, val in group_args.items():
-            if arg == 'mutually_exclusive_group':
+        g = p.add_argument_group(group_name + '\n:::::::::::::::::::::::::')
+        for arg_name, parser_params in group_args.items():
+            if 'mutually_exclusive_group' in arg_name:
                 meg = g.add_mutually_exclusive_group()
-                for sub_arg, sub_val in val.items():
-                    meg.add_argument(sub_arg, **sub_val)
+                for sub_arg, sub_params in parser_params.items():
+                    meg.add_argument(sub_arg, **sub_params)
             else:
-                g.add_argument(arg, **val)
+                g.add_argument(arg_name, **parser_params)
+
+
+def variable_names(arg_dict):
+    keys = []
+    for key in arg_dict.keys():
+        if 'mutually_exclusive_group' in key:
+            keys.extend(variable_names(arg_dict[key]))
+        else:
+            keys.append(key)
+    return keys
+
+
+def assert_no_same_args(list_of_args_dict, msg):
+    """
+    new_args: a dict of args: {str: parser_or_gui_dict}
+    arg_groups: a dict of dicts of args: {str: {str: parser_or_gui_dict}}
+    """
+
+    old_arg_names = []
+    for args_dict in list_of_args_dict:
+        new_arg_names = variable_names(args_dict)
+        old_arg_names.extend(new_arg_names)
+
+    old_arg_names_unique = set(old_arg_names)
+
+    assert len(old_arg_names_unique) == len(old_arg_names), msg
 
 
 def get_logging_arg():
@@ -34,15 +60,15 @@ def get_overwrite_arg():
 
 def get_resample_or_compress_arg():
     args = {
-        'mutually_exclusive_group': {
+        'mutually_exclusive_group_step_compress': {
             '--step_size': {
                 'type': float, 'metavar': 's',
                 'help': "Step size to resample the data (in mm). Default: None"},
             '--compress': {
                 'type': float, 'metavar': 'r', 'const': 0.01, 'nargs': '?',
                 'help': "Compression ratio. Default: None. Default if set: 0.01.\n"
-                        "If neither step_size nor compress are chosen, streamlines "
-                        "will be kept \nas they are."
+                        "If neither step_size nor compress are chosen, "
+                        "streamlines will be kept \nas they are."
             }
         }
     }
@@ -73,7 +99,7 @@ def get_memory_args(add_lazy_options=False,
                 'help': "Number of sub-processes to start. Default: [%(default)s]"}
         })
 
-        args.update({'mutually_exclusive_group': gpu_arg})
+        args.update({'mutually_exclusive_group_gpu_cpu': gpu_arg})
     else:
         args.update(gpu_arg)
 
@@ -91,11 +117,12 @@ def get_memory_args(add_lazy_options=False,
         args.update({
             '--cache_size': {
                 'metavar': 'n', 'type': int, 'default': 1,
-                'help': "Relevant only if lazy data is used. Size of the cache in "
-                        "terms\n of length of the queue (i.e. number of volumes). \n"
-                        "NOTE: Real cache size will actually be larger depending on "
-                        "use;\nthe training, validation and testing sets each have "
-                        "their cache. [1]"
+                'help':
+                    "Relevant only if lazy data is used. Size of the cache in "
+                    "terms\n of length of the queue (i.e. number of volumes). "
+                    "\nNOTE: Real cache size will actually be larger depending on "
+                    "use;\nthe training, validation and testing sets each have "
+                    "their cache. [1]"
             },
             '--lazy': {
                 'action': 'store_true',

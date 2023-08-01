@@ -54,9 +54,7 @@ def prepare_arg_parser():
 
 
 def init_from_args(args, sub_loggers_level):
-    
-    if args.input_embedded_size is None:
-        raise ValueError("--input_embedded_size must be given!")
+
     specific_args = {}
 
     # Specific args depending on the chosen model.
@@ -98,6 +96,7 @@ def init_from_args(args, sub_loggers_level):
     # (nb features)
     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     args.nb_features = dataset.nb_features[input_group_idx]
+
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = cls(
@@ -107,7 +106,7 @@ def init_from_args(args, sub_loggers_level):
             max_len=args.max_len, nb_features=args.nb_features,
             positional_encoding_key=args.position_encoding,
             input_embedding_key=args.input_embedding_key,
-            input_embedded_size = args.input_embedded_size,
+            input_embedded_size=args.input_embedded_size,
             nb_cnn_filters=args.nb_cnn_filters, kernel_size=args.kernel_size,
             # Torch's transformer parameters
             ffnn_hidden_size=args.ffnn_hidden_size,

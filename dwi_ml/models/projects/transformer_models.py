@@ -186,7 +186,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         self.activation = activation
         self.norm_first = norm_first
         self.d_model = d_model
-        self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size \
+        self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size is not None \
             else d_model // 2
 
         assert d_model // self.nheads == float(d_model) / self.nheads, \

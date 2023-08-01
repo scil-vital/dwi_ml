@@ -100,7 +100,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
                  # NEIGHBORHOOD
                  neighborhood_type: str = None, neighborhood_radius=None,
                  # PREVIOUS DIRS
-                 nb_previous_dirs=0, prev_dirs_embedding_size=None,
+                 nb_previous_dirs=0, prev_dirs_embedded_size=None,
                  prev_dirs_embedding_key=None, normalize_prev_dirs=True,
                  # DIRECTION GETTER
                  dg_key='cosine-regression', dg_args=None,
@@ -113,7 +113,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
             neighborhood_radius=neighborhood_radius,
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
-            prev_dirs_embedding_size=prev_dirs_embedding_size,
+            prev_dirs_embedded_size=prev_dirs_embedded_size,
             prev_dirs_embedding_key=prev_dirs_embedding_key,
             normalize_prev_dirs=normalize_prev_dirs,
             # For super MainModelForTracking:

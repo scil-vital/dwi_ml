@@ -38,7 +38,7 @@ def test_learn2track():
                              nb_features=4, rnn_layer_sizes=[3, 3],
                              log_level='DEBUG',
                              # Using default from script:
-                             nb_previous_dirs=0, prev_dirs_embedding_size=None,
+                             nb_previous_dirs=0, prev_dirs_embedded_size=None,
                              prev_dirs_embedding_key=None,
                              normalize_prev_dirs=True,
                              input_embedding_key='nn_embedding',
@@ -63,7 +63,7 @@ def test_learn2track_cnn():
                              nb_features=4, rnn_layer_sizes=[3, 3],
                              log_level='DEBUG',
                              # Using default from script:
-                             nb_previous_dirs=0, prev_dirs_embedding_size=None,
+                             nb_previous_dirs=0, prev_dirs_embedded_size=None,
                              prev_dirs_embedding_key=None,
                              normalize_prev_dirs=True,
                              input_embedding_key='cnn_embedding',

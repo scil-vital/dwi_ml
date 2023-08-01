@@ -27,9 +27,9 @@ def add_transformers_model_args(p):
 
     gx = p.add_argument_group(
         "Embedding of the input (X)",
-        "Note that the input_embedding_size is required for TTST models "
+        "Note that the input_embedded_size is required for TTST models "
         "(or nb_cnn_filters if applicable). \nTotal d_model will be"
-        "embedding_size_x + embedding_size_t.\n"
+        "input_embedded_size + target_embedded_size.\n"
         "For TTO and TTS models, input embedding size becomes d_model")
     AbstractTransformerModel.add_args_input_embedding(
         gx, default_embedding='nn_embedding')
@@ -57,7 +57,7 @@ def add_transformers_model_args(p):
     gt.add_argument(
         '--target_embedded_size', type=int, metavar='n',
         help="Embedding size for targets (for TTST only). \n"
-             "Total d_model will be embedding_size_x + embedding_size_t.")
+             "Total d_model will be input_embedded_size + target_embedded_size.")
 
     gtt = p.add_argument_group(title='Transformer: main layers')
     gtt.add_argument(
@@ -98,7 +98,7 @@ def add_transformers_model_args(p):
         help="Size of the feed-forward neural network (FFNN) layer in the \n"
              "encoder and decoder layers. The FFNN is composed of two linear\n"
              "layers. This is the size of the output of the first one. \n"
-             "Default: data_embedding_size/2")
+             "Default: d_model/2")
     gtt.add_argument(
         '--activation', choices=['relu', 'gelu'], default='relu',
         metavar='key',

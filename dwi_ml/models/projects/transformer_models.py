@@ -200,9 +200,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         assert input_embedded_size > 3, \
             "Current computation of the positional encoding required data " \
             "of size > 3, but got {}".format(input_embedded_size)
-        if self.embedding_key_x not in keys_to_embeddings.keys():
-            raise ValueError("Embedding choice for x data not understood: {}"
-                             .format(self.embedding_key_x))
 
         if self.positional_encoding_key not in \
                 keys_to_positional_encodings.keys():

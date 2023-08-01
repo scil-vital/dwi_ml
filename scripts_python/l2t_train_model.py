@@ -76,7 +76,7 @@ def init_from_args(args, sub_loggers_level):
             step_size=args.step_size, compress_lines=args.compress,
             # PREVIOUS DIRS
             prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
+            prev_dirs_embedded_size=args.prev_dirs_embedded_size,
             nb_previous_dirs=args.nb_previous_dirs,
             normalize_prev_dirs=args.normalize_prev_dirs,
             # INPUTS

@@ -287,7 +287,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
     directions embedding, and a tool method for direction formatting.
     """
     def __init__(self, nb_previous_dirs: int = 0,
-                 prev_dirs_embedding_size: int = None,
+                 prev_dirs_embedded_size: int = None,
                  prev_dirs_embedding_key: str = None,
                  normalize_prev_dirs: bool = True, **kw):
         """
@@ -296,7 +296,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received. Default: 0.
-        prev_dirs_embedding_size: int
+        prev_dirs_embedded_size: int
             Dimension of the final vector representing the previous directions
             (no matter the number of previous directions used).
             Default: nb_previous_dirs * 3.
@@ -316,22 +316,22 @@ class ModelWithPreviousDirections(MainModelAbstract):
                 prev_dirs_embedding_key = 'no_embedding'
 
             if prev_dirs_embedding_key == 'no_embedding':
-                if prev_dirs_embedding_size is None:
-                    prev_dirs_embedding_size = 3 * nb_previous_dirs
-                elif prev_dirs_embedding_size != 3 * nb_previous_dirs:
+                if prev_dirs_embedded_size is None:
+                    prev_dirs_embedded_size = 3 * nb_previous_dirs
+                elif prev_dirs_embedded_size != 3 * nb_previous_dirs:
                     raise ValueError("To use identity embedding, the output size "
                                      "must be the same as the input size!"
                                      "Expecting {}".format(3 * nb_previous_dirs))
 
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
-        self.prev_dirs_embedding_size = prev_dirs_embedding_size
+        self.prev_dirs_embedded_size = prev_dirs_embedded_size
         self.normalize_prev_dirs = normalize_prev_dirs
 
         if self.nb_previous_dirs > 0:
             # With previous direction: verify embedding choices
 
-            if prev_dirs_embedding_size is None:
+            if prev_dirs_embedded_size is None:
                 raise ValueError(
                     "To use an embedding class, you must provide its output size")
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
@@ -344,13 +344,13 @@ class ModelWithPreviousDirections(MainModelAbstract):
             # Preparing layer!
             self.prev_dirs_embedding = prev_dirs_emb_cls(
                 nb_features_in=nb_previous_dirs * 3,
-                nb_features_out=self.prev_dirs_embedding_size)
+                nb_features_out=self.prev_dirs_embedded_size)
         else:
             # No previous direction:
-            if prev_dirs_embedding_size:
+            if prev_dirs_embedded_size:
                 logging.warning("Previous dirs embedding size was defined but "
                                 "no previous directions are used!")
-            self.prev_dirs_embedding_size = None
+            self.prev_dirs_embedded_size = None
             self.prev_dirs_embedding = None
 
         # To tell our trainer what to send to the forward / loss methods.
@@ -373,10 +373,10 @@ class ModelWithPreviousDirections(MainModelAbstract):
             help="Type of model for the previous directions embedding layer.\n"
                  "Default: no_embedding (identity model).")
         p.add_argument(
-            '--prev_dirs_embedding_size', type=int, metavar='s',
+            '--prev_dirs_embedded_size', type=int, metavar='s',
             help="Size of the output after passing the previous dirs through "
                  "the embedding \nlayer. (Total size. Ex: "
-                 "--nb_previous_dirs 3, --prev_dirs_embedding_size 8 \n"
+                 "--nb_previous_dirs 3, --prev_dirs_embedded_size 8 \n"
                  "would compact 9 features into 8.) "
                  "Default: nb_previous_dirs*3.")
         p.add_argument(
@@ -390,7 +390,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         p.update({
             'nb_previous_dirs': self.nb_previous_dirs,
             'prev_dirs_embedding_key': self.prev_dirs_embedding_key,
-            'prev_dirs_embedding_size': self.prev_dirs_embedding_size,
+            'prev_dirs_embedded_size': self.prev_dirs_embedded_size,
             'normalize_prev_dirs': self.normalize_prev_dirs
         })
         return p
@@ -611,7 +611,7 @@ class ModelWithInputEmbedding(MainModelAbstract):
         # ----------- Checks
         if self.input_embedding_key not in keys_to_embeddings.keys():
             raise ValueError("Embedding choice for x data not understood: {}"
-                             .format(self.embedding_key_x))
+                             .format(self.input_embedding_key))
 
         if self.input_embedding_key == 'cnn_embedding':
             # For CNN: make sure that neighborhood is included.
@@ -717,7 +717,7 @@ class ModelWithInputEmbedding(MainModelAbstract):
         em.add_argument(
             '--input_embedded_size', type=int, metavar='s',
             help="Size of the output after passing the previous dirs through "
-                 "the embedding layer. \nDefault: embedding_size=input_size.\n"
+                 "the embedding layer. \nDefault: embedded_size=input_size.\n"
                  "For CNN: this is the number of filters.")
         em.add_argument(
             '--nb_cnn_filters', type=int, metavar='f',

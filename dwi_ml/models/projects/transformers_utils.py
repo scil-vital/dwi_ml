@@ -120,19 +120,3 @@ def add_transformers_model_args(p):
 
     g = p.add_argument_group("Output")
     AbstractTransformerModel.add_args_tracking_model(g)
-
-
-def perform_checks(args):
-    # Deal with your optional parameters:
-    if args.dropout_rate < 0 or args.dropout_rate > 1:
-        raise ValueError('The dropout rate must be between 0 and 1.')
-
-    if not args.ffnn_hidden_size:
-        args.ffnn_hidden_size = int(args.d_model / 2)
-
-    # Prepare args for the direction getter
-    if not args.dg_dropout and args.dropout_rate:
-        args.dg_dropout = args.dropout_rate
-    dg_args = check_args_direction_getter(args)
-
-    return args, dg_args

@@ -73,6 +73,9 @@ def check_args_direction_getter(args):
                'weight_loss_with_angle': args.weight_loss_with_angle,
                }
 
+    if args.dg_dropout < 0 or args.dg_dropout > 1:
+        raise ValueError('The dg dropout rate must be between 0 and 1.')
+
     # Gaussian additional arg = nb_gaussians.
     if args.dg_key == 'gaussian-mixture':
         if args.dg_nb_gaussians:

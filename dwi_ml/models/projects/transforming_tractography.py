@@ -190,6 +190,9 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             "({})".format(d_model, self.nheads)
 
         # ----------- Checks
+        if dropout_rate < 0 or dropout_rate > 1:
+            raise ValueError('The dropout rate must be between 0 and 1.')
+
         assert embedding_size_x > 3, \
             "Current computation of the positional encoding required data " \
             "of size > 3, but got {}".format(embedding_size_x)

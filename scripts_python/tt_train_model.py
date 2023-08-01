@@ -23,7 +23,8 @@ from dwi_ml.io_utils import add_memory_args, add_logging_arg
 from dwi_ml.models.projects.transforming_tractography import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.models.projects.transformers_utils import (
-    add_transformers_model_args, perform_checks)
+    add_transformers_model_args)
+from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
@@ -95,9 +96,9 @@ def init_from_args(args, sub_loggers_level):
     dataset = prepare_multisubjectdataset(args, load_testing=False,
                                           log_level=sub_loggers_level)
 
-    # Preparing the model
-    # (general args)
-    args, dg_args = perform_checks(args)
+    # Prepare args for the direction getter
+    dg_args = check_args_direction_getter(args)
+
     # (nb features)
     input_group_idx = dataset.volume_groups.index(args.input_group_name)
     args.nb_features = dataset.nb_features[input_group_idx]

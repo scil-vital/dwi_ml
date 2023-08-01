@@ -15,7 +15,8 @@ from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
 from scilpy.io.utils import add_overwrite_arg
 
-from dwi_ml.arg_utils import get_logging_arg, add_arg_existing_experiment_path
+from dwi_ml.arg_utils import get_logging_arg, add_arg_existing_experiment_path, \
+    add_args_groups_to_parser
 from dwi_ml.arg_utils import get_memory_args
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
@@ -46,7 +47,6 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
 
     # Options
     p.add_argument('--batch_size', type=int)
-    get_memory_args(p)
 
     g = p.add_argument_group("Options to save loss as a colored SFT")
     g.add_argument('--save_colored_tractogram', metavar='out_name.trk',
@@ -79,7 +79,15 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
     g.add_argument('--pick_idx', type=int, nargs='*')
 
     add_overwrite_arg(p)
-    get_logging_arg(p)
+
+    other_args = get_memory_args(add_lazy_options=False,
+                                 add_multiprocessing_option=False,
+                                 add_rng=False)
+    other_args.update(get_logging_arg())
+    groups = {
+        'Others': other_args
+    }
+    return groups
 
 
 def prepare_colors_from_loss(

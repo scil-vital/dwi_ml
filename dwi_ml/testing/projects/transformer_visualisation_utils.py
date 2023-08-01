@@ -13,7 +13,7 @@ from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 from scilpy.tractograms.streamline_operations import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
-from dwi_ml.arg_utils import get_logging_arg
+from dwi_ml.arg_utils import get_logging_arg, add_args_groups_to_parser
 from dwi_ml.models.projects.transformer_models import AbstractTransformerModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
@@ -74,8 +74,12 @@ def build_argparser_transformer_visu():
 
     add_reference_arg(p)
     add_bbox_arg(p)
-    get_logging_arg(p)
     add_overwrite_arg(p)
+
+    groups = {
+        'Others': get_logging_arg()
+    }
+    add_args_groups_to_parser(groups, p)
 
     return p
 

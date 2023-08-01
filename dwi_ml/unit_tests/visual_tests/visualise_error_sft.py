@@ -14,7 +14,8 @@ from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
 from dwi_ml.models.main_models import MainModelAbstract
-from dwi_ml.arg_utils import get_resample_or_compress_arg, get_logging_arg
+from dwi_ml.arg_utils import get_resample_or_compress_arg, get_logging_arg, \
+    add_args_groups_to_parser
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 blue = [2., 75., 252.]
@@ -59,11 +60,16 @@ def build_argparser_visu_error(skip_exp=False):
                    help="Subject id should probably come come the "
                         "'testing' set but you can\n modify this to "
                         "'training' or 'validation'.")
-    get_resample_or_compress_arg(p)
     add_reference_arg(p)
     add_bbox_arg(p)
     add_overwrite_arg(p)
-    get_logging_arg(p)
+
+    other_args = get_resample_or_compress_arg()
+    other_args.update(get_logging_arg())
+    groups = {
+        'Others': other_args
+    }
+    add_args_groups_to_parser(groups, p)
 
     return p
 

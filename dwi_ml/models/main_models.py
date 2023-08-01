@@ -427,18 +427,17 @@ class ModelWithPreviousDirections(MainModelAbstract):
     @staticmethod
     def get_args_model_with_pd():
         # CNN embedding makes no sense for previous dir
-        _keys_to_embeddings = {'no_embedding': NoEmbedding,
-                               'nn_embedding': NNEmbedding}
         args = {
             '--nb_previous_dirs': {
                 'type': int, 'default': 0, 'metavar': 'n',
                 'help': "Concatenate the n previous streamline directions to the "
                         "input vector. \nDefault: 0"},
             '--prev_dirs_embedding_key': {
-                'choices': _keys_to_embeddings.keys(), 'default': 'no_embedding',
+                'choices': ['no_embedding', 'nn_embedding'],
+                'default': 'no_embedding',
                 'help': "Type of model for the previous directions embedding "
                         "layer. \nDefault: no_embedding (identity model)."},
-            '--prev_dirs_embedding_size': {
+            '--prev_dirs_embedded_size': {
                 'type': int, 'metavar': 's',
                 'help':
                     "Size of the output after passing the previous dirs through "

@@ -9,7 +9,7 @@ import os
 # Importing now to solve issues later.
 import comet_ml
 
-from dwi_ml.arg_utils import get_logging_arg
+from dwi_ml.arg_utils import get_logging_arg, add_args_groups_to_parser
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import verify_which_model_in_path
@@ -27,7 +27,11 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_args_resuming_experiment(p)
-    get_logging_arg(p)
+
+    groups = {
+        'Others': get_logging_arg()
+    }
+    add_args_groups_to_parser(groups, p)
 
     return p
 

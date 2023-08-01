@@ -89,6 +89,9 @@ def format_lr(lr_arg):
     if lr_arg is None or isinstance(lr_arg, float):
         return lr_arg
 
+    if isinstance(lr_arg, float):
+        return [lr_arg]
+
     all_lr = []
     for lr in lr_arg[:-1]:
         assert '*' in lr, "When using multiple learning rates, you should " \

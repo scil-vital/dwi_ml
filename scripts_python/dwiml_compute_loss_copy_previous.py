@@ -19,7 +19,8 @@ import torch.nn.functional
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.arg_utils import get_resample_or_compress_arg
+from dwi_ml.arg_utils import get_resample_or_compress_arg, \
+    add_args_groups_to_parser, get_memory_args
 from dwi_ml.models.projects.copy_previous_dirs import CopyPrevDirModel
 from dwi_ml.models.utils.direction_getters import get_direction_getter_args, \
     check_args_direction_getter
@@ -34,7 +35,7 @@ CHOICES = ['cosine-regression', 'l2-regression', 'sphere-classification',
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    prepare_args_visu_loss(p, use_existing_experiment=False)
+    groups = prepare_args_visu_loss(p, use_existing_experiment=False)
     p.add_argument('streamlines_group',
                    help="Streamline group to use as SFT for the given "
                         "subject in the hdf5.")
@@ -42,9 +43,11 @@ def prepare_arg_parser():
                    help="If set, do not compute the loss at the first point "
                         "of the streamline. \nElse (default) compute it with "
                         "previous dir = 0.")
-    get_resample_or_compress_arg(p)
 
-    get_direction_getter_args(p)
+    other_args = get_resample_or_compress_arg()
+    other_args.update(get_direction_getter_args())
+    groups['Others'].update(other_args)
+    add_args_groups_to_parser(groups, p)
 
     return p
 

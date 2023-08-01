@@ -703,10 +703,10 @@ class ModelWithInputEmbedding(MainModelAbstract):
         return p
 
     @staticmethod
-    def add_args_input_embedding(p):
+    def add_args_input_embedding(p, default_embedding='no_embedding'):
         p.add_argument(
             '--input_embedding_key', choices=keys_to_embeddings.keys(),
-            default='no_embedding',
+            default=default_embedding,
             help="Type of model for the inputs embedding layer.\n"
                  "Default: no_embedding (identity model). Embedded size may "
                  "be defined with \n--input_embedded_size. Note that initial "

@@ -31,7 +31,8 @@ def add_transformers_model_args(p):
         "(or nb_cnn_filters if applicable). \nTotal d_model will be"
         "embedding_size_x + embedding_size_t.\n"
         "For TTO and TTS models, input embedding size becomes d_model")
-    AbstractTransformerModel.add_args_input_embedding(gx)
+    AbstractTransformerModel.add_args_input_embedding(
+        gx, default_embedding='nn_embedding')
     gx.add_argument(
         '--position_encoding', default='sinusoidal', metavar='key',
         choices=keys_to_positional_encodings.keys(),

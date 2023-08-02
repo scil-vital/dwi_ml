@@ -5,7 +5,7 @@ from dwi_ml.gui.utils.argparse_to_gui import add_args_groups_to_gui
 from dwi_ml.gui.utils.my_styles import STYLE_FIXED_WINDOW, \
     get_my_fonts_dictionary
 from dwi_ml.gui.utils.window import callback_change_window
-from dwi_ml.models.projects.learn2track_utils import get_all_args_groups_learn2track
+from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 
 
 def callback_ok_get_args_l2t(_, __, args):
@@ -40,8 +40,8 @@ def open_train_l2t_window():
             dpg.bind_font(my_fonts['default'])
             dpg.bind_item_font(title, my_fonts['main_title'])  # NOT WORKING?
 
-            args = get_all_args_groups_learn2track()
-            add_args_groups_to_gui(args)
+            groups = Learn2TrackModel.get_model_arg_groups()
+            add_args_groups_to_gui(groups)
 
 
 def _create_l2t_train_script(all_values):

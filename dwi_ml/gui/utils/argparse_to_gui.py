@@ -5,12 +5,10 @@ import dearpygui.dearpygui as dpg
 
 from dwi_ml.arg_utils import variable_names
 from dwi_ml.gui.utils.file_dialogs import add_file_dialog_input_group
-from dwi_ml.gui.utils.inputs import change_none_to_gui_default, \
-    add_input_item_based_on_type
+from dwi_ml.gui.utils.argparse_input_types import change_none_to_gui_default, \
+    add_input_item_based_on_type, CHECKBOX_SUFFIX
 from dwi_ml.gui.utils.my_styles import get_none_theme, get_non_modified_theme, \
     get_modified_theme, NB_DOTS, INDENT_ARGPARSE_NAME, STYLE_ARGPARSE_HELP
-
-CHECKBOX_SUFFIX = '_default_checkbox'
 
 
 def _checkbox_set_to_default_callback(sender, app_data, user_data):
@@ -56,58 +54,19 @@ def _checkbox_set_to_default_callback(sender, app_data, user_data):
                     dpg.bind_item_theme(a, get_non_modified_theme())
 
 
-def _log_value_and_remove_check(sender, _, __):
-    """
-    Callback intended for input item with an associated default checkbox.
-
-    Value is logged automatically. Changing background and unchecking checkbox.
-    """
-    # Changing background color
-    dpg.bind_item_theme(sender, get_modified_theme())
-
-    # Removing check.
-    dpg.set_value(sender + CHECKBOX_SUFFIX, False)
-
-
-def _log_value(sender, _, __):
-    """
-    Callback intended for any input item.
-    """
-    dpg.bind_item_theme(sender, get_modified_theme())
-
-
-def _log_value_exclusive_group(sender, _, elements_in_group):
-    """
-    Callback intended for input items belonging to a mutually exclusive group.
-    By default, they are always optional and thus are associated to a default
-    checkbox.
-    """
-    _log_value_and_remove_check(sender, None, None)
-
-    # Re-checking other elements.
-    for a in elements_in_group:
-        if a != sender:
-            dpg.set_value(a + CHECKBOX_SUFFIX, True)
-            dpg.bind_item_theme(a, get_non_modified_theme())
-
-
-def _verify_mutually_exclusive_and_add_item(
-        arg_name, params, known_file_dialogs, required):
-    """
-    Verify it item is a mutually exclusive group before adding it.
-    """
-    if 'mutually_exclusive_group' in arg_name:
-        with dpg.tree_node(label="Select maximum one", default_open=True,
-                           indent=40):
-            exclusive_args = list(params.keys())
-            for sub_item, sub_params in params.items():
-                assert sub_item[0] == '-', \
-                    "Parameter {} is in an exclusive group, so NOT required, " \
-                    "but its name does not start with '-'".format(sub_item)
-                _add_item_to_gui(sub_item, sub_params, known_file_dialogs,
-                                 required=False, exclusive_group=exclusive_args)
-    else:
-        _add_item_to_gui(arg_name, params, known_file_dialogs, required)
+def _add_exclusive_group(exclusive_group_dict, known_file_dialogs):
+    with dpg.tree_node(label="Select maximum one", default_open=True,
+                       indent=40):
+        exclusive_args = list(exclusive_group_dict.keys())
+        for sub_item, sub_params in exclusive_group_dict.items():
+            assert sub_item[0] == '-', \
+                "Parameter {} is in an exclusive group, so NOT required, " \
+                "but its name does not start with '-'".format(
+                    sub_item)
+            _add_item_to_gui(sub_item, sub_params,
+                             known_file_dialogs,
+                             required=False,
+                             exclusive_group=exclusive_args)
 
 
 def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
@@ -135,15 +94,22 @@ def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
 
     with dpg.group(horizontal=True):
         # 1. Argument name + metavar
+        if 'nargs' in params:
+            raise NotImplementedError("NOT READY YET FOR NARGS OPTION")
+
         if 'metavar' in params:
-            m = params['metavar']
+            m = '   ' + params['metavar']
         elif required or 'action' in params and \
                 params['action'] in ['store_true', 'store_false']:
             m = ''
         else:
-            m = arg_name.replace('-', '').upper()
+            # Not required, no metavar: use argname in capital letters
+            m = '   ' + arg_name.replace('-', '').upper()
 
-        suffix = '   ' + m + ('.' * (NB_DOTS - len(m)))
+        # Letters are bigger than dots. Removing more dots than number of
+        # letters.
+        len_text = len(m) + len(arg_name)
+        suffix = m + ('.' * (NB_DOTS - int(1.5 * len_text)))
         dpg.add_text(arg_name + suffix, indent=INDENT_ARGPARSE_NAME)
 
         # 2. Argument value
@@ -154,18 +120,18 @@ def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
         else:
 
             # Other cases: depending on type.
+            has_check = True
             if required:
-                item_options = {'callback': _log_value}
-            elif exclusive_group is None:
-                item_options = {'callback': _log_value_and_remove_check}
-            else:
-                item_options = {'callback': _log_value_exclusive_group,
-                                'user_data': exclusive_group}
+                has_check = False
+            elif 'action' in params and \
+                    params['action'] in ['store_true', 'store_false']:
+                has_check = False
+
             dtype, default = add_input_item_based_on_type(
-                arg_name, params, required, item_options)
+                arg_name, params, required, exclusive_group, has_check)
 
             # 3. Ignore checkbox.
-            if not required:
+            if has_check:
                 dpg.add_checkbox(label='Set to default: {}'.format(default),
                                  default_value=True,
                                  tag=arg_name + '_default_checkbox',
@@ -193,21 +159,24 @@ def add_args_groups_to_gui(groups: Dict[str, Dict], known_file_dialogs=None):
 
         # Verifying all arg names in this group
         #  (or sub-args in the case of mutually_exclusive_group)
-        all_names = variable_names(group_args_dict)
-        all_mandatory = [n for n in all_names if n[0] != '-']
-        all_options = [n for n in all_names if n[0] == '-']
+        all_names = list(group_args_dict.keys())
+        options = [n for n in all_names if
+                   n[0] == '-' or 'mutually_exclusive_group' in n]
+        required = list(set(all_names).difference(set(options)))
 
         # Separating required and optional
-        if len(all_mandatory) > 0:
+        if len(required) > 0:
             with dpg.tree_node(label="Required", default_open=True):
-                for arg_name in all_mandatory:
-                    _verify_mutually_exclusive_and_add_item(
-                        arg_name, group_args_dict[arg_name],
-                        known_file_dialogs, required=True)
+                for arg_name in required:
+                    _add_item_to_gui(arg_name, group_args_dict[arg_name],
+                                     known_file_dialogs, required=True)
 
-        if len(all_options) > 0:
+        if len(options) > 0:
             with dpg.tree_node(label="Options", default_open=False):
-                for arg_name in all_options:
-                    _verify_mutually_exclusive_and_add_item(
-                        arg_name, group_args_dict[arg_name],
-                        known_file_dialogs, required=False)
+                for arg_name in options:
+                    if 'mutually_exclusive_group' in arg_name:
+                        _add_exclusive_group(group_args_dict[arg_name],
+                                             known_file_dialogs)
+                    else:
+                        _add_item_to_gui(arg_name, group_args_dict[arg_name],
+                                         known_file_dialogs, required=False)

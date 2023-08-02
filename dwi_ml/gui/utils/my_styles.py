@@ -14,12 +14,15 @@ STYLE_INPUT_ITEM = {
     'indent': 600,
     'width': 400,
 }
+STYLE_INPUT_CHECKBOX_ITEM = {
+    'indent': 600,
+}
 STYLE_ARGPARSE_HELP = {
     'indent': 100,
     'color': (151, 151, 151, 255)
 }
 INDENT_ARGPARSE_NAME = 40
-NB_DOTS = 150
+NB_DOTS = 140
 
 # Defining a few colors. For help, use dpg.show_style_editor()
 # 4th value = alpha

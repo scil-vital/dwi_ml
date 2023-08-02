@@ -6,10 +6,9 @@ import dearpygui.dearpygui as dpg
 from dwi_ml.gui.projects.l2t_menus import open_l2t_from_checkpoint_window
 from dwi_ml.gui.projects.l2t_from_checkpoint_menu import \
     open_l2t_from_checkpoint_window
-from dwi_ml.gui.projects.transformers_menus import open_tto_from_checkpoint_window, \
-    open_ttst_from_checkpoint_window
-from dwi_ml.gui.utils.file_dialogs import params_file_dialogs, \
-    _callback_single_file_dialog, add_single_folder_dialog
+from dwi_ml.gui.projects.transformers_menus import (
+    open_tto_from_checkpoint_window, open_ttst_from_checkpoint_window)
+from dwi_ml.gui.utils.file_dialogs import add_single_folder_dialog
 from dwi_ml.gui.utils.gui_popup_message import show_infobox
 from dwi_ml.io_utils import verify_checkpoint_exists, verify_which_model_in_path
 

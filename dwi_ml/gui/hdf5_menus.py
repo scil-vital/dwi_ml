@@ -4,7 +4,7 @@ import dearpygui.dearpygui as dpg
 from dwi_ml.data.hdf5.utils import get_hdf5_args_groups
 from dwi_ml.gui.utils.argparse_to_gui import add_args_groups_to_gui
 from dwi_ml.gui.utils.file_dialogs import \
-    get_file_dialog_value, add_file_dialog_input_group
+    add_file_dialog_input_group
 from dwi_ml.gui.utils.gui_popup_message import show_infobox
 from dwi_ml.gui.utils.gui_to_argparse import get_all_values
 from dwi_ml.gui.utils.my_styles import STYLE_FIXED_WINDOW, \
@@ -84,11 +84,15 @@ def _create_hdf5_creation_script(_, __, user_data):
     if all_values is None:
         return
 
-    print("WILL WRITE:")
-    print('dwiml_create_hdf5_dataset.py \n \\' + '\n'.join(all_values))
-    print("IN : ", out_path)
+    DEBUG = True
+    if DEBUG:
+        print("WILL WRITE:")
+        print('dwiml_create_hdf5_dataset.py \n \\' + '\n'.join(all_values))
+        print("IN : ", out_path)
+        return
 
-    raise NotImplementedError
+    # toDo
+    script_out_file = 'TO BE DETERMINED'
     with open(script_out_file, 'w') as f:
         f.write('dwiml_create_hdf5_dataset.py \n')
         f.writelines(all_values)

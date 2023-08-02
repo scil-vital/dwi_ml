@@ -51,11 +51,11 @@ def _main_hdf5_creation_args():
         'testing_subjs': {
             'help': "A text file containing the list of subjects ids to use "
                     "for testing."},
-        '--enforce_files_presence': {
-            'type': bool, 'default': True, 'metavar': "True/False",
-            'help': 'If True, the process will stop if one file is '
-                    'missing for a subject. Checks are not \nmade for '
-                    'option "ALL" for streamline groups. Default: True'},
+        '--do_not_verify_files_presence': {
+            'action': 'store_false', 'dest': 'enforce_files_presence',
+            'help': 'By default, the process will stop if one file is '
+                    'missing for a subject. Use this to \nskip. P.S. Checks are '
+                    'not made for option "ALL" for streamline groups.'},
         '--save_intermediate': {
             'action': "store_true",
             'help': "If set, save intermediate processing files for each "

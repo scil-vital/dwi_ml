@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-
-
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.gui.continue_from_checkpoint_menu import \
     show_file_dialog_from_checkpoint
 from dwi_ml.gui.hdf5_menus import open_menu_create_hdf5
 from dwi_ml.gui.projects.l2t_menus import open_train_l2t_window
-from dwi_ml.gui.projects.transformers_menus import open_tto_window, open_ttst_window
+from dwi_ml.gui.projects.transformers_menus import (
+    open_tto_window, open_ttst_window)
 from dwi_ml.gui.utils.my_styles import get_my_fonts_dictionary
 
 

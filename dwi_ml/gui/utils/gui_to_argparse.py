@@ -11,32 +11,25 @@ from dwi_ml.gui.utils.gui_popup_message import show_infobox
 
 def get_one_value_verify_ok(arg_name):
     required = arg_name[0] != '-'
+    item_type = dpg.get_item_type(arg_name)
 
-    # 1. Checking it this is a file dialog (SHOULD NOT. INPUT GROUP SHOULD
-    # BE PREFERRED)
-    info = dpg.get_item_info(arg_name)
-    if info['type'] == 'mvAppItemType::mvFileDialog':
-        print("? Getting a file dialog value")
-        value = get_file_dialog_value(arg_name)
-    else:
-        # 2. If not required, we have a checkbox. Let's see if it exists.
-        checked = dpg.get_value(arg_name + CHECKBOX_SUFFIX)
-        value = dpg.get_value(arg_name)
-        if value == '':
-            value = None
-        logging.debug("Getting arg: {}, value: {}".format(arg_name, value))
-        logging.debug("    Change for default?: {}".format(checked))
+    # 1. Checking it this is a file dialog
+    if item_type == 'mvAppItemType::mvFileDialog':
+        raise NotImplementedError(
+            "Implementation error. Please use input group from file dialog "
+            "rather than accessing file dialog value directly.")
 
-        if checked is None:
-            assert required
-            # No checkbox = required value.
-        else:
-            assert not required
-            if checked:
-                # We use the default value.
-                value = None
+    # 2. Verifying associated checkbox.
+    # Will return None if it does not exist.
+    checked = dpg.get_value(arg_name + CHECKBOX_SUFFIX)
+    value = dpg.get_value(arg_name)
+    if value == '':
+        # GUI default value.
+        value = None
+    if checked:
+        # We use the default value.
+        value = None
 
-            # Else: not checked = not using default value.
     return value, required
 
 
@@ -49,7 +42,7 @@ def get_all_values(groups: Dict[str, Dict], split_every=50):
                 values[-1] += "  \\"
                 values.append('    ')
 
-            if tmp_arg_name == 'mutually_exclusive_group':
+            if 'mutually_exclusive_group' in tmp_arg_name:
                 arg_name = None
                 arg_value = None
                 required = False
@@ -68,7 +61,11 @@ def get_all_values(groups: Dict[str, Dict], split_every=50):
                 arg_value, required = get_one_value_verify_ok(tmp_arg_name)
 
             # Ok. Now format to bash script
-            if required:
+            if 'action' in params and \
+                    params['action'] in ['store_true', 'store_false']:
+                # Name only.  Ex: --use_some_option.
+                values[-1] += '   ' + str(arg_name)
+            elif required:
                 if arg_value is None:
                     show_infobox("Missing argument",
                                  "Required argument {} was not filled in!"
@@ -76,8 +73,10 @@ def get_all_values(groups: Dict[str, Dict], split_every=50):
                     # Exit the call back process
                     return None
                 else:
+                    # Value only. Ex: script.py in_file out_file.
                     values[-1] += '   ' + str(arg_value)
             elif arg_value is not None:
+                # Name + value. Ex: --optionX value N
                 values[-1] += '   ' + arg_name + ' ' + str(arg_value)
 
     return values

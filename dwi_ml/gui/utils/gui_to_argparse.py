@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
-import logging
 from typing import Dict
 
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.utils.argparse_to_gui import CHECKBOX_SUFFIX
-from dwi_ml.gui.utils.file_dialogs import get_file_dialog_value
+from dwi_ml.gui.utils.argparse_input_types import CHECKBOX_SUFFIX
 from dwi_ml.gui.utils.gui_popup_message import show_infobox
 
 

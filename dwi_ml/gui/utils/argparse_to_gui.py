@@ -3,55 +3,10 @@ from typing import Dict
 
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.arg_utils import variable_names
 from dwi_ml.gui.utils.file_dialogs import add_file_dialog_input_group
-from dwi_ml.gui.utils.argparse_input_types import change_none_to_gui_default, \
-    add_input_item_based_on_type, CHECKBOX_SUFFIX
-from dwi_ml.gui.utils.my_styles import get_none_theme, get_non_modified_theme, \
-    get_modified_theme, NB_DOTS, INDENT_ARGPARSE_NAME, STYLE_ARGPARSE_HELP
-
-
-def _checkbox_set_to_default_callback(sender, app_data, user_data):
-    """
-    Callback for our checkbox that we place beside optional args.
-    Useful mainly if the default value is None, which is not possible in the
-    GUI. If the user did not modify the default value, we will ignore that
-    option.
-
-    Value of the checkbox (True, False) is modified automatically. Here,
-    changing the value of the associated input.
-
-    user_data:  default value for the associated input,
-                data type
-                exclusive group: dict of other args that cannot be modified
-                    at the same time.
-    """
-    arg_name = sender[:-len(CHECKBOX_SUFFIX)]
-    default, dtype, exclusive_group = user_data
-
-    if app_data:  # i.e. == True
-        # If setting from unchecked to checked again, also setting value to
-        # default.
-        dpg.set_value(arg_name, change_none_to_gui_default(default, dtype))
-
-        # Changing background color.
-        if default is None:
-            dpg.bind_item_theme(arg_name, get_none_theme())
-        else:
-            dpg.bind_item_theme(arg_name, get_non_modified_theme())
-
-    else:
-        # Arg value is modified by the user.
-        # Changing background color.
-        dpg.bind_item_theme(arg_name, get_modified_theme())
-
-        # Verifying that other values in the exclusive groups are not
-        # modified. If so, unselecting them.
-        if exclusive_group is not None:
-            for a in exclusive_group:
-                if a != arg_name:
-                    dpg.set_value(a + CHECKBOX_SUFFIX, True)
-                    dpg.bind_item_theme(a, get_non_modified_theme())
+from dwi_ml.gui.utils.argparse_input_types import add_input_item_based_on_type
+from dwi_ml.gui.utils.my_styles import \
+    NB_DOTS, INDENT_ARGPARSE_NAME, STYLE_ARGPARSE_HELP
 
 
 def _add_exclusive_group(exclusive_group_dict, known_file_dialogs):
@@ -94,9 +49,6 @@ def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
 
     with dpg.group(horizontal=True):
         # 1. Argument name + metavar
-        if 'nargs' in params:
-            raise NotImplementedError("NOT READY YET FOR NARGS OPTION")
-
         if 'metavar' in params:
             m = '   ' + params['metavar']
         elif required or 'action' in params and \
@@ -106,40 +58,35 @@ def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
             # Not required, no metavar: use argname in capital letters
             m = '   ' + arg_name.replace('-', '').upper()
 
+        if 'nargs' in params:
+            nargs = params['nargs']
+            if isinstance(nargs, int):
+                m = (m + ' ') * nargs
+            elif nargs == '?':  # i.e. either default or one value. Uses const.
+                m = '[' + m + ']'
+            elif nargs == '*':  # Between 0 and inf nb.
+                m = '[' + m + '... ]'
+            elif nargs == '+':  # Between 1 and inf nb.
+                m = m + ' [' + m + '... ]'
+
         # Letters are bigger than dots. Removing more dots than number of
         # letters.
         len_text = len(m) + len(arg_name)
-        suffix = m + ('.' * (NB_DOTS - int(1.5 * len_text)))
-        dpg.add_text(arg_name + suffix, indent=INDENT_ARGPARSE_NAME)
+        dots = m + ('.' * (NB_DOTS - int(1.5 * len_text)))
+        dpg.add_text(arg_name + dots, indent=INDENT_ARGPARSE_NAME)
 
-        # 2. Argument value
+        # 2. Argument value ( + checkbox to set to None)
         if arg_name in file_dialog_argnames:
             # Special cases for known arguments that require a file dialog.
+            assert 'nargs' not in params
             add_file_dialog_input_group(arg_name,
                                         known_file_dialogs[arg_name])
         else:
-
-            # Other cases: depending on type.
-            has_check = True
-            if required:
-                has_check = False
-            elif 'action' in params and \
-                    params['action'] in ['store_true', 'store_false']:
-                has_check = False
-
-            dtype, default = add_input_item_based_on_type(
-                arg_name, params, required, exclusive_group, has_check)
-
-            # 3. Ignore checkbox.
-            if has_check:
-                dpg.add_checkbox(label='Set to default: {}'.format(default),
-                                 default_value=True,
-                                 tag=arg_name + '_default_checkbox',
-                                 callback=_checkbox_set_to_default_callback,
-                                 user_data=(default, dtype, exclusive_group))
+            add_input_item_based_on_type(
+                arg_name, params, required, exclusive_group)
 
     # 4. (Below: Help)
-    dpg.add_text(params['help'], **STYLE_ARGPARSE_HELP)
+    dpg.add_text(params['help'], tag=arg_name + 'help', **STYLE_ARGPARSE_HELP)
 
 
 def add_args_groups_to_gui(groups: Dict[str, Dict], known_file_dialogs=None):

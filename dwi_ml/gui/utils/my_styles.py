@@ -10,18 +10,15 @@ STYLE_FIXED_WINDOW = {'no_move': True,
                       'no_title_bar': True,
                       'pos': [0, 0]
                       }
-STYLE_INPUT_ITEM = {
-    'indent': 600,
-    'width': 400,
-}
-STYLE_INPUT_CHECKBOX_ITEM = {
-    'indent': 600,
-}
+
+INDENT_ARGPARSE_NAME = 40
+INDENT_ITEM = 600
+INDENT_MORE_NARG = 1100
+WIDTH_ITEM = 400
 STYLE_ARGPARSE_HELP = {
     'indent': 100,
     'color': (151, 151, 151, 255)
 }
-INDENT_ARGPARSE_NAME = 40
 NB_DOTS = 140
 
 # Defining a few colors. For help, use dpg.show_style_editor()

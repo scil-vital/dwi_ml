@@ -7,7 +7,7 @@ from dwi_ml.gui.utils.window import start_dpg, show_and_end_dpg
 
 
 def main():
-    logging.getLogger().setLevel(level='WARNING')
+    logging.getLogger().setLevel(level='DEBUG')
     start_dpg()
     prepare_main_menu()
     show_and_end_dpg()

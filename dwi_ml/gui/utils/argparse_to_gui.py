@@ -1,15 +1,28 @@
 # -*- coding: utf-8 -*-
-from typing import Dict
+import logging
+from typing import Dict, List
 
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.gui.utils.file_dialogs import add_file_dialog_input_group
 from dwi_ml.gui.utils.argparse_input_types import add_input_item_based_on_type
 from dwi_ml.gui.utils.my_styles import \
-    NB_DOTS, INDENT_ARGPARSE_NAME, STYLE_ARGPARSE_HELP
+    NB_DOTS, INDENT_ARGPARSE_NAME, STYLE_ARGPARSE_HELP, get_my_fonts_dictionary
 
 
 def _add_exclusive_group(exclusive_group_dict, known_file_dialogs):
+    """
+    Adds items that are interconnected. Cannot be modified together. Modifying
+    one sets the other(s) back to default.
+
+    Parameters
+    ----------
+    exclusive_group_dict: dict
+        The argument dictionary.
+    known_file_dialogs: dict
+        The list of arguments associated to file dialogs.
+    """
+    logging.debug("        --> Adding a mutually exclusive group")
     with dpg.tree_node(label="Select maximum one", default_open=True,
                        indent=40):
         exclusive_args = list(exclusive_group_dict.keys())
@@ -18,19 +31,23 @@ def _add_exclusive_group(exclusive_group_dict, known_file_dialogs):
                 "Parameter {} is in an exclusive group, so NOT required, " \
                 "but its name does not start with '-'".format(
                     sub_item)
-            _add_item_to_gui(sub_item, sub_params,
-                             known_file_dialogs,
-                             required=False,
-                             exclusive_group=exclusive_args)
+            _add_item_to_gui(sub_item, sub_params, known_file_dialogs,
+                             required=False, exclusive_group=exclusive_args)
 
 
-def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
-                     exclusive_group=None):
+def _add_item_to_gui(arg_name: str, params: Dict, known_file_dialogs: Dict,
+                     required: bool, exclusive_group: List = None):
     """
+    Adds an item to the GUI
+
+    Parameters
+    ----------
     arg_name: str
         Name of the argument (ex: --some_arg).
     params: dict
         argparser arguments in a dictionary. Ex: nargs, help, type, default...
+    known_file_dialogs: dict
+        The list of arguments associated to file dialogs.
     required: bool
         Wether or not that argument is required. (Starts with - or not).
         If not required, the GUI always requires a default value. A checkbox
@@ -39,6 +56,8 @@ def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
    exclusive_group: list
         Name of other args that cannot be modified together.
    """
+    logging.debug("          {}".format(arg_name))
+
     if known_file_dialogs is None:
         file_dialog_argnames = []
     else:
@@ -58,6 +77,7 @@ def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
             # Not required, no metavar: use argname in capital letters
             m = '   ' + arg_name.replace('-', '').upper()
 
+        # Modifying metavar if 'nargs' is set.
         if 'nargs' in params:
             nargs = params['nargs']
             if isinstance(nargs, int):
@@ -69,13 +89,14 @@ def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
             elif nargs == '+':  # Between 1 and inf nb.
                 m = m + ' [' + m + '... ]'
 
+        # 2. Preparing dots (...................) until the input box.
         # Letters are bigger than dots. Removing more dots than number of
         # letters.
         len_text = len(m) + len(arg_name)
         dots = m + ('.' * (NB_DOTS - int(1.5 * len_text)))
         dpg.add_text(arg_name + dots, indent=INDENT_ARGPARSE_NAME)
 
-        # 2. Argument value ( + checkbox to set to None)
+        # 3. Argument value ( + checkbox to set to None)
         if arg_name in file_dialog_argnames:
             # Special cases for known arguments that require a file dialog.
             assert 'nargs' not in params
@@ -91,6 +112,10 @@ def _add_item_to_gui(arg_name, params, known_file_dialogs, required,
 
 def add_args_groups_to_gui(groups: Dict[str, Dict], known_file_dialogs=None):
     """
+    Adds argparsing groups of arguments to the GUI
+
+    Parameters
+    ----------
     groups: dict of dicts.
         keys are groups. values are dicts of argparser equivalents.
     known_file_dialogs: dict of str
@@ -101,8 +126,14 @@ def add_args_groups_to_gui(groups: Dict[str, Dict], known_file_dialogs=None):
             List of str = accepted extensions (for files only).
         ex: { 'out_filename': ['unique_file', ['.txt']]}
     """
+    logging.debug("Adding argparsing groups to the GUI:")
+    my_fonts = get_my_fonts_dictionary()
+
     for group_name, group_args_dict in groups.items():
-        dpg.add_text('\n' + group_name + ':')
+        logging.debug("  {}".format(group_name))
+
+        title = dpg.add_text('\n' + group_name + ':')
+        dpg.bind_item_font(title, my_fonts['group_title'])
 
         # Verifying all arg names in this group
         #  (or sub-args in the case of mutually_exclusive_group)
@@ -114,12 +145,14 @@ def add_args_groups_to_gui(groups: Dict[str, Dict], known_file_dialogs=None):
         # Separating required and optional
         if len(required) > 0:
             with dpg.tree_node(label="Required", default_open=True):
+                logging.debug("      Required args: ")
                 for arg_name in required:
                     _add_item_to_gui(arg_name, group_args_dict[arg_name],
                                      known_file_dialogs, required=True)
 
         if len(options) > 0:
             with dpg.tree_node(label="Options", default_open=False):
+                logging.debug("      Optional args: ")
                 for arg_name in options:
                     if 'mutually_exclusive_group' in arg_name:
                         _add_exclusive_group(group_args_dict[arg_name],

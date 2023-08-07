@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import logging
+
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.gui.continue_from_checkpoint_menu import \
@@ -11,6 +13,7 @@ from dwi_ml.gui.utils.my_styles import get_my_fonts_dictionary
 
 
 def prepare_main_menu():
+    logging.debug("Preparing main window...")
 
     titles = []
     with dpg.window(tag="Primary Window"):
@@ -52,6 +55,8 @@ def prepare_main_menu():
     dpg.bind_font(my_fonts['default'])
     dpg.bind_item_font(main_title, my_fonts['main_title'])
     for title in titles:
-        dpg.bind_item_font(title, my_fonts['title'])
+        dpg.bind_item_font(title, my_fonts['section_title'])
 
     dpg.set_primary_window("Primary Window", True)
+
+    logging.debug("...main window done.\n")

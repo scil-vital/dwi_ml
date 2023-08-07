@@ -203,6 +203,19 @@ def __callback_single_file_dialog_in_input_group(
 
 
 def add_file_dialog_input_group(input_tag, file_dialog_params):
+    """
+    Adds a file dialog that also shows selected file into an input text.
+    Chosen selection can thus be modified by user through the input box.
+
+    Parameters
+    ----------
+    input_tag: str
+    file_dialog_params: list: [str, list]
+        - type: Either 'unique_file' or 'unique_folder'. Eventually, multi-
+                selection could be accepted. Not implemented yet.
+        - ext: The list of accepted extensions.
+    """
+    logging.debug("          ----> File dialog. No checkbox.")
     file_dialog_type = file_dialog_params[0]
 
     # 1. Create hidden file dialog.

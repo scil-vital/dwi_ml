@@ -41,6 +41,7 @@ global_non_modified_theme = None
 global_modified_theme = None
 global_none_theme = None
 global_required_theme = None
+global_fonts = None
 
 
 def _create_item_theme(color):
@@ -80,20 +81,26 @@ def get_required_theme() -> int:
 
 
 def get_my_fonts_dictionary():
-    current_path = __file__
-    gui_utils_path = Path(current_path).parent.absolute()
-    font_path = os.path.join(gui_utils_path, "fonts/NotoSerifCJKjp-Medium.otf")
+    global global_fonts
+    if global_fonts is not None:
+        return global_fonts
+    else:
+        current_path = __file__
+        gui_utils_path = Path(current_path).parent.absolute()
+        font_path = os.path.join(gui_utils_path, "fonts/NotoSerifCJKjp-Medium.otf")
 
-    with dpg.font_registry():
-        # first argument ids the path to the .ttf or .otf file
-        default_font = dpg.add_font(font_path, 18)
-        title_font = dpg.add_font(font_path, 30)
-        main_title_font = dpg.add_font(font_path, 40)
+        with dpg.font_registry():
+            # first argument is the path to the .ttf or .otf file
+            default_font = dpg.add_font(font_path, 18)
+            group_font = dpg.add_font(font_path, 22)
+            title_font = dpg.add_font(font_path, 30)
+            main_title_font = dpg.add_font(font_path, 40)
 
-    my_fonts = {'default': default_font,
-                'title': title_font,
-                'main_title': main_title_font}
-    return my_fonts
+        global_fonts = {'default': default_font,
+                        'group_title': group_font,
+                        'section_title': title_font,
+                        'main_title': main_title_font}
+        return global_fonts
 
 
 def get_global_theme():

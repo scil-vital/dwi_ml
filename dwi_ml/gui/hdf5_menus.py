@@ -4,13 +4,13 @@ import logging
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.data.hdf5.utils import get_hdf5_args_groups
-from dwi_ml.gui.utils.argparse_to_gui import add_args_groups_to_gui
+from dwi_ml.gui.utils.argparse_to_gui import add_groups_of_args_to_gui
 from dwi_ml.gui.utils.file_dialogs import \
     add_file_dialog_input_group
 from dwi_ml.gui.utils.gui_popup_message import show_infobox
 from dwi_ml.gui.utils.gui_to_argparse import get_all_values
 from dwi_ml.gui.utils.my_styles import STYLE_FIXED_WINDOW, \
-    get_my_fonts_dictionary
+    get_my_fonts_dictionary, add_color_legend
 from dwi_ml.gui.utils.window import callback_change_window
 
 TAG_HDF_SCRIPT_PATH = 'hdf5_creation_script'
@@ -34,10 +34,11 @@ def open_menu_create_hdf5():
 
             dpg.add_button(label='<-- Back', callback=callback_change_window,
                            user_data=(hdf5_window, main_window))
+            add_color_legend()
 
             main_title = dpg.add_text(
                 "                                                                "
-                "CREATE A HDF5 DATASET:")
+                "CREATE A HDF5 DATASET:\n\n")
             dpg.add_text("Define here your favorite options. We will prepare a "
                          "bash script using dwiml_create_hdf5_dataset.py")
 
@@ -61,7 +62,7 @@ def open_menu_create_hdf5():
 
             # Ok! Adding all buttons
             groups = get_hdf5_args_groups()
-            add_args_groups_to_gui(groups, known_file_dialogs)
+            add_groups_of_args_to_gui(groups, known_file_dialogs)
 
             dpg.add_text("\n\n\n\n")
             with dpg.group(horizontal=True):

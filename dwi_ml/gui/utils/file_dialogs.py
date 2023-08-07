@@ -5,7 +5,8 @@ import os
 import dearpygui.dearpygui as dpg
 
 from dwi_ml.gui.utils.gui_popup_message import show_infobox
-from dwi_ml.gui.utils.my_styles import get_modified_theme
+from dwi_ml.gui.utils.my_styles import get_modified_theme, INDENT_ITEM, WIDTH_ITEM, \
+    get_required_theme, callback_log_value_change_style
 
 home = os.path.expanduser('~')
 params_file_dialogs = {'width': 700,
@@ -232,9 +233,12 @@ def add_file_dialog_input_group(input_tag, file_dialog_params):
         raise NotImplementedError("Unkown file dialog type.")
 
     # 2. Add input + button
-    dpg.add_input_text(
-        tag=input_tag, indent=600, width=300)
+    item = dpg.add_input_text(
+        tag=input_tag, indent=INDENT_ITEM, width=WIDTH_ITEM - 100,
+        callback=callback_log_value_change_style)
     dpg.add_button(
-        tag=input_tag + FILE_DIALOG_BUTTON_SUFFIX,
-        label='Click to select.', indent=900, width=100,
+        tag=input_tag + FILE_DIALOG_BUTTON_SUFFIX, width=100,
+        label='Click to select.', indent=INDENT_ITEM + WIDTH_ITEM - 100,
         callback=lambda: dpg.show_item(input_tag + FILE_DIALOG_SUFFIX))
+
+    dpg.bind_item_theme(item, get_required_theme())

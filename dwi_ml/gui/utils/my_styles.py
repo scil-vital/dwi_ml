@@ -11,15 +11,20 @@ STYLE_FIXED_WINDOW = {'no_move': True,
                       'pos': [0, 0]
                       }
 
+WINDOW_WIDTH = 1300
+
 INDENT_ARGPARSE_NAME = 40
-INDENT_ITEM = 600
-INDENT_MORE_NARG = 1100
+INDENT_ITEM = 550
 WIDTH_ITEM = 400
+
+INDENT_SET_IT_OPTION = INDENT_ITEM + WIDTH_ITEM + 10
+INDENT_MORE_NARG = INDENT_SET_IT_OPTION + 100
+
 STYLE_ARGPARSE_HELP = {
     'indent': 100,
     'color': (151, 151, 151, 255)
 }
-NB_DOTS = 140
+NB_DOTS = 115
 
 # Defining a few colors. For help, use dpg.show_style_editor()
 # 4th value = alpha
@@ -37,11 +42,36 @@ required_red = (242, 8, 8, 255)
 
 # Defining values that will be used as global constants to avoid re-defining
 # many times the same theme for each item.
-global_non_modified_theme = None
 global_modified_theme = None
-global_none_theme = None
+global_non_modified_theme = None
 global_required_theme = None
 global_fonts = None
+
+
+def add_color_legend():
+    dpg.add_text("Values in red are required",
+                 color=required_red, indent=WINDOW_WIDTH - 300)
+    dpg.add_text("Values in purple already have been set.",
+                 color=chosen_purple, indent=WINDOW_WIDTH - 300)
+
+
+def callback_log_value_change_style(sender, app_data, _):
+    """
+    Callback intended for input items belonging to a mutually exclusive group.
+    By default, they are always optional and thus are associated to a default
+    checkbox.
+    """
+    if str(dpg.get_item_type(sender)) == 'mvAppItemType::mvCheckbox':
+        # Checkbox.
+        raise NotImplementedError("We have not prepared this callback for "
+                                  "checkbox values.")
+    else:
+        if app_data is None or app_data == '':
+            # User has deleted the value. Required again.
+            dpg.bind_item_theme(sender, get_required_theme())
+        else:
+            # User has entered some value
+            dpg.bind_item_theme(sender, get_modified_theme())
 
 
 def _create_item_theme(color):
@@ -52,25 +82,18 @@ def _create_item_theme(color):
     return link_theme
 
 
-def get_non_modified_theme() -> int:
-    global global_non_modified_theme
-    if global_non_modified_theme is None:
-        global_non_modified_theme = _create_item_theme(light_gray)
-    return global_non_modified_theme
-
-
-def get_none_theme() -> int:
-    global global_none_theme
-    if global_none_theme is None:
-        global_none_theme = _create_item_theme(gray)
-    return global_none_theme
-
-
 def get_modified_theme() -> int:
     global global_modified_theme
     if global_modified_theme is None:
         global_modified_theme = _create_item_theme(chosen_purple)
     return global_modified_theme
+
+
+def get_non_modified_theme() -> int:
+    global global_non_modified_theme
+    if global_non_modified_theme is None:
+        global_non_modified_theme = _create_item_theme(gray)
+    return global_non_modified_theme
 
 
 def get_required_theme() -> int:
@@ -106,6 +129,7 @@ def get_my_fonts_dictionary():
 def get_global_theme():
     # Copied from :
     # https://github.com/hoffstadt/DearPyGui_Ext/blob/master/dearpygui_ext/themes.py
+    # dpg.show_style_editor()
 
     with dpg.theme() as global_theme:
         with dpg.theme_component(0):
@@ -136,7 +160,7 @@ def get_global_theme():
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, light_gray)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabActive, light_gray)
 
-            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, blue_hover)
+            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, chosen_purple)
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, blue_hover)
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, blue_hover)
             dpg.add_theme_color(dpg.mvThemeCol_Button, blue_background)

@@ -37,13 +37,14 @@ def get_all_groups_transformers():
         'Transformer: Embedding of the input (X)' + info_embedding:
             args_input_embedding,
         'Transformer: Neighborhood':
-            AbstractTransformerModel.get_neighborhood_args_to_parser(),
+            AbstractTransformerModel.get_neighborhood_args(),
         'Transformer: Embedding of the target (Y)' + info_target: args_target,
         'Transformer: Main layer params': args_main_layer,
         'Transformer: Output': AbstractTransformerModel.get_args_tracking_model(),
         'Others': get_logging_arg(),
     }
 
+    print(groups)
     assert_no_same_args(groups.values(),
                         'IMPLEMENTATION ERROR. Twice the same variable')
 

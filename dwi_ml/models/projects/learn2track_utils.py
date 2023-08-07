@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import argparse
-
 from dwi_ml.arg_utils import get_memory_args, assert_no_same_args, get_logging_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.utils.batch_loaders import get_args_batch_loader
@@ -17,10 +15,6 @@ def get_all_args_groups_learn2track():
             'type': float,
             'help': "Value to which the gradient norms to avoid exploding "
                     "gradients. \nDefault = None (not clipping)."}})
-
-    not_grouped = get_logging_arg()
-    # Step size / compress:
-    not_grouped.update(Learn2TrackModel.get_args_main_model())
 
     args_input_data, args_rnn = get_l2t_args()
     groups = {
@@ -40,7 +34,7 @@ def get_all_args_groups_learn2track():
         'Learn2track: Main layer params': args_rnn,
         'Learn2track model: Direction Getter options':
             Learn2TrackModel.get_args_tracking_model(),
-        'Other': not_grouped
+        'Others': get_logging_arg()
     }
 
     assert_no_same_args(groups.values(),

@@ -30,14 +30,14 @@ def assert_no_same_args(list_of_args_dict, msg):
     arg_groups: a dict of dicts of args: {str: {str: parser_or_gui_dict}}
     """
 
-    old_arg_names = []
+    all_arg_names = []
     for args_dict in list_of_args_dict:
         new_arg_names = variable_names(args_dict)
-        old_arg_names.extend(new_arg_names)
+        all_arg_names.extend(new_arg_names)
 
-    old_arg_names_unique = set(old_arg_names)
+    old_arg_names_unique = set(all_arg_names)
 
-    assert len(old_arg_names_unique) == len(old_arg_names), msg
+    assert len(old_arg_names_unique) == len(all_arg_names), msg
 
 
 def get_logging_arg():

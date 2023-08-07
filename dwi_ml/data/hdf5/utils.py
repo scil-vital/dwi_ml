@@ -29,18 +29,18 @@ def _main_hdf5_creation_args():
     # Positional arguments
     args = {
         'dwi_ml_ready_folder': {
-            'help': "Path to the folder containing the data. Should follow "
-                    "description \nin our doc, here: "
+            'help': "Path to the folder containing the data. Should follow \n"
+                    "description in our doc, here: \n"
                     "https://dwi-ml.readthedocs.io/en/latest/creating_hdf5.html"},
         'out_hdf5_file': {
-            'help': "Path and name of the output hdf5 file. If "
-                    "--save_intermediate is set, the \nintermediate files "
-                    "will be saved in the same location, in a folder "
-                    "name based \non date and hour of creation."},
+            'help': "Path and name of the output hdf5 file. \nIf "
+                    "--save_intermediate is set, the intermediate files "
+                    "will \nbe saved in the same location, in a folder "
+                    "name based on the \ndate and hour of creation."},
         'config_file': {
             'help': "Path to the json config file defining the groups "
-                    "wanted in your hdf5. Should \nfollow description in our "
-                    "doc, here: \n https://dwi-ml.readthedocs.io/en/latest/"
+                    "wanted in \nyour hdf5. Should follow description in our "
+                    "doc, here: \nhttps://dwi-ml.readthedocs.io/en/latest/"
                     "creating_hdf5.html"},
         'training_subjs': {
             'help': "A text file containing the list of subjects ids to use "
@@ -54,12 +54,12 @@ def _main_hdf5_creation_args():
         '--do_not_verify_files_presence': {
             'action': 'store_false', 'dest': 'enforce_files_presence',
             'help': 'By default, the process will stop if one file is '
-                    'missing for a subject. Use this to \nskip. P.S. Checks are '
-                    'not made for option "ALL" for streamline groups.'},
+                    'missing for \na subject. Use this to skip. P.S. Checks are '
+                    'not made for \noption "ALL" for streamline groups.'},
         '--save_intermediate': {
             'action': "store_true",
             'help': "If set, save intermediate processing files for each "
-                    "subject inside the hdf5 folder, \nin sub-folders named "
+                    "subject \ninside the hdf5 folder, in sub-folders named "
                     "subjid_intermediate."
         }
     }
@@ -71,11 +71,11 @@ def _mri_processing_args():
         '--std_mask': {
             'nargs': '+', 'metavar': 'm',
             'help': "Mask defining the voxels used for data standardization. "
-                    "Should be the name of a \nfile inside each "
-                    "dwi_ml_ready/{subj_id}. You may add wildcards (*) that "
-                    "will \nbe replaced by the subject's id. If none is "
-                    "given, all non-zero voxels will be used. \n"
-                    "If more than one are given, masks will be combined."}
+                    "Should \nbe the name of a file inside each "
+                    "dwi_ml_ready/{subj_id}. You \nmay add wildcards (*) that "
+                    "will be replaced by the subject's id. \nIf none is "
+                    "given, all non-zero voxels will be used. "
+                    "If more \nthan one are given, masks will be combined."}
     }
     return args
 
@@ -85,16 +85,16 @@ def _streamline_processing_args():
         '--compute_connectivity_matrix': {
             'action': 'store_true',
             'help': "If set, computes the 3D connectivity matrix for each "
-                    "streamline group. Defined \nfrom downsampled image (i.e. "
+                    "streamline \ngroup. Defined from downsampled image (i.e. "
                     "block, not from anatomy! \n"
-                    "Hint: can be used at validation time with our trainer's "
+                    "Hint: can be used at validation time with our trainer's \n"
                     "'generation-validation' step."},
         '--connectivity_downsample_size': {
             'metavar': 'm', 'type': int, 'nargs': '+',
             'help': "Number of 3D blocks (m x m x m) for the connectivity "
-                    "matrix. (The matrix \nwill be m^3 x m^3). If more than "
-                    "one values are provided, expected to be one \nper "
-                    "dimension. Default if not set: 20x20x20."}
+                    "matrix. \n(The matrix will be m^3 x m^3). If more than "
+                    "one values are \nprovided, expected to be one per "
+                    "dimension. \nDefault if not set: 20x20x20."}
     }
     args.update(get_resample_or_compress_arg())
     return args

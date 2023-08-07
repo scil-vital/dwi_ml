@@ -3,7 +3,7 @@ from typing import Dict
 
 import dearpygui.dearpygui as dpg
 
-from dwi_ml.gui.utils.argparse_input_types import CHECKBOX_SUFFIX
+from dwi_ml.gui.utils.argparse_to_gui import CHECKBOX_SUFFIX
 from dwi_ml.gui.utils.gui_popup_message import show_infobox
 
 

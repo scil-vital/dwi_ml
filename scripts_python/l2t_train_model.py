@@ -29,7 +29,7 @@ from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
                                                  prepare_batch_loader)
 from dwi_ml.training.utils.experiment import (
-    add_mandatory_args_training_experiment)
+    add_mandatory_args_experiment_and_hdf5_path)
 from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
     format_lr
 
@@ -37,7 +37,7 @@ from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    add_mandatory_args_training_experiment(p)
+    add_mandatory_args_experiment_and_hdf5_path(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     training_group = add_training_args(p, add_a_tracking_validation_phase=True)

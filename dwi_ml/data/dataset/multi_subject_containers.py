@@ -391,7 +391,7 @@ class MultiSubjectDataset:
             'testing', hdf5_file, self.is_lazy, cache_size)
 
     @property
-    def params(self) -> Dict[str, Any]:
+    def params_for_checkpoint(self) -> Dict[str, Any]:
         # Params for init:
         all_params = {
             'hdf5_file': self.hdf5_file,

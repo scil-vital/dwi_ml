@@ -214,8 +214,8 @@ class DWIMLAbstractTrainer:
                 os.mkdir(self.saving_path)
                 os.mkdir(self.log_dir)
 
-        assert np.all([param == self.batch_loader.dataset.params[key] for
-                       key, param in self.batch_sampler.dataset.params.items()])
+        assert np.all([param == self.batch_loader.dataset.params_for_checkpoint[key] for
+                       key, param in self.batch_sampler.dataset.params_for_checkpoint.items()])
         if self.batch_sampler.dataset.validation_set.nb_subjects == 0:
             self.use_validation = False
             logger.warning(
@@ -426,7 +426,7 @@ class DWIMLAbstractTrainer:
         # Additional params are the parameters necessary to load data, batch
         # samplers/loaders (see the example script dwiml_train_model.py).
         checkpoint_info = {
-            'dataset_params': self.batch_sampler.dataset.params,
+            'dataset_params': self.batch_sampler.dataset.params_for_checkpoint,
             'batch_sampler_params': self.batch_sampler.params_for_checkpoint,
             'batch_loader_params': self.batch_loader.params_for_checkpoint,
             'params_for_init': self.params_for_checkpoint,

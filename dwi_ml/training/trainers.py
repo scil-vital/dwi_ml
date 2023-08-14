@@ -54,7 +54,7 @@ class DWIMLAbstractTrainer:
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
                  learning_rates: Union[List, float] = None,
-                 lr_decrease_params: Tuple[int, int] = None,
+                 lr_decrease_params: Tuple[float, float] = None,
                  weight_decay: float = 0.01,
                  optimizer: str = 'Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
@@ -86,7 +86,7 @@ class DWIMLAbstractTrainer:
             torch's default, 0.001). A list [0.01, 0.01, 0.001], for instance,
             would use these values for the first 3 epochs, and keep the final
             value for remaining epochs.
-        lr_decrease_params: Tuple[int, int]
+        lr_decrease_params: Tuple[float, float]
             Parameters [E, L] to set the learning rate an exponential decreasing
             curve. The final curve will be init_lr * exp(-x / r). The rate of
             decrease, r, is defined in order to ensure that the learning rate
@@ -152,9 +152,15 @@ class DWIMLAbstractTrainer:
 
         # Learning rate:
         if lr_decrease_params is not None:
-            assert isinstance(learning_rates, float)
+            assert isinstance(learning_rates, float), \
+                "To use lr_decrease_params, the learning_rate cannot be a " \
+                "list of learning rates. Expecting a single float value, but " \
+                "got {}".format(learning_rates)
             self.initial_lr = learning_rates   # Initial value
             x, y = lr_decrease_params
+            assert x.is_integer(), \
+                "First value of lr_decrease_params should be an epoch " \
+                "(integer), but got {}".format(x)
             self.lr_decrease_rate = -x / np.log(y / self.initial_lr)
 
         if learning_rates is None:

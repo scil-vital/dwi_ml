@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Union, List
+from typing import Union, List, Tuple
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import numpy as np
@@ -53,7 +53,9 @@ class DWIMLAbstractTrainer:
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
-                 learning_rates: List = None, weight_decay: float = 0.01,
+                 learning_rates: Union[List, float] = None,
+                 lr_decrease_params: Tuple[int, int] = None,
+                 weight_decay: float = 0.01,
                  optimizer: str = 'Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
@@ -84,6 +86,12 @@ class DWIMLAbstractTrainer:
             torch's default, 0.001). A list [0.01, 0.01, 0.001], for instance,
             would use these values for the first 3 epochs, and keep the final
             value for remaining epochs.
+        lr_decrease_params: Tuple[int, int]
+            Parameters [E, L] to set the learning rate an exponential decreasing
+            curve. The final curve will be init_lr * exp(-x / r). The rate of
+            decrease, r, is defined in order to ensure that the learning rate
+            curve will hit value L at epoch E.
+            learning_rates must be a single float value.
         weight_decay: float
             Add a weight decay penalty on the parameters. Default: 0.01.
             (torch's default).
@@ -140,8 +148,15 @@ class DWIMLAbstractTrainer:
         self.comet_project = comet_project
         self.space = 'vox'
         self.origin = 'corner'
+        self.lr_decrease_params = lr_decrease_params
 
         # Learning rate:
+        if lr_decrease_params is not None:
+            assert isinstance(learning_rates, float)
+            self.initial_lr = learning_rates   # Initial value
+            x, y = lr_decrease_params
+            self.lr_decrease_rate = -x / np.log(y / self.initial_lr)
+
         if learning_rates is None:
             self.learning_rates = [0.001]
         elif isinstance(learning_rates, float):
@@ -331,6 +346,7 @@ class DWIMLAbstractTrainer:
         # user to increase the patience when running again.
         params = {
             'learning_rates': self.learning_rates,
+            'lr_decrease_params': self.lr_decrease_params,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
             'max_batches_per_epoch_training': self.max_batches_per_epochs_train,
@@ -648,10 +664,18 @@ class DWIMLAbstractTrainer:
             logger.info("\n\n******* STARTING : Epoch {} (i.e. #{}) *******"
                         .format(epoch, epoch + 1))
 
-            # Set learning rate to either current value or last value
-            current_lr = self.learning_rates[
-                min(self.current_epoch, len(self.learning_rates) - 1)]
+            # Computing learning rate
+            if self.lr_decrease_params is not None:
+                # Exponential decrease
+                current_lr = self.initial_lr * np.exp(-epoch/self.lr_decrease_rate)
+            else:
+                # User-given values
+                current_lr = self.learning_rates[
+                    min(self.current_epoch, len(self.learning_rates) - 1)]
             logger.info("Learning rate = {}".format(current_lr))
+            if self.comet_exp:
+                self.comet_exp.log_metric("learning_rate", current_lr, step=epoch)
+
             for g in self.optimizer.param_groups:
                 g['lr'] = current_lr
 

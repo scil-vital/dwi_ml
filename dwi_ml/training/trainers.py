@@ -335,8 +335,7 @@ class DWIMLAbstractTrainer:
             cls = torch.optim.SGD
 
         # Learning rate will be set at each epoch.
-        self.optimizer = cls(self.model.parameters(),
-                             weight_decay=weight_decay)
+        self.optimizer = cls(self.model.parameters(), weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
@@ -494,12 +493,15 @@ class DWIMLAbstractTrainer:
 
         if new_patience:
             trainer.best_epoch_monitor.patience = new_patience
-        logger.info("Starting from checkpoint! Starting from epoch #{}.\n"
-                    "Previous best model was discovered at epoch #{}.\n"
+        logger.info("Starting from checkpoint! Starting from epoch #{} "
+                    "(i.e. #{}).\n"
+                    "Previous best model was discovered at epoch {} (#{}).\n"
                     "When finishing previously, we were counting {} epochs "
                     "with no improvement."
                     .format(trainer.current_epoch,
+                            trainer.current_epoch + 1,
                             trainer.best_epoch_monitor.best_epoch,
+                            trainer.best_epoch_monitor.best_epoch + 1,
                             trainer.best_epoch_monitor.n_bad_epochs))
 
         return trainer
@@ -722,10 +724,11 @@ class DWIMLAbstractTrainer:
             if self.best_epoch_monitor.is_patience_reached:
                 logger.warning(
                     "Early stopping! Loss has not improved after {} epochs!\n"
-                    "Best result: {}; At epoch #{}"
+                    "Best result: {}; At epoch #{} (i.e. {})"
                     .format(self.best_epoch_monitor.patience,
                             self.best_epoch_monitor.best_value,
-                            self.best_epoch_monitor.best_epoch))
+                            self.best_epoch_monitor.best_epoch,
+                            self.best_epoch_monitor.best_epoch + 1))
                 break
 
     def _get_latest_loss_to_supervise_best(self):

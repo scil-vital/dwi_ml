@@ -11,7 +11,17 @@ sphere_choices = ['symmetric362', 'symmetric642', 'symmetric724',
 
 
 def add_transformers_model_args(p):
-    """ Optional parameters for TransformingTractography"""
+    """ Parameters for TransformingTractography"""
+    # Mandatory args
+    p.add_argument(
+        'input_group_name',
+        help='Name of the input volume in the hdf5 dataset.')
+    p.add_argument(
+        'streamline_group_name',
+        help="Name of the streamlines group in the hdf5 dataset.")
+
+    # Optional args
+
     # Step_size / compress
     AbstractTransformerModel.add_args_main_model(p)
 

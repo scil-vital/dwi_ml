@@ -1,24 +1,17 @@
 # -*- coding: utf-8 -*-
 
 
-def add_mandatory_args_training_experiment(p):
+def add_mandatory_args_experiment_and_hdf5_path(p):
     p.add_argument(
         'experiments_path',
         help='Path where to save your experiment. \nComplete path will be '
              'experiments_path/experiment_name.')
     p.add_argument(
         'experiment_name',
-        help='If given, name for the experiment.')
+        help='Name for the experiment.')
     p.add_argument(
         'hdf5_file',
-        help='Path to the .hdf5 dataset. Should contain both your training \n'
-             'and validation subjects.')
-    p.add_argument(
-        'input_group_name',
-        help='Name of the input volume in the hdf5 dataset.')
-    p.add_argument(
-        'streamline_group_name',
-        help="Name of the streamlines group in the hdf5 dataset.")
+        help='Path to the .hdf5 dataset.')
 
 
 def add_args_resuming_experiment(p):
@@ -27,7 +20,10 @@ def add_args_resuming_experiment(p):
                         'save new results.\nComplete path will be '
                         'experiments_path/experiment_name.')
     p.add_argument('experiment_name',
-                   help='If given, name for the experiment.')
+                   help='Name of the experiment.')
+    p.add_argument('--hdf5_file',
+                   help='Path to the .hdf5 dataset. If not given, uses the '
+                        'same file as in the first portion of training.')
 
     p.add_argument('--new_patience', type=int, metavar='new_p',
                    help='If a checkpoint exists, patience can be increased '

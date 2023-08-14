@@ -41,8 +41,11 @@ def init_from_checkpoint(args, checkpoint_path):
         checkpoint_state, args.new_patience, args.new_max_epochs)
 
     # Prepare data
-    args_data = argparse.Namespace(**checkpoint_state['dataset_params'])
-    dataset = prepare_multisubjectdataset(args_data)
+    args_data = checkpoint_state['dataset_params']
+    if args.hdf5_file is not None:
+        # Using another hdf5 file
+        args_data['hdf5_file'] = args.hdf5_file
+    dataset = prepare_multisubjectdataset(argparse.Namespace(**args_data))
 
     # Setting log level to INFO maximum for sub-loggers, else it become ugly
     sub_loggers_level = args.logging

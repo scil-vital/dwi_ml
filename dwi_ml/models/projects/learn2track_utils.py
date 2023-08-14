@@ -6,6 +6,16 @@ from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 
 
 def add_model_args(p: argparse.ArgumentParser):
+    # Mandatory args
+    p.add_argument(
+        'input_group_name',
+        help='Name of the input volume in the hdf5 dataset.')
+    p.add_argument(
+        'streamline_group_name',
+        help="Name of the streamlines group in the hdf5 dataset.")
+
+    # Optional args
+
     # Step_size / compress
     Learn2TrackModel.add_args_main_model(p)
     

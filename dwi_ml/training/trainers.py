@@ -832,7 +832,10 @@ class DWIMLAbstractTrainer:
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
                 with grad_context():
-                    mean_loss = self.train_one_batch(data, epoch)
+                    mean_loss = self.train_one_batch(data)
+
+                if batch_id == 25:
+                    exit(1)
 
                 grad_norm = self.back_propagation(mean_loss)
                 self.grad_norm_monitor.update(grad_norm)
@@ -897,15 +900,14 @@ class DWIMLAbstractTrainer:
             monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
 
-    def train_one_batch(self, data, epoch):
+    def train_one_batch(self, data):
         """
         Computes the loss for the current batch and updates monitors.
         Returns the loss to be used for backpropagation.
         """
         # Encapsulated for easier management of child classes.
         mean_local_loss, n = self.run_one_batch(data)
-        self.train_loss_monitor.update(mean_local_loss.cpu().item(),
-                                       weight=n)
+        self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
     def validate_one_batch(self, data, epoch):
@@ -1061,6 +1063,7 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
+    @profile
     def run_one_batch(self, data, average_results=True):
         """
         Run a batch of data through the model (calling its forward method)

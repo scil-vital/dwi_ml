@@ -170,7 +170,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             assert self.forward_uses_streamlines
         assert self.loss_uses_streamlines
 
-        self.forward_uses_streamlines = True
+        if self.start_from_copy_prev:
+            self.forward_uses_streamlines = True
 
     def set_context(self, context):
         assert context in ['training', 'validation', 'tracking', 'visu',
@@ -197,6 +198,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         return params
 
+    @profile
     def forward(self, inputs: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
                 hidden_recurrent_states: tuple = None, return_hidden=False,
@@ -249,21 +251,25 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         unsorted_indices = None
         if not self._context == 'tracking':
             # Ordering streamlines per length.
-            lengths = torch.as_tensor([len(s) for s in input_streamlines])
+            lengths = torch.as_tensor([len(s) for s in inputs])
             _, sorted_indices = torch.sort(lengths, descending=True)
             unsorted_indices = invert_permutation(sorted_indices)
-            input_streamlines = [input_streamlines[i] for i in sorted_indices]
             inputs = [inputs[i] for i in sorted_indices]
+            if input_streamlines is not None:
+                input_streamlines = [input_streamlines[i] for i in sorted_indices]
 
         # ==== 0. Previous dirs.
-        dirs = compute_directions(input_streamlines)
-        if self.normalize_prev_dirs:
-            dirs = normalize_directions(dirs)
+        dirs = None
+        if self.nb_previous_dirs > 0 or self.start_from_copy_prev:
+            dirs = compute_directions(input_streamlines)
+            if self.normalize_prev_dirs:
+                dirs = normalize_directions(dirs)
 
         # Formatting the n previous dirs for last point or all
-        n_prev_dirs = compute_n_previous_dirs(
-            dirs, self.nb_previous_dirs, point_idx=point_idx,
-            device=self.device)
+        n_prev_dirs = None
+        if self.nb_previous_dirs > 0 or self.start_from_copy_prev:
+            n_prev_dirs = compute_n_previous_dirs(
+                dirs, self.nb_previous_dirs, point_idx=point_idx)
 
         # Start from copy prev option.
         copy_prev_dir = 0.0
@@ -276,8 +282,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             # Shape: (nb_points - 1) per streamline x (3 per prev dir)
             n_prev_dirs = self.prev_dirs_embedding(n_prev_dirs.data)
             n_prev_dirs = self.embedding_dropout(n_prev_dirs)
-        else:
-            n_prev_dirs = None
 
         # ==== 2. Inputs embedding ====
         inputs = pack_sequence(inputs)

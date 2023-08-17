@@ -30,8 +30,7 @@ from dwi_ml.tracking.projects.learn2track_tracker import RecurrentTracker
 from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.projects.utils import (add_tracking_options,
                                             prepare_seed_generator,
-                                            prepare_tracking_mask, track_and_save,
-                                            APPEND_LAST_POINT)
+                                            prepare_tracking_mask, track_and_save)
 
 
 def build_argparser():

@@ -20,11 +20,6 @@ from dwi_ml.tracking.tracker import DWIMLAbstractTracker
 ALWAYS_VOX_SPACE = Space.VOX
 ALWAYS_CORNER = Origin('corner')
 
-# A decision should be made as if we should keep the last point (out of the
-# tracking mask). Currently keeping this as in Dipy, i.e. True. Could be
-# an option for the user.
-APPEND_LAST_POINT = True  # See here: https://github.com/dipy/dipy/discussions/2764
-
 
 def add_tracking_options(p):
 

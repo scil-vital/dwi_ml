@@ -834,9 +834,6 @@ class DWIMLAbstractTrainer:
                 with grad_context():
                     mean_loss = self.train_one_batch(data)
 
-                if batch_id == 25:
-                    exit(1)
-
                 grad_norm = self.back_propagation(mean_loss)
                 self.grad_norm_monitor.update(grad_norm)
 
@@ -1063,7 +1060,6 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    @profile
     def run_one_batch(self, data, average_results=True):
         """
         Run a batch of data through the model (calling its forward method)
@@ -1104,9 +1100,12 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         streamlines_f = targets
         if isinstance(self.model, ModelWithDirectionGetter) and \
                 not self.model.direction_getter.add_eos:
-            # We don't use the last coord because it does not have an
+            # No EOS = We don't use the last coord because it does not have an
             # associated target direction.
             streamlines_f = [s[:-1, :] for s in streamlines_f]
+
+        # Batch inputs is already the right length. Models don't need to
+        # discard the last point if no EOS. Avoid interpolation for no reason.
         batch_inputs = self.batch_loader.load_batch_inputs(
             streamlines_f, ids_per_subj)
 

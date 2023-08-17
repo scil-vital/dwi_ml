@@ -96,6 +96,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         super().__init__()
 
         self.input_size = input_size
+        self.output_size = None
         self.device = None
         self.add_eos = add_eos
         self.compress_loss = compress_loss
@@ -336,10 +337,11 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
         """
         super().__init__(**kwargs)
 
-        output_size = 3  # x, y, z direction.
+        self.output_size = 3  # x, y, z direction.
         if self.add_eos:
-            output_size = 4  # + EOS choice.
-        self.layers = init_2layer_fully_connected(self.input_size, output_size)
+            self.output_size = 4  # + EOS choice.
+        self.layers = init_2layer_fully_connected(self.input_size,
+                                                  self.output_size)
         self.normalize_targets = normalize_targets
         self.normalize_outputs = normalize_outputs
 
@@ -535,12 +537,12 @@ class AbstractSphereClassificationDG(AbstractDirectionGetterModel):
         self.sphere_name = sphere
         sphere = dipy.data.get_sphere(sphere)
         self.torch_sphere = TorchSphere(sphere)
-        nb_classes = sphere.vertices.shape[0]
+        self.output_size = sphere.vertices.shape[0]   # nb_classes
 
         # EOS
         if self.add_eos:
-            nb_classes += 1
-            self.eos_class_idx = nb_classes - 1  # Last class. Idx -1.
+            self.output_size += 1
+            self.eos_class_idx = self.output_size - 1  # Last class. Idx -1.
             # During tracking: tried choosing EOS if it's the class with max
             # logit. Seems to be too intense. Could be chosen even if
             # probability is very low (ex: if all 725 classes with sphere
@@ -549,7 +551,8 @@ class AbstractSphereClassificationDG(AbstractDirectionGetterModel):
             # have seen "if more than the sum of all others". Not implemented
             # here, probably even more strict.
 
-        self.layers = init_2layer_fully_connected(self.input_size, nb_classes)
+        self.layers = init_2layer_fully_connected(self.input_size,
+                                                  self.output_size)
 
     def move_to(self, device):
         super().move_to(device)
@@ -788,6 +791,9 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
 
         if self.add_eos:
             raise NotImplementedError
+
+        self.output_size = 6
+
         # toDo:
         # if add_eos_label:
         #     self.layers_eos = init_2layer_fully_connected(input_size, 1)
@@ -908,6 +914,7 @@ class GaussianMixtureDG(AbstractDirectionGetterModel):
         self.layers_sigmas = init_2layer_fully_connected(
             self.input_size, 3 * self.nb_gaussians)
 
+        self.output_size = 7 * self.nb_gaussians
         # Loss will be defined in _compute_loss, using torch distribution
 
     @property
@@ -1063,6 +1070,7 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         self.layers_mean = init_2layer_fully_connected(self.input_size, 3)
         self.layers_kappa = init_2layer_fully_connected(self.input_size, 1)
 
+        self.output_size = 4
         # Loss will be defined in _compute_loss, using torch distribution
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
@@ -1187,6 +1195,8 @@ class FisherVonMisesMixtureDG(AbstractDirectionGetterModel):
                          **kwargs)
 
         self.n_cluster = n_cluster
+        self.output_size = 5 * n_cluster
+
         # toDO
         raise NotImplementedError
 

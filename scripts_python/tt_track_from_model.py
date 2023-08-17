@@ -33,8 +33,7 @@ from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.projects.utils import (add_tracking_options,
                                             prepare_seed_generator,
                                             prepare_tracking_mask,
-                                            track_and_save,
-                                            APPEND_LAST_POINT)
+                                            track_and_save)
 
 
 def build_argparser():
@@ -108,6 +107,7 @@ def prepare_tracker(parser, args):
 
         theta = gm.math.radians(args.theta)
         logging.debug("Instantiating tracker.")
+        append_last_point = not args.discard_last_point
         tracker = TransformerTracker(
             input_volume_group=args.input_group,
             dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
@@ -119,7 +119,7 @@ def prepare_tracker(parser, args):
             step_size_mm=args.step_size, algo=args.algo, theta=theta,
             use_gpu=args.use_gpu, eos_stopping_thresh=args.eos_stop,
             simultaneous_tracking=args.simultaneous_tracking,
-            append_last_point=APPEND_LAST_POINT,
+            append_last_point=append_last_point,
             log_level=args.logging)
 
     return tracker, ref

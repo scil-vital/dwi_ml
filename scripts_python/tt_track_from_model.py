@@ -107,6 +107,7 @@ def prepare_tracker(parser, args):
 
         theta = gm.math.radians(args.theta)
         logging.debug("Instantiating tracker.")
+        append_last_point = not args.discard_last_point
         tracker = TransformerTracker(
             input_volume_group=args.input_group,
             dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
@@ -118,7 +119,7 @@ def prepare_tracker(parser, args):
             step_size_mm=args.step_size, algo=args.algo, theta=theta,
             use_gpu=args.use_gpu, eos_stopping_thresh=args.eos_stop,
             simultaneous_tracking=args.simultaneous_tracking,
-            append_last_point=args.append_last_point,
+            append_last_point=append_last_point,
             log_level=args.logging)
 
     return tracker, ref

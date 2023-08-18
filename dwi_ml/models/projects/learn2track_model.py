@@ -352,7 +352,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # ==== 3. Stacked RNN (on packed sequence, returns a tensor) ====
         # rnn_output shape: nb_pts_total * last_hidden_layer_size
         assert x.data.shape[-1] == self.rnn_model.input_size, \
-            "Expecting input to RNN layer to be of size{}. Got {}" \
+            "Expecting input to RNN layer to be of size {}. Got {}" \
             .format(self.rnn_model.input_size, x.data.shape[-1])
         x, out_hidden_recurrent_states = self.rnn_model(
             x, hidden_recurrent_states)
@@ -361,9 +361,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # direction getter can't get a list of sequences.
         # output will be a tensor, but with same format as input.data.
         # we will get a direction for each point.
-        assert x.data.shape[-1] == self.rnn_model.input_size, \
-            "Expecting input to RNN layer to be of size{}. Got {}" \
-            .format(self.rnn_model.input_size, x.data.shape[-1])
+        assert x.data.shape[-1] == self.direction_getter.input_size, \
+            "Expecting input to direction getter to be of size {}. Got {}" \
+            .format(self.direction_getter.input_size, x.data.shape[-1])
         x = self.direction_getter(x)
 
         # Adding either prev_dir or 0.

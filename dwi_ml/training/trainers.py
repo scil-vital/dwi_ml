@@ -832,7 +832,7 @@ class DWIMLAbstractTrainer:
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
                 with grad_context():
-                    mean_loss = self.train_one_batch(data, epoch)
+                    mean_loss = self.train_one_batch(data)
 
                 grad_norm = self.back_propagation(mean_loss)
                 self.grad_norm_monitor.update(grad_norm)
@@ -897,15 +897,14 @@ class DWIMLAbstractTrainer:
             monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
 
-    def train_one_batch(self, data, epoch):
+    def train_one_batch(self, data):
         """
         Computes the loss for the current batch and updates monitors.
         Returns the loss to be used for backpropagation.
         """
         # Encapsulated for easier management of child classes.
         mean_local_loss, n = self.run_one_batch(data)
-        self.train_loss_monitor.update(mean_local_loss.cpu().item(),
-                                       weight=n)
+        self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
     def validate_one_batch(self, data, epoch):
@@ -1101,9 +1100,12 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         streamlines_f = targets
         if isinstance(self.model, ModelWithDirectionGetter) and \
                 not self.model.direction_getter.add_eos:
-            # We don't use the last coord because it does not have an
+            # No EOS = We don't use the last coord because it does not have an
             # associated target direction.
             streamlines_f = [s[:-1, :] for s in streamlines_f]
+
+        # Batch inputs is already the right length. Models don't need to
+        # discard the last point if no EOS. Avoid interpolation for no reason.
         batch_inputs = self.batch_loader.load_batch_inputs(
             streamlines_f, ids_per_subj)
 

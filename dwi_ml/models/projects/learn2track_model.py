@@ -2,9 +2,9 @@
 import logging
 from typing import Union, List
 
+import numpy as np
 import torch
-from torch.nn.utils.rnn import invert_permutation, PackedSequence, \
-    pack_sequence, unpack_sequence
+from torch.nn.utils.rnn import invert_permutation, PackedSequence, pack_sequence
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions, compute_n_previous_dirs
@@ -18,6 +18,52 @@ from dwi_ml.models.main_models import (
 from dwi_ml.models.projects.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
+
+
+def faster_unpack_sequence(packed_sequence: PackedSequence):
+    # To be used with ordered batch
+    # From my tests, seems to be ~twice faster than
+    # torch.nn.utils.rnn.unpack_sequence
+
+    # Note:
+    # len(batch_size) = max number of points.
+    # sum(batch_size) = total number of points
+    # values in batch_size: ex, [1000, 1000, 3], means that the first
+    # 1000 points are separate lines (we understand that we have 1000 lines).
+    # Then the next 1000 points also are separated lines. Then last 3 points
+    # are separated lines. So out we have 997 lines with 2 points and
+    # 3 with 3 points.
+    nb_lines = packed_sequence.batch_sizes[0]
+
+    # Indices of points of the first line.
+    ind = [-1]
+    for nb_pts in packed_sequence.batch_sizes[:-1]:
+        ind.append(ind[-1] + nb_pts)
+    ind = np.asarray(ind)
+
+    batch = []
+    count_nb_lines_this_size = 0
+    remaining_batch_sizes = packed_sequence.batch_sizes.detach().clone()
+    total_nb_lines_this_size = remaining_batch_sizes[-1]
+    for i in range(nb_lines):
+        count_nb_lines_this_size += 1
+
+        if count_nb_lines_this_size > total_nb_lines_this_size:
+            # Done for lines of this size. Next size:
+            previous_nb = remaining_batch_sizes[-1]
+            while remaining_batch_sizes[-1] == previous_nb:
+                ind = ind[:-1]
+                remaining_batch_sizes = remaining_batch_sizes[:-1]
+
+            count_nb_lines_this_size = 1
+            total_nb_lines_this_size = remaining_batch_sizes[-1] - previous_nb
+
+        ind += 1
+        line = packed_sequence.data[ind]
+        # Note. len(line) == len(remaining_batch_sizes)
+        batch.append(line)
+
+    return batch
 
 
 class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
@@ -170,7 +216,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             assert self.forward_uses_streamlines
         assert self.loss_uses_streamlines
 
-        self.forward_uses_streamlines = True
+        if self.start_from_copy_prev:
+            self.forward_uses_streamlines = True
 
     def set_context(self, context):
         assert context in ['training', 'validation', 'tracking', 'visu',
@@ -197,7 +244,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         return params
 
-    def forward(self, inputs: List[torch.tensor],
+    def forward(self, x: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
                 hidden_recurrent_states: tuple = None, return_hidden=False,
                 point_idx: int = None):
@@ -205,7 +252,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         Parameters
         ----------
-        inputs: List[torch.tensor]
+        x: List[torch.tensor]
             Batch of input sequences, i.e. MRI data. Length of the list is the
             number of streamlines in the batch. Each tensor is of size
             [nb_points, nb_features]. During training, should be the length of
@@ -238,32 +285,36 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             raise ValueError("Please set context before usage.")
 
         # Verifying the first input
-        assert inputs[0].shape[-1] == self.input_size, \
+        assert x[0].shape[-1] == self.input_size, \
             "Not the expected input size! Should be {} (i.e. {} features for " \
             "each {} neighbor), but got {} (input shape {})." \
             .format(self.input_size, self.nb_features, self.nb_neighbors + 1,
-                    inputs[0].shape[-1], inputs[0].shape)
+                    x[0].shape[-1], x[0].shape)
 
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.
         unsorted_indices = None
         if not self._context == 'tracking':
             # Ordering streamlines per length.
-            lengths = torch.as_tensor([len(s) for s in input_streamlines])
+            lengths = torch.as_tensor([len(s) for s in x])
             _, sorted_indices = torch.sort(lengths, descending=True)
             unsorted_indices = invert_permutation(sorted_indices)
-            input_streamlines = [input_streamlines[i] for i in sorted_indices]
-            inputs = [inputs[i] for i in sorted_indices]
+            x = [x[i] for i in sorted_indices]
+            if input_streamlines is not None:
+                input_streamlines = [input_streamlines[i] for i in sorted_indices]
 
         # ==== 0. Previous dirs.
-        dirs = compute_directions(input_streamlines)
-        if self.normalize_prev_dirs:
-            dirs = normalize_directions(dirs)
+        dirs = None
+        if self.nb_previous_dirs > 0 or self.start_from_copy_prev:
+            dirs = compute_directions(input_streamlines)
+            if self.normalize_prev_dirs:
+                dirs = normalize_directions(dirs)
 
         # Formatting the n previous dirs for last point or all
-        n_prev_dirs = compute_n_previous_dirs(
-            dirs, self.nb_previous_dirs, point_idx=point_idx,
-            device=self.device)
+        n_prev_dirs = None
+        if self.nb_previous_dirs > 0 or self.start_from_copy_prev:
+            n_prev_dirs = compute_n_previous_dirs(
+                dirs, self.nb_previous_dirs, point_idx=point_idx)
 
         # Start from copy prev option.
         copy_prev_dir = 0.0
@@ -276,47 +327,58 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             # Shape: (nb_points - 1) per streamline x (3 per prev dir)
             n_prev_dirs = self.prev_dirs_embedding(n_prev_dirs.data)
             n_prev_dirs = self.embedding_dropout(n_prev_dirs)
-        else:
-            n_prev_dirs = None
 
         # ==== 2. Inputs embedding ====
-        inputs = pack_sequence(inputs)
-        batch_sizes = inputs.batch_sizes
+        x = pack_sequence(x)
+        batch_sizes = x.batch_sizes
 
         # Avoiding unpacking and packing back if not needed.
+        # Input + prev dir embedding required if it's not NoEmbedding.
         if self.nb_previous_dirs > 0 or not isinstance(
                 self.input_embedding, NoEmbedding):
 
             # Embedding. Shape of inputs: nb_pts_total * embedding_size
-            inputs = self.input_embedding(inputs.data)
-            inputs = self.embedding_dropout(inputs)
+            x = self.input_embedding(x.data)
+            x = self.embedding_dropout(x)
 
             # ==== 3. Concat with previous dirs ====
             if self.nb_previous_dirs > 0:
-                inputs = torch.cat((inputs, n_prev_dirs), dim=-1)
+                x = torch.cat((x, n_prev_dirs), dim=-1)
 
             # Shaping again as packed sequence.
             # Shape of inputs.data: nb_pts_total * embedding_size_total
-            inputs = PackedSequence(inputs, batch_sizes)
+            x = PackedSequence(x, batch_sizes)
 
         # ==== 3. Stacked RNN (on packed sequence, returns a tensor) ====
         # rnn_output shape: nb_pts_total * last_hidden_layer_size
-        rnn_output, out_hidden_recurrent_states = self.rnn_model(
-            inputs, hidden_recurrent_states)
+        assert x.data.shape[-1] == self.rnn_model.input_size, \
+            "Expecting input to RNN layer to be of size {}. Got {}" \
+            .format(self.rnn_model.input_size, x.data.shape[-1])
+        x, out_hidden_recurrent_states = self.rnn_model(
+            x, hidden_recurrent_states)
 
         logger.debug("*** 5. Direction getter....")
         # direction getter can't get a list of sequences.
         # output will be a tensor, but with same format as input.data.
         # we will get a direction for each point.
-        model_outputs = self.direction_getter(rnn_output)
-        model_outputs = copy_prev_dir + model_outputs
+        assert x.data.shape[-1] == self.direction_getter.input_size, \
+            "Expecting input to direction getter to be of size {}. Got {}" \
+            .format(self.direction_getter.input_size, x.data.shape[-1])
+        x = self.direction_getter(x)
+
+        # Adding either prev_dir or 0.
+        x = x + copy_prev_dir
 
         # Unpacking.
         if not self._context == 'tracking':
             # (during tracking: keeping as one single tensor.)
-            model_outputs = PackedSequence(model_outputs, batch_sizes)
-            model_outputs = unpack_sequence(model_outputs)
-            model_outputs = [model_outputs[i] for i in unsorted_indices]
+            x = PackedSequence(x, batch_sizes)
+            x = faster_unpack_sequence(x)
+            x = [x[i] for i in unsorted_indices]
+
+        assert x[0].shape[-1] == self.direction_getter.output_size, \
+            "Expecting output size of {}. Got {}" \
+            .format(self.direction_getter.output_size, x[0].shape[-1])
 
         if return_hidden:
             # Return the hidden states too. Necessary for the generative
@@ -335,9 +397,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                     out_hidden_recurrent_states = [
                         layer_states[:, unsorted_indices, :] for
                         layer_states in out_hidden_recurrent_states]
-            return model_outputs, out_hidden_recurrent_states
+            return x, out_hidden_recurrent_states
         else:
-            return model_outputs
+            return x
 
     def copy_prev_dir(self, dirs, n_prev_dirs):
         if 'regression' in self.dg_key:

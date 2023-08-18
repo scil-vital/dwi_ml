@@ -11,7 +11,7 @@ DEFAULT_UNEXISTING_VAL = torch.zeros((1, 3), dtype=torch.float32)
 
 def compute_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
                             unexisting_val=DEFAULT_UNEXISTING_VAL,
-                            device=torch.device('cpu'), point_idx=None):
+                            point_idx=None):
     """
     Params
     ------
@@ -45,6 +45,7 @@ def compute_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
              Where dirx is a "non-existing dir" (typically, [0,0,0])
              The length of each row (...) is self.nb_previous_dirs.
     """
+    device = streamlines_dirs[0].device
     if nb_previous_dirs == 0:
         return None
 
@@ -60,32 +61,31 @@ def compute_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
     return prev_dirs
 
 
-def _get_all_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
-                             unexisting_val):
-    """
-    Summary: Builds vertically:
-    first prev dir    |        second prev dir      | ...
+def _get_all_n_previous_dirs(streamlines_dirs: List[torch.Tensor],
+                             nb_previous_dirs: int,
+                             unexisting_val: torch.Tensor):
+    # NOT USED.
+    # More intuitive than v1, but...
+    # We have seen that this can be up two 12 times slower.
 
-    Non-existing val:
-    (0,0,0)           |         (0,0,0)             |   (0,0,0)
-      -               |         (0,0,0)             |   (0,0,0)
-      -               |           -                 |   (0,0,0)
+    previous_dirs = [None] * len(streamlines_dirs)
+    for i, dirs in enumerate(streamlines_dirs):
+        nb_points = len(dirs) + 1
+        previous_dirs[i] = \
+            torch.zeros((nb_points, nb_previous_dirs * 3),
+                        device=streamlines_dirs[0].device)
 
-    + concat other vals:
-     -                |            -                |  -
-     dir_1            |            -                |  -
-     dir_2            |           dir_1             |  -
-    """
-    n_previous_dirs = [
-        torch.cat([
-            torch.cat(
-                (unexisting_val.repeat(min(len(dirs) + 1, i), 1),
-                 dirs[:max(0, len(dirs) - i + 1)]))
-            for i in range(1, nb_previous_dirs + 1)], dim=1)
-        for dirs in streamlines_dirs
-    ]
+        no_n_prev_dirs = dirs
+        for n in range(nb_previous_dirs):
+            # The n^e previous dir is just the list of dirs, shifted right
+            if n > 0:
+                no_n_prev_dirs = torch.cat((unexisting_val, no_n_prev_dirs[:-1,:]))
+            else:
+                no_n_prev_dirs = torch.cat((unexisting_val, no_n_prev_dirs))
 
-    return n_previous_dirs
+            previous_dirs[i][:, n*3:n*3+3] = no_n_prev_dirs
+
+    return previous_dirs
 
 
 def _get_one_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
@@ -101,12 +101,13 @@ def _get_one_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
         torch.cat([
             dirs[point_idx - i][None, :] if (point_idx >= 0 and i <= point_idx)
             else dirs[point_idx - i + 1][None, :] if (
-                point_idx < 0 and i <= len(dirs) + 1 + point_idx)
+                    point_idx < 0 and i <= len(dirs) + 1 + point_idx)
             else unexisting_val
             for i in range(1, nb_previous_dirs + 1)], dim=1)
         for dirs in streamlines_dirs
     ]
     return n_previous_dirs
+
 
 
 def compute_directions(streamlines):

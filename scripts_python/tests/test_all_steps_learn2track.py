@@ -61,6 +61,8 @@ def test_training(script_runner, experiments_path):
                                 experiments_path, 'test_l2t_gpu', hdf5_file,
                                 input_group_name, streamline_group_name,
                                 '--max_epochs', '1', '--step_size', '0.5',
+                                '--learning_rate', '0.002',
+                                '--lr_decrease_params', '50', '0.001',
                                 '--batch_size_training', '5',
                                 '--batch_size_validation', '5',
                                 '--batch_size_units', 'nb_streamlines',

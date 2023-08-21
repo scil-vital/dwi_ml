@@ -19,6 +19,14 @@ def add_training_args(p: argparse.ArgumentParser,
              "for the first \n3 epochs, and 0.0001 for the remaining epochs.\n"
              "(torch's default = 0.001)")
     training_group.add_argument(
+        '--lr_decrease_params', metavar='E L', nargs=2, type=float,
+        help="Parameters [E, L] to set the learning rate an exponential "
+             "decreasing curve. \nThe final curve will be "
+             "init_lr * exp(-x / r). The rate of \ndecrease, r, is defined in "
+             "order to ensure that the learning rate curve will hit \nvalue L "
+             "at epoch E.\n"
+             "learning_rate must be a single float value.")
+    training_group.add_argument(
         '--weight_decay', type=float, default=0.01, metavar='v',
         help="Add a weight decay penalty on the parameters (regularization "
              "parameter)\n[0.01] (torch's default).")
@@ -79,8 +87,8 @@ def format_lr(lr_arg):
     """
     Formatting [0.001*2 0.002] into [0.001 0.001 0.002].
     """
-    if lr_arg is None:
-        return None
+    if lr_arg is None or isinstance(lr_arg, float):
+        return lr_arg
 
     all_lr = []
     for lr in lr_arg[:-1]:
@@ -92,7 +100,7 @@ def format_lr(lr_arg):
             all_lr += [float(_lr)] * int(nb)
         except ValueError:
             raise ValueError("The first learning rates should be formatted a "
-                             "float*int: learning_rate*nb_epoch.")
+                             "float*int: learning_rate*nb_epochs.")
 
     try:
         all_lr += [float(lr_arg[-1])]
@@ -100,6 +108,10 @@ def format_lr(lr_arg):
         raise ValueError("The list of learning rates should end with a final "
                          "float that will be kept fixed until the end of "
                          "training.")
+
+    if len(all_lr) == 1:
+        return all_lr[0]
+
     return all_lr
 
 

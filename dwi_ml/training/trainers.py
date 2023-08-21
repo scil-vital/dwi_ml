@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Union, List
+from typing import Union, List, Tuple
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import numpy as np
@@ -53,7 +53,9 @@ class DWIMLAbstractTrainer:
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
-                 learning_rates: List = None, weight_decay: float = 0.01,
+                 learning_rates: Union[List, float] = None,
+                 lr_decrease_params: Tuple[float, float] = None,
+                 weight_decay: float = 0.01,
                  optimizer: str = 'Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
@@ -84,6 +86,12 @@ class DWIMLAbstractTrainer:
             torch's default, 0.001). A list [0.01, 0.01, 0.001], for instance,
             would use these values for the first 3 epochs, and keep the final
             value for remaining epochs.
+        lr_decrease_params: Tuple[float, float]
+            Parameters [E, L] to set the learning rate an exponential decreasing
+            curve. The final curve will be init_lr * exp(-x / r). The rate of
+            decrease, r, is defined in order to ensure that the learning rate
+            curve will hit value L at epoch E.
+            learning_rates must be a single float value.
         weight_decay: float
             Add a weight decay penalty on the parameters. Default: 0.01.
             (torch's default).
@@ -140,8 +148,21 @@ class DWIMLAbstractTrainer:
         self.comet_project = comet_project
         self.space = 'vox'
         self.origin = 'corner'
+        self.lr_decrease_params = lr_decrease_params
 
         # Learning rate:
+        if lr_decrease_params is not None:
+            assert isinstance(learning_rates, float), \
+                "To use lr_decrease_params, the learning_rate cannot be a " \
+                "list of learning rates. Expecting a single float value, but " \
+                "got {}".format(learning_rates)
+            self.initial_lr = learning_rates   # Initial value
+            x, y = lr_decrease_params
+            assert x.is_integer(), \
+                "First value of lr_decrease_params should be an epoch " \
+                "(integer), but got {}".format(x)
+            self.lr_decrease_rate = -x / np.log(y / self.initial_lr)
+
         if learning_rates is None:
             self.learning_rates = [0.001]
         elif isinstance(learning_rates, float):
@@ -314,8 +335,7 @@ class DWIMLAbstractTrainer:
             cls = torch.optim.SGD
 
         # Learning rate will be set at each epoch.
-        self.optimizer = cls(self.model.parameters(),
-                             weight_decay=weight_decay)
+        self.optimizer = cls(self.model.parameters(), weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
@@ -331,6 +351,7 @@ class DWIMLAbstractTrainer:
         # user to increase the patience when running again.
         params = {
             'learning_rates': self.learning_rates,
+            'lr_decrease_params': self.lr_decrease_params,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
             'max_batches_per_epoch_training': self.max_batches_per_epochs_train,
@@ -472,12 +493,15 @@ class DWIMLAbstractTrainer:
 
         if new_patience:
             trainer.best_epoch_monitor.patience = new_patience
-        logger.info("Starting from checkpoint! Starting from epoch #{}.\n"
-                    "Previous best model was discovered at epoch #{}.\n"
+        logger.info("Starting from checkpoint! Starting from epoch #{} "
+                    "(i.e. #{}).\n"
+                    "Previous best model was discovered at epoch {} (#{}).\n"
                     "When finishing previously, we were counting {} epochs "
                     "with no improvement."
                     .format(trainer.current_epoch,
+                            trainer.current_epoch + 1,
                             trainer.best_epoch_monitor.best_epoch,
+                            trainer.best_epoch_monitor.best_epoch + 1,
                             trainer.best_epoch_monitor.n_bad_epochs))
 
         return trainer
@@ -649,10 +673,18 @@ class DWIMLAbstractTrainer:
             logger.info("\n\n******* STARTING : Epoch {} (i.e. #{}) *******"
                         .format(epoch, epoch + 1))
 
-            # Set learning rate to either current value or last value
-            current_lr = self.learning_rates[
-                min(self.current_epoch, len(self.learning_rates) - 1)]
+            # Computing learning rate
+            if self.lr_decrease_params is not None:
+                # Exponential decrease
+                current_lr = self.initial_lr * np.exp(-epoch/self.lr_decrease_rate)
+            else:
+                # User-given values
+                current_lr = self.learning_rates[
+                    min(self.current_epoch, len(self.learning_rates) - 1)]
             logger.info("Learning rate = {}".format(current_lr))
+            if self.comet_exp:
+                self.comet_exp.log_metric("learning_rate", current_lr, step=epoch)
+
             for g in self.optimizer.param_groups:
                 g['lr'] = current_lr
 
@@ -693,10 +725,11 @@ class DWIMLAbstractTrainer:
             if self.best_epoch_monitor.is_patience_reached:
                 logger.warning(
                     "Early stopping! Loss has not improved after {} epochs!\n"
-                    "Best result: {}; At epoch #{}"
+                    "Best result: {}; At epoch #{} (i.e. {})"
                     .format(self.best_epoch_monitor.patience,
                             self.best_epoch_monitor.best_value,
-                            self.best_epoch_monitor.best_epoch))
+                            self.best_epoch_monitor.best_epoch,
+                            self.best_epoch_monitor.best_epoch + 1))
                 break
 
     def _get_latest_loss_to_supervise_best(self):
@@ -800,7 +833,7 @@ class DWIMLAbstractTrainer:
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
                 with grad_context():
-                    mean_loss = self.train_one_batch(data, epoch)
+                    mean_loss = self.train_one_batch(data)
 
                 grad_norm = self.back_propagation(mean_loss)
                 self.grad_norm_monitor.update(grad_norm)
@@ -865,15 +898,14 @@ class DWIMLAbstractTrainer:
             monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
 
-    def train_one_batch(self, data, epoch):
+    def train_one_batch(self, data):
         """
         Computes the loss for the current batch and updates monitors.
         Returns the loss to be used for backpropagation.
         """
         # Encapsulated for easier management of child classes.
         mean_local_loss, n = self.run_one_batch(data)
-        self.train_loss_monitor.update(mean_local_loss.cpu().item(),
-                                       weight=n)
+        self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
     def validate_one_batch(self, data, epoch):
@@ -1069,9 +1101,12 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         streamlines_f = targets
         if isinstance(self.model, ModelWithDirectionGetter) and \
                 not self.model.direction_getter.add_eos:
-            # We don't use the last coord because it does not have an
+            # No EOS = We don't use the last coord because it does not have an
             # associated target direction.
             streamlines_f = [s[:-1, :] for s in streamlines_f]
+
+        # Batch inputs is already the right length. Models don't need to
+        # discard the last point if no EOS. Avoid interpolation for no reason.
         batch_inputs = self.batch_loader.load_batch_inputs(
             streamlines_f, ids_per_subj)
 

@@ -101,7 +101,7 @@ def prepare_tracker(parser, args):
             raise ValueError("Model type not a recognized transformer Transformer"
                              "({})".format(model_type))
 
-        model = cls.load_params_and_state(model_dir, sub_logger_level)
+        model = cls.load_model_from_params_and_state(model_dir, sub_logger_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 

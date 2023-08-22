@@ -85,7 +85,7 @@ def prepare_tracker(parser, args):
             streamline_groups=[])
 
         logging.info("Loading model.")
-        model = Learn2TrackModel.load_params_and_state(
+        model = Learn2TrackModel.load_model_from_params_and_state(
             os.path.join(args.experiment_path, 'best_model'),
             log_level=sub_logger_level)
         logging.info("* Formatted model: " +

@@ -65,7 +65,7 @@ def init_from_checkpoint(args, checkpoint_path):
     else:
         raise ValueError("Model type not a recognized transformer Transformer"
                          "({})".format(model_type))
-    model = cls.load_params_and_state(model_dir, sub_loggers_level)
+    model = cls.load_model_from_params_and_state(model_dir, sub_loggers_level)
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])

@@ -58,7 +58,7 @@ def main():
 
     # 1. Load model
     logging.debug("Loading model.")
-    model = TransformerSrcAndTgtModel.load_params_and_state(
+    model = TransformerSrcAndTgtModel.load_model_from_params_and_state(
         args.experiment_path + '/best_model', log_level=sub_logger_level)
 
     # 2. Compute loss

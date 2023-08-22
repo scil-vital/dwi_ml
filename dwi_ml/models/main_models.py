@@ -161,7 +161,8 @@ class MainModelAbstract(torch.nn.Module):
             shutil.rmtree(to_remove)
 
     @classmethod
-    def load_params_and_state(cls, model_dir, log_level=logging.WARNING):
+    def load_model_from_params_and_state(cls, model_dir,
+                                         log_level=logging.WARNING):
         """
         Params
         -----
@@ -171,20 +172,15 @@ class MainModelAbstract(torch.nn.Module):
             - parameters.json
             - model_state.pkl
         """
-        # Load attributes and hyperparameters from json file
-        params_filename = os.path.join(model_dir, "parameters.json")
-        with open(params_filename, 'r') as json_file:
-            params = json.load(json_file)
+        params = cls._load_params(model_dir)
 
         logger.setLevel(log_level)
         logger.debug("Loading model from saved parameters:" +
                      format_dict_to_str(params))
-
-        model_state_file = os.path.join(model_dir, "model_state.pkl")
-        model_state = torch.load(model_state_file)
-
         params.update(log_level=log_level)
         model = cls(**params)
+
+        model_state = cls._load_state(model_dir)
         model.load_state_dict(model_state)  # using torch's method
 
         # By default, setting to eval state. If this will be used by the
@@ -192,6 +188,22 @@ class MainModelAbstract(torch.nn.Module):
         model.eval()
 
         return model
+
+    @classmethod
+    def _load_params(cls, model_dir):
+        # Load attributes and hyperparameters from json file
+        params_filename = os.path.join(model_dir, "parameters.json")
+        with open(params_filename, 'r') as json_file:
+            params = json.load(json_file)
+
+        return params
+
+    @classmethod
+    def _load_state(cls, model_dir):
+        model_state_file = os.path.join(model_dir, "model_state.pkl")
+        model_state = torch.load(model_state_file)
+
+        return model_state
 
     def compute_loss(self, *model_outputs, **kw):
         raise NotImplementedError
@@ -232,6 +244,47 @@ class ModelWithNeighborhood(MainModelAbstract):
         # Reminder. nb neighbors does not include origin.
         self.nb_neighbors = len(self.neighborhood_vectors) if \
             self.neighborhood_vectors is not None else 1
+
+    @classmethod
+    def _load_params(cls, model_dir):
+        params = super()._load_params(model_dir)
+
+        # Will eventually be deprecated:
+        if 'neighborhood_radius' in params and \
+                'neighborhood_resolution' not in params:
+            logging.warning(
+                "Model trained with a deprecated neighborhood management. "
+                "Fixing.")
+            r = params['neighborhood_radius']
+            if params['neighborhood_type'] == 'grid':
+                res = 1
+
+                if isinstance(r, list):
+                    assert len(r) == 1
+                    rad = r[0]
+                    assert int(rad) == rad, \
+                        "Failed. Cannot interpret float radius anymore."
+                    rad = int(rad)
+                else:
+                    rad = 1
+            else:
+                if isinstance(r, list):
+                    res = r[0]
+                    rad = len(r)
+                    assert np.all(np.diff(r) == res), \
+                        "Failed. Cannot use that type of neighborhood anymore. " \
+                        "Resolution must be the same between each layer of " \
+                        "neighborhood."
+                else:
+                    res = r
+                    rad = 1
+
+            logging.warning("Guessed values are: resolution {}, radius {}"
+                            .format(res, rad))
+            params['neighborhood_resolution'] = float(res)
+            params['neighborhood_radius'] = rad
+
+        return params
 
     def move_to(self, device):
         super().move_to(device)
@@ -384,6 +437,20 @@ class ModelWithPreviousDirections(MainModelAbstract):
             help="If true, normalize the previous directions (before the "
                  "embedding layer,\n if any, and before adding to the input.")
 
+    @classmethod
+    def _load_params(cls, model_dir):
+        params = super()._load_params(model_dir)
+
+        # Will eventually be deprecated:
+        if 'prev_dirs_embedding_size' in params:
+            logging.warning(
+                "Deprecated param prev_dirs_embedding_size. Now called "
+                "prev_dirs_embedded_size. Changing")
+            params['prev_dirs_embedded_size'] = params['prev_dirs_embedding_size']
+            del params['prev_dirs_embedding_size']
+
+        return params
+
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
@@ -487,95 +554,7 @@ class MainModelOneInput(MainModelAbstract):
         return subj_x_data
 
 
-class ModelWithDirectionGetter(MainModelAbstract):
-    """
-    Adding typical options for models intended for learning to track.
-    - Last layer should be a direction getter.
-    - Added option to save the estimated outputs after a batch to compare
-      with targets (in the case of regression).
-    """
-    def __init__(self, dg_key: str = 'cosine-regression',
-                 dg_args: dict = None, **kw):
-        """
-        Params
-        ------
-        dg_key: str
-            Key to a direction getter class (one of
-            dwi_ml.direction_getter_models.keys_to_direction_getters).
-            Default: Default: 'cosine-regression'.
-        dg_args: dict
-            Arguments necessary for the instantiation of the chosen direction
-            getter.
-        """
-        super().__init__(**kw)
-
-        # Instantiating direction getter
-        # Preparing value here but not instantiating;
-        # typically, user will need to know his model output size to call
-        # this with correct input size. Waiting.
-        self.dg_key = dg_key
-        self.dg_args = dg_args or {}
-        self.direction_getter = None  # type: AbstractDirectionGetterModel
-        if self.dg_key not in keys_to_direction_getters.keys():
-            raise ValueError("Direction getter choice not understood: {}"
-                             .format(self.positional_encoding_key))
-
-        # To tell our trainer what to send to the forward / loss methods.
-        self.loss_uses_streamlines = True
-
-    def set_context(self, context):
-        assert context in ['training', 'tracking', 'visu']
-        self._context = context
-
-    def instantiate_direction_getter(self, dg_input_size):
-        direction_getter_cls = keys_to_direction_getters[self.dg_key]
-        self.direction_getter = direction_getter_cls(
-            input_size=dg_input_size, **self.dg_args)
-
-    @staticmethod
-    def add_args_tracking_model(p):
-        add_direction_getter_args(p)
-
-    @property
-    def params_for_checkpoint(self):
-        p = super().params_for_checkpoint
-        p.update({
-            'dg_key': self.dg_key,
-            'dg_args': self.dg_args,
-        })
-        return p
-
-    def get_tracking_directions(self, model_outputs: Tensor, algo: str,
-                                eos_stopping_thresh: Union[float, str]):
-        """
-        Params
-        ------
-        model_outputs: Tensor
-            Our model's previous layer's output.
-        algo: str
-            'det' or 'prob'.
-        eos_stopping_thresh: float or 'max'
-
-        Returns
-        -------
-        next_dir: torch.Tensor
-            A tensor of shape [n, 3] with the next direction for each output.
-        """
-        dirs = self.direction_getter.get_tracking_directions(
-            model_outputs, algo, eos_stopping_thresh)
-        return dirs
-
-    def compute_loss(self, model_outputs: List[Tensor], target_streamlines,
-                     average_results=True, **kw):
-        return self.direction_getter.compute_loss(
-            model_outputs, target_streamlines, average_results)
-
-    def move_to(self, device):
-        super().move_to(device)
-        self.direction_getter.move_to(device)
-
-
-class ModelWithInputEmbedding(MainModelAbstract):
+class ModelOneInputWithEmbedding(MainModelOneInput):
     def __init__(self, input_embedding_key: str,
                  input_embedded_size: Union[int, None],
                  nb_cnn_filters: Optional[int],
@@ -682,6 +661,54 @@ class ModelWithInputEmbedding(MainModelAbstract):
                 nb_features_in=input_size,
                 nb_features_out=self.computed_input_embedded_size)
 
+    @classmethod
+    def _load_params(cls, model_dir):
+        params = super()._load_params(model_dir)
+
+        # Will eventually be deprecated:
+        if 'input_embedding_size' in params:
+            logging.warning(
+                "Deprecated param input_embedding_size. Now called "
+                "input_embedded_size. Changing")
+            params['input_embedded_size'] = params['input_embedding_size']
+            del params['input_embedding_size']
+
+        if 'input_embedding_size_ratio' in params:
+            if params['input_embedding_size_ratio'] is None:
+                logging.warning(
+                    "Deprecated params 'input_embedding_size_ratio', but was "
+                    "None. Ignoring")
+                del params['input_embedding_size_ratio']
+            else:
+                raise ValueError("Deprecated use of "
+                                 "'input_embedding_size_ratio'. Cannot proceed.")
+
+        # These values did not exist in older models.
+        if 'nb_cnn_filters' not in params:
+            params['nb_cnn_filters'] = None
+        if 'kernel_size' not in params:
+            params['kernel_size'] = None
+
+        return params
+
+    @classmethod
+    def _load_state(cls, model_dir):
+        model_state = super()._load_state(model_dir)
+
+        if 'input_embedding.linear.weight' in model_state:
+            logging.warning("Deprecated variable name input_embedding. Now "
+                            "called input_embedding_layer. Fixing model "
+                            "state at loading.")
+            model_state['input_embedding_layer.linear.weight'] = \
+                model_state['input_embedding.linear.weight']
+            model_state['input_embedding_layer.linear.bias'] = \
+                model_state['input_embedding.linear.bias']
+            del model_state['input_embedding.linear.weight']
+            del model_state['input_embedding.linear.bias']
+
+        return model_state
+
+
     @property
     def params_for_checkpoint(self):
         # Every parameter necessary to build the different layers again.
@@ -728,3 +755,91 @@ class ModelWithInputEmbedding(MainModelAbstract):
             '--kernel_size', type=int, metavar='k',
             help='In the case of CNN embedding, size of the 3D filter matrix '
                  '(kernel). Will be of shape kxkxk.')
+
+
+class ModelWithDirectionGetter(MainModelAbstract):
+    """
+    Adding typical options for models intended for learning to track.
+    - Last layer should be a direction getter.
+    - Added option to save the estimated outputs after a batch to compare
+      with targets (in the case of regression).
+    """
+    def __init__(self, dg_key: str = 'cosine-regression',
+                 dg_args: dict = None, **kw):
+        """
+        Params
+        ------
+        dg_key: str
+            Key to a direction getter class (one of
+            dwi_ml.direction_getter_models.keys_to_direction_getters).
+            Default: Default: 'cosine-regression'.
+        dg_args: dict
+            Arguments necessary for the instantiation of the chosen direction
+            getter.
+        """
+        super().__init__(**kw)
+
+        # Instantiating direction getter
+        # Preparing value here but not instantiating;
+        # typically, user will need to know his model output size to call
+        # this with correct input size. Waiting.
+        self.dg_key = dg_key
+        self.dg_args = dg_args or {}
+        self.direction_getter = None  # type: AbstractDirectionGetterModel
+        if self.dg_key not in keys_to_direction_getters.keys():
+            raise ValueError("Direction getter choice not understood: {}"
+                             .format(self.positional_encoding_key))
+
+        # To tell our trainer what to send to the forward / loss methods.
+        self.loss_uses_streamlines = True
+
+    def set_context(self, context):
+        assert context in ['training', 'tracking', 'visu']
+        self._context = context
+
+    def instantiate_direction_getter(self, dg_input_size):
+        direction_getter_cls = keys_to_direction_getters[self.dg_key]
+        self.direction_getter = direction_getter_cls(
+            input_size=dg_input_size, **self.dg_args)
+
+    @staticmethod
+    def add_args_tracking_model(p):
+        add_direction_getter_args(p)
+
+    @property
+    def params_for_checkpoint(self):
+        p = super().params_for_checkpoint
+        p.update({
+            'dg_key': self.dg_key,
+            'dg_args': self.dg_args,
+        })
+        return p
+
+    def get_tracking_directions(self, model_outputs: Tensor, algo: str,
+                                eos_stopping_thresh: Union[float, str]):
+        """
+        Params
+        ------
+        model_outputs: Tensor
+            Our model's previous layer's output.
+        algo: str
+            'det' or 'prob'.
+        eos_stopping_thresh: float or 'max'
+
+        Returns
+        -------
+        next_dir: torch.Tensor
+            A tensor of shape [n, 3] with the next direction for each output.
+        """
+        dirs = self.direction_getter.get_tracking_directions(
+            model_outputs, algo, eos_stopping_thresh)
+        return dirs
+
+    def compute_loss(self, model_outputs: List[Tensor], target_streamlines,
+                     average_results=True, **kw):
+        return self.direction_getter.compute_loss(
+            model_outputs, target_streamlines, average_results)
+
+    def move_to(self, device):
+        super().move_to(device)
+        self.direction_getter.move_to(device)

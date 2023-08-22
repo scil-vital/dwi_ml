@@ -93,7 +93,7 @@ def tto_visualize_weights(args, parser):
     logging.getLogger().setLevel(level=args.logging)
 
     logging.info("Loading model.")
-    model = OriginalTransformerModel.load_params_and_state(
+    model = OriginalTransformerModel.load_model_from_params_and_state(
         args.experiment_path + '/best_model', log_level=sub_logger_level)
     model.set_context('visu')
 
@@ -181,7 +181,7 @@ def ttst_visualize_weights(args, parser):
     logging.getLogger().setLevel(level=args.logging)
 
     logging.info("Loading model.")
-    model = TransformerSrcAndTgtModel.load_params_and_state(
+    model = TransformerSrcAndTgtModel.load_model_from_params_and_state(
         args.experiment_path + '/best_model', log_level=sub_logger_level)
     model.set_context('visu')
 

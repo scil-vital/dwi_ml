@@ -470,10 +470,10 @@ class DWIMLAbstractTrainer:
 
         # Will eventually be deprecated:
         if 'tracking_phase_nb_steps_init' in trainer_params:
-            print("Model trained with an older version of dwi_ml. Param "
-                  "tracking_phase_nb_steps_init will soon be deprecated."
-                  "Now called tracking_phase_nb_segments_init, with value "
-                  "one less.")
+            logging.warning(
+                "Model trained with an older version of dwi_ml. Param "
+                "tracking_phase_nb_steps_init will soon be deprecated. Now "
+                "called tracking_phase_nb_segments_init, with value one less.")
             val = trainer_params['tracking_phase_nb_steps_init']
             del trainer_params['tracking_phase_nb_steps_init']
             trainer_params['tracking_phase_nb_segments_init'] = val - 1

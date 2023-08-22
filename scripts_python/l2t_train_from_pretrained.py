@@ -67,7 +67,7 @@ def init_from_args(args, sub_loggers_level):
     logging.info("Loading existing model")
     best_model_path = os.path.join(args.experiments_path,
                                    args.pretrained_model, 'best_model')
-    model = Learn2TrackModel.load_params_and_state(
+    model = Learn2TrackModel.load_model_from_params_and_state(
         best_model_path, sub_loggers_level)
 
     # Preparing the batch samplers

@@ -17,7 +17,7 @@ from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithDirectionGetter,
                                        ModelWithNeighborhood,
-                                       ModelWithInputEmbedding)
+                                       ModelOneInputWithEmbedding)
 from dwi_ml.models.positional_encoding import keys_to_positional_encodings
 from dwi_ml.models.utils.transformers_from_torch import (
     ModifiedTransformer,
@@ -79,9 +79,8 @@ def pad_and_stack_batch(data: List[torch.Tensor], pad_first: bool,
     return torch.stack(data)
 
 
-class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
-                               ModelWithDirectionGetter,
-                               ModelWithInputEmbedding):
+class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
+                               ModelOneInputWithEmbedding):
     """
     Prepares the parts common to our two transformer versions: embeddings,
     direction getter and some parameters for the model.

@@ -25,7 +25,7 @@ Hint: To use on packed sequences:
 
 class EmbeddingAbstract(torch.nn.Module):
     def __init__(self, nb_features_in: int, nb_features_out: int,
-                 key: str = ''):
+                 activation: str = None, key: str = ''):
         """
         Params
         -------
@@ -35,11 +35,22 @@ class EmbeddingAbstract(torch.nn.Module):
             Ex: 3D coordinates [x,y,z] for streamlines.
         output_size: int
             Size of each output data point.
+        activation: str
+            Name of the activation layer. Currently, only accepted values are
+            None or 'ReLu'.
         """
         super().__init__()
         self.nb_features_in = nb_features_in
         self.nb_features_out = nb_features_out
         self.key = key
+        self.activation = activation
+        self.activation_layer = None
+        if self.activation is not None:
+            if self.activation.lower() == 'relu':
+                self.activation_layer = torch.nn.ReLU()
+            else:
+                raise NotImplementedError("Activation function not "
+                                          "recognized for embedding layer.")
 
     @property
     def params_for_checkpoint(self):
@@ -63,15 +74,15 @@ class EmbeddingAbstract(torch.nn.Module):
 
 class NNEmbedding(EmbeddingAbstract):
     def __init__(self, nb_features_in, nb_features_out: int):
-        super().__init__(nb_features_in, nb_features_out, key='nn_embedding')
+        super().__init__(nb_features_in, nb_features_out, activation='ReLu',
+                         key='nn_embedding')
         self.linear = torch.nn.Linear(self.nb_features_in, self.nb_features_out)
-        self.relu = torch.nn.ReLU()
 
-    def forward(self, inputs: Tensor):
+    def forward(self, atensor: Tensor):
         # Calling forward.
-        result = self.linear(inputs)
-        result = self.relu(result)
-        return result
+        atensor = self.linear(atensor)
+        atensor = self.activation_layer(atensor)
+        return atensor
 
 
 class NoEmbedding(EmbeddingAbstract):
@@ -83,7 +94,8 @@ class NoEmbedding(EmbeddingAbstract):
                              "output_size but you gave {} and {}"
                              .format(nb_features_in, nb_features_out))
 
-        super().__init__(nb_features_in, nb_features_out, key='no_embedding')
+        super().__init__(nb_features_in, nb_features_out,
+                         activation=None, key='no_embedding')
         self.identity = torch.nn.Identity()
 
     def forward(self, inputs: Tensor = None):
@@ -113,7 +125,8 @@ class CNNEmbedding(EmbeddingAbstract):
         image_shape: (int, int, int)
             Size of the image.
         """
-        super().__init__(nb_features_in, nb_features_out, key='cnn_embedding')
+        super().__init__(nb_features_in, nb_features_out,
+                         activation='ReLu', key='cnn_embedding')
 
         if not isinstance(kernel_size, int):
             raise NotImplementedError("Need to verify order of the 3D kernel "
@@ -134,7 +147,7 @@ class CNNEmbedding(EmbeddingAbstract):
         self.out_image_shape = np.floor(numerator / stride + 1)
         self.out_flattened_size = int(np.prod(self.out_image_shape) * nb_features_out)
 
-    def forward(self, inputs: Tensor):
+    def forward(self, atensor: Tensor):
         """
         Expected inputs shape: (batch size, x, y, z, channels)
           (We will reorder to torch's input shape.)
@@ -150,20 +163,22 @@ class CNNEmbedding(EmbeddingAbstract):
         #     D = Depth of image
         #     H = Height of image
         #     W = Width of image
-        assert inputs.shape[-1] == self.nb_features_in
-        assert np.array_equal(inputs.shape[1:4], self.in_image_shape), \
+        assert atensor.shape[-1] == self.nb_features_in
+        assert np.array_equal(atensor.shape[1:4], self.in_image_shape), \
             "Expecting inputs of shape {} ({} channels per voxel), but "\
             "received {}.".format(self.in_image_shape, self.nb_features_in,
-                                  inputs.shape[2:])
+                                  atensor.shape[2:])
 
-        inputs = torch.permute(inputs, (0, 4, 1, 2, 3))
-        outputs = self.cnn_layer(inputs)
-        outputs = torch.permute(outputs, (0, 2, 3, 4, 1))
+        atensor = torch.permute(atensor, (0, 4, 1, 2, 3))
+        atensor = self.cnn_layer(atensor)
+        atensor = torch.permute(atensor, (0, 2, 3, 4, 1))
         # Current shape = (B, X2, Y2, Z2, C2)
-        outputs = torch.flatten(outputs, start_dim=1, end_dim=4)
+        atensor = torch.flatten(atensor, start_dim=1, end_dim=4)
 
         # Final shape: (B, X2*Y2*Z2*C2)
-        return outputs
+        atensor = self.activation_layer(atensor)
+
+        return atensor
 
 
 keys_to_embeddings = {'no_embedding': NoEmbedding,

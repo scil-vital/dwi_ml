@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 import logging
-from typing import Union, List
+from typing import Union, List, Optional
 
 import numpy as np
 import torch
 from torch.nn.utils.rnn import invert_permutation, PackedSequence, pack_sequence
 
+from dwi_ml.data.processing.space.neighborhood import unflatten_neighborhood
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions, compute_n_previous_dirs
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     convert_dirs_to_class
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings as \
-    keys_to_tensor_embeddings, NoEmbedding
+from dwi_ml.models.embeddings import NoEmbedding, keys_to_embeddings
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelWithDirectionGetter,
-    ModelWithNeighborhood, MainModelOneInput)
-from dwi_ml.models.projects.stacked_rnn import StackedRNN
+    ModelWithNeighborhood, MainModelOneInput, ModelOneInputWithEmbedding)
+from dwi_ml.models.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
@@ -67,7 +67,7 @@ def faster_unpack_sequence(packed_sequence: PackedSequence):
 
 
 class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
-                       ModelWithNeighborhood, MainModelOneInput):
+                       ModelWithNeighborhood, ModelOneInputWithEmbedding):
     """
     Recurrent tracking model.
 
@@ -83,12 +83,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  nb_features: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
-                 prev_dirs_embedding_size: Union[int, None],
+                 prev_dirs_embedded_size: Union[int, None],
                  prev_dirs_embedding_key: Union[str, None],
                  normalize_prev_dirs: bool,
                  # INPUTS
-                 input_embedding_key: str, input_embedding_size: Union[int, None],
-                 input_embedding_size_ratio: Union[float, None],
+                 input_embedding_key: str, input_embedded_size: Union[int, None],
+                 nb_cnn_filters: Optional[int], kernel_size: Optional[int],
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
                  use_skip_connection: bool, use_layer_normalization: bool,
@@ -96,8 +96,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  # Other
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, List[float], None],
+                 neighborhood_type: Optional[str] = None,
+                 neighborhood_radius: Optional[int] = None,
+                 neighborhood_resolution: Optional[float] = None,
                  log_level=logging.root.level):
         """
         Params
@@ -108,16 +109,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received.
-        input_embedding_key: str
-            Key to an embedding class (one of
-            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
-            Default: 'no_embedding'.
-        input_embedding_size: int
-            Output embedding size for the input. If None, will be set to
-            input_size.
-        input_embedding_size_ratio: float
-            Other possibility to define input_embedding_size, which then equals
-            [ratio * (nb_features * (nb_neighbors+1))]
         rnn_key: str
             Either 'LSTM' or 'GRU'.
         rnn_layer_sizes: List[int]
@@ -140,70 +131,53 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
         """
-        if prev_dirs_embedding_key == 'no_embedding':
-            if prev_dirs_embedding_size is None:
-                prev_dirs_embedding_size = 3 * nb_previous_dirs
-            elif prev_dirs_embedding_size != 3 * nb_previous_dirs:
-                raise ValueError("To use identity embedding, the output size "
-                                 "must be the same as the input size!")
-
         super().__init__(
             experiment_name=experiment_name, step_size=step_size,
             compress_lines=compress_lines, log_level=log_level,
             # For modelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
+            neighborhood_resolution=neighborhood_resolution,
+            # For super ModelWithInputEmbedding:
+            input_embedding_key=input_embedding_key,
+            input_embedded_size=input_embedded_size,
+            nb_cnn_filters=nb_cnn_filters, kernel_size=kernel_size,
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
-            prev_dirs_embedding_size=prev_dirs_embedding_size,
+            prev_dirs_embedded_size=prev_dirs_embedded_size,
             prev_dirs_embedding_key=prev_dirs_embedding_key,
             normalize_prev_dirs=normalize_prev_dirs,
             # For super ModelForTracking:
             dg_args=dg_args, dg_key=dg_key)
 
-        self.input_embedding_key = input_embedding_key
         self.nb_features = nb_features
         self.dropout = dropout
         self.start_from_copy_prev = start_from_copy_prev
+        self.nb_cnn_filters = nb_cnn_filters
+        self.kernel_size = kernel_size
+
+        # Right now input is always flattened (interpolation is implemented
+        # that way). For CNN, we will rearrange it ourselves.
+        self.input_size = nb_features * self.nb_neighbors
 
         # ----------- Checks
         if dropout < 0 or dropout > 1:
             raise ValueError('The dropout rate must be between 0 and 1.')
 
-        if self.input_embedding_key not in keys_to_tensor_embeddings.keys():
-            raise ValueError("Embedding choice for x data not understood: {}"
-                             .format(self.embedding_key_x))
-
         # ---------- Instantiations
         # 1. Previous dirs embedding: prepared by super.
 
         # 2. Input embedding
-        self.input_size = nb_features * (self.nb_neighbors + 1)
-        if input_embedding_size and input_embedding_size_ratio:
-            raise ValueError("You must only give one value, either "
-                             "input_embedding_size or "
-                             "input_embedding_size_ratio")
-        elif input_embedding_size_ratio:
-            self.input_embedding_size = int(self.input_size *
-                                            input_embedding_size_ratio)
-        elif input_embedding_size:
-            self.input_embedding_size = input_embedding_size
-        else:
-            self.input_embedding_size = self.input_size
+        self.instantiate_input_embedding(nb_features)
         self.embedding_dropout = torch.nn.Dropout(self.dropout)
 
-        input_embedding_cls = keys_to_tensor_embeddings[input_embedding_key]
-        self.input_embedding = input_embedding_cls(
-            input_size=self.input_size, output_size=self.input_embedding_size)
-
         # 3. Stacked RNN
-        rnn_input_size = self.input_embedding_size
         if self.nb_previous_dirs > 0:
-            rnn_input_size += self.prev_dirs_embedding_size
+            self.computed_input_embedded_size += self.prev_dirs_embedded_size
         if len(rnn_layer_sizes) == 1:
             dropout = 0.0  # Not used in RNN. Avoiding the warning.
         self.rnn_model = StackedRNN(
-            rnn_key, rnn_input_size, rnn_layer_sizes,
+            rnn_key, self.computed_input_embedded_size, rnn_layer_sizes,
             use_skip_connection=use_skip_connection,
             use_layer_normalization=use_layer_normalization, dropout=dropout)
 
@@ -231,9 +205,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         params = super().params_for_checkpoint
         params.update({
             'nb_features': int(self.nb_features),
-            'input_embedding_key': self.input_embedding_key,
-            'input_embedding_size': int(self.input_embedding_size),
-            'input_embedding_size_ratio': None,
             'rnn_key': self.rnn_model.rnn_torch_key,
             'rnn_layer_sizes': self.rnn_model.layer_sizes,
             'use_skip_connection': self.rnn_model.use_skip_connection,
@@ -243,6 +214,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         })
 
         return params
+
+    @property
+    def computed_params_for_display(self):
+        p = super().computed_params_for_display
+        p['stacked_RNN_output_size'] = self.rnn_model.output_size
+        return p
 
     def forward(self, x: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
@@ -284,12 +261,16 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         if self._context is None:
             raise ValueError("Please set context before usage.")
 
+        # Right now input is always flattened (interpolation is implemented
+        # that way). For CNN, we will rearrange it ourselves.
         # Verifying the first input
+
+
         assert x[0].shape[-1] == self.input_size, \
             "Not the expected input size! Should be {} (i.e. {} features for " \
-            "each {} neighbor), but got {} (input shape {})." \
-            .format(self.input_size, self.nb_features, self.nb_neighbors + 1,
-                    x[0].shape[-1], x[0].shape)
+            "each of the {} neighbors), but got {} (input shape {})." \
+            .format(self.input_size, self.nb_features, self.nb_neighbors,
+                    inputs[0].shape[-1], inputs[0].shape)
 
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.
@@ -305,28 +286,27 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # ==== 0. Previous dirs.
         dirs = None
+        n_prev_dirs = None
+        copy_prev_dir = 0.0
         if self.nb_previous_dirs > 0 or self.start_from_copy_prev:
             dirs = compute_directions(input_streamlines)
             if self.normalize_prev_dirs:
                 dirs = normalize_directions(dirs)
 
-        # Formatting the n previous dirs for last point or all
-        n_prev_dirs = None
-        if self.nb_previous_dirs > 0 or self.start_from_copy_prev:
+            # Formatting the n previous dirs for last point or all
             n_prev_dirs = compute_n_previous_dirs(
                 dirs, self.nb_previous_dirs, point_idx=point_idx)
 
-        # Start from copy prev option.
-        copy_prev_dir = 0.0
-        if self.start_from_copy_prev:
-            copy_prev_dir = self.copy_prev_dir(dirs, n_prev_dirs)
+            # ==== 1. Previous dirs embedding ====
+            if self.nb_previous_dirs > 0:
+                n_prev_dirs = pack_sequence(n_prev_dirs)
+                # Shape: (nb_points - 1) per streamline x (3 per prev dir)
+                n_prev_dirs = self.prev_dirs_embedding(n_prev_dirs.data)
+                n_prev_dirs = self.embedding_dropout(n_prev_dirs)
 
-        # ==== 1. Previous dirs embedding ====
-        if self.nb_previous_dirs > 0:
-            n_prev_dirs = pack_sequence(n_prev_dirs)
-            # Shape: (nb_points - 1) per streamline x (3 per prev dir)
-            n_prev_dirs = self.prev_dirs_embedding(n_prev_dirs.data)
-            n_prev_dirs = self.embedding_dropout(n_prev_dirs)
+            # Start from copy prev option.
+            if self.start_from_copy_prev:
+                copy_prev_dir = self.copy_prev_dir(dirs, n_prev_dirs)
 
         # ==== 2. Inputs embedding ====
         x = pack_sequence(x)
@@ -335,10 +315,18 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # Avoiding unpacking and packing back if not needed.
         # Input + prev dir embedding required if it's not NoEmbedding.
         if self.nb_previous_dirs > 0 or not isinstance(
-                self.input_embedding, NoEmbedding):
+                self.input_embedding_layer, NoEmbedding):
+            x = x.data
 
-            # Embedding. Shape of inputs: nb_pts_total * embedding_size
-            x = self.input_embedding(x.data)
+            # Embedding. Shape of inputs: nb_pts_total * embedded_size
+            if self.input_embedding_key == 'cnn_embedding':
+                # We need to reshape flattened inputs into a neighborhood.
+                # Batch has been prepared in self.prepare_batch_one_input.
+                x = unflatten_neighborhood(
+                    x, self.neighborhood_vectors, self.neighborhood_type,
+                    self.neighborhood_radius, self.neighborhood_resolution)
+
+            x = self.input_embedding_layer(x)
             x = self.embedding_dropout(x)
 
             # ==== 3. Concat with previous dirs ====

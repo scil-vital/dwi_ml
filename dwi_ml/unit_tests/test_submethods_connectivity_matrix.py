@@ -27,3 +27,7 @@ def test_connectivity():
     m2 = m.to_dense().numpy().astype(int)
     print("Converting to sparse and back to dense: {}".format(m2))
     assert np.array_equal(m2, expected_m)
+
+
+if __name__ == '__main__':
+    test_connectivity()

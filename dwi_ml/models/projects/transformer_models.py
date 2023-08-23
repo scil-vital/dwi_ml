@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from time import time
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Optional
 
 from dipy.data import get_sphere
 import numpy as np
@@ -13,11 +13,12 @@ from dwi_ml.data.processing.streamlines.sos_eos_management import \
     add_label_as_last_dim, convert_dirs_to_class
 from dwi_ml.data.processing.streamlines.post_processing import compute_directions
 from dwi_ml.data.spheres import TorchSphere
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
+from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithDirectionGetter,
-                                       ModelWithNeighborhood)
-from dwi_ml.models.projects.positional_encoding import keys_to_positional_encodings
+                                       ModelWithNeighborhood,
+                                       ModelOneInputWithEmbedding)
+from dwi_ml.models.positional_encoding import keys_to_positional_encodings
 from dwi_ml.models.utils.transformers_from_torch import (
     ModifiedTransformer,
     ModifiedTransformerEncoder, ModifiedTransformerEncoderLayer,
@@ -78,8 +79,8 @@ def pad_and_stack_batch(data: List[torch.Tensor], pad_first: bool,
     return torch.stack(data)
 
 
-class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
-                               ModelWithDirectionGetter):
+class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
+                               ModelOneInputWithEmbedding):
     """
     Prepares the parts common to our two transformer versions: embeddings,
     direction getter and some parameters for the model.
@@ -100,7 +101,9 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                  step_size: Union[float, None],
                  compress_lines: Union[float, None],
                  # INPUTS IN ENCODER
-                 nb_features: int, embedding_key_x: str, embedding_size_x: int,
+                 nb_features: int, input_embedding_key: str,
+                 input_embedded_size: int,
+                 nb_cnn_filters: Optional[int], kernel_size: Optional[int],
                  # GENERAL TRANSFORMER PARAMS
                  d_model: int,
                  max_len: int, positional_encoding_key: str,
@@ -110,26 +113,23 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: dict,
                  # Other
-                 neighborhood_type: Union[str, None],
-                 neighborhood_radius: Union[int, float, List[float], None],
+                 neighborhood_type: Optional[str] = None,
+                 neighborhood_radius: Optional[int] = None,
+                 neighborhood_resolution: Optional[float] = None,
                  log_level=logging.root.level):
         """
+        Note about embedding size:
+            In the original model + SrcOnly model: defines d_model.
+            (The transformer REQUIRES the same output dimension for each layer
+            everywhere to allow skip connections. = d_model. Note that
+            embeddings should also produce outputs of size d_model.)
+            Default in original paper: 4096.
+
         Args
         ----
         nb_features: int
             This value should be known from the actual data. Number of features
             in the data (last dimension).
-        embedding_key_x: str,
-            Chosen class for the input embedding (the data embedding part).
-            Choices: keys_to_embeddings.keys().
-            Default: 'no_embedding'.
-        embedding_size_x: int
-            Embedding size for x.
-            In the original model + SrcOnly model: defines d_model.
-            ( The transformer REQUIRES the same output dimension for each layer
-             everywhere to allow skip connections. = d_model. Note that
-             embeddings should also produce outputs of size d_model.)
-            Default: 4096.
         max_len: int
             Maximal sequence length. This is only used in the positional
             encoding. During the forward call, batches are only padded to the
@@ -168,37 +168,38 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
             # Neighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
+            neighborhood_resolution=neighborhood_resolution,
+            # For super ModelWithInputEmbedding:
+            input_embedding_key=input_embedding_key,
+            input_embedded_size=input_embedded_size,
+            nb_cnn_filters=nb_cnn_filters, kernel_size=kernel_size,
             # Tracking
             dg_key=dg_key, dg_args=dg_args)
 
         self.nb_features = nb_features
-        self.embedding_key_x = embedding_key_x
         self.max_len = max_len
         self.positional_encoding_key = positional_encoding_key
-        self.embedding_size_x = embedding_size_x
         self.nheads = nheads
         self.n_layers_e = n_layers_e  # All our models have a
         self.dropout_rate = dropout_rate
         self.activation = activation
         self.norm_first = norm_first
         self.d_model = d_model
-        self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size \
+        self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size is not None \
             else d_model // 2
 
         assert d_model // self.nheads == float(d_model) / self.nheads, \
-            "d_model (=embedding_size_x, {}) must be divisible by nheads " \
+            "d_model (=input_embedded_size, {}) must be divisible by nheads " \
             "({})".format(d_model, self.nheads)
 
         # ----------- Checks
         if dropout_rate < 0 or dropout_rate > 1:
             raise ValueError('The dropout rate must be between 0 and 1.')
 
-        assert embedding_size_x > 3, \
+        assert input_embedded_size > 3, \
             "Current computation of the positional encoding required data " \
-            "of size > 3, but got {}".format(embedding_size_x)
-        if self.embedding_key_x not in keys_to_embeddings.keys():
-            raise ValueError("Embedding choice for x data not understood: {}"
-                             .format(self.embedding_key_x))
+            "of size > 3, but got {}".format(input_embedded_size)
+
         if self.positional_encoding_key not in \
                 keys_to_positional_encodings.keys():
             raise ValueError("Positional encoding choice not understood: {}"
@@ -210,9 +211,10 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         self.dropout = Dropout(self.dropout_rate)
 
         # 1. x embedding layer
-        input_size = nb_features * (self.nb_neighbors + 1)
-        cls_x = keys_to_embeddings[self.embedding_key_x]
-        self.embedding_layer_x = cls_x(input_size, self.embedding_size_x)
+        self.instantiate_input_embedding(nb_features)
+        assert self.computed_input_embedded_size > 3, \
+            "Current computation of the positional encoding required data " \
+            "of size > 3, but got {}".format(input_embedded_size)
 
         # 2. positional encoding layer
         cls_p = keys_to_positional_encodings[self.positional_encoding_key]
@@ -241,8 +243,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
         p = super().params_for_checkpoint
         p.update({
             'nb_features': int(self.nb_features),
-            'embedding_key_x': self.embedding_key_x,
-            'embedding_size_x': self.embedding_size_x,
+            'input_embedding_key': self.input_embedding_key,
+            'input_embedded_size': self.input_embedded_size,
             'd_model': self.d_model,
             'max_len': self.max_len,
             'n_layers_e': self.n_layers_e,
@@ -493,14 +495,17 @@ class AbstractTransformerModel(ModelWithNeighborhood, MainModelOneInput,
 
         # Inputs
         inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
-        inputs = self.embedding_layer_x(inputs)
+        inputs = self.input_embedding_layer(inputs)
         return inputs
 
 
 class TransformerSrcOnlyModel(AbstractTransformerModel):
-    def __init__(self, d_model, **kw):
-        super().__init__(embedding_size_x=d_model,
-                         d_model=d_model, **kw)
+    def __init__(self, input_embedded_size, **kw):
+        assert input_embedded_size is not None, \
+            "You must define input_embedded_size: It will become d_model"
+
+        super().__init__(input_embedded_size=input_embedded_size,
+                         d_model=input_embedded_size, **kw)
 
         # ----------- Additional instantiations
         logger.debug("Instantiating Transformer...")
@@ -514,7 +519,7 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
-        del p['embedding_size_x']
+        del p['input_embedded_size']
         return p
 
     def _prepare_data(self, inputs, _):
@@ -545,31 +550,31 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
 class AbstractTransformerModelWithTarget(AbstractTransformerModel):
     def __init__(self,
                  # TARGETS IN DECODER
-                 sos_token_type: str, embedding_key_t: str,
-                 embedding_size_t: int,
+                 sos_token_type: str, target_embedding_key: str,
+                 target_embedded_size: int,
                  start_from_copy_prev: bool, **kwargs):
         """
         token_type: str
             Either 'as_label' or the name of the sphere to convert to classes.
             Used for SOS addition.
-        embedding_key_t: str,
+        target_embedding_key: str,
             Target embedding, with the same choices as above.
             Default: 'no_embedding'.
         """
         super().__init__(**kwargs)
 
         self.sos_token_type = sos_token_type
-        self.embedding_key_t = embedding_key_t
-        self.embedding_size_t = embedding_size_t
+        self.target_embedding_key = target_embedding_key
+        self.target_embedded_size = target_embedded_size
         self.start_from_copy_prev = start_from_copy_prev
 
         # Checks.
-        if self.embedding_key_t not in keys_to_embeddings.keys():
+        if self.target_embedding_key not in keys_to_embeddings.keys():
             raise ValueError("Embedding choice for targets not understood: {}"
-                             .format(self.embedding_key_t))
+                             .format(self.target_embedding_key))
 
         # 3. Target embedding.
-        cls_t = keys_to_embeddings[self.embedding_key_t]
+        cls_t = keys_to_embeddings[self.target_embedding_key]
         if sos_token_type == 'as_label':
             self.token_sphere = None
             self.target_features = 4
@@ -579,7 +584,7 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
             # nb classes = nb_vertices + SOS
             self.target_features = len(self.token_sphere.vertices) + 1
         self.embedding_layer_t = cls_t(self.target_features,
-                                       self.embedding_size_t)
+                                       self.target_embedded_size)
 
         self.forward_uses_streamlines = True
 
@@ -592,8 +597,8 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
         p = super().params_for_checkpoint
         p.update({
             'sos_token_type': self.sos_token_type,
-            'embedding_key_t': self.embedding_key_t,
-            'embedding_size_t': self.embedding_size_t,
+            'target_embedding_key': self.target_embedding_key,
+            'target_embedded_size': self.target_embedded_size,
             'start_from_copy_prev': self.start_from_copy_prev
         })
 
@@ -719,16 +724,19 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
                 emb_choice_x
 
     """
-    def __init__(self, d_model, n_layers_d: int, **kw):
+    def __init__(self, input_embedded_size, n_layers_d: int, **kw):
         """
         Args
         ----
         n_layers_d: int
             Number of encoding layers in the decoder. [6]
         """
-        super().__init__(embedding_size_x=d_model,
-                         embedding_size_t=d_model,
-                         d_model=d_model, **kw)
+        assert input_embedded_size is not None, \
+            "You must define input_embedded_size: It will become d_model"
+
+        super().__init__(input_embedded_size=input_embedded_size,
+                         target_embedded_size=input_embedded_size,
+                         d_model=input_embedded_size, **kw)
 
         # ----------- Additional params
         self.n_layers_d = n_layers_d
@@ -763,8 +771,8 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
-        del p['embedding_size_x']
-        del p['embedding_size_t']
+        del p['target_embedded_size']
+        del p['d_model']
         p['n_layers_d'] = self.n_layers_d
         return p
 
@@ -830,10 +838,12 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
                                              [ emb_choice_x ; emb_choice_y ]
 
     """
-    def __init__(self, embedding_size_x: int, embedding_size_t: int, **kw):
-        super().__init__(embedding_size_x=embedding_size_x,
-                         embedding_size_t=embedding_size_t,
-                         d_model=embedding_size_x + embedding_size_t, **kw)
+    def __init__(self, input_embedded_size: int, target_embedded_size: int,
+                 **kw):
+        super().__init__(input_embedded_size=input_embedded_size,
+                         target_embedded_size=target_embedded_size,
+                         d_model=input_embedded_size + target_embedded_size,
+                         **kw)
 
         # ----------- Additional instantiations
         logger.debug("Instantiating Transformer...")

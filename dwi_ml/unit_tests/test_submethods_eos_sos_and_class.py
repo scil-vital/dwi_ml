@@ -63,7 +63,8 @@ def test_classes(plot_sphere=False):
     streamline_as_one_hot = convert_dirs_to_class(
         batch, torch_sphere, smooth_labels=True, add_sos=True, add_eos=True,
         to_one_hot=True)[0]
-    print(streamline_as_one_hot.sum(dim=1))
+    print("As one-hot, smoothed, sum over classes: ",
+          streamline_as_one_hot.sum(dim=1))
     streamline_as_idx = torch.argmax(streamline_as_one_hot, dim=1)
     assert torch.equal(
         streamline_as_idx,

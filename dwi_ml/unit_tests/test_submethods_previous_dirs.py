@@ -3,12 +3,12 @@
 import torch
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_n_previous_dirs, compute_directions
+    compute_n_previous_dirs
 
 NB_PREVIOUS_DIRS = 4
 
 
-def test_previous_dirs(script_runner):
+def test_previous_dirs():
     print("\n"
           "Unit test: previous dirs\n"
           "------------------------")
@@ -54,3 +54,7 @@ def test_previous_dirs(script_runner):
 
         # There should be 3*NB_PREVIOUS_DIRS coordinates per point.
         assert prev_dirs.shape[1] == 3 * NB_PREVIOUS_DIRS
+
+
+if __name__ == '__main__':
+    test_previous_dirs()

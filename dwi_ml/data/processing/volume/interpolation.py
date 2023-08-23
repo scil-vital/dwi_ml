@@ -206,7 +206,7 @@ def interpolate_volume_in_neighborhood(
 
         # Neighbors become new features of the current point.
         # Reshape signal into (M, (N+1)*F))
-        new_nb_features = (f_features * (n_neighb + 1))
+        new_nb_features = f_features * n_neighb
         subj_x_data = flat_subj_x_data.reshape(m_input_points, new_nb_features)
 
     else:  # No neighborhood:

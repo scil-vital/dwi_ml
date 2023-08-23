@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
+from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 
 
@@ -26,23 +26,7 @@ def add_model_args(p: argparse.ArgumentParser):
     inputs_g = p.add_argument_group(
         "Learn2track model: Main inputs embedding layer")
     Learn2TrackModel.add_neighborhood_args_to_parser(inputs_g)
-    inputs_g.add_argument(
-        '--input_embedding_key', choices=keys_to_embeddings.keys(),
-        default='no_embedding',
-        help="Type of model for the inputs embedding layer.\n"
-             "Default: no_embedding (identity model).")
-    em_size = inputs_g.add_mutually_exclusive_group()
-    em_size.add_argument(
-        '--input_embedding_size', type=int, metavar='s',
-        help="Size of the output after passing the previous dirs through the "
-             "embedding layer. \nDefault: embedding_size=input_size.")
-    em_size.add_argument(
-        '--input_embedding_size_ratio', type=float, metavar='r',
-        help="Size of the output after passing the previous dirs through the "
-             "embedding layer. \nThe inputs size (i.e. number of features per "
-             "voxel) will be verified when \nloading the data, and the "
-             "embedding size wil be output_size_ratio*nb_features.\n"
-             "Default: 1.")
+    Learn2TrackModel.add_args_input_embedding(inputs_g)
 
     rnn_g = p.add_argument_group("Learn2track model: RNN layer")
     rnn_g.add_argument(

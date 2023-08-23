@@ -8,7 +8,7 @@ import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
-from dwi_ml.models.projects.transforming_tractography import \
+from dwi_ml.models.projects.transformer_models import \
     TransformerSrcAndTgtModel
 from dwi_ml.testing.testers import TesterOneInput
 
@@ -58,7 +58,7 @@ def main():
 
     # 1. Load model
     logging.debug("Loading model.")
-    model = TransformerSrcAndTgtModel.load_params_and_state(
+    model = TransformerSrcAndTgtModel.load_model_from_params_and_state(
         args.experiment_path + '/best_model', log_level=sub_logger_level)
 
     # 2. Compute loss

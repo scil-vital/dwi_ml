@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import List, Union
+from typing import List, Union, Optional
 
 import numpy as np
 import torch
@@ -18,7 +18,7 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
     AbstractDirectionGetterModel
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
+from dwi_ml.models.embeddings import keys_to_embeddings, NNEmbedding, NoEmbedding
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
 logger = logging.getLogger('model_logger')
@@ -128,6 +128,11 @@ class MainModelAbstract(torch.nn.Module):
             'compress_lines': self.compress_lines,
         }
 
+    @property
+    def computed_params_for_display(self):
+        p = {}
+        return p
+
     def save_params_and_state(self, model_dir):
         model_state = self.state_dict()
 
@@ -156,7 +161,8 @@ class MainModelAbstract(torch.nn.Module):
             shutil.rmtree(to_remove)
 
     @classmethod
-    def load_params_and_state(cls, model_dir, log_level=logging.WARNING):
+    def load_model_from_params_and_state(cls, model_dir,
+                                         log_level=logging.WARNING):
         """
         Params
         -----
@@ -166,20 +172,15 @@ class MainModelAbstract(torch.nn.Module):
             - parameters.json
             - model_state.pkl
         """
-        # Load attributes and hyperparameters from json file
-        params_filename = os.path.join(model_dir, "parameters.json")
-        with open(params_filename, 'r') as json_file:
-            params = json.load(json_file)
+        params = cls._load_params(model_dir)
 
         logger.setLevel(log_level)
         logger.debug("Loading model from saved parameters:" +
                      format_dict_to_str(params))
-
-        model_state_file = os.path.join(model_dir, "model_state.pkl")
-        model_state = torch.load(model_state_file)
-
         params.update(log_level=log_level)
         model = cls(**params)
+
+        model_state = cls._load_state(model_dir)
         model.load_state_dict(model_state)  # using torch's method
 
         # By default, setting to eval state. If this will be used by the
@@ -187,6 +188,22 @@ class MainModelAbstract(torch.nn.Module):
         model.eval()
 
         return model
+
+    @classmethod
+    def _load_params(cls, model_dir):
+        # Load attributes and hyperparameters from json file
+        params_filename = os.path.join(model_dir, "parameters.json")
+        with open(params_filename, 'r') as json_file:
+            params = json.load(json_file)
+
+        return params
+
+    @classmethod
+    def _load_state(cls, model_dir):
+        model_state_file = os.path.join(model_dir, "model_state.pkl")
+        model_state = torch.load(model_state_file)
+
+        return model_state
 
     def compute_loss(self, *model_outputs, **kw):
         raise NotImplementedError
@@ -200,7 +217,8 @@ class ModelWithNeighborhood(MainModelAbstract):
     Adds tools to work with neighborhoods.
     """
     def __init__(self, neighborhood_type: str = None,
-                 neighborhood_radius=None, **kw):
+                 neighborhood_radius: int = None,
+                 neighborhood_resolution: float = None, **kw):
         """
         Params
         ------
@@ -211,27 +229,74 @@ class ModelWithNeighborhood(MainModelAbstract):
         neighborhood_type: str
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
-        neighborhood_radius: Union[int, float, Iterable[float]]
-            For usage explanation, see prepare_neighborhood_information.
-            Default: None.
+        neighborhood_radius: int
+        neighborhood_resolution: float
         """
         super().__init__(**kw)
 
         # Possible neighbors for each input.
         self.neighborhood_radius = neighborhood_radius
         self.neighborhood_type = neighborhood_type
+        self.neighborhood_resolution = neighborhood_resolution
         self.neighborhood_vectors = prepare_neighborhood_vectors(
-            neighborhood_type, neighborhood_radius)
+            neighborhood_type, neighborhood_radius, neighborhood_resolution)
 
         # Reminder. nb neighbors does not include origin.
         self.nb_neighbors = len(self.neighborhood_vectors) if \
-            self.neighborhood_vectors is not None else 0
+            self.neighborhood_vectors is not None else 1
+
+    @classmethod
+    def _load_params(cls, model_dir):
+        params = super()._load_params(model_dir)
+
+        # Will eventually be deprecated:
+        if 'neighborhood_radius' in params and \
+                'neighborhood_resolution' not in params:
+            logging.warning(
+                "Model trained with a deprecated neighborhood management. "
+                "Fixing.")
+            r = params['neighborhood_radius']
+            if params['neighborhood_type'] == 'grid':
+                res = 1
+
+                if isinstance(r, list):
+                    assert len(r) == 1
+                    rad = r[0]
+                    assert int(rad) == rad, \
+                        "Failed. Cannot interpret float radius anymore."
+                    rad = int(rad)
+                else:
+                    rad = 1
+            else:
+                if isinstance(r, list):
+                    res = r[0]
+                    rad = len(r)
+                    assert np.all(np.diff(r) == res), \
+                        "Failed. Cannot use that type of neighborhood anymore. " \
+                        "Resolution must be the same between each layer of " \
+                        "neighborhood."
+                else:
+                    res = r
+                    rad = 1
+
+            logging.warning("Guessed values are: resolution {}, radius {}"
+                            .format(res, rad))
+            params['neighborhood_resolution'] = float(res)
+            params['neighborhood_radius'] = rad
+
+        return params
 
     def move_to(self, device):
         super().move_to(device)
         if self.neighborhood_vectors is not None:
             self.neighborhood_vectors = self.neighborhood_vectors.to(
                 device, non_blocking=True)
+
+    @property
+    def computed_params_for_display(self):
+        p = super().computed_params_for_display
+        p['nb_neighbors'] = self.nb_neighbors
+        return p
 
     @staticmethod
     def add_neighborhood_args_to_parser(p: argparse.PARSER):
@@ -241,21 +306,22 @@ class ModelWithNeighborhood(MainModelAbstract):
             '--neighborhood_type', choices=['axes', 'grid'],
             help="If set, add neighborhood vectors either with the 'axes' "
                  "or 'grid' option to \nthe input(s).\n"
-                 "- 'axes': lies on a sphere. Uses a list of 6 positions (up, "
-                 "down, left, right, \nbehind, in front) at exactly "
-                 "neighborhood_radius voxels from tracking point.\n"
+                 "- 'axes': lies on a sphere. Uses a list of 7 positions "
+                 "(current, up, down, left, right, \nbehind, in front) at "
+                 "exactly neighborhood_radius voxels from tracking point.\n"
                  "- 'grid': Uses a list of vectors pointing to points "
                  "surrounding the origin \nthat mimic the original voxel "
                  "grid, in voxel space.")
         p.add_argument(
-            '--neighborhood_radius', type=float,
-            metavar='r', nargs='+',
-            help="- With type 'axes', radius must be a float or a list[float] "
-                 "(it will then be a \nmulti-radius neighborhood (lying on "
-                 "concentring spheres).\n"
-                 "- With type 'grid': radius must be a single int value, the "
-                 "radius in number of \nvoxels. Ex: with radius 1, this is "
-                 "26 points. With radius 2, it's 124 points.")
+            '--neighborhood_radius', type=int, metavar='r',
+            help="The radius. For the axes option: a radius of 1 = 7 "
+                 "neighbhors, a radius of 2 = 13. \nFor the grid option: a "
+                 "radius of 1 = 27 neighbors, a radius of 2 = 125.")
+        p.add_argument(
+            '--neighborhood_resolution', type=float, metavar='r',
+            help="Resolution between each layer of neighborhood, in voxel "
+                 "space as compared to the MRI data. \n"
+                 "Ex: 0.5 one neighborhood every half voxel.")
 
     @property
     def params_for_checkpoint(self):
@@ -263,6 +329,7 @@ class ModelWithNeighborhood(MainModelAbstract):
         p.update({
             'neighborhood_type': self.neighborhood_type,
             'neighborhood_radius': self.neighborhood_radius,
+            'neighborhood_resolution': self.neighborhood_resolution
         })
         return p
 
@@ -273,7 +340,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
     directions embedding, and a tool method for direction formatting.
     """
     def __init__(self, nb_previous_dirs: int = 0,
-                 prev_dirs_embedding_size: int = None,
+                 prev_dirs_embedded_size: int = None,
                  prev_dirs_embedding_key: str = None,
                  normalize_prev_dirs: bool = True, **kw):
         """
@@ -282,7 +349,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received. Default: 0.
-        prev_dirs_embedding_size: int
+        prev_dirs_embedded_size: int
             Dimension of the final vector representing the previous directions
             (no matter the number of previous directions used).
             Default: nb_previous_dirs * 3.
@@ -296,14 +363,28 @@ class ModelWithPreviousDirections(MainModelAbstract):
         """
         super().__init__(**kw)
 
+        if nb_previous_dirs > 0:
+            # Define default values: identity embedding.
+            if prev_dirs_embedding_key is None:
+                prev_dirs_embedding_key = 'no_embedding'
+
+            if prev_dirs_embedding_key == 'no_embedding':
+                if prev_dirs_embedded_size is None:
+                    prev_dirs_embedded_size = 3 * nb_previous_dirs
+                elif prev_dirs_embedded_size != 3 * nb_previous_dirs:
+                    raise ValueError("To use identity embedding, the output size "
+                                     "must be the same as the input size!"
+                                     "Expecting {}".format(3 * nb_previous_dirs))
+
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
-        self.prev_dirs_embedding_size = prev_dirs_embedding_size
+        self.prev_dirs_embedded_size = prev_dirs_embedded_size
         self.normalize_prev_dirs = normalize_prev_dirs
 
         if self.nb_previous_dirs > 0:
-            if (prev_dirs_embedding_key is not None and
-                    prev_dirs_embedding_size is None):
+            # With previous direction: verify embedding choices
+
+            if prev_dirs_embedded_size is None:
                 raise ValueError(
                     "To use an embedding class, you must provide its output size")
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
@@ -312,19 +393,17 @@ class ModelWithPreviousDirections(MainModelAbstract):
                                  .format(self.prev_dirs_embedding_key,
                                          keys_to_embeddings.keys()))
 
-            if prev_dirs_embedding_size is None:
-                self.prev_dirs_embedding_size = nb_previous_dirs * 3
-
             prev_dirs_emb_cls = keys_to_embeddings[prev_dirs_embedding_key]
             # Preparing layer!
             self.prev_dirs_embedding = prev_dirs_emb_cls(
-                input_size=nb_previous_dirs * 3,
-                output_size=self.prev_dirs_embedding_size)
+                nb_features_in=nb_previous_dirs * 3,
+                nb_features_out=self.prev_dirs_embedded_size)
         else:
-            self.prev_dirs_embedding_size = None
-            if prev_dirs_embedding_size:
+            # No previous direction:
+            if prev_dirs_embedded_size:
                 logging.warning("Previous dirs embedding size was defined but "
                                 "no previous directions are used!")
+            self.prev_dirs_embedded_size = None
             self.prev_dirs_embedding = None
 
         # To tell our trainer what to send to the forward / loss methods.
@@ -333,20 +412,24 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
     @staticmethod
     def add_args_model_with_pd(p):
+        # CNN embedding makes no sense for previous dir
+        _keys_to_embeddings = {'no_embedding': NoEmbedding,
+                               'nn_embedding': NNEmbedding}
+
         p.add_argument(
             '--nb_previous_dirs', type=int, default=0, metavar='n',
             help="Concatenate the n previous streamline directions to the "
                  "input vector. \nDefault: 0")
         p.add_argument(
-            '--prev_dirs_embedding_key', choices=keys_to_embeddings.keys(),
+            '--prev_dirs_embedding_key', choices=_keys_to_embeddings.keys(),
             default='no_embedding',
             help="Type of model for the previous directions embedding layer.\n"
                  "Default: no_embedding (identity model).")
         p.add_argument(
-            '--prev_dirs_embedding_size', type=int, metavar='s',
+            '--prev_dirs_embedded_size', type=int, metavar='s',
             help="Size of the output after passing the previous dirs through "
                  "the embedding \nlayer. (Total size. Ex: "
-                 "--nb_previous_dirs 3, --prev_dirs_embedding_size 8 \n"
+                 "--nb_previous_dirs 3, --prev_dirs_embedded_size 8 \n"
                  "would compact 9 features into 8.) "
                  "Default: nb_previous_dirs*3.")
         p.add_argument(
@@ -354,13 +437,27 @@ class ModelWithPreviousDirections(MainModelAbstract):
             help="If true, normalize the previous directions (before the "
                  "embedding layer,\n if any, and before adding to the input.")
 
+    @classmethod
+    def _load_params(cls, model_dir):
+        params = super()._load_params(model_dir)
+
+        # Will eventually be deprecated:
+        if 'prev_dirs_embedding_size' in params:
+            logging.warning(
+                "Deprecated param prev_dirs_embedding_size. Now called "
+                "prev_dirs_embedded_size. Changing")
+            params['prev_dirs_embedded_size'] = params['prev_dirs_embedding_size']
+            del params['prev_dirs_embedding_size']
+
+        return params
+
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
         p.update({
             'nb_previous_dirs': self.nb_previous_dirs,
             'prev_dirs_embedding_key': self.prev_dirs_embedding_key,
-            'prev_dirs_embedding_size': self.prev_dirs_embedding_size,
+            'prev_dirs_embedded_size': self.prev_dirs_embedded_size,
             'normalize_prev_dirs': self.normalize_prev_dirs
         })
         return p
@@ -387,7 +484,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 class MainModelOneInput(MainModelAbstract):
     def prepare_batch_one_input(self, streamlines, subset: MultisubjectSubset,
-                                subj, input_group_idx, prepare_mask=False):
+                                subj_idx, input_group_idx, prepare_mask=False):
         """
         These params are passed by either the batch loader or the propagator,
         which manage the data.
@@ -420,7 +517,7 @@ class MainModelOneInput(MainModelAbstract):
         # If data is lazy, get volume from cache or send to cache if
         # it wasn't there yet.
         data_tensor = subset.get_volume_verify_cache(
-            subj, input_group_idx, device=self.device)
+            subj_idx, input_group_idx, device=self.device)
 
         # Prepare the volume data
         # Coord_torch contain the coords after interpolation, possibly clipped
@@ -453,7 +550,211 @@ class MainModelOneInput(MainModelAbstract):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
             return subj_x_data, input_mask
+
         return subj_x_data
+
+
+class ModelOneInputWithEmbedding(MainModelOneInput):
+    def __init__(self, input_embedding_key: str,
+                 input_embedded_size: Union[int, None],
+                 nb_cnn_filters: Optional[int],
+                 kernel_size: Optional[int], **kw):
+        """
+        Parameters
+        ----------
+        input_embedding_key: str
+            Key to an embedding class (one of
+            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
+            Default: 'no_embedding'.
+        input_embedded_size: int
+            Output embedding size for the input. If None, will be set to
+            input_size.
+        nb_cnn_filters: int
+            Number of filters in the CNN. Output size at each voxel.
+        kernel_size: int
+            Used only with CNN embedding. Size of the 3D filter matrix.
+            Will be of shape [k, k, k].
+        """
+        super().__init__(**kw)
+
+        self.input_embedding_key = input_embedding_key
+        self.input_embedded_size = input_embedded_size
+        self.nb_cnn_filters = nb_cnn_filters
+        self.kernel_size = kernel_size
+
+        # Preparing layer variable now but not instantiated. User must provide
+        # input size.
+        self.input_embedding_layer = None
+        self.computed_input_embedded_size = None
+
+        # ----------- Checks
+        if self.input_embedding_key not in keys_to_embeddings.keys():
+            raise ValueError("Embedding choice for x data not understood: {}"
+                             .format(self.input_embedding_key))
+
+        if self.input_embedding_key == 'cnn_embedding':
+            # For CNN: make sure that neighborhood is included.
+            if not isinstance(self, ModelWithNeighborhood):
+                raise ValueError("CNN embedding cannot be used without a "
+                                 "neighborhood. Add ModelWithNeighborhood as "
+                                 "parent to your model class.")
+            # We will eventually need to verify that neighborhood type is
+            # 'grid', but waiting for all super().__init__ calls to be done.
+            # We will verify at instantiation.
+
+            if self.input_embedded_size is not None:
+                raise ValueError(
+                    "You should not use input_embedded_size with CNN embedding."
+                    "Rather, use the nb_filters and kernel_size.")
+
+            if self.kernel_size is None:
+                raise ValueError("Kernel size must be defined to use CNN "
+                                 "embedding")
+            # Again: We will verify kernel_size when neighorhood is done
+            # preparing in super().__init__
+        else:
+            # NN embedding or identity embedding:
+            if self.nb_cnn_filters is not None:
+                raise ValueError("Nb CNN filters should not be used when "
+                                 "embedding is not CNN.")
+            if self.kernel_size is not None:
+                raise ValueError("CNN kernel_size should not be used when "
+                                 "embedding is not CNN.")
+
+    def instantiate_input_embedding(self, nb_features):
+        """
+        Parameters
+        ----------
+        nb_features: int
+            Number of features per voxel.
+        """
+        input_embedding_cls = keys_to_embeddings[self.input_embedding_key]
+
+        if self.input_embedding_key == 'cnn_embedding':
+            if self.neighborhood_type != 'grid':
+                raise ValueError(
+                    "CNN embedding should be used with a grid-like neighborhood.")
+            if self.kernel_size > 2 * self.neighborhood_radius + 1:
+                # Kernel size cannot be bigger than the number of points.
+                # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
+                raise ValueError(
+                    "CNN kernel size is bigger than the neighborhood size."
+                    "Not expected, as we are not padding the data.")
+
+            neighb_size = 2 * self.neighborhood_radius + 1
+            self.input_embedding_layer = input_embedding_cls(
+                nb_features_in=nb_features,
+                nb_features_out=self.nb_cnn_filters,
+                kernel_size=self.kernel_size,
+                image_shape=[neighb_size]*3)
+            self.computed_input_embedded_size = \
+                self.input_embedding_layer.out_flattened_size
+        else:
+            input_size = nb_features
+            if isinstance(self, ModelWithNeighborhood):
+                input_size = nb_features * self.nb_neighbors
+
+            # If not defined: default embedding size = input size.
+            self.computed_input_embedded_size = \
+                self.input_embedded_size or input_size
+            self.input_embedding_layer = input_embedding_cls(
+                nb_features_in=input_size,
+                nb_features_out=self.computed_input_embedded_size)
+
+    @classmethod
+    def _load_params(cls, model_dir):
+        params = super()._load_params(model_dir)
+
+        # Will eventually be deprecated:
+        if 'input_embedding_size' in params:
+            logging.warning(
+                "Deprecated param input_embedding_size. Now called "
+                "input_embedded_size. Changing")
+            params['input_embedded_size'] = params['input_embedding_size']
+            del params['input_embedding_size']
+
+        if 'input_embedding_size_ratio' in params:
+            if params['input_embedding_size_ratio'] is None:
+                logging.warning(
+                    "Deprecated params 'input_embedding_size_ratio', but was "
+                    "None. Ignoring")
+                del params['input_embedding_size_ratio']
+            else:
+                raise ValueError("Deprecated use of "
+                                 "'input_embedding_size_ratio'. Cannot proceed.")
+
+        # These values did not exist in older models.
+        if 'nb_cnn_filters' not in params:
+            params['nb_cnn_filters'] = None
+        if 'kernel_size' not in params:
+            params['kernel_size'] = None
+
+        return params
+
+    @classmethod
+    def _load_state(cls, model_dir):
+        model_state = super()._load_state(model_dir)
+
+        if 'input_embedding.linear.weight' in model_state:
+            logging.warning("Deprecated variable name input_embedding. Now "
+                            "called input_embedding_layer. Fixing model "
+                            "state at loading.")
+            model_state['input_embedding_layer.linear.weight'] = \
+                model_state['input_embedding.linear.weight']
+            model_state['input_embedding_layer.linear.bias'] = \
+                model_state['input_embedding.linear.bias']
+            del model_state['input_embedding.linear.weight']
+            del model_state['input_embedding.linear.bias']
+
+        return model_state
+
+
+    @property
+    def params_for_checkpoint(self):
+        # Every parameter necessary to build the different layers again.
+        # during checkpoint state saving.
+        params = super().params_for_checkpoint
+        params.update({
+            'input_embedding_key': self.input_embedding_key,
+            'input_embedded_size': self.input_embedded_size,
+            'kernel_size': self.kernel_size,
+            'nb_cnn_filters': self.nb_cnn_filters,
+        })
+
+        return params
+
+    @property
+    def computed_params_for_display(self):
+        p = super().computed_params_for_display
+        p['computed_input_embedded_size'] = self.computed_input_embedded_size
+        return p
+
+    @staticmethod
+    def add_args_input_embedding(p, default_embedding='no_embedding'):
+        p.add_argument(
+            '--input_embedding_key', choices=keys_to_embeddings.keys(),
+            default=default_embedding,
+            help="Type of model for the inputs embedding layer.\n"
+                 "Default: no_embedding (identity model). Embedded size may "
+                 "be defined with \n--input_embedded_size. Note that initial "
+                 "inputs are: \n- For CNN: nb of MRI features. Kernel size "
+                 "must be defined. \n- For NN: nb of MRI features * nb "
+                 "neighbors (flattened data).")
+        em = p.add_mutually_exclusive_group()
+        em.add_argument(
+            '--input_embedded_size', type=int, metavar='s',
+            help="Size of the output after passing the previous dirs through "
+                 "the embedding layer. \nDefault: embedded_size=input_size.\n"
+                 "For CNN: this is the number of filters.")
+        em.add_argument(
+            '--nb_cnn_filters', type=int, metavar='f',
+            help="For CNN: embedding size will depend on the CNN parameters "
+                 "(number of filters, but \nalso stride, padding, etc.). CNN "
+                 "output will be flattened.")
+        p.add_argument(
+            '--kernel_size', type=int, metavar='k',
+            help='In the case of CNN embedding, size of the 3D filter matrix '
+                 '(kernel). Will be of shape kxkxk.')
 
 
 class ModelWithDirectionGetter(MainModelAbstract):

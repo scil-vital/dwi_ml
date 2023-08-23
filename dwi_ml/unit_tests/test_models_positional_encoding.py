@@ -3,7 +3,7 @@
 import math
 
 import numpy as np
-from dwi_ml.models.projects.positional_encoding import (
+from dwi_ml.models.positional_encoding import (
     SinusoidalPositionalEncoding)
 
 
@@ -24,3 +24,8 @@ def test_positional_encoding():
                 [math.cos(pos / div_term) for pos in range(max_len)])
 
     assert np.allclose(np.asarray(model.pos_emb), np.asarray([pos_emb2]))
+    print("OK")
+
+
+if __name__ == '__main__':
+    test_positional_encoding()

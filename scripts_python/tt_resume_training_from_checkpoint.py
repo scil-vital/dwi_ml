@@ -12,7 +12,7 @@ import comet_ml
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
-from dwi_ml.models.projects.transforming_tractography import \
+from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
@@ -65,7 +65,7 @@ def init_from_checkpoint(args, checkpoint_path):
     else:
         raise ValueError("Model type not a recognized transformer Transformer"
                          "({})".format(model_type))
-    model = cls.load_params_and_state(model_dir, sub_loggers_level)
+    model = cls.load_model_from_params_and_state(model_dir, sub_loggers_level)
 
     # Prepare batch sampler
     _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])

@@ -470,10 +470,10 @@ class DWIMLAbstractTrainer:
 
         # Will eventually be deprecated:
         if 'tracking_phase_nb_steps_init' in trainer_params:
-            print("Model trained with an older version of dwi_ml. Param "
-                  "tracking_phase_nb_steps_init will soon be deprecated."
-                  "Now called tracking_phase_nb_segments_init, with value "
-                  "one less.")
+            logging.warning(
+                "Model trained with an older version of dwi_ml. Param "
+                "tracking_phase_nb_steps_init will soon be deprecated. Now "
+                "called tracking_phase_nb_segments_init, with value one less.")
             val = trainer_params['tracking_phase_nb_steps_init']
             del trainer_params['tracking_phase_nb_steps_init']
             trainer_params['tracking_phase_nb_segments_init'] = val - 1
@@ -579,6 +579,7 @@ class DWIMLAbstractTrainer:
                 self.comet_exp.log_parameters(self.batch_sampler.params_for_checkpoint)
                 self.comet_exp.log_parameters(self.batch_loader.params_for_checkpoint)
                 self.comet_exp.log_parameters(self.model.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.model.computed_params_for_display)
                 self.comet_key = self.comet_exp.get_key()
                 # Couldn't find how to set log level. Getting it directly.
                 comet_log = logging.getLogger("comet_ml")

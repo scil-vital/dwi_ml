@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-from dwi_ml.models.embeddings_on_tensors import keys_to_embeddings
-from dwi_ml.models.projects.positional_encoding import (
+from dwi_ml.models.embeddings import keys_to_embeddings
+from dwi_ml.models.positional_encoding import (
     keys_to_positional_encodings)
-from dwi_ml.models.projects.transforming_tractography import (
+from dwi_ml.models.projects.transformer_models import (
     AbstractTransformerModel)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 
@@ -25,18 +25,14 @@ def add_transformers_model_args(p):
     # Step_size / compress
     AbstractTransformerModel.add_args_main_model(p)
 
-    gx = p.add_argument_group("Embedding of the input (X)")
-    gx.add_argument(
-        '--embedding_key_x', default='nn_embedding',
-        choices=keys_to_embeddings.keys(), metavar='key',
-        help="Type of data embedding to use. One of 'no_embedding', \n"
-             "'nn_embedding' (default) or 'cnn_embedding'.")
-    gx.add_argument(
-        '--embedding_size_x', type=int, metavar='n',
-        help="REQUIRED FOR TTST MODELS: \n"
-             "(For TTO and TTS models, embedding size is d_model)"
-             "Embedding size for x. Total d_model will be \n"
-             "embedding_size_x + embedding_size_t.")
+    gx = p.add_argument_group(
+        "Embedding of the input (X)",
+        "Note that the input_embedded_size is required for TTST models "
+        "(or nb_cnn_filters if applicable). \nTotal d_model will be"
+        "input_embedded_size + target_embedded_size.\n"
+        "For TTO and TTS models, input embedding size becomes d_model")
+    AbstractTransformerModel.add_args_input_embedding(
+        gx, default_embedding='nn_embedding')
     gx.add_argument(
         '--position_encoding', default='sinusoidal', metavar='key',
         choices=keys_to_positional_encodings.keys(),
@@ -54,14 +50,14 @@ def add_transformers_model_args(p):
              "on the chosen sphere, and \nan additional class is added for "
              "SOS.")
     gt.add_argument(
-        '--target_embedding', default='nn_embedding',
+        '--target_embedding_key', default='nn_embedding',
         choices=keys_to_embeddings.keys(), metavar='key',
         help="Type of data embedding to use. One of 'no_embedding', \n"
              "'nn_embedding' (default) or 'cnn_embedding'.")
     gt.add_argument(
-        '--embedding_size_t', type=int, metavar='n',
-        help="REQUIRED FOR TTST MODEL: Embedding size for t. \n"
-             "Total d_model will be embedding_size_x + embedding_size_t.")
+        '--target_embedded_size', type=int, metavar='n',
+        help="Embedding size for targets (for TTST only). \n"
+             "Total d_model will be input_embedded_size + target_embedded_size.")
 
     gtt = p.add_argument_group(title='Transformer: main layers')
     gtt.add_argument(
@@ -74,12 +70,6 @@ def add_transformers_model_args(p):
              " - TTST: Encoder only. Input and previous direction "
              "concatenated. (TTST for 'Source + Target'). See [1].\n"
              "[1]: https://arxiv.org/abs/1905.06596")
-    gtt.add_argument(
-        '--d_model', type=int, metavar='n',
-        help="REQUIRED FOR TTO AND TTS MODELS:\n"
-             "Output size that will kept constant in all layers to allow skip "
-             "connections\n (embedding size, ffnn output size, attention size)."
-             "\nDefault in Vaswani: 4096.")
     gtt.add_argument(
         '--max_len', type=int, default=1000, metavar='n',
         help="Longest sequence allowed. Other sequences will be zero-padded \n"
@@ -108,7 +98,7 @@ def add_transformers_model_args(p):
         help="Size of the feed-forward neural network (FFNN) layer in the \n"
              "encoder and decoder layers. The FFNN is composed of two linear\n"
              "layers. This is the size of the output of the first one. \n"
-             "Default: data_embedding_size/2")
+             "Default: d_model/2")
     gtt.add_argument(
         '--activation', choices=['relu', 'gelu'], default='relu',
         metavar='key',

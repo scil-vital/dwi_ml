@@ -76,14 +76,14 @@ def init_from_args(args, sub_loggers_level):
             step_size=args.step_size, compress_lines=args.compress,
             # PREVIOUS DIRS
             prev_dirs_embedding_key=args.prev_dirs_embedding_key,
-            prev_dirs_embedding_size=args.prev_dirs_embedding_size,
+            prev_dirs_embedded_size=args.prev_dirs_embedded_size,
             nb_previous_dirs=args.nb_previous_dirs,
             normalize_prev_dirs=args.normalize_prev_dirs,
             # INPUTS
             input_embedding_key=args.input_embedding_key,
-            input_embedding_size=args.input_embedding_size,
-            input_embedding_size_ratio=args.input_embedding_size_ratio,
-            nb_features=args.nb_features,
+            input_embedded_size=args.input_embedded_size,
+            nb_features=args.nb_features, kernel_size=args.kernel_size,
+            nb_cnn_filters=args.nb_cnn_filters,
             # RNN
             rnn_key=args.rnn_key, rnn_layer_sizes=args.rnn_layer_sizes,
             dropout=args.dropout,
@@ -95,10 +95,14 @@ def init_from_args(args, sub_loggers_level):
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
+            neighborhood_resolution=args.neighborhood_resolution,
             log_level=sub_loggers_level)
 
         logging.info("Learn2track model final parameters:" +
                      format_dict_to_str(model.params_for_checkpoint))
+
+        logging.info("Computed parameters:" +
+                     format_dict_to_str(model.computed_params_for_display))
 
     # Preparing the batch samplers
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)

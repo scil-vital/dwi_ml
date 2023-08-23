@@ -47,7 +47,8 @@ def test_execution(script_runner, experiments_path):
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
                             '--nheads', '2', '--max_len', str(MAX_LEN),
-                            '--d_model', '6',
+                            '--input_embedding_key', 'nn_embedding',
+                            '--input_embedded_size', '6',
                             '--n_layers_e', '1',
                             '--ffnn_hidden_size', '3', '--logging', 'INFO')
     assert ret.success

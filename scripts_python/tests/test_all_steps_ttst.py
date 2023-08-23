@@ -48,8 +48,9 @@ def test_execution(script_runner, experiments_path):
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
                             '--nheads', '2', '--max_len', str(MAX_LEN),
-                            '--embedding_size_x', '6',
-                            '--embedding_size_t', '2',
+                            '--input_embedding_key', 'nn_embedding',
+                            '--input_embedded_size', '6',
+                            '--target_embedded_size', '2',
                             '--n_layers_e', '1',
                             '--ffnn_hidden_size', '3', '--logging', 'INFO')
     assert ret.success
@@ -65,8 +66,9 @@ def test_execution(script_runner, experiments_path):
                                 '--max_batches_per_epoch_training', '2',
                                 '--max_batches_per_epoch_validation', '1',
                                 '--nheads', '2', '--max_len', str(MAX_LEN),
-                                '--embedding_size_x', '6',
-                                '--embedding_size_t', '2',
+                                '--input_embedding_key', 'nn_embedding',
+                                '--input_embedded_size', '6',
+                                '--target_embedded_size', '2',
                                 '--n_layers_e', '1',
                                 '--ffnn_hidden_size', '3', '--logging', 'INFO',
                                 '--use_gpu')

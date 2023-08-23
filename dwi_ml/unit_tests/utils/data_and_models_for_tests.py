@@ -4,7 +4,6 @@ import os
 from typing import List
 
 import torch
-from torch.nn.utils.rnn import pack_sequence, unpack_sequence
 
 from scilpy.io.fetcher import fetch_data, get_home
 
@@ -39,9 +38,9 @@ def fetch_testing_data():
     return testing_data_dir
 
 
-def create_test_batch():
-    logging.debug("Creating batch: 2 streamlines, the first has 3 points "
-                  "and the second, 2. Input: 4 features per point.")
+def create_test_batch_2lines_4features():
+    # 2 streamlines, the first has 3 points and the second, 2.
+    # Input: 4 features per point.
 
     # dwi1 : data for the 3 first points
     flattened_dwi1 = torch.as_tensor([[10., 11., 12., 13.],
@@ -101,7 +100,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
                  # NEIGHBORHOOD
                  neighborhood_type: str = None, neighborhood_radius=None,
                  # PREVIOUS DIRS
-                 nb_previous_dirs=0, prev_dirs_embedding_size=None,
+                 nb_previous_dirs=0, prev_dirs_embedded_size=None,
                  prev_dirs_embedding_key=None, normalize_prev_dirs=True,
                  # DIRECTION GETTER
                  dg_key='cosine-regression', dg_args=None,
@@ -114,7 +113,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
             neighborhood_radius=neighborhood_radius,
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
-            prev_dirs_embedding_size=prev_dirs_embedding_size,
+            prev_dirs_embedded_size=prev_dirs_embedded_size,
             prev_dirs_embedding_key=prev_dirs_embedding_key,
             normalize_prev_dirs=normalize_prev_dirs,
             # For super MainModelForTracking:

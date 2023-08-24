@@ -258,6 +258,19 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
 
         return p
 
+    @classmethod
+    def _load_params(cls, model_dir):
+        params = super()._load_params(model_dir)
+
+        # Fix deprecated value
+        if 'embedding_key_x' in params:
+            logging.warning("Deprecated model {}. Variable 'embedding_key_x' "
+                            "now called input_embedding_key. Renaming.")
+            params['input_embedding_key'] = params['embedding_key_x']
+            del params['embedding_key_x']
+
+        return params
+
     def set_context(self, context):
         assert context in ['training', 'validation', 'tracking', 'visu']
         self._context = context

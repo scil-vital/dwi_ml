@@ -704,24 +704,6 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
 
         return params
 
-    @classmethod
-    def _load_state(cls, model_dir):
-        model_state = super()._load_state(model_dir)
-
-        if 'input_embedding.linear.weight' in model_state:
-            logging.warning("Deprecated variable name input_embedding. Now "
-                            "called input_embedding_layer. Fixing model "
-                            "state at loading.")
-            model_state['input_embedding_layer.linear.weight'] = \
-                model_state['input_embedding.linear.weight']
-            model_state['input_embedding_layer.linear.bias'] = \
-                model_state['input_embedding.linear.bias']
-            del model_state['input_embedding.linear.weight']
-            del model_state['input_embedding.linear.bias']
-
-        return model_state
-
-
     @property
     def params_for_checkpoint(self):
         # Every parameter necessary to build the different layers again.

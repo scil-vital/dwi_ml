@@ -579,10 +579,16 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
 
         self.input_embedding_key = input_embedding_key
         self.input_embedded_size = input_embedded_size
+
+        # Deprecated use: as single ints. Formatting as list.
+        if isinstance(nb_cnn_filters, int):
+            nb_cnn_filters = [nb_cnn_filters]
+        if isinstance(kernel_size, int):
+            kernel_size = [kernel_size]
         self.nb_cnn_filters = nb_cnn_filters
         self.kernel_size = kernel_size
 
-        # Preparing layer variable now but not instantiated. User must provide
+        # Preparing layer variables now but not instantiated. User must provide
         # input size.
         self.input_embedding_layer = None
         self.computed_input_embedded_size = None

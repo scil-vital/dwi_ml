@@ -116,6 +116,7 @@ def init_from_args(args, sub_loggers_level):
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
+            neighborhood_resolution=args.neighborhood_resolution,
             log_level=sub_loggers_level, **specific_args)
 
         logging.info("Transformer (original) model final parameters:" +

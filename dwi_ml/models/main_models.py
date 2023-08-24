@@ -743,14 +743,14 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         em = p.add_mutually_exclusive_group()
         em.add_argument(
             '--input_embedded_size', type=int, metavar='s',
-            help="Size of the output after passing the previous dirs through "
-                 "the embedding layer. \nDefault: embedded_size=input_size.\n"
-                 "For CNN: this is the number of filters.")
+            help="For NN: Size of the output after passing the previous dirs "
+                 "through the embedding layer. \n"
+                 "Default: embedded_size=input_size.")
         em.add_argument(
             '--nb_cnn_filters', type=int, metavar='f',
             help="For CNN: embedding size will depend on the CNN parameters "
-                 "(number of filters, but \nalso stride, padding, etc.). CNN "
-                 "output will be flattened.")
+                 "(number of filters, kernel size, but \nalso stride, padding, "
+                 "etc.). CNN output will be flattened.")
         p.add_argument(
             '--kernel_size', type=int, metavar='k',
             help='In the case of CNN embedding, size of the 3D filter matrix '

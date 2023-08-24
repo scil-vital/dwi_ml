@@ -67,7 +67,7 @@ def test_learn2track_cnn():
                              prev_dirs_embedding_key=None,
                              normalize_prev_dirs=True,
                              input_embedding_key='cnn_embedding',
-                             nb_cnn_filters=4, kernel_size=3,
+                             nb_cnn_filters=[4], kernel_size=[3],
                              input_embedded_size=None,
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,

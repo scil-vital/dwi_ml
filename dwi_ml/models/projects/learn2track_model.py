@@ -88,7 +88,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  normalize_prev_dirs: bool,
                  # INPUTS
                  input_embedding_key: str, input_embedded_size: Union[int, None],
-                 nb_cnn_filters: Optional[int], kernel_size: Optional[int],
+                 nb_cnn_filters: Optional[List[int]],
+                 kernel_size: Optional[List[int]],
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
                  use_skip_connection: bool, use_layer_normalization: bool,

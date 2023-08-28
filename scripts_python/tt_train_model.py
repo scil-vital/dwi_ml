@@ -61,7 +61,8 @@ def init_from_args(args, sub_loggers_level):
     if args.model == 'TTST':
         # Combine target + input. Need both embedding sizes.
         cls = TransformerSrcAndTgtModel
-        if args.target_embedded_size is None:
+        if args.target_embedded_size is None and \
+                args.target_embedding_key != 'no_embedding':
             raise ValueError("target_embedded_size must be given for this model.")
         specific_args['target_embedded_size'] = args.target_embedded_size
     else:

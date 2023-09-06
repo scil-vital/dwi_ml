@@ -27,10 +27,10 @@ def add_transformers_model_args(p):
 
     gx = p.add_argument_group(
         "Embedding of the input (X)",
-        "Note that the input_embedded_size is required for TTST models "
-        "(or nb_cnn_filters if applicable). \nTotal d_model will be "
-        "input_embedded_size + target_embedded_size.\n"
-        "For TTO and TTS models, input_embedded_size becomes d_model")
+        "Input embedding size defines the d_model. The d_model must be divisible "
+        "by the number of heads.\n"
+        "Note that for TTST, total d_model will rather be "
+        "input_embedded_size + target_embedded_size.\n")
     AbstractTransformerModel.add_args_input_embedding(
         gx, default_embedding='nn_embedding')
     gx.add_argument(
@@ -51,9 +51,9 @@ def add_transformers_model_args(p):
              "SOS.")
     gt.add_argument(
         '--target_embedding_key', default='nn_embedding',
-        choices=keys_to_embeddings.keys(), metavar='key',
-        help="Type of data embedding to use. One of 'no_embedding', \n"
-             "'nn_embedding' (default) or 'cnn_embedding'.")
+        choices=['no_embedding', 'nn_embedding'], metavar='key',
+        help="Type of data embedding to use. One of 'no_embedding' or \n"
+             "'nn_embedding' (default)'.")
     gt.add_argument(
         '--target_embedded_size', type=int, metavar='n',
         help="Embedding size for targets (for TTST only). \n"

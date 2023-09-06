@@ -232,7 +232,9 @@ class ModelWithNeighborhood(MainModelAbstract):
         neighborhood_radius: int
         neighborhood_resolution: float
         """
-        super().__init__(**kw)
+        # Important. Neighborhood values must be set before super, to be
+        # reused by ModelOneInputWithEmbedding no matter the order of execution
+        # of __init__.
 
         # Possible neighbors for each input.
         self.neighborhood_radius = neighborhood_radius
@@ -244,6 +246,8 @@ class ModelWithNeighborhood(MainModelAbstract):
         # Reminder. nb neighbors does not include origin.
         self.nb_neighbors = len(self.neighborhood_vectors) if \
             self.neighborhood_vectors is not None else 1
+
+        super().__init__(**kw)
 
     @classmethod
     def _load_params(cls, model_dir):
@@ -555,124 +559,125 @@ class MainModelOneInput(MainModelAbstract):
 
 
 class ModelOneInputWithEmbedding(MainModelOneInput):
-    def __init__(self, input_embedding_key: str,
+    def __init__(self, nb_features: int,
+                 input_embedding_key: str,
                  input_embedded_size: int = None,
                  nb_cnn_filters: List[int] = None,
                  kernel_size: List[int] = None, **kw):
         """
         Parameters
         ----------
+        nb_features: int
+            This value should be known from the actual data. Number of features
+            in the data (last dimension).
         input_embedding_key: str
             Key to an embedding class (one of
             dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
             Default: 'no_embedding'.
         input_embedded_size: int
-            Output embedding size for the input. If None, will be set to
-            input_size.
+            Output embedding size for the input. Not required for no_embedding.
         nb_cnn_filters: int
             Number of filters in the CNN. Output size at each voxel.
         kernel_size: int
             Used only with CNN embedding. Size of the 3D filter matrix.
             Will be of shape [k, k, k].
         """
+
         super().__init__(**kw)
 
         self.input_embedding_key = input_embedding_key
         self.input_embedded_size = input_embedded_size
-
-        # Deprecated use: as single ints. Formatting as list.
-        if isinstance(nb_cnn_filters, int):
-            nb_cnn_filters = [nb_cnn_filters]
-        if isinstance(kernel_size, int):
-            kernel_size = [kernel_size]
         self.nb_cnn_filters = nb_cnn_filters
         self.kernel_size = kernel_size
+        self.nb_features = nb_features
 
         # Preparing layer variables now but not instantiated. User must provide
         # input size.
         self.input_embedding_layer = None
-        self.computed_input_embedded_size = None
 
-        # ----------- Checks
+        # ----------- Instantiation + checks
         if self.input_embedding_key not in keys_to_embeddings.keys():
             raise ValueError("Embedding choice for x data not understood: {}"
                              .format(self.input_embedding_key))
 
+        # This variable will contain final computed size.
+        self.computed_input_embedded_size = None
         if self.input_embedding_key == 'cnn_embedding':
-            # For CNN: make sure that neighborhood is included.
-            if not isinstance(self, ModelWithNeighborhood):
-                raise ValueError("CNN embedding cannot be used without a "
-                                 "neighborhood. Add ModelWithNeighborhood as "
-                                 "parent to your model class.")
-            # We will eventually need to verify that neighborhood type is
-            # 'grid', but waiting for all super().__init__ calls to be done.
-            # We will verify at instantiation.
-
-            if self.input_embedded_size is not None:
-                raise ValueError(
-                    "You should not use input_embedded_size with CNN embedding."
-                    "Rather, use the nb_filters and kernel_size.")
-
-            if self.kernel_size is None:
-                raise ValueError("Kernel size must be defined to use CNN "
-                                 "embedding")
-
-            if len(self.kernel_size) != len(self.nb_cnn_filters):
-                raise ValueError("kernel_size and nb_cnn_filters must contain "
-                                 "the same number of values.")
-
-            # We will also verify that kernel_size fits with the data when
-            # neighorhood is done preparing in super().__init__
+            self.instantiate_cnn_embedding()
         else:
-            # NN embedding or identity embedding:
-            if self.nb_cnn_filters is not None:
-                raise ValueError("Nb CNN filters should not be used when "
-                                 "embedding is not CNN.")
-            if self.kernel_size is not None:
-                raise ValueError("CNN kernel_size should not be used when "
-                                 "embedding is not CNN.")
+            self.instantiate_nn_embedding()
 
-    def instantiate_input_embedding(self, nb_features):
-        """
-        Parameters
-        ----------
-        nb_features: int
-            Number of features per voxel.
-        """
+    def instantiate_cnn_embedding(self):
         input_embedding_cls = keys_to_embeddings[self.input_embedding_key]
 
-        if self.input_embedding_key == 'cnn_embedding':
-            if self.neighborhood_type != 'grid':
-                raise ValueError(
-                    "CNN embedding should be used with a grid-like neighborhood.")
-            if self.kernel_size[0] > 2 * self.neighborhood_radius + 1:
-                # Kernel size cannot be bigger than the number of points.
-                # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
-                # Kernel size of other layers would be longer to check.
-                # We will wait for error in forward, if any.
-                raise ValueError(
-                    "CNN kernel size is bigger than the neighborhood size."
-                    "Not expected, as we are not padding the data.")
+        # For CNN: make sure that neighborhood is included.
+        if not isinstance(self, ModelWithNeighborhood):
+            raise ValueError("CNN embedding cannot be used without a "
+                             "neighborhood. Add ModelWithNeighborhood as "
+                             "parent to your model class.")
+        if self.neighborhood_type != 'grid':
+            raise ValueError(
+                "CNN embedding should be used with a grid-like neighborhood.")
 
-            neighb_size = 2 * self.neighborhood_radius + 1
-            self.input_embedding_layer = input_embedding_cls(
-                nb_features_in=nb_features,
-                nb_filters=self.nb_cnn_filters,
-                kernel_sizes=self.kernel_size,
-                image_shape=[neighb_size]*3)
-            self.computed_input_embedded_size = \
-                self.input_embedding_layer.out_flattened_size
+        if self.input_embedded_size is not None:
+            raise ValueError(
+                "You should not use input_embedded_size with CNN embedding."
+                "Rather, use the nb_filters and kernel_size.")
+
+        if self.kernel_size is None:
+            raise ValueError("Kernel size must be defined to use CNN "
+                             "embedding")
+
+        if len(self.kernel_size) != len(self.nb_cnn_filters):
+            raise ValueError("kernel_size and nb_cnn_filters must contain "
+                             "the same number of values.")
+
+        if self.kernel_size[0] > 2 * self.neighborhood_radius + 1:
+            # Kernel size cannot be bigger than the number of points.
+            # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
+            # Kernel size of other layers would be longer to check.
+            # We will wait for error in forward, if any.
+            raise ValueError(
+                "CNN kernel size is bigger than the neighborhood size."
+                "Not expected, as we are not padding the data.")
+
+        neighb_size = 2 * self.neighborhood_radius + 1
+        self.input_embedding_layer = input_embedding_cls(
+            nb_features_in=self.nb_features,
+            nb_filters=self.nb_cnn_filters,
+            kernel_sizes=self.kernel_size,
+            image_shape=[neighb_size] * 3)
+        self.computed_input_embedded_size = \
+            self.input_embedding_layer.out_flattened_size
+
+    def instantiate_nn_embedding(self):
+        # NN embedding or identity embedding:
+
+        if self.nb_cnn_filters is not None:
+            raise ValueError("Nb CNN filters should not be used when "
+                             "embedding is not CNN.")
+        if self.kernel_size is not None:
+            raise ValueError("CNN kernel_size should not be used when "
+                             "embedding is not CNN.")
+
+        input_size = self.nb_features
+        if isinstance(self, ModelWithNeighborhood):
+            input_size *= self.nb_neighbors
+
+        if self.input_embedding_key == 'no_embedding':
+            if self.input_embedded_size is None:
+                self.computed_input_embedded_size = input_size
+            else:
+                assert self.computed_input_embedded_size == input_size
         else:
-            input_size = nb_features
-            if isinstance(self, ModelWithNeighborhood):
-                input_size = nb_features * self.nb_neighbors
+            if self.input_embedded_size is None:
+                raise ValueError("Input embedded size should be defined.")
+            self.computed_input_embedded_size = self.input_embedded_size
 
-            # If not defined: default embedding size = input size.
-            self.computed_input_embedded_size = \
-                self.input_embedded_size or input_size
-            self.input_embedding_layer = input_embedding_cls(
-                nb_features_in=input_size,
-                nb_features_out=self.computed_input_embedded_size)
+        input_embedding_cls = keys_to_embeddings[self.input_embedding_key]
+        self.input_embedding_layer = input_embedding_cls(
+            nb_features_in=input_size,
+            nb_features_out=self.computed_input_embedded_size)
 
     @classmethod
     def _load_params(cls, model_dir):
@@ -703,24 +708,6 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
             params['kernel_size'] = None
 
         return params
-
-    @classmethod
-    def _load_state(cls, model_dir):
-        model_state = super()._load_state(model_dir)
-
-        if 'input_embedding.linear.weight' in model_state:
-            logging.warning("Deprecated variable name input_embedding. Now "
-                            "called input_embedding_layer. Fixing model "
-                            "state at loading.")
-            model_state['input_embedding_layer.linear.weight'] = \
-                model_state['input_embedding.linear.weight']
-            model_state['input_embedding_layer.linear.bias'] = \
-                model_state['input_embedding.linear.bias']
-            del model_state['input_embedding.linear.weight']
-            del model_state['input_embedding.linear.bias']
-
-        return model_state
-
 
     @property
     def params_for_checkpoint(self):
@@ -757,8 +744,7 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         em.add_argument(
             '--input_embedded_size', type=int, metavar='s',
             help="For NN: Size of the output after passing the previous dirs "
-                 "through the embedding layer. \n"
-                 "Default: embedded_size=input_size.")
+                 "through the embedding layer. Required for nn_embedding.")
         em.add_argument(
             '--nb_cnn_filters', type=int, metavar='f', nargs='+',
             help="For CNN: embedding size will depend on the CNN parameters "

@@ -59,12 +59,15 @@ def init_from_args(args, sub_loggers_level):
 
     # Specific args depending on the chosen model.
     if args.model == 'TTST':
+        # Combine target + input. Need both embedding sizes.
         cls = TransformerSrcAndTgtModel
-        if args.target_embedded_size is None:
+        if args.target_embedded_size is None and \
+                args.target_embedding_key != 'no_embedding':
             raise ValueError("target_embedded_size must be given for this model.")
         specific_args['target_embedded_size'] = args.target_embedded_size
     else:
-        # Models TTO or TTS:
+        # Model TTO:  input_embedding = target_embedding = d_model
+        # Model TTS:  input_embedding = d_model
         if args.target_embedded_size is not None:
             raise ValueError(
                 "--target_embedded_size must not be used with this model.")
@@ -75,11 +78,7 @@ def init_from_args(args, sub_loggers_level):
         else:
             cls = TransformerSrcOnlyModel
 
-    if args.model == 'TTS':
-        # No target.
-        logging.debug("TTS model: target never used as input. Ignoring "
-                      "target embedding key and size, if given.")
-    else:
+    if args.model != 'TTS':
         specific_args.update({'target_embedding_key': args.target_embedding_key,
                               'sos_token_type': args.SOS_token_type,
                               'start_from_copy_prev': args.start_from_copy_prev})
@@ -118,6 +117,7 @@ def init_from_args(args, sub_loggers_level):
             # Other
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
+            neighborhood_resolution=args.neighborhood_resolution,
             log_level=sub_loggers_level, **specific_args)
 
         logging.info("Transformer (original) model final parameters:" +

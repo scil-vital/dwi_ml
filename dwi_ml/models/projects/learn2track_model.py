@@ -104,9 +104,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         """
         Params
         ------
-        nb_features: int
-            This value should be known from the actual data. Number of features
-            in the data (last dimension).
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received.
@@ -140,6 +137,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             neighborhood_radius=neighborhood_radius,
             neighborhood_resolution=neighborhood_resolution,
             # For super ModelWithInputEmbedding:
+            nb_features=nb_features,
             input_embedding_key=input_embedding_key,
             input_embedded_size=input_embedded_size,
             nb_cnn_filters=nb_cnn_filters, kernel_size=kernel_size,
@@ -151,7 +149,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             # For super ModelForTracking:
             dg_args=dg_args, dg_key=dg_key)
 
-        self.nb_features = nb_features
         self.dropout = dropout
         self.start_from_copy_prev = start_from_copy_prev
         self.nb_cnn_filters = nb_cnn_filters
@@ -169,7 +166,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # 1. Previous dirs embedding: prepared by super.
 
         # 2. Input embedding
-        self.instantiate_input_embedding(nb_features)
         self.embedding_dropout = torch.nn.Dropout(self.dropout)
 
         # 3. Stacked RNN
@@ -215,6 +211,23 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         })
 
         return params
+
+    @classmethod
+    def _load_state(cls, model_dir):
+        model_state = super()._load_state(model_dir)
+
+        if 'input_embedding.linear.weight' in model_state:
+            logging.warning("Deprecated variable name input_embedding. Now "
+                            "called input_embedding_layer. Fixing model "
+                            "state at loading.")
+            model_state['input_embedding_layer.linear.weight'] = \
+                model_state['input_embedding.linear.weight']
+            model_state['input_embedding_layer.linear.bias'] = \
+                model_state['input_embedding.linear.bias']
+            del model_state['input_embedding.linear.weight']
+            del model_state['input_embedding.linear.bias']
+
+        return model_state
 
     @property
     def computed_params_for_display(self):

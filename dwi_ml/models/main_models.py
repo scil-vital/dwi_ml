@@ -556,9 +556,9 @@ class MainModelOneInput(MainModelAbstract):
 
 class ModelOneInputWithEmbedding(MainModelOneInput):
     def __init__(self, input_embedding_key: str,
-                 input_embedded_size: Union[int, None],
-                 nb_cnn_filters: Optional[int],
-                 kernel_size: Optional[int], **kw):
+                 input_embedded_size: int = None,
+                 nb_cnn_filters: List[int] = None,
+                 kernel_size: List[int] = None, **kw):
         """
         Parameters
         ----------
@@ -579,10 +579,16 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
 
         self.input_embedding_key = input_embedding_key
         self.input_embedded_size = input_embedded_size
+
+        # Deprecated use: as single ints. Formatting as list.
+        if isinstance(nb_cnn_filters, int):
+            nb_cnn_filters = [nb_cnn_filters]
+        if isinstance(kernel_size, int):
+            kernel_size = [kernel_size]
         self.nb_cnn_filters = nb_cnn_filters
         self.kernel_size = kernel_size
 
-        # Preparing layer variable now but not instantiated. User must provide
+        # Preparing layer variables now but not instantiated. User must provide
         # input size.
         self.input_embedding_layer = None
         self.computed_input_embedded_size = None
@@ -610,8 +616,13 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
             if self.kernel_size is None:
                 raise ValueError("Kernel size must be defined to use CNN "
                                  "embedding")
-            # Again: We will verify kernel_size when neighorhood is done
-            # preparing in super().__init__
+
+            if len(self.kernel_size) != len(self.nb_cnn_filters):
+                raise ValueError("kernel_size and nb_cnn_filters must contain "
+                                 "the same number of values.")
+
+            # We will also verify that kernel_size fits with the data when
+            # neighorhood is done preparing in super().__init__
         else:
             # NN embedding or identity embedding:
             if self.nb_cnn_filters is not None:
@@ -634,9 +645,11 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
             if self.neighborhood_type != 'grid':
                 raise ValueError(
                     "CNN embedding should be used with a grid-like neighborhood.")
-            if self.kernel_size > 2 * self.neighborhood_radius + 1:
+            if self.kernel_size[0] > 2 * self.neighborhood_radius + 1:
                 # Kernel size cannot be bigger than the number of points.
                 # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
+                # Kernel size of other layers would be longer to check.
+                # We will wait for error in forward, if any.
                 raise ValueError(
                     "CNN kernel size is bigger than the neighborhood size."
                     "Not expected, as we are not padding the data.")
@@ -644,8 +657,8 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
             neighb_size = 2 * self.neighborhood_radius + 1
             self.input_embedding_layer = input_embedding_cls(
                 nb_features_in=nb_features,
-                nb_features_out=self.nb_cnn_filters,
-                kernel_size=self.kernel_size,
+                nb_filters=self.nb_cnn_filters,
+                kernel_sizes=self.kernel_size,
                 image_shape=[neighb_size]*3)
             self.computed_input_embedded_size = \
                 self.input_embedding_layer.out_flattened_size
@@ -743,18 +756,20 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         em = p.add_mutually_exclusive_group()
         em.add_argument(
             '--input_embedded_size', type=int, metavar='s',
-            help="Size of the output after passing the previous dirs through "
-                 "the embedding layer. \nDefault: embedded_size=input_size.\n"
-                 "For CNN: this is the number of filters.")
+            help="For NN: Size of the output after passing the previous dirs "
+                 "through the embedding layer. \n"
+                 "Default: embedded_size=input_size.")
         em.add_argument(
-            '--nb_cnn_filters', type=int, metavar='f',
+            '--nb_cnn_filters', type=int, metavar='f', nargs='+',
             help="For CNN: embedding size will depend on the CNN parameters "
-                 "(number of filters, but \nalso stride, padding, etc.). CNN "
-                 "output will be flattened.")
+                 "(number of filters, kernel size, but \nalso stride, padding, "
+                 "etc.). CNN output will be flattened.\n"
+                 "With more than one values, there will be more than one CNN "
+                 "layer. --kernel_size must have the same number of values.")
         p.add_argument(
-            '--kernel_size', type=int, metavar='k',
+            '--kernel_size', type=int, metavar='k', nargs='+',
             help='In the case of CNN embedding, size of the 3D filter matrix '
-                 '(kernel). Will be of shape kxkxk.')
+                 '(kernel). Will be of shape kxkxk. See also --nb_cnn_filters.')
 
 
 class ModelWithDirectionGetter(MainModelAbstract):

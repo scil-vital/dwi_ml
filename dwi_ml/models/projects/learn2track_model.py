@@ -88,7 +88,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  normalize_prev_dirs: bool,
                  # INPUTS
                  input_embedding_key: str, input_embedded_size: Union[int, None],
-                 nb_cnn_filters: Optional[int], kernel_size: Optional[int],
+                 nb_cnn_filters: Optional[List[int]],
+                 kernel_size: Optional[List[int]],
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
                  use_skip_connection: bool, use_layer_normalization: bool,
@@ -264,13 +265,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # Right now input is always flattened (interpolation is implemented
         # that way). For CNN, we will rearrange it ourselves.
         # Verifying the first input
-
-
         assert x[0].shape[-1] == self.input_size, \
             "Not the expected input size! Should be {} (i.e. {} features for " \
             "each of the {} neighbors), but got {} (input shape {})." \
             .format(self.input_size, self.nb_features, self.nb_neighbors,
-                    inputs[0].shape[-1], inputs[0].shape)
+                    x[0].shape[-1], x[0].shape)
 
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.
@@ -285,7 +284,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                 input_streamlines = [input_streamlines[i] for i in sorted_indices]
 
         # ==== 0. Previous dirs.
-        dirs = None
         n_prev_dirs = None
         copy_prev_dir = 0.0
         if self.nb_previous_dirs > 0 or self.start_from_copy_prev:
@@ -294,11 +292,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                 dirs = normalize_directions(dirs)
 
             # Formatting the n previous dirs for last point or all
-            n_prev_dirs = compute_n_previous_dirs(
-                dirs, self.nb_previous_dirs, point_idx=point_idx)
 
             # ==== 1. Previous dirs embedding ====
             if self.nb_previous_dirs > 0:
+                n_prev_dirs = compute_n_previous_dirs(
+                    dirs, self.nb_previous_dirs, point_idx=point_idx)
                 n_prev_dirs = pack_sequence(n_prev_dirs)
                 # Shape: (nb_points - 1) per streamline x (3 per prev dir)
                 n_prev_dirs = self.prev_dirs_embedding(n_prev_dirs.data)
@@ -306,7 +304,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
             # Start from copy prev option.
             if self.start_from_copy_prev:
-                copy_prev_dir = self.copy_prev_dir(dirs, n_prev_dirs)
+                copy_prev_dir = self.copy_prev_dir(dirs)
 
         # ==== 2. Inputs embedding ====
         x = pack_sequence(x)
@@ -389,17 +387,14 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         else:
             return x
 
-    def copy_prev_dir(self, dirs, n_prev_dirs):
+    def copy_prev_dir(self, dirs):
         if 'regression' in self.dg_key:
             # Regression: The latest previous dir will be used as skip
             # connection on the output.
             # Either take dirs and add [0, 0, 0] at each first position.
             # Or use pre-computed:
-            if self.nb_previous_dirs > 1:
-                copy_prev_dir = [p[:, 0:3] for p in n_prev_dirs]
-            else:
-                copy_prev_dir = [torch.nn.functional.pad(cp, [0, 0, 1, 0])
-                                 for cp in dirs]
+            copy_prev_dir = [torch.nn.functional.pad(cp, [0, 0, 1, 0])
+                             for cp in dirs]
             copy_prev_dir = pack_sequence(copy_prev_dir)
             copy_prev_dir = copy_prev_dir.data
         elif self.dg_key == 'sphere-classification':

@@ -1,10 +1,11 @@
 # Bug Cython. We can't install the master scilpy. :(
 
-dipy>=1.5.0  # dipy 1.5 is installed on ComputeCanda.
 # But scilpy works currently with :
 # -e git+https://github.com/scilus/hot_dipy@1.6.1rc1#egg=dipy
 # --> issue with -e: pytest seems to redo ALL tests.
 # --> issue without e: bug with Cython. Arnaud and Francois from scilpy
 #     couldn't help. Using official dipy instead of hot dipy:
 #     Emmanuelle Renauld's branch of scilpy, with hot dipy skipped.
-git+https://github.com/EmmaRenauld/scilpy.git@BRANCH_WITH_OFFICIAL_DIPY#egg=scilpy
+git+https://github.com/EmmaRenauld/scilpy.git@master#egg=scilpy
+
+# Will install dipy.

@@ -6,6 +6,7 @@
 # (or run pip install -r requirements_github.txt)
 
 bertviz~=1.4.0  # For transformer's visu
+dearpygui>=1.9.0
 torch==1.13.*
 tqdm==4.64.*
 comet-ml==3.21.*

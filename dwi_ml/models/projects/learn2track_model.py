@@ -6,12 +6,13 @@ import numpy as np
 import torch
 from torch.nn.utils.rnn import invert_permutation, PackedSequence, pack_sequence
 
+from dwi_ml.arg_utils import assert_no_same_args
 from dwi_ml.data.processing.space.neighborhood import unflatten_neighborhood
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions, compute_n_previous_dirs
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     convert_dirs_to_class
-from dwi_ml.models.embeddings import NoEmbedding, keys_to_embeddings
+from dwi_ml.models.embeddings import NoEmbedding
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelWithDirectionGetter,
     ModelWithNeighborhood, MainModelOneInput, ModelOneInputWithEmbedding)
@@ -209,7 +210,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             'start_from_copy_prev': self.start_from_copy_prev,
             'dropout': self.dropout,
         })
-
         return params
 
     @classmethod

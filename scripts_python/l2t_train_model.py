@@ -13,44 +13,30 @@ import os
 # Importing now to solve issues later.
 import comet_ml
 import torch
+from dwi_ml.models.projects.learn2track_utils import \
+    get_all_args_groups_learn2track
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg, add_memory_args
+from dwi_ml.arg_utils import add_args_groups_to_parser
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.models.projects.learn2track_utils import add_model_args
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
-from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
-                                                  prepare_batch_sampler)
-from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
-                                                 prepare_batch_loader)
-from dwi_ml.training.utils.experiment import (
-    add_mandatory_args_experiment_and_hdf5_path)
-from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
-    format_lr
+from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
+from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
+from dwi_ml.training.utils.trainer import run_experiment, format_lr, \
+    get_training_args
 
 
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    add_mandatory_args_experiment_and_hdf5_path(p)
-    add_args_batch_sampler(p)
-    add_args_batch_loader(p)
-    training_group = add_training_args(p, add_a_tracking_validation_phase=True)
-    add_memory_args(p, add_lazy_options=True, add_rng=True)
-    add_logging_arg(p)
 
-    # Additional arg for projects
-    training_group.add_argument(
-        '--clip_grad', type=float, default=None,
-        help="Value to which the gradient norms to avoid exploding gradients."
-             "\nDefault = None (not clipping).")
-
-    add_model_args(p)
+    groups = get_all_args_groups_learn2track()
+    add_args_groups_to_parser(groups, p)
 
     return p
 

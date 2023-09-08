@@ -5,64 +5,69 @@ from argparse import ArgumentParser
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 
 
-def add_direction_getter_args(p: ArgumentParser, gaussian_fisher_args=True):
-    # For the direction getters
+def get_direction_getter_args(gaussian_fisher_args=True):
     dg_keys = list(keys_to_direction_getters.keys())
-    p.add_argument(
-        '--dg_key', choices=dg_keys, metavar='key',
-        default='cosine-regression',
-        help="Model for the direction getter layer. One of {cosine-regression,"
-             "l2-regression, \nsphere-classification, "
-             "smooth-sphere-classification, gaussian, \ngaussian-mixture, "
-             "fisher-von-mises, fisher-von-mises-mixture.}\n"
-             "With sphere classification, the default sphere is "
-             "symmetric724.")
-    p.add_argument(
-        '--dg_dropout', type=float, metavar='r', default=0.,
-        help="Dropout ratio for the direction getter. Default: 0.")
-    g = p.add_argument_group("Loss-delocalising options")
-    g.add_argument(
-        '--compress_loss', metavar='eps', nargs='?', const=1e-3, type=float,
-        help="If set, compress the loss. \nCan be used independently from "
-             "options on the input streamlines such as --compress.\n"
-             "Compression ratio (eps) can be given: as long as the angle is \n"
-             "smaller than eps (in degree), the next points' loss are "
-             "averaged together.")
-    g.add_argument(
-        '--weight_loss_with_angle', action='store_true',
-        help="If set, weight the loss at each coordinate with the angle with "
-             "previous dir.")
+
+    args = {
+        '--dg_key': {
+            'choices': dg_keys, 'metavar': 'key',
+            'default': 'cosine-regression',
+            'help':
+                "Model for the direction getter layer. One of {cosine-regression,"
+                "l2-regression, \nsphere-classification, "
+                "smooth-sphere-classification, gaussian, \ngaussian-mixture, "
+                "fisher-von-mises, fisher-von-mises-mixture.}\n"
+                "With sphere classification, the default sphere is "
+                "symmetric724."},
+        '--dg_dropout': {
+            'type': float, 'metavar': 'r', 'default': 0.,
+            'help': "Dropout ratio for the direction getter. Default: 0."},
+        '--compress_loss': {
+            'metavar': 'eps', 'nargs': '?', 'const': 1e-3, 'type': float,
+            'help':
+                "If set, compress the loss. \nCan be used independently from "
+                "options on the input streamlines such as --compress.\n"
+                "Compression ratio (eps) can be given: as long as the angle is \n"
+                "smaller than eps (in degree), the next points' loss are "
+                "averaged together."},
+        '--weight_loss_with_angle': {
+            'action': 'store_true',
+            'help': "If set, weight the loss at each coordinate with the angle "
+                    "with previous dir."},
+        '--normalize_targets': {
+            'const': 1., 'nargs': '?', 'type': float, 'metavar': 'norm',
+            'help': "For REGRESSION models:  If set, target directions will be "
+                    "normalized before \ncomputing the loss. Default norm: 1."},
+        '--normalize_outputs': {
+            'const': 1., 'nargs': '?', 'type': float, 'metavar': 'norm',
+            'help': "For REGRESSION models:  If set, model outputs will be "
+                    "normalized. Default norm: 1."},
+        '--add_eos': {
+            'action': 'store_true',
+            'help':
+                "If true, adds EOS during the loss computation.\n"
+                "  1) Then, the last coordinate of streamlines has a target \n"
+                "  (EOS), requiring one more input point.\n"
+                "  2) In REGRESSION models: Adds a fourth dimension during "
+                "prediction.\n"
+                "     In CLASSIFICATION models, adds an additional EOS class.\n"
+        }
+    }
 
     # Gaussian models, Fisher-von-Mises models
     if gaussian_fisher_args:
-        p.add_argument(
-            '--dg_nb_gaussians', type=int, metavar='n',
-            help="Number of gaussians in the case of a Gaussian Mixture model "
-                 "for the direction \ngetter. [3]")
-        p.add_argument(
-            '--dg_nb_clusters', type=int,
-            help="Number of clusters in the case of a Fisher von Mises "
-                 "Mixture model for the direction \ngetter. [3].")
-    p.add_argument(
-        '--normalize_targets', const=1., nargs='?', type=float,
-        metavar='norm',
-        help="For REGRESSION models:  If set, target directions will be "
-             "normalized before \ncomputing the loss. Default norm: 1.")
-    p.add_argument(
-        '--normalize_outputs', const=1., nargs='?', type=float,
-        metavar='norm',
-        help="For REGRESSION models:  If set, model outputs will be "
-             "normalized. Default norm: 1.")
-
-    # EOS
-    p.add_argument(
-        '--add_eos', action='store_true',
-        help="If true, adds EOS during the loss computation.\n"
-             "  1) Then, the last coordinate of streamlines has a target \n"
-             "  (EOS), requiring one more input point.\n"
-             "  2) In REGRESSION models: Adds a fourth dimension during "
-             "prediction.\n"
-             "     In CLASSIFICATION models, adds an additional EOS class.\n")
+        args.update({
+            '--dg_nb_gaussians': {
+                'type': int, 'metavar': 'n',
+                'help': "Number of gaussians in the case of a Gaussian Mixture "
+                        "model for the direction \ngetter. [3]"},
+            '--dg_nb_clusters': {
+                'type': int, 'metavar': 'k',
+                'help': "Number of clusters in the case of a Fisher von Mises "
+                        "Mixture model for the direction \ngetter. [3]."
+            }
+        })
+    return args
 
 
 def check_args_direction_getter(args):

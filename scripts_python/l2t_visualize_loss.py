@@ -8,6 +8,7 @@ import torch
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
+from dwi_ml.arg_utils import add_args_groups_to_parser
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.testing.testers import TesterOneInput
 from dwi_ml.testing.visu_loss import \
@@ -17,7 +18,8 @@ from dwi_ml.testing.visu_loss import \
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    prepare_args_visu_loss(p)
+    groups = prepare_args_visu_loss(p)
+    add_args_groups_to_parser(groups, p)
     args = p.parse_args()
 
     if args.out_displacement_sft and \

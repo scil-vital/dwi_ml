@@ -19,39 +19,45 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg, add_memory_args
+from dwi_ml.arg_utils import get_logging_arg, get_memory_args, \
+    add_args_groups_to_parser
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
-from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
+from dwi_ml.training.utils.batch_samplers import (get_args_batch_sampler,
                                                   prepare_batch_sampler)
-from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
+from dwi_ml.training.utils.batch_loaders import (get_args_batch_loader,
                                                  prepare_batch_loader)
-from dwi_ml.training.utils.experiment import (
-    add_mandatory_args_experiment_and_hdf5_path)
-from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
+from dwi_ml.training.utils.experiment import get_mandatory_args_experiment_and_hdf5
+from dwi_ml.training.utils.trainer import run_experiment, get_training_args, \
     format_lr
 
 
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    add_mandatory_args_experiment_and_hdf5_path(p)
+
+    trainer_args = get_training_args(add_a_tracking_validation_phase=True)
+    trainer_args.update({
+        '--clip_grad': {
+            'type': float,
+            'help': "Value to which the gradient norms to avoid exploding "
+                    "gradients. \nDefault = None (not clipping)."}})
+
+    groups = {
+        'Experiment': get_mandatory_args_experiment_and_hdf5(),
+        'Batch sampler': get_args_batch_sampler(),
+        'Batch loader': get_args_batch_loader(),
+        'Trainer': trainer_args,
+        'Memory usage': get_memory_args(add_lazy_options=True, add_rng=True),
+        'Others': get_logging_arg()
+    }
+    add_args_groups_to_parser(groups, p)
+
     p.add_argument('pretrained_model',
                    help="Name of the pretrained experiment (from the same "
                         "experiments path) from which to load the model. "
                         "Should contain a 'best_model' folder with pickle "
                         "information to load the model")
-    add_args_batch_sampler(p)
-    add_args_batch_loader(p)
-    training_group = add_training_args(p, add_a_tracking_validation_phase=True)
-    add_memory_args(p, add_lazy_options=True, add_rng=True)
-    add_logging_arg(p)
-
-    # Additional arg for projects
-    training_group.add_argument(
-        '--clip_grad', type=float, default=None,
-        help="Value to which the gradient norms to avoid exploding gradients."
-             "\nDefault = None (not clipping).")
 
     return p
 

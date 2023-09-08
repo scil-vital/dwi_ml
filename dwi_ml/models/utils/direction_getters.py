@@ -101,10 +101,16 @@ def check_args_direction_getter(args):
                         "Mises mixture. Ignored.")
 
     # Regression and normalisation
+    if 'regression' or 'gaussian' in args.dg_key:
+        dg_args['normalize_targets'] = args.normalize_targets
+    else:
+        raise ValueError("--normalize_targets is only an option for "
+                         "regression and gaussian models.")
+
     if 'regression' in args.dg_key:
-        dg_args.update({
-            'normalize_targets': args.normalize_targets,
-            'normalize_outputs': args.normalize_outputs,
-        })
+        dg_args['normalize_outputs'] = args.normalize_outputs
+    elif args.normalize_outputs is not None:
+        raise ValueError("--normalize_outputs is only an option for "
+                         "regression models.")
 
     return dg_args

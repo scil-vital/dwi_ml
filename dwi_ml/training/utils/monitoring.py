@@ -59,6 +59,8 @@ class BatchHistoryMonitor(object):
         self.current_epoch_batch_weights = []
         self.average_per_epoch = []
         self.current_epoch = -1
+        self.ever_min = np.inf
+        self.ever_max = -np.inf
 
     def update(self, value, weight=1):
         """
@@ -71,7 +73,13 @@ class BatchHistoryMonitor(object):
             you should measure the loss average.
         """
         if np.isinf(value):
+            self.ever_max = value
             return
+
+        if value > self.ever_max:
+            self.ever_max = value
+        if value < self.ever_min:
+            self.ever_min = value
 
         self.current_epoch_batch_values.append(value)
 
@@ -115,12 +123,20 @@ class BatchHistoryMonitor(object):
         # the end of epochs.
         return {'average_per_epoch': self.average_per_epoch,
                 'current_epoch': self.current_epoch,
-                'is_weighted': self.is_weighted,
+                'ever_max': self.ever_max,
+                'ever_min': self.ever_min
                 }
 
     def set_state(self, state):
         self.average_per_epoch = state['average_per_epoch']
         self.current_epoch = state['current_epoch']
+
+        if 'ever_max' in state:
+            self.ever_max = state['ever_max']
+            self.ever_min = state['ever_min']
+        else:
+            logging.info("Deprecated model. Ever_max and ever_min values not "
+                         "set in {}. Ignoring".format(self.name))
 
 
 class BestEpochMonitor(object):

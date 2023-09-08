@@ -40,6 +40,17 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
     return layers
 
 
+def binary_cross_entropy_eos(learned_eos, target_eos, average_results=True):
+    reduction = 'none'
+    if average_results:
+        reduction = 'mean'
+
+    learned_eos = torch.sigmoid(learned_eos)
+    losses_eos = torch.nn.functional.binary_cross_entropy(
+        learned_eos, target_eos, reduction=reduction)
+    return losses_eos
+
+
 def _mean_and_weight(losses):
     # Mean:
     # Average on all time steps (all sequences) in batch
@@ -193,7 +204,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
         """
         Returns: List[Tensor], the directions
-        User is responsible for stacking the batch before computing loss.
         """
         return target_dirs
 
@@ -224,7 +234,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         # Stack and compute loss based on child model's loss definition.
         outputs, target_dirs = self.stack_batch(outputs, target_dirs)
-        loss = self._compute_loss(outputs, target_dirs, tmp_average_results)
+        loss, n = self._compute_loss(outputs, target_dirs, tmp_average_results)
 
         # Finalize
         if self.weight_loss_with_angle:
@@ -254,7 +264,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
                          "points".format(sum(lengths), final_n))
             return final_loss, final_n
         elif average_results:
-            loss, n = loss
             return loss, n
         else:
             loss = list(torch.split(loss, lengths))
@@ -349,7 +358,7 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
 
     EOS usage: uses a 4th dimension to targets to learn the SOS label.
     """
-    def __init__(self, normalize_targets: float = False,
+    def __init__(self, normalize_targets: float = None,
                  normalize_outputs: float = False, **kwargs):
         """
         normalize_targets: float
@@ -395,8 +404,11 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
         streamlines.
 
         Returns: list[Tensors], the directions.
-        User is responsible for stacking the batch before computing loss.
         """
+        # Need to normalize before adding EOS labels (dir = 0,0,0)
+        if self.normalize_targets is not None:
+            target_dirs = normalize_directions(target_dirs,
+                                               new_norm=self.normalize_targets)
         return add_label_as_last_dim(target_dirs, add_sos=False,
                                      add_eos=self.add_eos)
 
@@ -404,32 +416,26 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
                       average_results=True):
 
         # 1. Main loss:
-        if self.normalize_targets:
-            target_dirs = normalize_directions(target_dirs) * \
-                          self.normalize_targets
-        losses_dirs = self._compute_loss_dir(learned_directions[:, 0:3],
-                                             target_dirs[:, 0:3])
+        loss_dirs = self._compute_loss_dir(learned_directions[:, 0:3],
+                                           target_dirs[:, 0:3])
+
+        n = 1
+        if average_results:
+            loss_dir, n = _mean_and_weight(loss_dirs)
 
         # 2. EOS loss:
         if self.add_eos:
             # Using last dim as EOS
-            learned_eos = torch.sigmoid(learned_directions[:, 3])
+            learned_eos = learned_directions[:, 3]
+            target_eos = target_dirs[:, 3]
 
-            # Idea 1: mean squared difference
-            # Idea 2: binary cross-entropy
-            if average_results:
-                mean_loss_eos = torch.nn.functional.binary_cross_entropy(
-                    learned_eos, target_dirs[:, 3])
-                mean_loss_dir, n = _mean_and_weight(losses_dirs)
-                return mean_loss_dir + self.eos_weight * mean_loss_eos, n
-            else:
-                losses_eos = torch.nn.functional.binary_cross_entropy(
-                    learned_eos, target_dirs[:, 3], reduction='none')
-                return losses_dirs + self.eos_weight * losses_eos
-        elif average_results:
-            return _mean_and_weight(losses_dirs)
+            # Binary cross-entropy
+            loss_eos = binary_cross_entropy_eos(learned_eos, target_eos,
+                                                average_results)
+
+            return loss_dirs +  self.eos_weight * loss_eos, n
         else:
-            return losses_dirs
+            return loss_dirs, n
 
     def _sample_tracking_direction_prob(self, *arg, **kwargs):
         raise ValueError("Regression models do not support probabilistic "
@@ -665,7 +671,6 @@ class SphereClassificationDG(AbstractSphereClassificationDG):
         Finds the closest class for each target direction.
 
         returns: List[Tensor], the index for each target.
-        User is responsible for stacking the batch before computing loss.
         """
         target_idx = convert_dirs_to_class(
             target_dirs, self.torch_sphere, smooth_labels=False,
@@ -704,7 +709,8 @@ class SphereClassificationDG(AbstractSphereClassificationDG):
         if average_results:
             return _mean_and_weight(nll_losses)
         else:
-            return nll_losses
+            n = 1
+            return nll_losses, n
 
 
 class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
@@ -727,7 +733,6 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
 
         returns:
         List[Tensor]: the one-hot distribution of each target.
-            User is responsible for stacking the batch before computing loss.
         """
         target_idx = convert_dirs_to_class(
             target_dirs, self.torch_sphere, smooth_labels=True,
@@ -794,28 +799,73 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
 
     Loss: Negative log-likelihood.
     """
-    def __init__(self, **kwargs):
+    def __init__(self, normalize_targets: float = None, **kwargs):
         # 3D gaussian supports compressed streamlines
         super().__init__(key='gaussian',
                          supports_compressed_streamlines=True,
                          loss_description='negative log-likelihood',
                          **kwargs)
 
+        self.normalize_targets = normalize_targets
+
         # Layers
-        self.layers_mean = init_2layer_fully_connected(self.input_size, 3)
+        # 3 values as mean, 3 values as sigma
+        # If EOS: Adding it to the mean layer. Could be separated.
+        oneifeos = 1 if self.add_eos else 0
+        self.layers_mean = init_2layer_fully_connected(self.input_size,
+                                                       3 + oneifeos)
         self.layers_sigmas = init_2layer_fully_connected(self.input_size, 3)
+        self.output_size = 6 + oneifeos
 
-        if self.add_eos:
-            # Don't forget to add eos_weight.
-            raise NotImplementedError
+        # Computes the negative log-likelihood from the difference between the
+        # distribution and each target.
 
-        self.output_size = 6
+        # Note about the expected range:
+        #   - likelihood = The learned normal value at correct direction value.
+        #      Normal (as any PDF; probability distribution function) =
+        #      non-negative + integrates to 1. But each value can be > 1.
+        #      ex: 1D Normal: see with sigma = 0.1. Maximal values go > 4.
+        #   - so log-likelihood: Not limited by an asymptote. Can range from
+        #     log(0) (bad) to log(inf) (good) = -inf to inf.
+        #   - so NLL: range [bad, good] = [inf, -inf].
 
-        # toDo:
-        # if add_eos_label:
-        #     self.layers_eos = init_2layer_fully_connected(input_size, 1)
+        # In particular here: with step size of 2:
+        #   After a few epochs, we had:
+        #      means range between ~ [-2, 2]  (as expected)
+        #      sigmas range between ~ [0.01, 2.5]  (depends strongly on the data)
+        #   Suppose the target is [0, 0, 2] and we learn correclty mean = [0, 0, 2]
+        #   The normal distribution:
+        #   d = MultivariateNormal([0, 0, 2.0],
+        #                          covariance_matrix=(0.01**2)*torch.eye(3))
+        #   The value if we are very good:
+        #   print(torch.exp(d.log_prob([0, 0, 2.0])
+        #    => Three-variable Normal(mu, sigma=0.01) = 63493 = nll of -11.06
 
-        # Loss will be defined in _compute_loss, using torch distribution
+        # This "large" value (-11) seems to lead to large gradients.
+        # Moreover, This direction getter seem to be very sensible on bad
+        # batches, moving very sharply in the wrong direction for some batches.
+        # (ex: if one batch has low uncertainty and the other not)
+
+        # It is known in the literature that Gaussian models lead to unstable
+        # gradients: see https://openreview.net/pdf?id=hmuLHC5MrG (under review)
+
+        #  ===========> WE SUGGEST TO : **
+        #               normalize_targets 1.0 **AND** GRADIENT CLIPPING **AND**
+        #               low learning rate.
+
+    def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
+        """
+        Should be called before _compute_loss, before concatenating your
+        streamlines.
+
+        Returns: list[Tensors], the directions.
+        """
+        # Need to normalize before adding EOS labels (dir = 0,0,0)
+        if self.normalize_targets is not None:
+            target_dirs = normalize_directions(target_dirs,
+                                               new_norm=self.normalize_targets)
+        return add_label_as_last_dim(target_dirs, add_sos=False,
+                                     add_eos=self.add_eos)
 
     def forward(self, inputs: Tensor):
         """
@@ -845,21 +895,39 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         See the doc for explanation on the formulas:
         https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
+        # 1. Main loss
         means, sigmas = learned_gaussian_params
+        learned_eos = means[:, -1]
+        means = means[:, 0:3]
 
         # Create an official function-probability distribution from the means
         # and variances
+        np.set_printoptions(precision=3)
         distribution = MultivariateNormal(
             means, covariance_matrix=torch.diag_embed(sigmas ** 2))
+        nll_loss = -distribution.log_prob(target_dirs)
 
-        # Compute the negative log-likelihood from the difference between the
-        # distribution and each target.
-        nll_losses = -distribution.log_prob(target_dirs)
+        # Trying to ensure that sigma values are not too small.
+        # Else, normal values become very big, and gradients too.
+        entropy = distribution.entropy()
+        logging.info("Sigma: {}. Entropy: {}".format(torch.mean(sigmas),
+                                                     torch.mean(entropy)))
+        #nll_loss = nll_loss - 0.1 * entropy
 
+        n = 1
         if average_results:
-            return _mean_and_weight(nll_losses)
+            nll_loss, n = _mean_and_weight(nll_loss)
+
+        # 2. EOS loss:
+        if self.add_eos:
+            # Binary cross-entropy
+            real_eos = target_dirs[:, -1]
+            loss_eos = binary_cross_entropy_eos(learned_eos, real_eos,
+                                                average_results)
+            return nll_loss + self.eos_weight * loss_eos, n
         else:
-            return nll_losses
+            n = 1
+            return nll_loss, n
 
     def _sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor],
@@ -875,23 +943,32 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         # Sample a final function in the chosen Gaussian
         # One direction per time step per sequence
         distribution = MultivariateNormal(
-            means, covariance_matrix=torch.diag_embed(sigmas ** 2))
+            means[:, 0:3], covariance_matrix=torch.diag_embed(sigmas ** 2))
         direction = distribution.sample()
 
-        return direction
+        if self.add_eos:
+            eos_prob = torch.sigmoid(means[:, -1])
+            eos_prob = torch.gt(eos_prob, eos_stopping_thresh)
+            return torch.masked_fill(
+                direction, eos_prob[:, None], torch.nan)
+        else:
+            return direction
 
     def _get_tracking_direction_det(self, learned_gaussian_params: Tensor,
                                     eos_stopping_thresh):
         """
         Get the predicted class with highest logits (=probabilities).
         """
-        if self.add_eos:
-            raise NotImplementedError
-
         # Returns the direction of the max of the Gaussian = the mean.
         means, sigmas = learned_gaussian_params
+        dirs = means[0:3]
 
-        return means
+        if self.add_eos:
+            eos_prob = torch.sigmoid(means[:, -1])
+            eos_prob = torch.gt(eos_prob, eos_stopping_thresh)
+            return torch.masked_fill(dirs, eos_prob[:, None], torch.nan)
+        else:
+            return dirs
 
 
 class GaussianMixtureDG(AbstractDirectionGetterModel):

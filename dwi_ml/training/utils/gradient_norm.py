@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Iterator
 
+import torch
+
 
 def compute_gradient_norm(parameters: Iterator):
     """Compute the gradient norm of the provided iterable parameters.
@@ -20,10 +22,10 @@ def compute_gradient_norm(parameters: Iterator):
         similarly as done in
         torch.nn.utils_to_refactor.clip_grad.clip_grad_norm.
     """
-    total_norm = 0.
-    for p in parameters:
-        # Possibly add: if hasattr(p, 'grad'):
-        param_norm = p.grad.norm(2)
-        total_norm += param_norm.item() ** 2
-    total_norm **= 1. / 2
-    return total_norm
+    norm_type = 2.0
+    grads = [p.grad for p in parameters if p.grad is not None]
+    total_norm = torch.norm(
+        torch.stack([torch.norm(g.detach(), norm_type) for g in grads]),
+        norm_type)
+
+    return total_norm.cpu()

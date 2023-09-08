@@ -7,15 +7,16 @@ from typing import Union
 from dipy.io.stateful_tractogram import StatefulTractogram
 from nibabel.streamlines.tractogram import (PerArrayDict, PerArraySequenceDict)
 import numpy as np
-from scilpy.tracking.tools import resample_streamlines_step_size
+from scilpy.tractograms.streamline_operations import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
 
-def resample_or_compress(sft, step_size: float = None, compress: float = None):
-    if step_size is not None:
+def resample_or_compress(sft, step_size_mm: float = None,
+                         compress: float = None):
+    if step_size_mm is not None:
         # Note. No matter the chosen space, resampling is done in mm.
-        logging.debug("            Resampling: {}".format(step_size))
-        sft = resample_streamlines_step_size(sft, step_size=step_size)
+        logging.debug("            Resampling: {}".format(step_size_mm))
+        sft = resample_streamlines_step_size(sft, step_size=step_size_mm)
     if compress is not None:
         logging.debug("            Compressing: {}".format(compress))
         sft = compress_sft(sft, compress)

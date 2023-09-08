@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.tracking.projects.utils import prepare_tracking_mask
+from dwi_ml.tracking.io_utils import prepare_tracking_mask
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.training.with_generation.trainer import \
     DWIMLTrainerForTrackingOneInput

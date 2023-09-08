@@ -114,6 +114,12 @@ def prepare_seed_generator(parser, args, hdf_handle):
     Prepares a SeedGenerator from scilpy's library. Returns also some header
     information to allow verifications.
     """
+    if args.subj_id not in hdf_handle:
+        raise ValueError("Subject {} not found in the HDF5 file."
+                         .format(args.subj_id))
+    if args.seeding_mask_group not in hdf_handle[args.subj_id]:
+        raise ValueError("Seeding mask {} not found the subject's HDF group."
+                         .format(args.seeding_mask_group))
     seeding_group = hdf_handle[args.subj_id][args.seeding_mask_group]
     seed_data = np.array(seeding_group['data'], dtype=np.float32)
     seed_res = np.array(seeding_group.attrs['voxres'], dtype=np.float32)

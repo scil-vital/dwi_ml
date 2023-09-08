@@ -21,7 +21,7 @@ def add_args_batch_sampler(p: argparse.ArgumentParser):
         '--batch_size_validation', type=int, default=100, metavar='s',
         help="Idem; batch size during validation.")
     g_batch_size.add_argument(
-        '--batch_size_units', type=str, metavar='u',
+        '--batch_size_units', type=str, metavar='u', default='nb_streamlines',
         choices={'nb_streamlines', 'length_mm'},
         help="One of 'nb_streamlines' or 'length_mm' (which should hopefully "
              "\nbe correlated to the number of input data points).")

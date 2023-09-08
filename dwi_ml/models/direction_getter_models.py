@@ -823,7 +823,7 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         """
         means = self.loop_on_layers(inputs, self.layers_mean)
 
-        log_sigmas = self.loop_on_layers(inputs, self.layers_sigma)
+        log_sigmas = self.loop_on_layers(inputs, self.layers_sigmas)
         sigmas = torch.exp(log_sigmas)
 
         return means, sigmas
@@ -831,8 +831,9 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
     @staticmethod
     def stack_batch(outputs, target_dirs):
         target_dirs = torch.vstack(target_dirs)
-        means = torch.vstack([out[0] for out in outputs])
-        sigmas = torch.vstack([out[1] for out in outputs])
+        means = torch.vstack(outputs[0])
+        sigmas = torch.vstack(outputs[1])
+
         return (means, sigmas), target_dirs
 
     def _compute_loss(self, learned_gaussian_params: Tuple[Tensor, Tensor],

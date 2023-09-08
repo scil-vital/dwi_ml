@@ -162,6 +162,13 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         if dropout < 0 or dropout > 1:
             raise ValueError('The dropout rate must be between 0 and 1.')
 
+        if start_from_copy_prev and 'gaussian' in dg_key:
+            raise ValueError("Start_from_copy_prev makes no sense with "
+                             "Gaussian direction getters.")
+        if start_from_copy_prev and 'fisher' in dg_key:
+            raise ValueError("Start_from_copy_prev makes no sense with "
+                             "Fisher von Mises direction getters.")
+
         # ---------- Instantiations
         # 1. Previous dirs embedding: prepared by super.
 
@@ -366,18 +373,25 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         x = self.direction_getter(x)
 
         # Adding either prev_dir or 0.
-        x = x + copy_prev_dir
+        if self.start_from_copy_prev:
+            x = x + copy_prev_dir
 
         # Unpacking.
         if not self._context == 'tracking':
             # (during tracking: keeping as one single tensor.)
+            if 'gaussian' in self.dg_key or 'fisher' in self.dg_key:
+                # Separating mean, sigmas (gaussian) or mean, kappa (fisher)
+                x, x2 = x
+
+                x2 = PackedSequence(x2, batch_sizes)
+                x2 = faster_unpack_sequence(x2)
+                x2 = [x2[i] for i in unsorted_indices]
             x = PackedSequence(x, batch_sizes)
             x = faster_unpack_sequence(x)
             x = [x[i] for i in unsorted_indices]
 
-        assert x[0].shape[-1] == self.direction_getter.output_size, \
-            "Expecting output size of {}. Got {}" \
-            .format(self.direction_getter.output_size, x[0].shape[-1])
+            if 'gaussian' in self.dg_key or 'fisher' in self.dg_key:
+                x = (x, x2)
 
         if return_hidden:
             # Return the hidden states too. Necessary for the generative

@@ -1036,9 +1036,9 @@ class GaussianMixtureDG(AbstractDirectionGetterModel):
     @staticmethod
     def stack_batch(outputs, target_dirs):
         target_dirs = torch.vstack(target_dirs)
-        mixture_logits = torch.vstack([out[0] for out in outputs])
-        means = torch.vstack([out[1] for out in outputs])
-        sigmas = torch.vstack([out[2] for out in outputs])
+        mixture_logits = torch.vstack(outputs[0])
+        means = torch.vstack(outputs[1])
+        sigmas = torch.vstack(outputs[2])
         return (mixture_logits, means, sigmas), target_dirs
 
     def _compute_loss(
@@ -1194,8 +1194,8 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
     @staticmethod
     def stack_batch(outputs, target_dirs):
         target_dirs = torch.vstack(target_dirs)
-        mus = torch.vstack([out[0] for out in outputs])
-        kappas = torch.vstack([out[1] for out in outputs])
+        mus = torch.vstack(outputs[0])
+        kappas = torch.vstack(outputs[1])
         return (mus, kappas), target_dirs
 
     def _compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],

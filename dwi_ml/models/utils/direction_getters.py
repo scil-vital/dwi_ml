@@ -63,11 +63,17 @@ def add_direction_getter_args(p: ArgumentParser, gaussian_fisher_args=True):
              "  2) In REGRESSION models: Adds a fourth dimension during "
              "prediction.\n"
              "     In CLASSIFICATION models, adds an additional EOS class.\n")
+    p.add_argument(
+        '--eos_weight', type=float, default=1.0, metavar='w',
+        help="In the case of regression, Gaussian and Fisher von Mises models: "
+             "defines the \nweight of the EOS loss: "
+             "final_loss = loss + weight * eos_loss")
 
 
 def check_args_direction_getter(args):
     dg_args = {'dropout': args.dg_dropout,
                'add_eos': args.add_eos,
+               'eos_weight': args.eos_weight,
                'compress_loss': args.compress_loss is not None,
                'compress_eps': args.compress_loss,
                'weight_loss_with_angle': args.weight_loss_with_angle,

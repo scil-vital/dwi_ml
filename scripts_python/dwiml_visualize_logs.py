@@ -35,8 +35,8 @@ def parse_args():
     return args
 
 
-def visualize_logs(logs: List[Dict[str, np.ndarray]], graphs, nb_rows):
-    nb_exp = len(logs)
+def visualize_logs(logs: Dict[str, Dict[str, np.ndarray]], graphs, nb_rows):
+    exp_names = list(logs.keys())
 
     nb_plots_left = len(graphs)
     current_graph = -1
@@ -50,7 +50,7 @@ def visualize_logs(logs: List[Dict[str, np.ndarray]], graphs, nb_rows):
         for i in range(next_nb_plots):
             current_graph += 1
             keys = graphs[current_graph]
-            print(keys)
+            print("Next graph: ", keys)
 
             # For each log to show in that plot
             for j in range(len(keys)):
@@ -59,12 +59,14 @@ def visualize_logs(logs: List[Dict[str, np.ndarray]], graphs, nb_rows):
                 axs[i].set_title(key)
 
                 # For each experiment to show:
-                for exp in range(nb_exp):
+                for exp, exp_name in enumerate(exp_names):
                     color = exp_colors[exp % nb_colors]
-                    if key in logs[exp]:
-                        axs[i].plot(logs[exp][key], linestyle=style,
-                                    color=color,
-                                    label='exp{}, {}'.format(exp, key))
+                    legend = exp_name
+                    if len(keys) > 1:
+                        legend += ', ' + key
+                    if key in logs[exp_name]:
+                        axs[i].plot(logs[exp_name][key], linestyle=style,
+                                    color=color, label=legend)
 
                 axs[i].legend()
 
@@ -79,7 +81,7 @@ def main():
     logging.getLogger().setLevel(level=logging.INFO)
 
     # One element per experiment
-    loaded_logs = []  # List of dict
+    loaded_logs = {}  # exp: dict of logs
     user_required_names = set(itertools.chain(*args.graph)
                               ) if args.graph is not None else None
     graphs = args.graph or set()
@@ -89,6 +91,9 @@ def main():
         if not pathlib.Path(path).exists():
             raise ValueError("Experiment folder does not exist: {}"
                              .format(path))
+
+        exp_name = os.path.basename(os.path.normpath(path))
+        print("Loading experiment {} from path {}".format(exp_name, path))
 
         log_path = pathlib.Path(path, 'logs')
         if not log_path.exists():
@@ -107,14 +112,13 @@ def main():
                 else:
                     print("File {} not found in path {}. Skipping."
                           .format(n, log_path))
-        print(files_to_load)
         names_to_load = [n.stem for n in files_to_load]
 
         exp_logs = {}
         for i in range(len(files_to_load)):
             data = np.load(files_to_load[i])
             exp_logs.update({names_to_load[i]: data})
-        loaded_logs.append(exp_logs)
+        loaded_logs[exp_name] = exp_logs
 
         if args.graph is None:
             graphs |= set(names_to_load)

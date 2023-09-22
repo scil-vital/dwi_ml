@@ -14,13 +14,20 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
     bl_g.add_argument(
         '--noise_gaussian_size_forward', type=float, metavar='s', default=0.,
         help="If set, add random Gaussian noise to streamline coordinates \n"
-             "with given variance. This corresponds to the std of the \n"
-             "Gaussian. [0]\n**Make sure noise is smaller than your step size "
+             "with given variance. Noise is added AFTER interpolation of "
+             "underlying data. \nExample of use: when concatenating previous "
+             "direction to input.\n"
+             "This corresponds to the std of the Gaussian. [0]\n"
+             "**Make sure noise is smaller than your step size "
              "to avoid \nflipping direction! (We can't verify if --step_size "
              "is not \nspecified here, but if it is, we limit noise to \n"
              "+/- 0.5 * step-size.).\n"
              "** We also limit noise to +/- 2 * noise_gaussian_size.\n"
              "Suggestion: 0.1 * step-size.")
+    bl_g.add_argument(
+        '--noise_gaussian_size_loss', type=float, metavar='s', default=0.,
+        help='Idem, but loss is added to targets instead (during training '
+             'only).')
     bl_g.add_argument(
         '--split_ratio', type=float, metavar='r', default=0.,
         help="Percentage of streamlines to randomly split into 2, in each \n"
@@ -44,6 +51,7 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             streamline_group_name=args.streamline_group_name,
             # STREAMLINES AUGMENTATION
             noise_gaussian_size_forward=args.noise_gaussian_size_forward,
+            noise_gaussian_size_loss=args.noise_gaussian_size_loss,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # OTHER
             rng=args.rng, log_level=sub_loggers_level)

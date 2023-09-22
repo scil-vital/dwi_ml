@@ -1114,7 +1114,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         logger.debug('*** Computing forward propagation')
         if self.model.forward_uses_streamlines:
             # Now possibly add noise to streamlines (training / valid)
-            streamlines_f = self.batch_loader.add_noise_streamlines(
+            streamlines_f = self.batch_loader.add_noise_streamlines_forward(
                 streamlines_f, self.device)
 
             # Possibly computing directions twice (during forward and loss)
@@ -1129,6 +1129,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         logger.debug('*** Computing loss')
         if self.model.loss_uses_streamlines:
+            targets = self.batch_loader.add_noise_streamlines_loss(
+                targets, self.device)
+
             results = self.model.compute_loss(model_outputs, targets,
                                               average_results=average_results)
         else:

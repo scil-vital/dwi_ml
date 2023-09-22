@@ -82,6 +82,6 @@ MAJOR = _version_major
 MINOR = _version_minor
 MICRO = _version_micro
 VERSION = __version__
-SCRIPTS = glob.glob("scripts_python/*.py")
+SCRIPTS = glob.glob("scripts_python/*.py") + glob.glob("bash_utilities/*.sh") + glob.glob("scripts_python/tests/scripts_on_test_model/*.py")
 
 PREVIOUS_MAINTAINERS=[]

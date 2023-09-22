@@ -11,7 +11,8 @@ from dwi_ml.testing.projects.transformer_visualisation_utils import \
     build_argparser_transformer_visu
 
 
-def main(argv):
+def main():
+    argv = sys.argv
 
     parser = build_argparser_transformer_visu()
     args = parser.parse_args()
@@ -40,4 +41,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()

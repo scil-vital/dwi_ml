@@ -1,11 +1,16 @@
-# Bug Cython. We can't install the master scilpy. :(
 
-# But scilpy works currently with :
+git+https://github.com/EmmaRenauld/scilpy.git@master#egg=scilpy
+# Will install dipy through requirements.
+
+
+
+# ---------------
+# Note to developpers
+# In case scilpy reverts to hot dipy one day:
+# Previous hot dipy led to errors, and we prefered keeping official dipy:
+# We had to use Emmanuelle Renauld's branch of scilpy, with hot dipy skipped.
+#
 # -e git+https://github.com/scilus/hot_dipy@1.6.1rc1#egg=dipy
 # --> issue with -e: pytest seems to redo ALL tests.
 # --> issue without e: bug with Cython. Arnaud and Francois from scilpy
-#     couldn't help. Using official dipy instead of hot dipy:
-#     Emmanuelle Renauld's branch of scilpy, with hot dipy skipped.
-git+https://github.com/EmmaRenauld/scilpy.git@master#egg=scilpy
-
-# Will install dipy.
+#     couldn't help.

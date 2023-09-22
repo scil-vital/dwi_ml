@@ -1,23 +1,40 @@
-# File : .pep8speaks.yml
-
 scanner:
     diff_only: True  # If False, the entire file touched by the Pull Request is scanned for errors. If True, only the diff is scanned.
-    linter: flake8  # Other option is pycodestyle
+    linter: pycodestyle  # Alternative option - flake8
 
-flake8:  # Same as scanner.linter value. Other option is pycodestyle
-    max-line-length: 79  # Default is 79 in PEP 8
+pycodestyle:  # Valid if scanner.linter is pycodestyle
+    max-line-length: 79
+    ignore: []  # Errors and warnings to ignore
+    exclude: []  # File path patterns to exclude
+    count: False
+    first: False
+    show-pep8: False
+    show-source: False
+    statistics: False
+    hang-closing: False
+    filename: []
+    select: []
 
-descending_issues_order: False  # If True, PEP 8 issues in message will be displayed in descending order of line numbers in the file.
+flake8:  # Valid if scanner.linter is flake8
+    max-line-length: 79
+    ignore: []
+    exclude: []
+    count: False
+    show-source: False
+    statistics: False
+    hang-closing: False
+    filename: []
+    select: []
+
 no_blank_comment: False  # If True, no comment is made on PR without any errors.
-only_mention_files_with_errors: True  # If False, a separate status comment for each file is made.
+descending_issues_order: False  # If True, PEP 8 issues in message will be displayed in descending order of line numbers in the file
+only_mention_files_with_errors: True  # If False, a separate status section for each file is made in the comment.
 
-message:  # Customize the comment made by the bot,
+message:  # Customize the comment made by the bot
     opened:  # Messages when a new PR is submitted
-        header: "Hello @{name}! Thanks for opening this PR. "
-                # The keyword {name} is converted into the author's username
+        header: "Hello @{name}, Thank you for submitting the Pull Request !"
         footer: "Do see the [PEP 8 -- Style Guide for Python Code](https://www.python.org/dev/peps/pep-0008/)"
-                # The messages can be written as they would over GitHub
-    updated:  # Messages when new commits are added to the PR
-        header: "Hello @{name}! Thanks for updating this PR. "
-        footer: ""  # Why to comment the link to the style guide everytime? :)
-    no_errors: "There are currently no PEP 8 issues detected in this Pull Request. Cheers! :rocket: "
+    updated:  # Messages when a PR is updated
+        header: "Hello @{name}, Thank you for updating !"
+        footer: ""
+    no_errors: "There are currently no PEP 8 issues detected in this Pull Request. Cheers! :beers: "

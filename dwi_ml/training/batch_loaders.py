@@ -63,6 +63,7 @@ class DWIMLAbstractBatchLoader:
                  streamline_group_name: str, rng: int,
                  split_ratio: float = 0.,
                  noise_gaussian_size_forward: float = 0.,
+                 noise_gaussian_size_loss: float = 0.,
                  reverse_ratio: float = 0., log_level=logging.root.level):
         """
         Parameters
@@ -83,8 +84,10 @@ class DWIMLAbstractBatchLoader:
             are using interface seeding, this is not necessary.
         noise_gaussian_size_forward : float
             DATA AUGMENTATION: Add random Gaussian noise to streamline
-            coordinates with given variance. This corresponds to the std of the
-            Gaussian. Value is given in voxel world. Noise is truncated to
+            coordinates with given variance. Noise is added AFTER
+            interpolation of underlying data.
+            This corresponds to the std of the Gaussian.
+            Value is given in voxel world. Noise is truncated to
             +/- 2*noise_gaussian_size.
             ** Suggestion. Make sure that
                      2*(noise_gaussian_size) < step_size/2 (in vox)
@@ -93,6 +96,8 @@ class DWIMLAbstractBatchLoader:
             rewinds of step_size/2, but not further, so the direction of the
             segment won't flip. Suggestion, you could choose ~0.1 * step-size.
             Default = 0.
+        noise_gaussian_size_forward : float
+            Idem, for streamlines used as target (during training only).
         reverse_ratio: float
             DATA AUGMENTATION: If set, reversed a part of the streamlines in
             the batch. You could want to reverse ALL your data and then use
@@ -120,7 +125,8 @@ class DWIMLAbstractBatchLoader:
         self.np_rng = np.random.RandomState(self.rng)
 
         # Data augmentation for streamlines:
-        self.noise_gaussian_size_train = noise_gaussian_size_forward
+        self.noise_gaussian_size_forward = noise_gaussian_size_forward
+        self.noise_gaussian_size_loss = noise_gaussian_size_loss
         self.split_ratio = split_ratio
         self.reverse_ratio = reverse_ratio
         if self.split_ratio and not 0 <= self.split_ratio <= 1:
@@ -133,7 +139,8 @@ class DWIMLAbstractBatchLoader:
         # For later use, context
         self.context = None
         self.context_subset = None
-        self.context_noise_size = None
+        self.context_noise_size_forward = None
+        self.context_noise_size_loss = None
 
     @property
     def params_for_checkpoint(self):
@@ -144,7 +151,8 @@ class DWIMLAbstractBatchLoader:
         params = {
             'streamline_group_name': self.streamline_group_name,
             'rng': self.rng,
-            'noise_gaussian_size_forward': self.noise_gaussian_size_train,
+            'noise_gaussian_size_forward': self.noise_gaussian_size_forward,
+            'noise_gaussian_size_loss': self.noise_gaussian_size_loss,
             'reverse_ratio': self.reverse_ratio,
             'split_ratio': self.split_ratio,
         }
@@ -154,10 +162,12 @@ class DWIMLAbstractBatchLoader:
         if self.context != context:
             if context == 'training':
                 self.context_subset = self.dataset.training_set
-                self.context_noise_size = self.noise_gaussian_size_train
+                self.context_noise_size_forward = self.noise_gaussian_size_forward
+                self.context_noise_size_loss = self.noise_gaussian_size_loss
             elif context == 'validation':
                 self.context_subset = self.dataset.validation_set
-                self.context_noise_size = 0.
+                self.context_noise_size_forward = 0.
+                self.context_noise_size_loss = 0.
             else:
                 raise ValueError("Context should be either 'training' or "
                                  "'validation'.")
@@ -199,16 +209,30 @@ class DWIMLAbstractBatchLoader:
 
         return sft
 
-    def add_noise_streamlines(self, batch_streamlines, device):
+    def add_noise_streamlines_forward(self, batch_streamlines, device):
         # This method is called by the trainer only before the forward method.
         # Targets are not modified for the loss computation.
         # Adding noise to coordinates. Streamlines are in voxel space by now.
         # Noise is considered in voxel space.
-        if self.context_noise_size is not None and self.context_noise_size > 0:
+        if (self.context_noise_size_forward is not None and
+                self.context_noise_size_forward > 0):
             logger.debug("            Adding noise {}"
-                         .format(self.context_noise_size))
+                         .format(self.context_noise_size_forward))
             batch_streamlines = add_noise_to_tensor(
-                batch_streamlines, self.context_noise_size, device)
+                batch_streamlines, self.context_noise_size_forward, device)
+        return batch_streamlines
+
+    def add_noise_streamlines_loss(self, batch_streamlines, device):
+        # This method is called by the trainer only before the forward method.
+        # Targets are not modified for the loss computation.
+        # Adding noise to coordinates. Streamlines are in voxel space by now.
+        # Noise is considered in voxel space.
+        if (self.context_noise_size_loss is not None and
+                self.context_noise_size_loss > 0):
+            logger.debug("            Adding noise {}"
+                         .format(self.context_noise_size_loss))
+            batch_streamlines = add_noise_to_tensor(
+                batch_streamlines, self.context_noise_size_loss, device)
         return batch_streamlines
 
     def load_batch_streamlines(

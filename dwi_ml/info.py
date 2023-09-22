@@ -52,5 +52,4 @@ MICRO = _version_micro
 ISRELEASE = _version_extra == ''
 VERSION = __version__
 PROVIDES = ['dwi_ml']
-REQUIRES = ['nibabel',
-            'h5py']
+REQUIRES = []

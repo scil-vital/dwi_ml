@@ -1,46 +1,47 @@
-#!/usr/bin/env python
-"""Installation script for the DWI_ML package."""
+import os
 
-from setuptools import setup, find_packages
-# To use a consistent encoding
-from codecs import open
-from os import path
-from os.path import join as pjoin
-import glob
+from setuptools import setup, find_packages, Extension
+from setuptools.command.build_ext import build_ext
 
-from setup_helpers import read_vars_from
+with open('requirements.txt') as f:
+    required_dependencies = f.read().splitlines()
+    external_dependencies = []
+    for dependency in required_dependencies:
+        if dependency[0:2] == '-e':
+            repo_name = dependency.split('=')[-1]
+            repo_url = dependency[3:]
+            external_dependencies.append('{} @ {}'.format(repo_name, repo_url))
+        else:
+            external_dependencies.append(dependency)
 
-# Read package information
-info = read_vars_from(pjoin('dwi_ml', 'info.py'))
 
-this_directory = path.abspath(path.dirname(__file__))
+# Get version and release info, which is all stored in version.py
+ver_file = os.path.join('dwi_ml', 'version.py')
+with open(ver_file) as f:
+    exec(f.read())
+opts = dict(name=NAME,
+            maintainer=MAINTAINER,
+            maintainer_email=MAINTAINER_EMAIL,
+            description=DESCRIPTION,
+            long_description=LONG_DESCRIPTION,
+            url=URL,
+            download_url=DOWNLOAD_URL,
+            license=LICENSE,
+            classifiers=CLASSIFIERS,
+            author=AUTHOR,
+            author_email=AUTHOR_EMAIL,
+            platforms=PLATFORMS,
+            version=VERSION,
+            packages=find_packages(),
+            python_requires=PYTHON_VERSION,
+            setup_requires=['numpy'],
+            install_requires=external_dependencies,
+            entry_points={
+                'console_scripts': ["{}=scripts_python.{}:main".format(
+                    os.path.basename(s),
+                    os.path.basename(s).split(".")[0]) for s in SCRIPTS]
+            },
+            data_files=[],
+            include_package_data=True)
 
-dwi_ml_readme_path = pjoin(this_directory, 'README.rst')
-with open(dwi_ml_readme_path, encoding='utf-8') as f:
-    long_description = f.read()
-
-setup(
-    name=info.NAME,
-    version=info.VERSION,
-    description=info.DESCRIPTION,
-    long_description=long_description,
-    long_description_content_type='text/x-rst',
-    url=info.URL,
-    project_urls={'Bug tracker': info.BUG_TRACKER,
-                  'Documentation': info.DOCUMENTATION,
-                  'Source code': info.SOURCE_CODE},
-    license=info.LICENSE,
-    author=info.AUTHOR,
-    author_email=info.AUTHOR_EMAIL,
-    classifiers=info.CLASSIFIERS,
-    keywords=info.KEYWORDS,
-    maintainer=info.MAINTAINER,
-    provides=info.PROVIDES,
-    packages=find_packages(exclude=['contrib', 'doc', 'tests']),
-    install_requires=[],
-    requires=info.REQUIRES,
-    package_data={},
-    data_files=[],
-    entry_points={},
-    scripts=glob.glob("scripts_python/*.py") + glob.glob("bash_utilities/*.sh") + glob.glob("scripts_python/tests/scripts_on_test_model/*.py")
-)
+setup(**opts)

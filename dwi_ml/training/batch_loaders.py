@@ -161,6 +161,12 @@ class DWIMLAbstractBatchLoader:
     @classmethod
     def init_from_checkpoint(cls, dataset, model, checkpoint_state,
                              new_log_level):
+        # Adding noise_gaussian_size_loss for deprecated batch loaders
+        if 'noise_gaussian_size_loss' not in checkpoint_state:
+            logging.warning("Deprecated batch loader. Did not contain a "
+                            "noise_gaussian_size_loss value. Setting to 0.0.")
+            checkpoint_state['noise_gaussian_size_loss'] = 0.0
+
         batch_loader = cls(dataset=dataset, model=model,
                            log_level=new_log_level, **checkpoint_state)
         return batch_loader

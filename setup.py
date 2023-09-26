@@ -39,8 +39,9 @@ opts = dict(name=NAME,
             entry_points={
                 'console_scripts': ["{}=scripts_python.{}:main".format(
                     os.path.basename(s),
-                    os.path.basename(s).split(".")[0]) for s in SCRIPTS]
+                    os.path.basename(s).split(".")[0]) for s in PYTHON_SCRIPTS]
             },
+            scripts=[s for s in BASH_SCRIPTS],
             data_files=[],
             include_package_data=True)
 

@@ -13,9 +13,9 @@ from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
-from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
 from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
 
@@ -57,8 +57,8 @@ def init_from_checkpoint(args, checkpoint_path):
         os.path.join(checkpoint_path, 'model'), sub_loggers_level)
 
     # Prepare batch sampler
-    _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
-    batch_sampler = prepare_batch_sampler(dataset, _args, sub_loggers_level)
+    batch_sampler = DWIMLBatchIDSampler.init_from_checkpoint(
+        dataset, checkpoint_state['batch_sampler_params'], sub_loggers_level)
 
     # Prepare batch loader
     _args = argparse.Namespace(**checkpoint_state['batch_loader_params'])

@@ -14,6 +14,7 @@ from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
 from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
+from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.batch_samplers import prepare_batch_sampler
 from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
@@ -68,8 +69,8 @@ def init_from_checkpoint(args, checkpoint_path):
     model = cls.load_model_from_params_and_state(model_dir, sub_loggers_level)
 
     # Prepare batch sampler
-    _args = argparse.Namespace(**checkpoint_state['batch_sampler_params'])
-    batch_sampler = prepare_batch_sampler(dataset, _args, sub_loggers_level)
+    batch_sampler = DWIMLBatchIDSampler.init_from_checkpoint(
+        dataset, checkpoint_state['batch_sampler_params'], sub_loggers_level)
 
     # Prepare batch loader
     _args = argparse.Namespace(**checkpoint_state['batch_loader_params'])

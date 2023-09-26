@@ -15,9 +15,10 @@ from dwi_ml.io_utils import add_logging_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
-from dwi_ml.training.utils.batch_loaders import prepare_batch_loader
 from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
+from dwi_ml.training.with_generation.batch_loader import \
+    DWIMLBatchLoaderWithConnectivity
 
 
 def prepare_arg_parser():
@@ -61,8 +62,9 @@ def init_from_checkpoint(args, checkpoint_path):
         dataset, checkpoint_state['batch_sampler_params'], sub_loggers_level)
 
     # Prepare batch loader
-    _args = argparse.Namespace(**checkpoint_state['batch_loader_params'])
-    batch_loader = prepare_batch_loader(dataset, model, _args, sub_loggers_level)
+    batch_loader = DWIMLBatchLoaderWithConnectivity.init_from_checkpoint(
+        dataset, model, checkpoint_state['batch_loader_params'],
+        sub_loggers_level)
 
     # Instantiate trainer
     with Timer("\nPreparing trainer", newline=True, color='red'):

@@ -158,6 +158,13 @@ class DWIMLAbstractBatchLoader:
         }
         return params
 
+    @classmethod
+    def init_from_checkpoint(cls, dataset, model, checkpoint_state,
+                             new_log_level):
+        batch_loader = cls(dataset=dataset, model=model,
+                           log_level=new_log_level, **checkpoint_state)
+        return batch_loader
+
     def set_context(self, context: str):
         if self.context != context:
             if context == 'training':

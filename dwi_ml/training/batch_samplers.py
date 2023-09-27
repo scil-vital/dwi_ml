@@ -33,6 +33,7 @@ import torch.multiprocessing
 from torch.utils.data import Sampler
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+from dwi_ml.experiment_utils.prints import format_dict_to_str
 
 DEFAULT_CHUNK_SIZE = 256
 logger = logging.getLogger('batch_sampler_logger')
@@ -155,6 +156,17 @@ class DWIMLBatchIDSampler(Sampler):
             'cycles': self.cycles,
         }
         return params
+
+    @classmethod
+    def init_from_checkpoint(cls, dataset, checkpoint_state: dict,
+                             new_log_level):
+        batch_sampler = cls(dataset=dataset, log_level=new_log_level,
+                            **checkpoint_state)
+
+        logging.info("Batch sampler's user-defined parameters: " +
+                     format_dict_to_str(batch_sampler.params_for_checkpoint))
+
+        return batch_sampler
 
     def set_context(self, context):
         if self.context != context:

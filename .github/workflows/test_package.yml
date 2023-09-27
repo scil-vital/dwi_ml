@@ -28,7 +28,6 @@ jobs:
         # python -m pip install --upgrade --user pip
         pip install pytest
         pip install --upgrade pip
-        pip install -r requirements_github.txt
         pip install .
 
     - name: Tests

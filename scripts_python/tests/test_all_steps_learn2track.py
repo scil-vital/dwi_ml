@@ -47,6 +47,7 @@ def test_training(script_runner, experiments_path):
                             input_group_name, streamline_group_name,
                             '--max_epochs', '1', '--batch_size_training', '5',
                             '--batch_size_validation', '5',
+                            '--dg_key', 'gaussian',
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',

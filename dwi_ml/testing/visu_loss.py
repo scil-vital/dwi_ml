@@ -161,6 +161,7 @@ def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
     color_x = []
     color_y = []
     color_z = []
+
     for i, s in enumerate(sft.streamlines):
         this_s_len = len(s)
 
@@ -253,20 +254,37 @@ def run_visu_save_colored_displacement(
             save_tractogram(worst_sft, worst_sft_name)
 
     # Save displacement
+    args.pick_idx = list(range(10))
     if args.out_displacement_sft:
         if args.out_colored_sft:
             # We have run model on all streamlines. Picking a few now.
             sft, idx = pick_a_few(
                 sft, best_idx, worst_idx, args.pick_at_random,
                 args.pick_best_and_worst, args.pick_idx)
-            outputs = [outputs[i] for i in idx]
 
-        # Either concat, run, split or (chosen:) loop
+            # ToDo. See if we can simplify to fit with all models
+            if 'gaussian' in model.direction_getter.key:
+                means, sigmas = outputs
+                means = [means[i] for i in idx]
+                lengths = [len(line) for line in means]
+                outputs = (torch.vstack(means),
+                           torch.vstack([sigmas[i] for i in idx]))
+
+            elif 'fisher' in model.direction_getter.key:
+                raise NotImplementedError
+            else:
+                outputs = [outputs[i] for i in idx]
+                lengths = [len(line) for line in outputs]
+                outputs = torch.vstack(outputs)
+
         # Use eos_thresh of 1 to be sure we don't output a NaN
         with torch.no_grad():
-            out_dirs = [model.get_tracking_directions(
-                s_output, algo='det', eos_stopping_thresh=1.0).numpy()
-                        for s_output in outputs]
+            out_dirs = model.get_tracking_directions(
+                outputs, algo='det', eos_stopping_thresh=1.0)
+
+            out_dirs = torch.split(out_dirs, lengths)
+
+        out_dirs = [o.numpy() for o in out_dirs]
 
         # Save error together with ref
         sft = combine_displacement_with_ref(out_dirs, sft, model.step_size)

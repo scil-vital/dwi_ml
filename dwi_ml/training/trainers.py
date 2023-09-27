@@ -1081,7 +1081,7 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def run_one_batch(self, data, average_results=True):
+    def run_one_batch(self, data):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -1096,8 +1096,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines).
-        average_results: bool
-            If true, returns the averaged loss (as defined by the model).
 
         Returns
         -------
@@ -1153,10 +1151,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 targets, self.device)
 
             results = self.model.compute_loss(model_outputs, targets,
-                                              average_results=average_results)
+                                              average_results=True)
         else:
             results = self.model.compute_loss(model_outputs,
-                                              average_results=average_results)
+                                              average_results=True)
 
         if self.use_gpu:
             log_gpu_memory_usage(logger)

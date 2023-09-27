@@ -797,7 +797,17 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
 
     Model: 2-layer NN for the means + 2-layer NN for the variances.
 
-    Loss: Negative log-likelihood.
+    Loss: Negative log-likelihood. See comments below.
+
+    This model is very sensible to batches. If one batch has data of high
+    certainty, and the next, not, learned sigmas vary a lot. Gradients are
+    typically very big.
+
+    It is known in the literature that Gaussian models lead to unstable
+    gradients: see https://openreview.net/pdf?id=hmuLHC5MrG (under review)
+
+    ===========> WE SUGGEST TO :
+                USE GRADIENT CLIPPING **AND** low learning rate.
     """
     def __init__(self, normalize_targets: float = None, **kwargs):
         # 3D gaussian supports compressed streamlines
@@ -825,33 +835,20 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         #      Normal (as any PDF; probability distribution function) =
         #      non-negative + integrates to 1. But each value can be > 1.
         #      ex: 1D Normal: see with sigma = 0.1. Maximal values go > 4.
+        #          3D Normal: with sigmas = 0.01, maximal values to > 60 000
         #   - so log-likelihood: Not limited by an asymptote. Can range from
         #     log(0) (bad) to log(inf) (good) = -inf to inf.
         #   - so NLL: range [bad, good] = [inf, -inf].
 
-        # In particular here: with step size of 2:
-        #   After a few epochs, we had:
-        #      means range between ~ [-2, 2]  (as expected)
-        #      sigmas range between ~ [0.01, 2.5]  (depends strongly on the data)
-        #   Suppose the target is [0, 0, 2] and we learn correclty mean = [0, 0, 2]
-        #   The normal distribution:
-        #   d = MultivariateNormal([0, 0, 2.0],
-        #                          covariance_matrix=(0.01**2)*torch.eye(3))
-        #   The value if we are very good:
-        #   print(torch.exp(d.log_prob([0, 0, 2.0])
-        #    => Three-variable Normal(mu, sigma=0.01) = 63493 = nll of -11.06
-
-        # This "large" value (-11) seems to lead to large gradients.
-        # Moreover, This direction getter seem to be very sensible on bad
-        # batches, moving very sharply in the wrong direction for some batches.
-        # (ex: if one batch has low uncertainty and the other not)
-
-        # It is known in the literature that Gaussian models lead to unstable
-        # gradients: see https://openreview.net/pdf?id=hmuLHC5MrG (under review)
-
-        #  ===========> WE SUGGEST TO : **
-        #               normalize_targets 1.0 **AND** GRADIENT CLIPPING **AND**
-        #               low learning rate.
+        # To test values with various sigma values:
+        #   Suppose the target is [0, 0, 1] and we learn correctly the params:
+        #   means = torch.as_tensor([0, 0, 1]). sigma = 0.01
+        #   d = MultivariateNormal(means,
+        #                          covariance_matrix=(sigma**2)*torch.eye(3))
+        #   The value for the loss (should be minimal!):
+        #   print(-d.log_prob(means)) --> -11.1
+        #   The value for the likelihood (should be maximal!):
+        #   print(torch.exp(d.log_prob(means)))  --> 63,493.6
 
     def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
         """

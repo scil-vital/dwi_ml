@@ -559,7 +559,12 @@ class DWIMLAbstractTrainer:
 
         # F. Monitors
         for monitor in self.monitors:
-            monitor.set_state(current_states[monitor.name + '_state'])
+            if (monitor.name == 'unclipped_grad_norm_monitor' and
+                    'unclipped_grad_norm_monitor_state' not in current_states):
+                logging.warning("Deprecated trainer. Did not contain an "
+                                "unclipped grad monitor. Starting as new.")
+            else:
+                monitor.set_state(current_states[monitor.name + '_state'])
 
     def _init_comet(self):
         """

@@ -796,7 +796,6 @@ class DWIMLAbstractTrainer:
 
         # Supervizing the gradient's norm.
         grad_norm = compute_gradient_norm(self.model.parameters())
-        logging.info("     Grad norm {}. Loss: {}".format(grad_norm, loss))
 
         # Update parameters
         # Future work: We could update only every n steps.

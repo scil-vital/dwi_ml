@@ -807,7 +807,7 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
                 USE GRADIENT CLIPPING **AND** low learning rate.
     """
     def __init__(self, normalize_targets: float = None,
-                 **kwargs):
+                 entropy_weight: float = 0.0,  **kwargs):
         # 3D gaussian supports compressed streamlines
         super().__init__(key='gaussian',
                          supports_compressed_streamlines=True,
@@ -815,7 +815,7 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
                          **kwargs)
 
         self.normalize_targets = normalize_targets
-        self.entropy_weight = 0.0  # Not tested yet.
+        self.entropy_weight = entropy_weight
 
         # Layers
         # 3 values as mean, 3 values as sigma

@@ -30,7 +30,7 @@ jobs:
         pip install pytest
         pip install numpy==1.23.*
         pip install Cython==0.29.*
-        # pip install -e git+https://github.com/scilus/hot_dipy@1.8.0.dev0#egg=dipy
+        pip install -e git+https://github.com/scilus/hot_dipy@1.8.0.dev0#egg=dipy
         pip install -e .
 
     - name: Tests

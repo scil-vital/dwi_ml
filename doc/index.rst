@@ -19,14 +19,19 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
     :maxdepth: 1
     :caption: How to use DWI_ML
 
-    preprocessing
-    data_organization
-    config_file
-    creating_hdf5
+    step_by_step/preprocessing
+    step_by_step/data_organization
+    step_by_step/creating_the_hdf5
     model
     formulas
     training
     tracking
+
+.. toctree::
+    :maxdepth: 1
+    :caption: Detailed explanations for developers
+
+    devel/hdf5_organization
 
 .. toctree::
     :maxdepth: 1

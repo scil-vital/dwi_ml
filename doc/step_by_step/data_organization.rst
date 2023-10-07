@@ -3,11 +3,9 @@
 2. Organizing your data
 =======================
 
-This is how your data should be organized before trying to load your data as a hdf5 file. This structure should hold wether you work with hdf5 or BIDS.
+This is how your data should be organized before trying to load your data as a hdf5 file. This structure should hold wether you work with hdf5 or BIDS. Below, we call "dwi_ml_ready" the folder with correct organization.
 
-**tractoflow_output:**
-
-    If you used tractoflow to preprocess your data, you may organize automatically the dwi_ml_ready folder (see below). We have started to prepare a script for you, which you can find in please_copy_and_adapt/**organizse_from_tractoflow.sh**, which creates symlinks between your tractoflow results and a dwi_ml_ready folder. We encourage you to modify this script in your own project depending on your needs.
+*Hint:* use symlinks to avoid doubling your data on disk!
 
 **dwi_ml_ready**
 
@@ -33,7 +31,7 @@ This is how your data should be organized before trying to load your data as a h
     | dwi_ml_ready  =====> Each subject should contain the exact same sub-folders
                            and files, such as below. It is also possible to add
                            prefixes to the files (ex: subj1__t1.nii.gz) based on
-                           the subject id.
+                           the subject id. For instance:
         | {subject_id}
             | anat
                 | t1.nii.gz
@@ -48,3 +46,9 @@ This is how your data should be organized before trying to load your data as a h
             | masks
                 | wm.nii.gz
         | ...
+
+
+If you used tractoflow
+----------------------
+
+If you used tractoflow to preprocess your data, you may organize automatically the dwi_ml_ready folder. We have started to prepare a script for you, which you can find in bash_utilities/**organizse_from_tractoflow.sh**, which creates symlinks between your tractoflow results and a dwi_ml_ready folder. However, Tractoflow may have changed since we create this help, filenames could not correspond to your files. We encourage you to modify this script in your own project depending on your needs.

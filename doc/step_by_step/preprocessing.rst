@@ -1,12 +1,12 @@
 .. _ref_preprocessing:
 
-1. Preprocessing your data
-==========================
+1. Preprocessing your data (using scilpy)
+=========================================
 
 Running the whole tractography process
 **************************************
 
-We strongly suggest using scilpy's `tractoflow <https://tractoflow-documentation.readthedocs.io/en/latest/>`_ to preprocess dwi data and create tractograms. You may also read the `SCIL's documentation <https://scil-documentation.readthedocs.io/en/latest/?badge=latest>`_ for more information on how to preprocess your data using tractoflow.
+We suggest using scilpy's `tractoflow <https://tractoflow-documentation.readthedocs.io/en/latest/>`_ to preprocess dwi data and create tractograms.
 
 Obtaining clean bundles
 ***********************

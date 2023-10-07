@@ -1,7 +1,15 @@
 .. _ref_config_file:
 
-3. Preparing the config file
-============================
+2. Converting your data into a hdf5 file
+========================================
+
+The possibility of laziness
+***************************
+
+We chose to base our code on the hdf5 data. One reason is that it allows to regroup your data in an organized way to ensure that all you data is present. But the main reason is that it is then possible to load only some chosen streamlines for each batch in the training set instead of having to keep all the streamlines in memory, which can be very heavy. This way of handling the data is called "lazy" in our project.
+
+Preparing the config file
+*************************
 
 To create the hdf5 file, you will need a config file such as below. HDF groups will be created accordingly for each subject in the hdf5. Volume group will mimic nifti files (you may concatenate many nifti files in a single group) and streamline groups will mimic tractogram files (you may concatenate many .trk or .tck files in a single group, for instance you could concatenate many bundles per subject).
 
@@ -62,3 +70,24 @@ Additional attribute for volume groups:
         Data is standardized (normalized) during data creation: data = (data - mean) / std.
 
         If all voxel were to be used, most of them would probably contain the background of the data, bringing the mean and std probably very close to 0. Thus, non-zero voxels only are used to compute the mean and std, or voxels inside the provided mask if any. If a mask is provided, voxels outside the mask could have been set to NaN, but the simpler choice made here was to simply modify all voxels [ data = (data - mean) / std ], even voxels outside the mask, with the mean and std of voxels in the mask. Mask name for each subject is provided using --std_mask in the script create_hdf5_dataset.py.
+
+Creating the hdf5
+*****************
+
+You will use the **create_hdf5_dataset.py** script to create a hdf5 file. You need to prepare config files to use this script (see :ref:`ref_config_file`).
+
+Exemple of use: (See also please_copy_and_adapt/ALL_STEPS.sh)
+
+.. code-block:: bash
+
+    dwi_ml_folder=YOUR_PATH
+    hdf5_folder=YOUR_PATH
+    config_file=YOUR_FILE.json
+    training_subjs=YOUR_FILE.txt
+    validation_subjs=YOUR_FILE.txt
+    testing_subjs=YOUR_FILE.txt
+
+    dwiml_create_hdf5_dataset.py --name $name --std_mask $mask --space $space \
+            --enforce_files_presence True \
+            $dwi_ml_folder $hdf5_folder $config_file \
+            $training_subjs $validation_subjs $testing_subjs

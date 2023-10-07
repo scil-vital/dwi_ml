@@ -2,7 +2,8 @@
 # Should work for python > 3.8.
 
 # -e git+https://github.com/scilus/hot_dipy@1.8.0.dev0#egg=dipy
-scilpy @ git+https://github.com/scilus/scilpy.git@1.6.0
+# scilpy @ git+https://github.com/scilus/scilpy.git@1.6.0
+-e git+https://github.com/scilus/scilpy.git@1.6.0#egg=scilpy
 
 bertviz~=1.4.0  # For transformer's visu
 torch==1.13.*

@@ -331,9 +331,13 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                     _lines, volume_size, downsampled_size,
                     binary=False, to_sparse_tensor=False, device=self.device)
 
-                # Where our batch has a 1, if there was really a one: score should
-                # be 0. Else, score should be 1.
-                # If two streamlines in a voxel, score is 0 or 2.
+                # Where our batch has a 0: not important, maybe it was simply
+                # not in this batch.
+                # Where our batch has a 1, if there was really a one: score
+                # should be 0.   = 1 - 1.
+                # Else, score should be high (1).  = 1 - 0.
+                # If two streamlines have the same connection, score is
+                # either 0 or 2 for that voxel.  ==> nb * (1 - real).
 
                 # Real matrices are saved as binary in create_hdf5.
                 where_one = np.where(batch_matrix > 0)

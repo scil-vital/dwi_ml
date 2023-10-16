@@ -165,7 +165,7 @@ class SFTDataAbstract(object):
                  streamlines: Union[ArraySequence, _LazyStreamlinesGetter],
                  space_attributes: Tuple, space: Space, origin: Origin,
                  contains_connectivity: bool,
-                 downsampled_size_for_connectivity: List):
+                 connectivity_nb_blocs: List):
         """
         Params
         ------
@@ -190,7 +190,7 @@ class SFTDataAbstract(object):
         self.streamlines = streamlines
         self.is_lazy = None
         self.contains_connectivity = contains_connectivity
-        self.downsampled_size_for_connectivity = downsampled_size_for_connectivity
+        self.connectivity_nb_blocs = connectivity_nb_blocs
 
     @property
     def lengths(self):
@@ -212,7 +212,7 @@ class SFTDataAbstract(object):
         """New method compared to SFTs: access pre-computed connectivity
         matrix. Returns the subject's connectivity matrix associated with
         current tractogram, together with information required to recompute
-        a similar matrix: reference volume's shape and downsampled shape."""
+        a similar matrix: reference volume's shape and number of blocs."""
         if not self.contains_connectivity:
             raise ValueError("No pre-computed connectivity matrix found for "
                              "this subject.")
@@ -220,7 +220,7 @@ class SFTDataAbstract(object):
         (_, ref_volume_shape, _, _) = self.space_attributes
 
         return (self._access_connectivity_matrix(ind), ref_volume_shape,
-                self.downsampled_size_for_connectivity)
+                self.connectivity_nb_blocs)
 
     def _access_connectivity_matrix(self, ind):
         raise NotImplementedError
@@ -289,11 +289,11 @@ class SFTData(SFTDataAbstract):
             contains_connectivity = True
             connectivity_matrix = np.asarray(hdf_group['connectivity_matrix'],
                                              dtype=int)
-            downsampled_size = hdf_group.attrs['downsampled_size']
+            connectivity_nb_blocs = hdf_group.attrs['connectivity_nb_blocs']
         else:
             contains_connectivity = False
             connectivity_matrix = None
-            downsampled_size = None
+            connectivity_nb_blocs = None
 
         space_attributes, space, origin = _load_space_from_hdf(hdf_group)
 
@@ -303,7 +303,7 @@ class SFTData(SFTDataAbstract):
                    streamlines=streamlines, space_attributes=space_attributes,
                    space=space, origin=origin,
                    contains_connectivity=contains_connectivity,
-                   downsampled_size_for_connectivity=downsampled_size)
+                   connectivity_nb_blocs=connectivity_nb_blocs)
 
     def _subset_streamlines(self, streamline_ids):
         if streamline_ids is not None:
@@ -334,17 +334,17 @@ class LazySFTData(SFTDataAbstract):
         space_attributes, space, origin = _load_space_from_hdf(hdf_group)
         if 'connectivity_matrix' in hdf_group:
             contains_connectivity = True
-            downsampled_size = hdf_group.attrs['downsampled_size']
+            connectivity_nb_blocs = hdf_group.attrs['connectivity_nb_blocs']
         else:
             contains_connectivity = False
-            downsampled_size = None
+            connectivity_nb_blocs = None
 
         streamlines = _LazyStreamlinesGetter(hdf_group)
 
         return cls(streamlines=streamlines, space_attributes=space_attributes,
                    space=space, origin=origin,
                    contains_connectivity=contains_connectivity,
-                   downsampled_size_for_connectivity=downsampled_size)
+                   connectivity_nb_blocs=connectivity_nb_blocs)
 
     def _subset_streamlines(self, streamline_ids):
         streamlines = self.streamlines.get_array_sequence(streamline_ids)

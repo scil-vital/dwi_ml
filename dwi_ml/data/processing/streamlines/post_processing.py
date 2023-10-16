@@ -109,7 +109,6 @@ def _get_one_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
     return n_previous_dirs
 
 
-
 def compute_directions(streamlines):
     """
     Params
@@ -264,7 +263,7 @@ def weight_value_with_angle(values: List, streamlines: List = None,
 
 
 def compute_triu_connectivity(
-        streamlines, volume_size, downsampled_volume_size,
+        streamlines, volume_size, nb_blocs,
         binary: bool = False, to_sparse_tensor: bool = False, device=None):
     """
     Compute a connectivity matrix.
@@ -275,9 +274,9 @@ def compute_triu_connectivity(
         Streamlines, in vox space, corner origin.
     volume_size: list
         The 3D dimension of the reference volume.
-    downsampled_volume_size:
-        The m1 x m2 x m3 = mm downsampled volume size for the connectivity matrix.
-        This means that the matrix will be a mm x mm triangular matrix.
+    nb_blocs:
+        The m1 x m2 x m3 = mmm number of blocs for the connectivity matrix.
+        This means that the matrix will be a mmm x mmm triangular matrix.
         In 3D, with 20x20x20, this is an 8000 x 8000 matrix (triangular). It
         probably contains a lot of zeros with the background being included.
         Can be saved as sparse.
@@ -291,7 +290,7 @@ def compute_triu_connectivity(
     # Getting endpoint coordinates
     #  + Fix types
     volume_size = np.asarray(volume_size)
-    downsampled_volume_size = np.asarray(downsampled_volume_size)
+    nb_blocs = np.asarray(nb_blocs)
     if isinstance(streamlines[0], list):
         start_values = [s[0] for s in streamlines]
         end_values = [s[-1] for s in streamlines]
@@ -302,30 +301,28 @@ def compute_triu_connectivity(
         start_values = [s[0, :] for s in streamlines]
         end_values = [s[-1, :] for s in streamlines]
 
-    assert len(downsampled_volume_size) == len(volume_size)
-    nb_dims = len(downsampled_volume_size)
-    nb_voxels_pre = np.prod(volume_size)
-    nb_voxels_post = np.prod(downsampled_volume_size)
-    logging.debug("Preparing connectivity matrix of downsampled volume: from "
-                  "{} to {}. Gives a matrix of size {} x {} rather than {} "
-                  "voxels)."
-                  .format(volume_size, downsampled_volume_size,
-                          nb_voxels_post, nb_voxels_post, nb_voxels_pre))
+    assert len(nb_blocs) == len(volume_size)
+    nb_dims = len(nb_blocs)
+    nb_blocs_total = np.prod(nb_blocs)
+    logging.debug("Preparing connectivity matrix of blocs: from "
+                  "{} to {}. Gives a matrix of size {} x {}."
+                  .format(volume_size, nb_blocs,
+                          nb_blocs_total, nb_blocs_total))
 
-    # Downsampling
-    mult_factor = downsampled_volume_size / volume_size
+    # Diving into blocs (a type of downsampling)
+    mult_factor = nb_blocs / volume_size
     start_values = np.clip((start_values * mult_factor).astype(int),
-                           a_min=0, a_max=downsampled_volume_size - 1)
+                           a_min=0, a_max=nb_blocs - 1)
     end_values = np.clip((end_values * mult_factor).astype(int),
-                         a_min=0, a_max=downsampled_volume_size - 1)
+                         a_min=0, a_max=nb_blocs - 1)
 
     # Blocs go from 0 to m1*m2*m3.
     start_block = np.ravel_multi_index(
-        [start_values[:, d] for d in range(nb_dims)], downsampled_volume_size)
+        [start_values[:, d] for d in range(nb_dims)], nb_blocs)
     end_block = np.ravel_multi_index(
-        [end_values[:, d] for d in range(nb_dims)], downsampled_volume_size)
+        [end_values[:, d] for d in range(nb_dims)], nb_blocs)
 
-    total_size = np.prod(downsampled_volume_size)
+    total_size = np.prod(nb_blocs)
     matrix = np.zeros((total_size, total_size), dtype=int)
     for s_start, s_end in zip(start_block, end_block):
         matrix[s_start, s_end] += 1

@@ -111,7 +111,7 @@ class HDF5Creator:
                  std_mask: str, step_size: float = None,
                  compress: float = None,
                  compute_connectivity_matrix: bool = False,
-                 downsampled_size_for_connectivity: Union[int, list] = 20,
+                 connectivity_nb_blocs: Union[int, list] = 20,
                  enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
@@ -138,7 +138,7 @@ class HDF5Creator:
         compute_connectivity_matrix: bool
             Compute connectivity matrix for each streamline group.
             Default: False.
-        downsampled_size_for_connectivity: int or List
+        connectivity_nb_blocs: int or List
             See compute_connectivity_matrix's doc.
         enforce_files_presence: bool
             If true, will stop if some files are not available for a subject.
@@ -159,19 +159,7 @@ class HDF5Creator:
         self.step_size = step_size
         self.compress = compress
         self.compute_connectivity = compute_connectivity_matrix
-        if self.compute_connectivity:
-            if isinstance(downsampled_size_for_connectivity, List):
-                assert len(downsampled_size_for_connectivity) == 3, \
-                    "Expecting to work with 3D volumes. Expecting " \
-                    "connectivity downsample size to be a list of 3 values, " \
-                    "but got {}.".format(downsampled_size_for_connectivity)
-                self.connectivity_downsample_size = downsampled_size_for_connectivity
-            else:
-                assert isinstance(downsampled_size_for_connectivity, int), \
-                    "Expecting the connectivity matrix size to be either " \
-                    "a 3D list or an integer, but got {}" \
-                    .format(downsampled_size_for_connectivity)
-            self.connectivity_downsample_size = [downsampled_size_for_connectivity] * 3
+        self.connectivity_nb_blocs = connectivity_nb_blocs
 
         # Optional
         self.std_mask = std_mask  # (could be None)
@@ -582,8 +570,8 @@ class HDF5Creator:
             streamlines_group.attrs['voxel_sizes'] = vs
             streamlines_group.attrs['voxel_order'] = vo
             if self.compute_connectivity:
-                streamlines_group.attrs['downsampled_size'] = \
-                    self.connectivity_downsample_size
+                streamlines_group.attrs['connectivity_nb_blocs'] = \
+                    self.connectivity_nb_blocs
 
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
@@ -610,7 +598,7 @@ class HDF5Creator:
                 streamlines_group.create_dataset(
                     'connectivity_matrix',
                     data=compute_triu_connectivity(
-                        sft.streamlines, d, self.connectivity_downsample_size,
+                        sft.streamlines, d, self.connectivity_nb_blocs,
                         binary=True, to_sparse_tensor=False))
 
     def _process_one_streamline_group(

@@ -6,9 +6,42 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import List
 
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
 from dwi_ml.io_utils import add_resample_or_compress_arg
+
+
+def add_nb_blocs_connectivity_arg(p: ArgumentParser):
+    p.add_argument(
+        '--connectivity_nb_blocs', metavar='m', type=int, nargs='+',
+        help="Number of 3D blocks (m x m x m) for the connectivity matrix. \n"
+             "(The matrix will be m^3 x m^3). If more than one values are "
+             "provided, expected to be one per dimension. \n"
+             "Default: 20x20x20.")
+
+
+def format_nb_blocs_connectivity(connectivity_nb_blocs) -> List:
+    if isinstance(connectivity_nb_blocs, List):
+        assert len(connectivity_nb_blocs) == 3, \
+            "Expecting to work with 3D volumes. Expecting " \
+            "connectivity_nb_blocs to be a list of 3 values, " \
+            "but got {}.".format(connectivity_nb_blocs)
+    else:
+        if connectivity_nb_blocs is None:
+            # Default/const value with argparser '+' not possible.
+            # Setting it manually.
+            connectivity_nb_blocs = 20
+        elif len(connectivity_nb_blocs) == 1:
+            connectivity_nb_blocs = connectivity_nb_blocs[0]
+
+        assert isinstance(connectivity_nb_blocs, int), \
+            "Expecting the connectivity_nb_blocs to be either " \
+            "a 3D list or an integer, but got {}" \
+            .format(connectivity_nb_blocs)
+        connectivity_nb_blocs = [connectivity_nb_blocs] * 3
+
+    return connectivity_nb_blocs
 
 
 def add_hdf5_creation_args(p: ArgumentParser):
@@ -76,15 +109,10 @@ def add_streamline_processing_args(p: ArgumentParser):
     g.add_argument(
         '--compute_connectivity_matrix', action='store_true',
         help="If set, computes the 3D connectivity matrix for each streamline "
-             "group. \nDefined from downsampled image, not from anatomy! \n"
+             "group. \nDefined from image split into blocs, not from anatomy!\n"
              "Ex: can be used at validation time with our trainer's "
              "'generation-validation' step.")
-    g.add_argument(
-        '--connectivity_downsample_size',  metavar='m', type=int, nargs='+',
-        help="Number of 3D blocks (m x m x m) for the connectivity matrix. \n"
-             "(The matrix will be m^3 x m^3). If more than one values are "
-             "provided, expected to be one per dimension. \n"
-             "Default: 20x20x20.")
+    add_nb_blocs_connectivity_arg(g)
 
 
 def _initialize_intermediate_subdir(hdf5_file, save_intermediate):
@@ -140,7 +168,7 @@ def prepare_hdf5_creator(args):
                           training_subjs, validation_subjs, testing_subjs,
                           groups_config, args.std_mask, args.step_size,
                           args.compress, args.compute_connectivity_matrix,
-                          args.connectivity_downsample_size,
+                          args.connectivity_nb_blocs,
                           args.enforce_files_presence,
                           args.save_intermediate, intermediate_subdir)
 

@@ -30,7 +30,7 @@ from dipy.io.stateful_tractogram import set_sft_logger_level
 
 from dwi_ml.data.hdf5.utils import (
     add_hdf5_creation_args, add_mri_processing_args, add_streamline_processing_args,
-    prepare_hdf5_creator)
+    prepare_hdf5_creator, format_nb_blocs_connectivity)
 from dwi_ml.experiment_utils.timer import Timer
 
 
@@ -74,12 +74,9 @@ def main():
                       "received {}".format(ext))
     assert_outputs_exist(p, args, args.out_hdf5_file)
 
-    # Default value with arparser '+' not possible. Setting manually.
     if args.compute_connectivity_matrix:
-        if args.connectivity_downsample_size is None:
-            args.connectivity_downsample_size = 20
-        elif len(args.connectivity_downsample_size) == 1:
-            args.connectivity_downsample_size = args.connectivity_downsample_size[0]
+        args.connectivity_nb_blocs = format_nb_blocs_connectivity(
+            args.connectivity_nb_blocs)
 
     # Prepare creator and load config file.
     creator = prepare_hdf5_creator(args)

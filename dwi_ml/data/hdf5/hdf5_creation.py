@@ -110,7 +110,8 @@ class HDF5Creator:
                  testing_subjs: List[str], groups_config: dict,
                  std_mask: str, step_size: float = None,
                  compress: float = None,
-                 compute_connectivity_matrix: bool = False,
+                 compute_connectivity_from_blocs: bool = False,
+                 compute_connectivity_from_labels: str = None,
                  connectivity_nb_blocs: Union[int, list] = 20,
                  enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
@@ -135,7 +136,7 @@ class HDF5Creator:
             Step size to resample streamlines. Default: None.
         compress: float
             Compress streamlines. Default: None.
-        compute_connectivity_matrix: bool
+        compute_connectivity_from_blocs: bool
             Compute connectivity matrix for each streamline group.
             Default: False.
         connectivity_nb_blocs: int or List
@@ -158,7 +159,8 @@ class HDF5Creator:
         self.groups_config = groups_config
         self.step_size = step_size
         self.compress = compress
-        self.compute_connectivity = compute_connectivity_matrix
+        self.compute_connectivity_from_blocs = compute_connectivity_from_blocs
+        self.compute_connectivity_from_labels = compute_connectivity_from_labels
         self.connectivity_nb_blocs = connectivity_nb_blocs
 
         # Optional
@@ -171,6 +173,10 @@ class HDF5Creator:
 
         self.volume_groups, self.streamline_groups = \
             self._analyse_config_file()
+
+        if self.compute_connectivity_from_labels:
+            # Labels file should be a volume group.
+            assert self.compute_connectivity_from_labels in self.volume_groups
 
         # -------- Performing checks
 
@@ -569,9 +575,11 @@ class HDF5Creator:
             streamlines_group.attrs['dimensions'] = d
             streamlines_group.attrs['voxel_sizes'] = vs
             streamlines_group.attrs['voxel_order'] = vo
-            if self.compute_connectivity:
+            if self.compute_connectivity_from_blocs:
                 streamlines_group.attrs['connectivity_nb_blocs'] = \
                     self.connectivity_nb_blocs
+            elif self.compute_connectivity_from_labels:
+                raise NotImplementedError
 
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
@@ -589,7 +597,7 @@ class HDF5Creator:
                                              data=sft.streamlines._lengths)
             streamlines_group.create_dataset('euclidean_lengths', data=lengths)
 
-            if self.compute_connectivity:
+            if self.compute_connectivity_from_blocs:
                 # Can be reduced using sparse tensors notation... always
                 # minimum 50% of zeros! Then we could save separately
                 # the indices, values, size of the tensor. But unclear how

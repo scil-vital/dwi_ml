@@ -74,7 +74,7 @@ def main():
                       "received {}".format(ext))
     assert_outputs_exist(p, args, args.out_hdf5_file)
 
-    if args.compute_connectivity_matrix:
+    if args.compute_connectivity_from_blocs:
         args.connectivity_nb_blocs = format_nb_blocs_connectivity(
             args.connectivity_nb_blocs)
 

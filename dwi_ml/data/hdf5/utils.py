@@ -22,6 +22,9 @@ def add_nb_blocs_connectivity_arg(p: ArgumentParser):
 
 
 def format_nb_blocs_connectivity(connectivity_nb_blocs) -> List:
+    if len(connectivity_nb_blocs) == 1:
+        connectivity_nb_blocs = connectivity_nb_blocs[0]
+
     if isinstance(connectivity_nb_blocs, List):
         assert len(connectivity_nb_blocs) == 3, \
             "Expecting to work with 3D volumes. Expecting " \
@@ -32,8 +35,6 @@ def format_nb_blocs_connectivity(connectivity_nb_blocs) -> List:
             # Default/const value with argparser '+' not possible.
             # Setting it manually.
             connectivity_nb_blocs = 20
-        elif len(connectivity_nb_blocs) == 1:
-            connectivity_nb_blocs = connectivity_nb_blocs[0]
 
         assert isinstance(connectivity_nb_blocs, int), \
             "Expecting the connectivity_nb_blocs to be either " \
@@ -106,12 +107,18 @@ def add_mri_processing_args(p: ArgumentParser):
 def add_streamline_processing_args(p: ArgumentParser):
     g = p.add_argument_group('Streamlines processing options:')
     add_resample_or_compress_arg(g)
-    g.add_argument(
-        '--compute_connectivity_matrix', action='store_true',
+
+    gc = g.add_mutually_exclusive_group()
+    gc.add_argument(
+        '--compute_connectivity_from_blocs', action='store_true',
         help="If set, computes the 3D connectivity matrix for each streamline "
              "group. \nDefined from image split into blocs, not from anatomy!\n"
              "Ex: can be used at validation time with our trainer's "
-             "'generation-validation' step.")
+             "'generation-validation' step. \nSee connectivity_nb_blocs.")
+    gc.add_argument(
+        '--compute_connectivity_from_labels', metavar='label_group',
+        help="If set, computes de 3D connectivity matrix for each streamline "
+             "group using labels from one volume group (in the config file).")
     add_nb_blocs_connectivity_arg(g)
 
 
@@ -167,7 +174,8 @@ def prepare_hdf5_creator(args):
     creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
                           training_subjs, validation_subjs, testing_subjs,
                           groups_config, args.std_mask, args.step_size,
-                          args.compress, args.compute_connectivity_matrix,
+                          args.compress, args.compute_connectivity_from_blocs,
+                          args.compute_connectivity_from_labels,
                           args.connectivity_nb_blocs,
                           args.enforce_files_presence,
                           args.save_intermediate, intermediate_subdir)

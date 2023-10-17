@@ -43,7 +43,7 @@ import torch
 from torch.nn import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity
+    compute_triu_connectivity_from_blocs
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.io_utils import prepare_tracking_mask
@@ -327,7 +327,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 nb_blocs = connectivity_nb_blocs[i]
                 _lines = lines[ids_per_subj[subj]]
 
-                batch_matrix = compute_triu_connectivity(
+                batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
                     _lines, volume_size, nb_blocs,
                     binary=False, to_sparse_tensor=False, device=self.device)
 

@@ -22,7 +22,7 @@ from scilpy.tractograms.tractogram_operations import concatenate_sft
 from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity
+    compute_triu_connectivity_from_blocs
 
 
 def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
@@ -603,11 +603,11 @@ class HDF5Creator:
                 # the indices, values, size of the tensor. But unclear how
                 # much sparse they need to be to actually save memory.
                 # Skipping for now.
-                streamlines_group.create_dataset(
-                    'connectivity_matrix',
-                    data=compute_triu_connectivity(
+                matrix, _, _ = compute_triu_connectivity_from_blocs(
                         sft.streamlines, d, self.connectivity_nb_blocs,
-                        binary=True, to_sparse_tensor=False))
+                        binary=True, to_sparse_tensor=False)
+                streamlines_group.create_dataset(
+                    'connectivity_matrix', data=matrix)
 
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,

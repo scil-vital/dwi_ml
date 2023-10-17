@@ -298,21 +298,23 @@ def _compute_origin_finish_blocs(streamlines, volume_size, nb_blocs):
 
 
 def compute_triu_connectivity_from_labels(streamlines, data_labels,
-                                          binary: bool = False,
-                                          to_sparse_tensor: bool = False,
-                                          device=None):
+                                          binary: bool = False):
     indices, points_to_idx = uncompress(streamlines, return_mapping=True)
     real_labels = np.unique(data_labels)[1:]
     nb_labels = len(real_labels)
     matrix = np.zeros((nb_labels, nb_labels), dtype=int)
 
-    for strl_idx, strl_vox_indices in enumerate(indices):
+    start_blocs = []
+    end_blocs = []
+    for strl_vox_indices in indices:
         segments_info = segmenting_func(strl_vox_indices, data_labels)
         if len(segments_info) > 0:
             start = segments_info[0]['start_label']
             end = segments_info[0]['end_label']
-            matrix[start, end] += 1
+            start_blocs.append(start)
+            end_blocs.append(end)
 
+            matrix[start, end] += 1
             if start != end:
                 matrix[end, start] += 1
 
@@ -322,17 +324,11 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
     if binary:
         matrix = matrix.astype(bool)
 
-    if to_sparse_tensor:
-        logging.debug("Converting matrix to sparse. Contained {}% of zeros."
-                      .format((1 - np.count_nonzero(matrix) / (nb_labels**2)) * 100))
-        matrix = torch.as_tensor(matrix, device=device).to_sparse()
-
     return matrix
 
 
-def compute_triu_connectivity_from_blocs(
-        streamlines, volume_size, nb_blocs,
-        binary: bool = False, to_sparse_tensor: bool = False, device=None):
+def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
+                                         binary: bool = False):
     """
     Compute a connectivity matrix.
 
@@ -350,8 +346,6 @@ def compute_triu_connectivity_from_blocs(
         Can be saved as sparse.
     binary: bool
         If true, return a binary matrix.
-    to_sparse_tensor:
-        If true, return the sparse matrix.
     device:
         If true and to_sparse_tensor, the matrix will be hosted on device.
     """
@@ -374,11 +368,6 @@ def compute_triu_connectivity_from_blocs(
 
     if binary:
         matrix = matrix.astype(bool)
-
-    if to_sparse_tensor:
-        logging.debug("Converting matrix to sparse. Contained {}% of zeros."
-                      .format((1 - np.count_nonzero(matrix) / total_size) * 100))
-        matrix = torch.as_tensor(matrix, device=device).to_sparse()
 
     return matrix, start_block, end_block
 

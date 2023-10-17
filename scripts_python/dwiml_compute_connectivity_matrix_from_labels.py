@@ -19,7 +19,8 @@ from scilpy.tractograms.uncompress import uncompress
 from dwi_ml.data.hdf5.utils import add_nb_blocs_connectivity_arg, \
     format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs, find_streamlines_with_chosen_connectivity
+    compute_triu_connectivity_from_blocs, find_streamlines_with_chosen_connectivity, \
+    compute_triu_connectivity_from_labels
 
 
 def _build_arg_parser():
@@ -74,7 +75,12 @@ def main():
     in_img = nib.load(args.in_volume)
     data_labels = get_data_as_labels(in_img)
 
-    matrix =
+    tmp_binary = args.binary
+    if args.binary and (args.save_biggest or args.save_smallest):
+        tmp_binary = False
+
+    matrix = compute_triu_connectivity_from_labels(
+        in_sft.streamlines, data_labels, binary=tmp_binary)
 
     # Options to try to investigate the connectivity matrix:
     if args.save_biggest is not None:

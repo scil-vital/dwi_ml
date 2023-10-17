@@ -22,12 +22,6 @@ def test_connectivity():
     print("Got {}".format(m))
     assert np.array_equal(m, expected_m)
 
-    m,  _, _ = compute_triu_connectivity_from_blocs(streamlines, (16, 16), (4, 4),
-                                                    to_sparse_tensor=True)
-    m2 = m.to_dense().numpy().astype(int)
-    print("Converting to sparse and back to dense: {}".format(m2))
-    assert np.array_equal(m2, expected_m)
-
 
 if __name__ == '__main__':
     test_connectivity()

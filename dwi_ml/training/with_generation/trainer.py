@@ -328,8 +328,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 _lines = lines[ids_per_subj[subj]]
 
                 batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
-                    _lines, volume_size, nb_blocs,
-                    binary=False, to_sparse_tensor=False, device=self.device)
+                    _lines, volume_size, nb_blocs, binary=False)
 
                 # Where our batch has a 0: not important, maybe it was simply
                 # not in this batch.

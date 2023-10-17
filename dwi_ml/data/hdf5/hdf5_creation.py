@@ -605,7 +605,7 @@ class HDF5Creator:
                 # Skipping for now.
                 matrix, _, _ = compute_triu_connectivity_from_blocs(
                         sft.streamlines, d, self.connectivity_nb_blocs,
-                        binary=True, to_sparse_tensor=False)
+                        binary=True)
                 streamlines_group.create_dataset(
                     'connectivity_matrix', data=matrix)
 

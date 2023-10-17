@@ -81,7 +81,7 @@ def main():
 
     matrix, start_blocs, end_blocs = compute_triu_connectivity_from_blocs(
         in_sft.streamlines, in_img.shape, args.connectivity_nb_blocs,
-        binary=tmp_binary, to_sparse_tensor=False)
+        binary=tmp_binary)
 
     # Options to try to investigate the connectivity matrix:
     if args.save_biggest is not None:

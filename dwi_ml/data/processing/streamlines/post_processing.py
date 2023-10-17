@@ -298,22 +298,56 @@ def _compute_origin_finish_blocs(streamlines, volume_size, nb_blocs):
 
 
 def compute_triu_connectivity_from_labels(streamlines, data_labels,
-                                          binary: bool = False):
-    indices, points_to_idx = uncompress(streamlines, return_mapping=True)
+                                          binary: bool = False,
+                                          use_scilpy=False):
+    """
+    Compute a connectivity matrix.
+
+    Parameters
+    ----------
+    streamlines: list of np arrays or list of tensors.
+        Streamlines, in vox space, corner origin.
+    data_labels: np.ndarray
+        The loaded nifti image.
+    binary: bool
+        If true, return a binary matrix.
+    """
     real_labels = np.unique(data_labels)[1:]
     nb_labels = len(real_labels)
-    matrix = np.zeros((nb_labels, nb_labels), dtype=int)
+    matrix = np.zeros((nb_labels + 1, nb_labels + 1), dtype=int)
 
     start_blocs = []
     end_blocs = []
-    for strl_vox_indices in indices:
-        segments_info = segmenting_func(strl_vox_indices, data_labels)
-        if len(segments_info) > 0:
-            start = segments_info[0]['start_label']
-            end = segments_info[0]['end_label']
+
+    if use_scilpy:
+        indices, points_to_idx = uncompress(streamlines, return_mapping=True)
+
+        for strl_vox_indices in indices:
+            segments_info = segmenting_func(strl_vox_indices, data_labels)
+            if len(segments_info) > 0:
+                start = segments_info[0]['start_label']
+                end = segments_info[0]['end_label']
+                start_blocs.append(start)
+                end_blocs.append(end)
+
+                matrix[start, end] += 1
+                if start != end:
+                    matrix[end, start] += 1
+
+            else:
+                # Putting it in 0,0, we will remember that this means 'other'
+                matrix[0, 0] += 1
+                start_blocs.append(0)
+                end_blocs.append(0)
+    else:
+        for s in streamlines:
+            # Vox space, corner origin
+            # = we can get the nearest neighbor easily.
+            # Coord 0 = voxel 0. Coord 0.9 = voxel 0. Coord 1 = voxel 1.
+            start = data_labels[tuple(np.floor(s[0, :]).astype(int))]
+            end = data_labels[tuple(np.floor(s[-1, :]).astype(int))]
             start_blocs.append(start)
             end_blocs.append(end)
-
             matrix[start, end] += 1
             if start != end:
                 matrix[end, start] += 1
@@ -324,7 +358,7 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
     if binary:
         matrix = matrix.astype(bool)
 
-    return matrix
+    return matrix, start_blocs, end_blocs
 
 
 def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
@@ -346,8 +380,6 @@ def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
         Can be saved as sparse.
     binary: bool
         If true, return a binary matrix.
-    device:
-        If true and to_sparse_tensor, the matrix will be hosted on device.
     """
     nb_blocs = np.asarray(nb_blocs)
     start_block, end_block = _compute_origin_finish_blocs(

@@ -13,13 +13,9 @@ from scilpy.image.labels import get_data_as_labels
 
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, \
     load_tractogram_with_reference, add_verbose_arg, add_overwrite_arg
-from scilpy.tractanalysis.tools import compute_connectivity, extract_longest_segments_from_profile
-from scilpy.tractograms.uncompress import uncompress
 
-from dwi_ml.data.hdf5.utils import add_nb_blocs_connectivity_arg, \
-    format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs, find_streamlines_with_chosen_connectivity, \
+    find_streamlines_with_chosen_connectivity, \
     compute_triu_connectivity_from_labels
 
 
@@ -37,6 +33,19 @@ def _build_arg_parser():
                         "streamline count is saved.")
     p.add_argument('--show_now', action='store_true',
                    help="If set, shows the matrix with matplotlib.")
+    p.add_argument('--hide_background', nargs='?', const=0,
+                   help="If true, set the connectivity matrix for chosen label "
+                        "(default: 0), to 0.")
+    p.add_argument(
+        '--use_longest_segment', action='store_true',
+        help="If true, uses scilpy's method:\n"
+             "  'Strategy is to keep the longest streamline segment \n"
+             "   connecting 2 regions. If the streamline crosses other gray \n"
+             "   matter regions before reaching its final connected region, \n"
+             "   the kept connection is still the longest. This is robust to \n"
+             "   compressed streamlines.\n"
+             "Else, uses simple computation from endpoints. Faster. Also, "
+             "works with incomplete parcellation.")
 
     g = p.add_argument_group("Investigation of the matrix:")
     g.add_argument('--save_biggest', metavar='filename',
@@ -58,34 +67,41 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
 
-    assert_inputs_exist(p, [args.in_volume, args.streamlines])
+    assert_inputs_exist(p, [args.in_labels, args.streamlines])
     assert_outputs_exist(p, args, [args.out_file],
                          [args.save_biggest, args.save_smallest])
 
     ext = os.path.splitext(args.streamlines)[1]
     if ext == '.trk':
         args.reference = None
-        if not is_header_compatible(args.streamlines, args.in_volume):
+        if not is_header_compatible(args.streamlines, args.in_labels):
             p.error("Streamlines not compatible with chosen volume.")
     else:
-        args.reference = args.in_volume
+        args.reference = args.in_labels
     in_sft = load_tractogram_with_reference(p, args, args.streamlines)
-    in_sft.to_vox()
-    in_sft.to_corner()
-    in_img = nib.load(args.in_volume)
+    in_img = nib.load(args.in_labels)
     data_labels = get_data_as_labels(in_img)
 
     tmp_binary = args.binary
     if args.binary and (args.save_biggest or args.save_smallest):
         tmp_binary = False
 
-    matrix = compute_triu_connectivity_from_labels(
-        in_sft.streamlines, data_labels, binary=tmp_binary)
+    in_sft.to_vox()
+    in_sft.to_corner()
+    matrix, start_blocs, end_blocs = compute_triu_connectivity_from_labels(
+        in_sft.streamlines, data_labels, binary=tmp_binary,
+        use_scilpy=args.use_longest_segment)
+
+    if args.hide_background is not None:
+        matrix[args.hide_background, :] = 0
+        matrix[:, args.hide_background] = 0
 
     # Options to try to investigate the connectivity matrix:
+    # masking point (0,0) = streamline ending in wm.
     if args.save_biggest is not None:
         i, j = np.unravel_index(np.argmax(matrix, axis=None), matrix.shape)
-        print("Saving biggest bundle: {} streamlines.".format(matrix[i, j]))
+        print("Saving biggest bundle: {} streamlines. From label {} to label "
+              "{}".format(matrix[i, j], i, j))
         biggest = find_streamlines_with_chosen_connectivity(
             in_sft.streamlines, i, j, start_blocs, end_blocs)
         sft = in_sft.from_sft(biggest, in_sft)
@@ -94,7 +110,8 @@ def main():
     if args.save_smallest is not None:
         tmp_matrix = np.ma.masked_equal(matrix, 0)
         i, j = np.unravel_index(tmp_matrix.argmin(axis=None), matrix.shape)
-        print("Saving smallest bundle: {} streamlines.".format(matrix[i, j]))
+        print("Saving smallest bundle: {} streamlines. From label {} to label "
+              "{}".format(matrix[i, j], i, j))
         biggest = find_streamlines_with_chosen_connectivity(
             in_sft.streamlines, i, j, start_blocs, end_blocs)
         sft = in_sft.from_sft(biggest, in_sft)

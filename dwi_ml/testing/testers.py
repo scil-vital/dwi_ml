@@ -119,7 +119,7 @@ class Tester:
         force_compress_loss: bool
             If true, compresses the loss even if that is not the model's
             parameter.
-        change_weight_with_angle: bool
+        weight_with_angle: bool
             If true, modify model's wieght_loss_with_angle param.
         """
         if uncompress_loss and force_compress_loss:
@@ -141,9 +141,15 @@ class Tester:
         batch_size = self.batch_size or len(sft)
         nb_batches = int(np.ceil(len(sft) / batch_size))
 
+        if 'gaussian' in self.model.direction_getter.key:
+            outputs = ([], [])
+        elif 'fisher' in self.model.direction_getter.key:
+            raise NotImplementedError
+        else:
+            outputs = []
+
         losses = []
         compressed_n = []
-        outputs = []
         batch_start = 0
         batch_end = batch_size
         with torch.no_grad():
@@ -180,7 +186,15 @@ class Tester:
                         losses.extend([line_loss.cpu() for line_loss in
                                        tmp_losses])
 
-                outputs.extend([o.cpu() for o in tmp_outputs])
+                # ToDo. See if we can simplify to fit with all models
+                if 'gaussian' in self.model.direction_getter.key:
+                    tmp_means, tmp_sigmas = tmp_outputs
+                    outputs[0].extend([m.cpu() for m in tmp_means])
+                    outputs[1].extend([s.cpu() for s in tmp_sigmas])
+                elif 'fisher' in self.model.direction_getter.key:
+                    raise NotImplementedError
+                else:
+                    outputs.extend([o.cpu() for o in tmp_outputs])
 
                 batch_start = batch_end
                 batch_end = min(batch_start + batch_size, len(sft))

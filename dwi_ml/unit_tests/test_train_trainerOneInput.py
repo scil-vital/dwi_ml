@@ -43,7 +43,8 @@ def test_trainer_and_models(experiments_path):
     trainer.train_and_validate()
 
     # Initializing model 2
-    logging.info("\n\n-----------TESTING TEST MODEL # 2: WITH PD ------------")
+    logging.info("\n\n-----------TESTING TEST MODEL # 2: WITH PD AND "
+                 "DIRECTION GETTER ------------")
     model2 = TrackingModelForTestWithPD()
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
@@ -85,4 +86,5 @@ def _create_trainer(batch_sampler, batch_loader, model, experiments_path,
 
 if __name__ == '__main__':
     tmp_dir = tempfile.TemporaryDirectory()
+    logging.getLogger().setLevel('INFO')
     test_trainer_and_models(tmp_dir.name)

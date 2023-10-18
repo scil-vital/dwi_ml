@@ -7,7 +7,7 @@ streamlines have the particularity of being smooth.
 Printing the average loss function for a given dataset when we simply copy the
 previous direction.
 
-    Target :=  SFT.streamlines's directions[1:]
+    Target :=  SFT.streamlines' directions[1:]
     Y := Previous directions.
     loss = DirectionGetter(Target, Y)
 """

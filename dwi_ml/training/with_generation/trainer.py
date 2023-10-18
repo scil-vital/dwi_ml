@@ -46,7 +46,7 @@ from dwi_ml.data.processing.streamlines.post_processing import \
     compute_triu_connectivity
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
-from dwi_ml.tracking.projects.utils import prepare_tracking_mask
+from dwi_ml.tracking.io_utils import prepare_tracking_mask
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.monitoring import BatchHistoryMonitor
 from dwi_ml.training.with_generation.batch_loader import \

@@ -125,7 +125,7 @@ def compute_directions(streamlines):
     return batch_directions
 
 
-def normalize_directions(directions):
+def normalize_directions(directions, new_norm=1.0):
     """
     Params
     ------
@@ -136,8 +136,9 @@ def normalize_directions(directions):
         # propagation will fail.
         directions = directions / torch.linalg.norm(directions, dim=-1,
                                                     keepdim=True)
+        directions *= new_norm
     else:
-        directions = [s / torch.linalg.norm(s, dim=-1, keepdim=True)
+        directions = [s / torch.linalg.norm(s, dim=-1, keepdim=True) * new_norm
                       for s in directions]
 
     return directions

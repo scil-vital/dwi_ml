@@ -30,10 +30,10 @@ from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.transformer_tracker import \
     TransformerTracker
 from dwi_ml.tracking.tracking_mask import TrackingMask
-from dwi_ml.tracking.projects.utils import (add_tracking_options,
-                                            prepare_seed_generator,
-                                            prepare_tracking_mask,
-                                            track_and_save)
+from dwi_ml.tracking.io_utils import (add_tracking_options,
+                                      prepare_seed_generator,
+                                      prepare_tracking_mask,
+                                      track_and_save)
 
 
 def build_argparser():

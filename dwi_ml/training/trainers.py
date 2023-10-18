@@ -61,6 +61,7 @@ class DWIMLAbstractTrainer:
                  max_batches_per_epoch_validation: Union[int, None] = 1000,
                  patience: int = None, patience_delta: float = 1e-6,
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
+                 clip_grad: float = None,
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, log_level=logging.root.level):
         """
@@ -119,6 +120,9 @@ class DWIMLAbstractTrainer:
         use_gpu: bool
             If true, use GPU device when possible instead of CPU.
             Default = False
+        clip_grad : float
+            The value to which to clip gradients after the backward pass.
+            There is no good value here. Default: 1000.
         comet_workspace: str
             Your comet workspace. See our docs/Getting Started for more
             information on comet and its API key. Default= None (comet.ml will
@@ -149,6 +153,7 @@ class DWIMLAbstractTrainer:
         self.space = 'vox'
         self.origin = 'corner'
         self.lr_decrease_params = lr_decrease_params
+        self.clip_grad = clip_grad
 
         # Learning rate:
         if lr_decrease_params is not None:
@@ -292,6 +297,8 @@ class DWIMLAbstractTrainer:
         # Validation: As many supervision losses as we want.
         self.valid_local_loss_monitor = BatchHistoryMonitor(
             'valid_local_loss_monitor', weighted=True)
+        self.unclipped_grad_norm_monitor = BatchHistoryMonitor(
+            'unclipped_grad_norm_monitor', weighted=False)
         self.grad_norm_monitor = BatchHistoryMonitor(
             'grad_norm_monitor', weighted=False)
         self.training_time_monitor = TimeMonitor('training_time_monitor')
@@ -302,9 +309,11 @@ class DWIMLAbstractTrainer:
             'best_epoch_monitor', patience, patience_delta)
         self.monitors = [self.train_loss_monitor,
                          self.valid_local_loss_monitor,
+                         self.unclipped_grad_norm_monitor,
                          self.grad_norm_monitor, self.training_time_monitor,
                          self.validation_time_monitor, self.best_epoch_monitor]
         self.training_monitors = [self.train_loss_monitor,
+                                  self.unclipped_grad_norm_monitor,
                                   self.grad_norm_monitor,
                                   self.training_time_monitor]
         self.validation_monitors = [self.valid_local_loss_monitor,
@@ -358,6 +367,7 @@ class DWIMLAbstractTrainer:
             'max_batches_per_epoch_validation': self.max_batches_per_epochs_valid,
             'nb_cpu_processes': self.nb_cpu_processes,
             'use_gpu': self.use_gpu,
+            'clip_grad': self.clip_grad,
             'comet_workspace': self.comet_workspace,
             'comet_project': self.comet_project,
             'optimizer': self.optimizer_key,
@@ -549,7 +559,12 @@ class DWIMLAbstractTrainer:
 
         # F. Monitors
         for monitor in self.monitors:
-            monitor.set_state(current_states[monitor.name + '_state'])
+            if (monitor.name == 'unclipped_grad_norm_monitor' and
+                    'unclipped_grad_norm_monitor_state' not in current_states):
+                logging.warning("Deprecated trainer. Did not contain an "
+                                "unclipped grad monitor. Starting as new.")
+            else:
+                monitor.set_state(current_states[monitor.name + '_state'])
 
     def _init_comet(self):
         """
@@ -777,7 +792,7 @@ class DWIMLAbstractTrainer:
 
         # Any other steps. Ex: clip gradients. Not implemented here.
         # See Learn2track's Trainer for an example.
-        self.fix_parameters()
+        unclipped_grad_norm = self.fix_parameters()
 
         # Supervizing the gradient's norm.
         grad_norm = compute_gradient_norm(self.model.parameters())
@@ -792,7 +807,7 @@ class DWIMLAbstractTrainer:
         # forward pass
         self.optimizer.zero_grad(set_to_none=True)
 
-        return grad_norm
+        return unclipped_grad_norm, grad_norm
 
     def train_one_epoch(self, epoch):
         """
@@ -835,7 +850,8 @@ class DWIMLAbstractTrainer:
                 with grad_context():
                     mean_loss = self.train_one_batch(data)
 
-                grad_norm = self.back_propagation(mean_loss)
+                unclipped_grad_norm, grad_norm = self.back_propagation(mean_loss)
+                self.unclipped_grad_norm_monitor.update(unclipped_grad_norm)
                 self.grad_norm_monitor.update(grad_norm)
 
             # Explicitly delete iterator to kill threads and free memory before
@@ -1004,10 +1020,18 @@ class DWIMLAbstractTrainer:
         backward propagation, but before updating the parameters through the
         optimizer. User may define their own functions here if some
         modification on the parameters is necessary.
-        Ex: in the case of vanishing or exploding gradients problem, this would
-        be the place to fix the parameters based on the gradient.
+
+        Here: clipping gradient, to avoid exploding gradients problem.
         """
-        pass
+        if self.clip_grad is not None:
+            unclipped_grad_norm = torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), self.clip_grad)
+        else:
+            unclipped_grad_norm = compute_gradient_norm(self.model.parameters())
+        if torch.isnan(unclipped_grad_norm):
+            raise ValueError("Exploding gradients. Experiment failed.")
+
+        return unclipped_grad_norm.cpu().numpy()
 
     @staticmethod
     def check_stopping_cause(checkpoint_state, new_patience=None,
@@ -1061,7 +1085,7 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def run_one_batch(self, data, average_results=True):
+    def run_one_batch(self, data):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -1076,8 +1100,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines).
-        average_results: bool
-            If true, returns the averaged loss (as defined by the model).
 
         Returns
         -------
@@ -1133,10 +1155,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                 targets, self.device)
 
             results = self.model.compute_loss(model_outputs, targets,
-                                              average_results=average_results)
+                                              average_results=True)
         else:
             results = self.model.compute_loss(model_outputs,
-                                              average_results=average_results)
+                                              average_results=True)
 
         if self.use_gpu:
             log_gpu_memory_usage(logger)

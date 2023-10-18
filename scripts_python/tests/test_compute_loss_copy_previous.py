@@ -36,4 +36,3 @@ def test_running(script_runner, experiments_path):
                             '--pick_at_random',
                             hdf5_file, subj_id, streamline_group_name)
     assert ret.success
-

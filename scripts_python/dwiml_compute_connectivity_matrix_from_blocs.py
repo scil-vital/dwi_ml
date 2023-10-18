@@ -30,6 +30,12 @@ def _build_arg_parser():
     add_nb_blocs_connectivity_arg(p)
     p.add_argument('out_file',
                    help="Out .npy file. Will also save it as a .png image.")
+    p.add_argument(
+        'connectivity_nb_blocs', metavar='m', type=int, nargs='+',
+        help="Number of 3D blocks (m x m x m) for the connectivity matrix. \n"
+             "(The matrix will be m^3 x m^3). If more than one values are "
+             "provided, expected to be one per dimension. \n"
+             "Default: 20x20x20.")
     p.add_argument('--binary', action='store_true',
                    help="If set, saves the result as binary. Else, the "
                         "streamline count is saved.")

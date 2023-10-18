@@ -79,7 +79,10 @@ To create the hdf5 file, you will need a config file such as below. HDF groups w
              },
         "target": {
             "type": "streamlines",
-            "files": ["tractograms/bundle1.trk", "tractograms/wholebrain.trk", "tractograms/*__wholebrain.trk"] ----> Will get, for instance, sub1000__bundle1.trk
+            "files": ["tractograms/bundle1.trk", "tractograms/wholebrain.trk", "tractograms/*__wholebrain.trk"], ----> Will get, for instance, sub1000__bundle1.trk
+            "connectivity_matrix": "my_file.npy",
+            "connectivity_nb_blocs": 6  ---> OR
+            "connectivity_labels": labels_volume
              }
         "bad_streamlines": {
             "type": "streamlines",
@@ -122,6 +125,16 @@ Additional attribute for volume groups:
     Data is standardized (normalized) during data creation: data = (data - mean) / std.
 
     If all voxel were to be used, most of them would probably contain the background of the data, bringing the mean and std probably very close to 0. Thus, non-zero voxels only are used to compute the mean and std, or voxels inside the provided mask if any. If a mask is provided, voxels outside the mask could have been set to NaN, but the simpler choice made here was to simply modify all voxels [ data = (data - mean) / std ], even voxels outside the mask, with the mean and std of voxels in the mask. Mask name for each subject is provided using --std_mask in the script create_hdf5_dataset.py.
+
+
+Additional attribute for streamlines groups:
+
+    - connectivity_nb_blocs: See dwiml_compute_connectivity_matrix_from_blocs for a description.
+
+    OR
+
+    - connectivity_labels: The name of one volume group.
+
 
 2.4. Creating the hdf5
 **********************

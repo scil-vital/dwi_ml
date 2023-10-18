@@ -19,8 +19,11 @@ Keeping as is for now, hoping that next Dipy versions will solve the problem.
 """
 
 import argparse
+import datetime
+import json
 import logging
 import os
+import shutil
 from pathlib import Path
 
 from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
@@ -28,10 +31,69 @@ from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
 
 from dipy.io.stateful_tractogram import set_sft_logger_level
 
+from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
 from dwi_ml.data.hdf5.utils import (
-    add_hdf5_creation_args, add_mri_processing_args, add_streamline_processing_args,
-    prepare_hdf5_creator, format_nb_blocs_connectivity)
+    add_hdf5_creation_args, add_mri_processing_args,
+    add_streamline_processing_args)
 from dwi_ml.experiment_utils.timer import Timer
+
+
+def _initialize_intermediate_subdir(hdf5_file, save_intermediate):
+    # Create hdf5 dir or clean existing one
+    hdf5_folder = os.path.dirname(hdf5_file)
+
+    # Preparing intermediate folder.
+    if save_intermediate:
+        now = datetime.datetime.now().strftime("%Y_%m_%d_%H%M%S")
+        intermediate_subdir = Path(hdf5_folder, "intermediate_" + now)
+        logging.debug("   Creating intermediate files directory")
+        intermediate_subdir.mkdir()
+
+        return intermediate_subdir
+    return None
+
+
+def prepare_hdf5_creator(args):
+    """
+    Reads the config file and subjects lists files and instantiate a class of
+    the HDF5Creator.
+    """
+    # Read subjects lists
+    with open(args.training_subjs, 'r') as file:
+        training_subjs = file.read().split()
+        logging.debug('   Training subjs: {}'.format(training_subjs))
+    with open(args.validation_subjs, 'r') as file:
+        validation_subjs = file.read().split()
+        logging.debug('   Validation subjs: {}'.format(validation_subjs))
+    with open(args.testing_subjs, 'r') as file:
+        testing_subjs = file.read().split()
+        logging.debug('   Testing subjs: {}'.format(testing_subjs))
+
+    # Read group information from the json file (config file)
+    with open(args.config_file, 'r') as json_file:
+        groups_config = json.load(json_file)
+
+    # Delete existing hdf5, if -f
+    if args.overwrite and os.path.exists(args.out_hdf5_file):
+        os.remove(args.out_hdf5_file)
+
+    # Initialize intermediate subdir
+    intermediate_subdir = _initialize_intermediate_subdir(
+        args.out_hdf5_file, args.save_intermediate)
+
+    # Copy config file locally
+    config_copy_name = os.path.splitext(args.out_hdf5_file)[0] + '.json'
+    logging.info("Copying json config file to {}".format(config_copy_name))
+    shutil.copyfile(args.config_file, config_copy_name)
+
+    # Instantiate a creator and perform checks
+    creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
+                          training_subjs, validation_subjs, testing_subjs,
+                          groups_config, args.std_mask, args.step_size,
+                          args.compress, args.enforce_files_presence,
+                          args.save_intermediate, intermediate_subdir)
+
+    return creator
 
 
 def _parse_args():
@@ -73,10 +135,6 @@ def main():
         raise p.error("The hdf5 file's extension should be .hdf5, but "
                       "received {}".format(ext))
     assert_outputs_exist(p, args, args.out_hdf5_file)
-
-    if args.compute_connectivity_from_blocs:
-        args.connectivity_nb_blocs = format_nb_blocs_connectivity(
-            args.connectivity_nb_blocs)
 
     # Prepare creator and load config file.
     creator = prepare_hdf5_creator(args)

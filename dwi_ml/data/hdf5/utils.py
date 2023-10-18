@@ -22,7 +22,11 @@ def add_nb_blocs_connectivity_arg(p: ArgumentParser):
 
 
 def format_nb_blocs_connectivity(connectivity_nb_blocs) -> List:
-    if len(connectivity_nb_blocs) == 1:
+    if connectivity_nb_blocs is None:
+        # Default/const value with argparser '+' not possible.
+        # Setting it manually.
+        connectivity_nb_blocs = 20
+    elif len(connectivity_nb_blocs) == 1:
         connectivity_nb_blocs = connectivity_nb_blocs[0]
 
     if isinstance(connectivity_nb_blocs, List):
@@ -31,11 +35,6 @@ def format_nb_blocs_connectivity(connectivity_nb_blocs) -> List:
             "connectivity_nb_blocs to be a list of 3 values, " \
             "but got {}.".format(connectivity_nb_blocs)
     else:
-        if connectivity_nb_blocs is None:
-            # Default/const value with argparser '+' not possible.
-            # Setting it manually.
-            connectivity_nb_blocs = 20
-
         assert isinstance(connectivity_nb_blocs, int), \
             "Expecting the connectivity_nb_blocs to be either " \
             "a 3D list or an integer, but got {}" \

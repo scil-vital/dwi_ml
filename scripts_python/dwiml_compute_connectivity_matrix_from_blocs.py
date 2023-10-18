@@ -29,7 +29,7 @@ def _build_arg_parser():
                    help='Tractogram (trk or tck).')
     add_nb_blocs_connectivity_arg(p)
     p.add_argument('out_file',
-                   help="Out .npy file.")
+                   help="Out .npy file. Will also save it as a .png image.")
     p.add_argument('--binary', action='store_true',
                    help="If set, saves the result as binary. Else, the "
                         "streamline count is saved.")
@@ -59,8 +59,10 @@ def main():
     args.connectivity_nb_blocs = format_nb_blocs_connectivity(
         args.connectivity_nb_blocs)
 
+    tmp, ext = os.path.splitext(args.out_file)
+    out_fig = tmp + '.png'
     assert_inputs_exist(p, [args.in_volume, args.streamlines])
-    assert_outputs_exist(p, args, [args.out_file],
+    assert_outputs_exist(p, args, [args.out_file, out_fig],
                          [args.save_biggest, args.save_smallest])
 
     ext = os.path.splitext(args.streamlines)[1]
@@ -75,13 +77,8 @@ def main():
     in_sft.to_corner()
     in_img = nib.load(args.in_volume)
 
-    tmp_binary = args.binary
-    if args.binary and (args.save_biggest or args.save_smallest):
-        tmp_binary = False
-
     matrix, start_blocs, end_blocs = compute_triu_connectivity_from_blocs(
-        in_sft.streamlines, in_img.shape, args.connectivity_nb_blocs,
-        binary=tmp_binary)
+        in_sft.streamlines, in_img.shape, args.connectivity_nb_blocs)
 
     # Options to try to investigate the connectivity matrix:
     if args.save_biggest is not None:
@@ -101,21 +98,21 @@ def main():
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
 
-    if tmp_binary is False and args.binary:
-        matrix = matrix > 0
-
-    # Save results.
-    np.save(args.out_file, matrix)
-
     if args.show_now:
         plt.imshow(matrix)
         plt.colorbar()
 
-        if not args.binary:
-            plt.figure()
-            plt.imshow(matrix > 0)
-            plt.title('Binary')
-        plt.show()
+        plt.figure()
+        plt.imshow(matrix > 0)
+        plt.title('Binary')
+
+    if args.binary:
+        matrix = matrix > 0
+
+    # Save results.
+    np.save(args.out_file, matrix)
+    plt.savefig(out_fig)
+    plt.show()
 
 
 if __name__ == '__main__':

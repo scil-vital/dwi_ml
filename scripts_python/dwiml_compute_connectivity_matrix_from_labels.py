@@ -67,8 +67,10 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
 
+    tmp, ext = os.path.splitext(args.out_file)
+    out_fig = tmp + '.png'
     assert_inputs_exist(p, [args.in_labels, args.streamlines])
-    assert_outputs_exist(p, args, [args.out_file],
+    assert_outputs_exist(p, args, [args.out_file, out_fig],
                          [args.save_biggest, args.save_smallest])
 
     ext = os.path.splitext(args.streamlines)[1]
@@ -82,15 +84,10 @@ def main():
     in_img = nib.load(args.in_labels)
     data_labels = get_data_as_labels(in_img)
 
-    tmp_binary = args.binary
-    if args.binary and (args.save_biggest or args.save_smallest):
-        tmp_binary = False
-
     in_sft.to_vox()
     in_sft.to_corner()
     matrix, start_blocs, end_blocs = compute_triu_connectivity_from_labels(
-        in_sft.streamlines, data_labels, binary=tmp_binary,
-        use_scilpy=args.use_longest_segment)
+        in_sft.streamlines, data_labels, use_scilpy=args.use_longest_segment)
 
     if args.hide_background is not None:
         matrix[args.hide_background, :] = 0
@@ -117,21 +114,21 @@ def main():
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
 
-    if tmp_binary is False and args.binary:
-        matrix = matrix > 0
-
-    # Save results.
-    np.save(args.out_file, matrix)
-
     if args.show_now:
         plt.imshow(matrix)
         plt.colorbar()
 
-        if not args.binary:
-            plt.figure()
-            plt.imshow(matrix > 0)
-            plt.title('Binary')
-        plt.show()
+        plt.figure()
+        plt.imshow(matrix > 0)
+        plt.title('Binary')
+
+    if args.binary:
+        matrix = matrix > 0
+
+    # Save results.
+    np.save(args.out_file, matrix)
+    plt.savefig(out_fig)
+    plt.show()
 
 
 if __name__ == '__main__':

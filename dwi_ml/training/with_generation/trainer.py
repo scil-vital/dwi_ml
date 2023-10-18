@@ -338,7 +338,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 # If two streamlines have the same connection, score is
                 # either 0 or 2 for that voxel.  ==> nb * (1 - real).
 
-                # Real matrices are saved as binary in create_hdf5.
+                # Reference matrices are saved as binary in create_hdf5.
                 where_one = np.where(batch_matrix > 0)
                 score += np.sum(batch_matrix[where_one] *
                                 (1.0 - real_matrix[where_one]))

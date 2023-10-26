@@ -15,7 +15,7 @@ def main():
     argv = sys.argv
 
     parser = build_argparser_transformer_visu()
-    args = parser.parse_args()
+    args = parser._build_arg_parser()
 
     assert_inputs_exist(parser, [args.hdf5_file, args.input_streamlines],
                         args.reference)

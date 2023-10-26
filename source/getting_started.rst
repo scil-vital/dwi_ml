@@ -1,5 +1,5 @@
-Getting started
-===============
+Getting started: download and installation
+==========================================
 
 Downloading dwi_ml
 ******************

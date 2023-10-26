@@ -14,8 +14,7 @@ from dwi_ml.data.processing.streamlines.sos_eos_management import \
 from dwi_ml.data.processing.streamlines.post_processing import compute_directions
 from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.embeddings import keys_to_embeddings
-from dwi_ml.models.main_models import (MainModelOneInput,
-                                       ModelWithDirectionGetter,
+from dwi_ml.models.main_models import (ModelWithDirectionGetter,
                                        ModelWithNeighborhood,
                                        ModelOneInputWithEmbedding)
 from dwi_ml.models.positional_encoding import keys_to_positional_encodings

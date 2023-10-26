@@ -1,13 +1,23 @@
-5. Preparing your model
+1. Preparing your model
 =======================
 
 .. role:: underline
     :class: underline
 
+The first task is to understand if your model can fit in our environment. Try
+to create your own model!
+
+
 5.1. Main models
 ----------------
 
-You should make your model a child class of our **MainModelAbstract** to keep some important properties (ex, experiment name, neighborhood definition). Also, methods to save and load the model parameters on disk have been prepared.
+You should make your model a child class of our **MainModelAbstract**. It is a derivate of torch's Module, to which we added methods to load and save its parameters on disk. However, its `forward()` and `compute_loss()` methods are now implemented:
+
+    .. image:: images/main_model_abstract.png
+       :width: 600
+
+    1. Create a new file in models.projects --> my_project.py
+    2. Start like this:
 
 The compute_loss method should be implemented to be used with our trainer.
 

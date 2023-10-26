@@ -205,11 +205,12 @@ class MainModelAbstract(torch.nn.Module):
 
         return model_state
 
+    def forward(self, *inputs, **kw):
+        raise NotImplementedError
+
     def compute_loss(self, *model_outputs, **kw):
         raise NotImplementedError
 
-    def forward(self, *inputs, **kw):
-        raise NotImplementedError
 
 
 class ModelWithNeighborhood(MainModelAbstract):

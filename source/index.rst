@@ -6,13 +6,13 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
 
 .. toctree::
     :maxdepth: 1
-    :caption: Download and installation
+    :caption: Download and installation:
 
     getting_started
 
 .. toctree::
     :maxdepth: 1
-    :caption: How to use DWI_ML
+    :caption: How to use DWI_ML:
 
     0_general_summary
     1_model
@@ -25,20 +25,20 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
 
 .. toctree::
     :maxdepth: 1
-    :caption: Detailed explanations for developers
+    :caption: Detailed explanations for developers:
 
     devel/hdf5_organization
 
 .. toctree::
     :maxdepth: 1
-    :caption: Creating your own project
+    :caption: Creating your own project:
 
     adapting_dwiml
     data_containers
 
 .. toctree::
     :maxdepth: 1
-    :caption: Contributing
+    :caption: Contributing:
 
     devel/contributing_link
     devel/coding_style_guideline

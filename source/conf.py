@@ -27,3 +27,7 @@ exclude_patterns = []
 html_theme = 'classic'   # 'pyramid', 'bizstyle', 'sphinxdoc' all work
 html_static_path = ['_static']
 html_theme_options = {'body_max_width': '80%'}
+html_show_sourcelink = False
+html_sidebars = {
+    '**': ['globaltoc.html']  # Can add: 'searchbox.html'
+}

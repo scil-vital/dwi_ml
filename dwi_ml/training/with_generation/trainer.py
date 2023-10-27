@@ -25,7 +25,7 @@ streamlines are:
 - Connectivity fit:
     Percentage of streamlines ending in a block of the volume indeed connected
     in the validation subject. Real connectivity matrices must be saved in the
-    hdf5. Right now, volumes are simply downsampled (the same way as in the
+    hdf5. Right now, volumes are simply split into blocs (the same way as in the
     hdf5, ex, to 10x10x10 volumes for a total of 1000 blocks), not based on
     anatomical ROIs. It has the advantage that it does not rely on the quality
     of segmentation. It had the drawback that a generated streamline ending
@@ -43,7 +43,7 @@ import torch
 from torch.nn import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity
+    compute_triu_connectivity_from_blocs
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.io_utils import prepare_tracking_mask
@@ -317,25 +317,28 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         compares with expected values for the subject.
         """
         if self.compute_connectivity:
-            connectivity_matrices, volume_sizes, downsampled_sizes = \
+            connectivity_matrices, volume_sizes, connectivity_nb_blocs = \
                 self.batch_loader.load_batch_connectivity_matrices(ids_per_subj)
 
             score = 0.0
             for i, subj in enumerate(ids_per_subj.keys()):
                 real_matrix = connectivity_matrices[i]
                 volume_size = volume_sizes[i]
-                downsampled_size = downsampled_sizes[i]
+                nb_blocs = connectivity_nb_blocs[i]
                 _lines = lines[ids_per_subj[subj]]
 
-                batch_matrix = compute_triu_connectivity(
-                    _lines, volume_size, downsampled_size,
-                    binary=False, to_sparse_tensor=False, device=self.device)
+                batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
+                    _lines, volume_size, nb_blocs, binary=False)
 
-                # Where our batch has a 1, if there was really a one: score should
-                # be 0. Else, score should be 1.
-                # If two streamlines in a voxel, score is 0 or 2.
+                # Where our batch has a 0: not important, maybe it was simply
+                # not in this batch.
+                # Where our batch has a 1, if there was really a one: score
+                # should be 0.   = 1 - 1.
+                # Else, score should be high (1).  = 1 - 0.
+                # If two streamlines have the same connection, score is
+                # either 0 or 2 for that voxel.  ==> nb * (1 - real).
 
-                # Real matrices are saved as binary in create_hdf5.
+                # Reference matrices are saved as binary in create_hdf5.
                 where_one = np.where(batch_matrix > 0)
                 score += np.sum(batch_matrix[where_one] *
                                 (1.0 - real_matrix[where_one]))

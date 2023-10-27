@@ -25,7 +25,7 @@ class DWIMLBatchLoaderWithConnectivity(DWIMLBatchLoaderOneInput):
         nb_subjs = len(subjs)
         matrices = [None] * nb_subjs
         volume_sizes = [None] * nb_subjs
-        downsampled_sizes = [None] * nb_subjs
+        connectivity_nb_blocs = [None] * nb_subjs
         for i, subj in enumerate(subjs):
             # No cache for the sft data. Accessing it directly.
             # Note: If this is used through the dataloader, multiprocessing
@@ -36,7 +36,7 @@ class DWIMLBatchLoaderWithConnectivity(DWIMLBatchLoaderOneInput):
 
             # We could access it only at required index, maybe. Loading the
             # whole matrix here.
-            matrices[i], volume_sizes[i], downsampled_sizes[i] = \
+            matrices[i], volume_sizes[i], connectivity_nb_blocs[i] = \
                 subj_sft_data.connectivity_matrix_and_info()
 
-        return matrices, volume_sizes, downsampled_sizes
+        return matrices, volume_sizes, connectivity_nb_blocs

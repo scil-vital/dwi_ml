@@ -5,6 +5,10 @@ from typing import List
 import numpy as np
 import torch
 
+from scilpy.tractograms.uncompress import uncompress
+from scilpy.tractanalysis.tools import \
+    extract_longest_segments_from_profile as segmenting_func
+
 # We could try using nan instead of zeros for non-existing previous dirs...
 DEFAULT_UNEXISTING_VAL = torch.zeros((1, 3), dtype=torch.float32)
 
@@ -107,7 +111,6 @@ def _get_one_n_previous_dirs(streamlines_dirs, nb_previous_dirs,
         for dirs in streamlines_dirs
     ]
     return n_previous_dirs
-
 
 
 def compute_directions(streamlines):
@@ -263,35 +266,9 @@ def weight_value_with_angle(values: List, streamlines: List = None,
     return values
 
 
-def compute_triu_connectivity(
-        streamlines, volume_size, downsampled_volume_size,
-        binary: bool = False, to_sparse_tensor: bool = False, device=None):
-    """
-    Compute a connectivity matrix.
-
-    Parameters
-    ----------
-    streamlines: list of np arrays or list of tensors.
-        Streamlines, in vox space, corner origin.
-    volume_size: list
-        The 3D dimension of the reference volume.
-    downsampled_volume_size:
-        The m1 x m2 x m3 = mm downsampled volume size for the connectivity matrix.
-        This means that the matrix will be a mm x mm triangular matrix.
-        In 3D, with 20x20x20, this is an 8000 x 8000 matrix (triangular). It
-        probably contains a lot of zeros with the background being included.
-        Can be saved as sparse.
-    binary: bool
-        If true, return a binary matrix.
-    to_sparse_tensor:
-        If true, return the sparse matrix.
-    device:
-        If true and to_sparse_tensor, the matrix will be hosted on device.
-    """
+def _compute_origin_finish_blocs(streamlines, volume_size, nb_blocs):
     # Getting endpoint coordinates
-    #  + Fix types
     volume_size = np.asarray(volume_size)
-    downsampled_volume_size = np.asarray(downsampled_volume_size)
     if isinstance(streamlines[0], list):
         start_values = [s[0] for s in streamlines]
         end_values = [s[-1] for s in streamlines]
@@ -302,30 +279,113 @@ def compute_triu_connectivity(
         start_values = [s[0, :] for s in streamlines]
         end_values = [s[-1, :] for s in streamlines]
 
-    assert len(downsampled_volume_size) == len(volume_size)
-    nb_dims = len(downsampled_volume_size)
-    nb_voxels_pre = np.prod(volume_size)
-    nb_voxels_post = np.prod(downsampled_volume_size)
-    logging.debug("Preparing connectivity matrix of downsampled volume: from "
-                  "{} to {}. Gives a matrix of size {} x {} rather than {} "
-                  "voxels)."
-                  .format(volume_size, downsampled_volume_size,
-                          nb_voxels_post, nb_voxels_post, nb_voxels_pre))
-
-    # Downsampling
-    mult_factor = downsampled_volume_size / volume_size
+    # Diving into blocs (a type of downsampling)
+    mult_factor = nb_blocs / volume_size
     start_values = np.clip((start_values * mult_factor).astype(int),
-                           a_min=0, a_max=downsampled_volume_size - 1)
+                           a_min=0, a_max=nb_blocs - 1)
     end_values = np.clip((end_values * mult_factor).astype(int),
-                         a_min=0, a_max=downsampled_volume_size - 1)
+                         a_min=0, a_max=nb_blocs - 1)
 
     # Blocs go from 0 to m1*m2*m3.
+    nb_dims = len(nb_blocs)
     start_block = np.ravel_multi_index(
-        [start_values[:, d] for d in range(nb_dims)], downsampled_volume_size)
-    end_block = np.ravel_multi_index(
-        [end_values[:, d] for d in range(nb_dims)], downsampled_volume_size)
+        [start_values[:, d] for d in range(nb_dims)], nb_blocs)
 
-    total_size = np.prod(downsampled_volume_size)
+    end_block = np.ravel_multi_index(
+        [end_values[:, d] for d in range(nb_dims)], nb_blocs)
+
+    return start_block, end_block
+
+
+def compute_triu_connectivity_from_labels(streamlines, data_labels,
+                                          binary: bool = False,
+                                          use_scilpy=False):
+    """
+    Compute a connectivity matrix.
+
+    Parameters
+    ----------
+    streamlines: list of np arrays or list of tensors.
+        Streamlines, in vox space, corner origin.
+    data_labels: np.ndarray
+        The loaded nifti image.
+    binary: bool
+        If true, return a binary matrix.
+    """
+    real_labels = np.unique(data_labels)[1:]
+    nb_labels = len(real_labels)
+    matrix = np.zeros((nb_labels + 1, nb_labels + 1), dtype=int)
+
+    start_blocs = []
+    end_blocs = []
+
+    if use_scilpy:
+        indices, points_to_idx = uncompress(streamlines, return_mapping=True)
+
+        for strl_vox_indices in indices:
+            segments_info = segmenting_func(strl_vox_indices, data_labels)
+            if len(segments_info) > 0:
+                start = segments_info[0]['start_label']
+                end = segments_info[0]['end_label']
+                start_blocs.append(start)
+                end_blocs.append(end)
+
+                matrix[start, end] += 1
+                if start != end:
+                    matrix[end, start] += 1
+
+            else:
+                # Putting it in 0,0, we will remember that this means 'other'
+                matrix[0, 0] += 1
+                start_blocs.append(0)
+                end_blocs.append(0)
+    else:
+        for s in streamlines:
+            # Vox space, corner origin
+            # = we can get the nearest neighbor easily.
+            # Coord 0 = voxel 0. Coord 0.9 = voxel 0. Coord 1 = voxel 1.
+            start = data_labels[tuple(np.floor(s[0, :]).astype(int))]
+            end = data_labels[tuple(np.floor(s[-1, :]).astype(int))]
+            start_blocs.append(start)
+            end_blocs.append(end)
+            matrix[start, end] += 1
+            if start != end:
+                matrix[end, start] += 1
+
+    matrix = np.triu(matrix)
+    assert matrix.sum() == len(streamlines)
+
+    if binary:
+        matrix = matrix.astype(bool)
+
+    return matrix, start_blocs, end_blocs
+
+
+def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
+                                         binary: bool = False):
+    """
+    Compute a connectivity matrix.
+
+    Parameters
+    ----------
+    streamlines: list of np arrays or list of tensors.
+        Streamlines, in vox space, corner origin.
+    volume_size: list
+        The 3D dimension of the reference volume.
+    nb_blocs:
+        The m1 x m2 x m3 = mmm number of blocs for the connectivity matrix.
+        This means that the matrix will be a mmm x mmm triangular matrix.
+        In 3D, with 20x20x20, this is an 8000 x 8000 matrix (triangular). It
+        probably contains a lot of zeros with the background being included.
+        Can be saved as sparse.
+    binary: bool
+        If true, return a binary matrix.
+    """
+    nb_blocs = np.asarray(nb_blocs)
+    start_block, end_block = _compute_origin_finish_blocs(
+        streamlines, volume_size, nb_blocs)
+
+    total_size = np.prod(nb_blocs)
     matrix = np.zeros((total_size, total_size), dtype=int)
     for s_start, s_end in zip(start_block, end_block):
         matrix[s_start, s_end] += 1
@@ -341,9 +401,32 @@ def compute_triu_connectivity(
     if binary:
         matrix = matrix.astype(bool)
 
-    if to_sparse_tensor:
-        logging.debug("Converting matrix to sparse. Contained {}% of zeros."
-                      .format((1 - np.count_nonzero(matrix) / total_size) * 100))
-        matrix = torch.as_tensor(matrix, device=device).to_sparse()
+    return matrix, start_block, end_block
 
-    return matrix
+
+def find_streamlines_with_chosen_connectivity(
+        streamlines, label1, label2, start_labels, end_labels):
+    """
+    Returns streamlines corresponding to a (label1, label2) or (label2, label1)
+    connection.
+
+    Parameters
+    ----------
+    streamlines: list of np arrays or list of tensors.
+        Streamlines, in vox space, corner origin.
+    label1: int
+        The bloc of interest, either as starting or finishing point.
+    label2: int
+        The bloc of interest, either as starting or finishing point.
+    start_labels: list[int]
+        The starting bloc for each streamline.
+    end_labels: list[int]
+        The ending bloc for each streamline.
+    """
+
+    str_ind1 = np.logical_and(start_labels == label1,
+                              end_labels == label2)
+    str_ind2 = np.logical_and(start_labels == label2,
+                              end_labels == label1)
+    str_ind = np.logical_or(str_ind1, str_ind2)
+    return [s for i, s in enumerate(streamlines) if str_ind[i]]

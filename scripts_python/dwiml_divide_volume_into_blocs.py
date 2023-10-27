@@ -24,19 +24,19 @@ def _build_arg_parser():
     return p
 
 
-def color_mri_connectivity_blocs(downsampled_volume_size, volume_size):
+def color_mri_connectivity_blocs(nb_blocs, volume_size):
 
     # For tracking coordinates: we can work with float.
     # Here, dividing as ints.
     volume_size = np.asarray(volume_size)
-    downsampled_volume_size = np.asarray(downsampled_volume_size)
-    sizex, sizey, sizez = (volume_size / downsampled_volume_size).astype(int)
+    nb_blocs = np.asarray(nb_blocs)
+    sizex, sizey, sizez = (volume_size / nb_blocs).astype(int)
     print("Coloring into blocs of size: ", sizex, sizey, sizez)
 
     final_volume = np.zeros(volume_size)
-    for i in range(downsampled_volume_size[0]):
-        for j in range(downsampled_volume_size[1]):
-            for k in range(downsampled_volume_size[2]):
+    for i in range(nb_blocs[0]):
+        for j in range(nb_blocs[1]):
+            for k in range(nb_blocs[2]):
                 final_volume[i*sizex: (i+1)*sizex,
                              j*sizey: (j+1)*sizey,
                              k*sizez: (k+1)*sizez] = i + 10*j + 100*k

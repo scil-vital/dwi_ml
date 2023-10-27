@@ -3,7 +3,7 @@ import datetime
 import logging
 import os
 from pathlib import Path
-from typing import List, Union
+from typing import List
 
 from dipy.io.stateful_tractogram import set_sft_logger_level, Space
 from dipy.io.streamline import load_tractogram, save_tractogram
@@ -11,6 +11,7 @@ from dipy.io.utils import is_header_compatible
 from dipy.tracking.utils import length
 import h5py
 
+from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
 from nested_lookup import nested_lookup
@@ -21,8 +22,6 @@ from scilpy.tractograms.tractogram_operations import concatenate_sft
 
 from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data
-from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity
 
 
 def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
@@ -110,8 +109,6 @@ class HDF5Creator:
                  testing_subjs: List[str], groups_config: dict,
                  std_mask: str, step_size: float = None,
                  compress: float = None,
-                 compute_connectivity_matrix: bool = False,
-                 downsampled_size_for_connectivity: Union[int, list] = 20,
                  enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
@@ -135,11 +132,6 @@ class HDF5Creator:
             Step size to resample streamlines. Default: None.
         compress: float
             Compress streamlines. Default: None.
-        compute_connectivity_matrix: bool
-            Compute connectivity matrix for each streamline group.
-            Default: False.
-        downsampled_size_for_connectivity: int or List
-            See compute_connectivity_matrix's doc.
         enforce_files_presence: bool
             If true, will stop if some files are not available for a subject.
             Default: True.
@@ -158,20 +150,6 @@ class HDF5Creator:
         self.groups_config = groups_config
         self.step_size = step_size
         self.compress = compress
-        self.compute_connectivity = compute_connectivity_matrix
-        if self.compute_connectivity:
-            if isinstance(downsampled_size_for_connectivity, List):
-                assert len(downsampled_size_for_connectivity) == 3, \
-                    "Expecting to work with 3D volumes. Expecting " \
-                    "connectivity downsample size to be a list of 3 values, " \
-                    "but got {}.".format(downsampled_size_for_connectivity)
-                self.connectivity_downsample_size = downsampled_size_for_connectivity
-            else:
-                assert isinstance(downsampled_size_for_connectivity, int), \
-                    "Expecting the connectivity matrix size to be either " \
-                    "a 3D list or an integer, but got {}" \
-                    .format(downsampled_size_for_connectivity)
-            self.connectivity_downsample_size = [downsampled_size_for_connectivity] * 3
 
         # Optional
         self.std_mask = std_mask  # (could be None)
@@ -313,7 +291,10 @@ class HDF5Creator:
         logging.debug("Verifying files presence")
 
         # concatenating files from all groups files:
+        # sum: concatenates list of sub-lists
         config_file_list = sum(nested_lookup('files', self.groups_config), [])
+        config_file_list += nested_lookup(
+            'connectivity_matrix', self.groups_config)
 
         for subj_id in self.all_subjs:
             subj_input_dir = Path(self.root_folder).joinpath(subj_id)
@@ -564,8 +545,9 @@ class HDF5Creator:
                     "in the config_file. If all files are .trk, we can use "
                     "ref 'same' but if some files were .tck, we need a ref!"
                     "Hint: Create a volume group 'ref' in the config file.")
-            sft, lengths = self._process_one_streamline_group(
-                subj_input_dir, group, subj_id, ref)
+            sft, lengths, connectivity_matrix, conn_info = (
+                self._process_one_streamline_group(
+                    subj_input_dir, group, subj_id, ref))
 
             streamlines_group = subj_hdf_group.create_group(group)
             streamlines_group.attrs['type'] = 'streamlines'
@@ -581,9 +563,17 @@ class HDF5Creator:
             streamlines_group.attrs['dimensions'] = d
             streamlines_group.attrs['voxel_sizes'] = vs
             streamlines_group.attrs['voxel_order'] = vo
-            if self.compute_connectivity:
-                streamlines_group.attrs['downsampled_size'] = \
-                    self.connectivity_downsample_size
+            if connectivity_matrix is not None:
+                streamlines_group.attrs[
+                    'connectivity_matrix_type'] = conn_info[0]
+                streamlines_group.create_dataset(
+                    'connectivity_matrix', data=connectivity_matrix)
+                if conn_info[0] == 'from_label':
+                    streamlines_group.attrs['connectivity_labels_volume'] = \
+                        conn_info[1]
+                else:
+                    streamlines_group.attrs['connectivity_nb_blocs'] = \
+                        conn_info[1]
 
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
@@ -600,18 +590,6 @@ class HDF5Creator:
             streamlines_group.create_dataset('lengths',
                                              data=sft.streamlines._lengths)
             streamlines_group.create_dataset('euclidean_lengths', data=lengths)
-
-            if self.compute_connectivity:
-                # Can be reduced using sparse tensors notation... always
-                # minimum 50% of zeros! Then we could save separately
-                # the indices, values, size of the tensor. But unclear how
-                # much sparse they need to be to actually save memory.
-                # Skipping for now.
-                streamlines_group.create_dataset(
-                    'connectivity_matrix',
-                    data=compute_triu_connectivity(
-                        sft.streamlines, d, self.connectivity_downsample_size,
-                        binary=True, to_sparse_tensor=False))
 
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,
@@ -710,7 +688,41 @@ class HDF5Creator:
         logging.debug("      *Remaining: {:,.0f} streamlines."
                       "".format(len(final_sft)))
 
-        return final_sft, output_lengths
+        conn_matrix = None
+        conn_info = None
+        if 'connectivity_matrix' in self.groups_config[group]:
+            logging.info("         Now preparing connectivity matrix")
+            if not ("connectivty_nb_blocs" in self.groups_config[group] or
+                    "connectivty_labels" in self.groups_config[group]):
+                raise ValueError(
+                    "The config file must provide either the "
+                    "connectivty_nb_blocs or the connectivty_labels information "
+                    "associated with the streamline group '{}'"
+                    .format(group))
+            elif ("connectivty_nb_blocs" in self.groups_config[group] and
+                    "connectivty_labels" in self.groups_config[group]):
+                raise ValueError(
+                    "The config file must only provide ONE of the "
+                    "connectivty_nb_blocs or the connectivty_labels information "
+                    "associated with the streamline group '{}'"
+                    .format(group))
+            elif "connectivty_nb_blocs" in self.groups_config[group]:
+                nb_blocs = format_nb_blocs_connectivity(
+                    self.groups_config[group]['connectivty_nb_blocs'])
+                conn_info = ['from_blocs', nb_blocs]
+            else:
+                labels = self.groups_config[group]['connectivty_labels']
+                if labels not in self.volume_groups:
+                    raise ValueError("connectivity_labels_volume must be "
+                                     "an existing volume group.")
+                conn_info = ['from_labels', labels]
+
+            conn_file = subj_dir.joinpath(
+                self.groups_config[group]['connectivity_matrix'])
+            conn_matrix = np.load(conn_file)
+            conn_matrix = conn_matrix > 0
+
+        return final_sft, output_lengths, conn_matrix, conn_info
 
     def _load_and_process_sft(self, tractogram_file, tractogram_name, header):
         if not tractogram_file.is_file():

@@ -665,10 +665,14 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
             input_size *= self.nb_neighbors
 
         if self.input_embedding_key == 'no_embedding':
-            if self.input_embedded_size is None:
+            if self.computed_input_embedded_size is None:
                 self.computed_input_embedded_size = input_size
             else:
-                assert self.computed_input_embedded_size == input_size
+                assert self.computed_input_embedded_size == input_size, \
+                    "Got input size {} ({} features x {} neighbors) but " \
+                    "expecting {}".format(input_size, self.nb_features,
+                                          self.nb_neighbors,
+                                          self.computed_input_embedded_size)
         else:
             if self.input_embedded_size is None:
                 raise ValueError("Input embedded size should be defined.")

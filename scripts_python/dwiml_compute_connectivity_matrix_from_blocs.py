@@ -13,8 +13,7 @@ from dipy.io.utils import is_header_compatible
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, \
     load_tractogram_with_reference, add_verbose_arg, add_overwrite_arg
 
-from dwi_ml.data.hdf5.utils import add_nb_blocs_connectivity_arg, \
-    format_nb_blocs_connectivity
+from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_triu_connectivity_from_blocs, find_streamlines_with_chosen_connectivity
 
@@ -27,7 +26,6 @@ def _build_arg_parser():
                         'volume.')
     p.add_argument('streamlines',
                    help='Tractogram (trk or tck).')
-    add_nb_blocs_connectivity_arg(p)
     p.add_argument('out_file',
                    help="Out .npy file. Will also save it as a .png image.")
     p.add_argument(

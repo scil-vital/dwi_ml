@@ -1,27 +1,11 @@
-5. Preparing your model
-=======================
+.. _direction_getters:
 
-.. role:: underline
-    :class: underline
-
-5.1. Main models
-----------------
-
-You should make your model a child class of our **MainModelAbstract** to keep some important properties (ex, experiment name, neighborhood definition). Also, methods to save and load the model parameters on disk have been prepared.
-
-The compute_loss method should be implemented to be used with our trainer.
-
-For generative models, the get_tracking_directions should be implemented to be used with our tracker.
-
-We have also prepared child classes to help formatting previous directions, useful both for training and tracking.
-
-
-5.2. Direction getter models
-----------------------------
+Direction Getters
+=================
 
 Direction getter (sub)-models should be used as last layer of any streamline generation model. They define the format of the output and possible associated loss functions.
 
-All models have been defined as 2-layer neural networks, with the hidden layer-size the half of the input size (the input, here, is the output of the main model), and the output size depends on each model as described below. ReLu activation and dropout layers are added. Final models are as below:
+All models have been defined as 2-layer neural networks, with the hidden layer-size the half of the input size (the input, here, is the output of the main model), and the output size depends on each model as described below. ReLu activation and dropout layers are added. Final direction getter layers are as below:
 
             input  -->  NN layer 1 --> ReLu --> dropout -->  NN layer 2 --> output
 
@@ -82,12 +66,14 @@ An equivalent model could learn to represent the direction on the sphere to lear
     - :underline:`Deterministic tracking`: The direction is directly given as the mean of the most probable Gaussian; the one with biggest mixture coefficient.
     - :underline:`Probabilistic tracking`: A direction is sampled from the 3D distribution.
 
-Note that tyically, in the literature, Gaussian mixtures are used with expectation-maximisation (EM). Here we simply update the mixture parameters and the Gaussian parameters jointly, similar to GMM in https://github.com/jych/cle/blob/master/cle/cost/__init__.py.
+Note that tyically, in the literature, Gaussian mixtures are used with expectation-maximisation (EM). Here we simply update the mixture parameters and the Gaussian parameters jointly, similar to GMM in https://github.com/jych/cle/blob/master/cle/cost/__init__.py. See the detailed mathematics in :ref:`ref_formulas`.
 
 Fisher von mises models
 '''''''''''''''''''''''
 
 Similarly to Gaussian models, this is a regression model that learns the distribution probability of the data. This model uses the Fisher - von Mises distribution, which resembles a gaussian on the sphere (`ref1 <https://en.wikipedia.org/wiki/Von_Mises%E2%80%93Fisher_distribution>`_, `ref2 <http://www.mitsuba-renderer.org/~wenzel/files/vmf.pdf>`_ . As such, it does not require unit normalization when sampling, and should be more stable while training. The loss is again the negative log-likelihood. Note that the model is a 2-layer NN for the mean and a 2-layer NN for the 'kappas'. Larger kappa leads to a more concentrated cluster of points, similar to sigma for Gaussians.
+
+See the detailed mathematics in :ref:`ref_formulas`.
 
 - **FisherVonMisesDirectionGetter**: The loss is the negative log-likelihood. Note that the model is a 2-layer NN for the means and a 2-layer NN for the variances. See :ref:`ref_formulas` for the complete formulas.
 

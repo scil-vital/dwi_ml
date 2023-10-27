@@ -16,7 +16,12 @@ jupyterlab>=3.6.2  # For transformer's visu
 IProgress>=0.4     # For jupyter with tdqm
 nested_lookup==0.2.25
 nose==1.3.*
-sphinx_rtd_theme==0.4.* # no longer a hard dependency since version 1.4.0
+
+
+#sphinx_rtd_theme>=0.4.* ---> Difficult to use with latest versions
+#sphinx-book-theme ---> not working?
+sphinx > 3.0
+
 
 ## Necessary but should be installed with scilpy (Last check: 09/2023):
 future==0.18.*

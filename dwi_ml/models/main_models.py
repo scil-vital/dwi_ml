@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import List, Union, Optional
+from typing import List, Union
 
 import numpy as np
 import torch
@@ -205,10 +205,10 @@ class MainModelAbstract(torch.nn.Module):
 
         return model_state
 
-    def compute_loss(self, *model_outputs, **kw):
+    def forward(self, *inputs, **kw):
         raise NotImplementedError
 
-    def forward(self, *inputs, **kw):
+    def compute_loss(self, *model_outputs, **kw):
         raise NotImplementedError
 
 

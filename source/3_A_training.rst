@@ -13,7 +13,37 @@ Even tough training depends on your own model, we have prepared Trainers that ca
 - They know how to deal with the ``BatchSampler`` (which samples a list of streamlines to get for each batch) and with the ``BatchLoader`` (which gets data and performs data augmentation operations, if any).
 - They prepare torch's optimizer (ex, Adam, SGD, RAdam), define the learning rate, etc.
 
-3.2. Our Batch samplers and loaders
+The ``train_and_validate``'s action, in short, is:
+
+.. code-block:: python
+
+    for epoch in range(nb_epochs):
+        set_the_learning_rate
+        self.train_one_epoch()
+        self.validate_one_epoch()
+        if this_is_the_best_epoch:
+            save_best_model
+        save_checkpoint
+
+Where ``train_one_epoch`` does:
+
+.. code-block:: python
+
+    for batch in batches:
+        self.run_one_batch()
+        self.back_propagation()
+
+And ``validate_one_epoch`` runs the batch but does not do the back-propagation.
+
+Finally, ``run_one_batch`` is not implemented in the ``DWIMLAbstractTrainer`` class, as it depends on your model.
+
+3.2. DWIMLTrainerOneInput
+-------------------------
+
+So far, we have prepared one child Trainer class, which loads the streamlines and one volume group. It can be used with the MainModelOneInput, as described earlier. This class is used by Learn2track and by TransformingTractography; you can rely on them to discover how to use it.
+
+
+3.3. Our Batch samplers and loaders
 -----------------------------------
 
 .. toctree::
@@ -24,7 +54,7 @@ Even tough training depends on your own model, we have prepared Trainers that ca
     3_D_BatchLoader
 
 
-3.3. Putting it all together
+3.4. Putting it all together
 ----------------------------
 
 This class's main method is *train_and_validate()*:
@@ -37,14 +67,14 @@ This class's main method is *train_and_validate()*:
 
 After each epoch, a checkpoint is saved with current parameters. Training can be continued from a checkpoint using the script resume_training_from_checkpoint.py.
 
-3.4. Visualizing logs
+3.5. Visualizing logs
 ---------------------
 
 You can run "visualize_logs.py your_experiment" to see the evolution of the losses and gradient norm.
 
 You can also use COMET to save results (code to be improved).
 
-3.5. Trainer with generation
+3.6. Trainer with generation
 ----------------------------
 
 toDO

@@ -144,6 +144,13 @@ Exemple of use: (See also please_copy_and_adapt/ALL_STEPS.sh)
             $dwi_ml_folder $hdf5_folder $config_file \
             $training_subjs $validation_subjs $testing_subjs
 
+.. toctree::
+    :maxdepth: 1
+    :caption: Detailed explanations for developers:
+
+    2_C_advanced_hdf5_organization
+
+
 P.S How to get data?
 ********************
 

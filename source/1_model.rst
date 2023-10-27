@@ -4,14 +4,13 @@
 .. role:: underline
     :class: underline
 
-The first task is to understand if your model can fit in our environment. Try
-to create your own model!
+The first task is to understand if your model can fit in our environment. Try to create your own model!
 
 
-5.1. Main models
+1.1. Main models
 ----------------
 
-You should make your model a child class of our **MainModelAbstract**. It is a derivate of torch's Module, to which we added methods to load and save its parameters on disk. However, its `forward()` and `compute_loss()` methods are now implemented:
+You should make your model a child class of our **MainModelAbstract**. It is a derivate of torch's Module, to which we added methods to load and save its parameters on disk. However, its `forward()` and `compute_loss()` methods are not implemented:
 
     .. image:: images/main_model_abstract.png
        :width: 600
@@ -19,90 +18,27 @@ You should make your model a child class of our **MainModelAbstract**. It is a d
     1. Create a new file in models.projects --> my_project.py
     2. Start like this:
 
-The compute_loss method should be implemented to be used with our trainer.
+    .. image:: images/create_your_model.png
+       :width: 600
 
-For generative models, the get_tracking_directions should be implemented to be used with our tracker.
+As you will discover when reading about our trainers, we have prepared them so that they will know which data they must send to your model's methods. You may change the variables `model.forward_uses_streamlines` and `model.loss_uses_streamlines` if you want the trainer to load and send the streamlines to your model. If your model also uses an input volume, see below, MainModelOneInput.
 
-We have also prepared child classes to help formatting previous directions, useful both for training and tracking.
+5.2. Other abstract models
+--------------------------
 
+We have also prepared child classes to help with common usages:
 
-5.2. Direction getter models
-----------------------------
+- Neighborhood usage: the class `ModelWithNeighborhood` adds parameters to deal with a few choices of neighborhood definitions.
 
-Direction getter (sub)-models should be used as last layer of any streamline generation model. They define the format of the output and possible associated loss functions.
+- Previous direction: you may need to format, at each position of the streamline, the previous direction. Use `ModelWithPreviousDirections`. It adds parameters for the previous direction and embedding choices.
 
-All models have been defined as 2-layer neural networks, with the hidden layer-size the half of the input size (the input, here, is the output of the main model), and the output size depends on each model as described below. ReLu activation and dropout layers are added. Final models are as below:
+- MainModelOneInput: The abstract models makes no assumption of the type of data required. In this model here, we add the parameters necessary to add one input volume (ex: underlying dMRI data), choose this model, together with the DWIMLTrainerOneInput, and the volume will be interpolated and send to your model's forward method. Note that if you want to use many images as input, such as the FA, the T1, the dMRI, etc., this can still be considered as "one volume", if your prepare your hdf5 data accordingly by concatenating the images. We will see that again when explaining the hdf5.
 
-            input  -->  NN layer 1 --> ReLu --> dropout -->  NN layer 2 --> output
+    - ModelOneInputWithEmbedding: A sub-version also defined parameter to add an embedding layer.
 
-In all cases, the mean of loss values for each timestep of the streamline is computed.
-
-Regression models
-''''''''''''''''''
-
-Simple regression to learn directly a direction [x,y,z].
-
-- :underline:`Shape of the output`: 3 parameters: the direction x, y, z.
-- :underline:`Deterministic tracking`: Direct use of the direction.
-- :underline:`Probabilistic tracking`: Impossible.
-
-Two models for two loss functions:
-
-- **CosineRegressionDirectionGetter**: The loss is the cosine similarity between the computed direction y and the provided target direction t.
-
-    .. math::
-
-        cos(\theta) = \frac{y \cdot t}{\|y\| \|t\|}
-
-- **L2RegressionDirectionGetter**: The loss is the pairwise distance between the computed direction y and the provided target direction t.
-
-    .. math::
-        \sqrt{\sum(t_i - y_i)^2}
+- ModelWithDirectionGetter: This is our model intented for tractography models (i.e. streamline generation models). It defines a layer of what we call the "directionGetter", which outputs a chosen direction for the next step of tractography propagation. It adds 2-layer neural network with the appropriate output size depending on the format of the output direction: 3 values (x, y, z) for regression, n values for classification on a sphere with N directions, etc. It also defines the compute_loss method, using an appropriate choice of loss in each case (ex, cosinus error for regression, negative log-likelihood for classification, etc.). For more information, see :ref:`direction_getters`.
 
 
-Classification models
-'''''''''''''''''''''
+  For generative models, the `get_tracking_directions` should be implemented to be used.
 
-- :underline:`Shape of the output`: a probability for each of K classes, corresponding to each discrete points on the sphere (Ex: `dipy.data.get_sphere('symmetric724')`)
-- :underline:`Deterministic tracking`: The class (corresponding to the direction) with highest probability is chosen.
-- :underline:`Probabilistic tracking`: One class (corresponding to one direction) is sampled randomly based on each class's probability.
-
-One implemented model:
-
-- **SphereClassificationDirectionGetter**: The loss is the negative log-likelyhood from a softmax (integrated in torch) (equivalent to the cross-entropy).
-
-Gaussian models
-'''''''''''''''
-
-This is a regression model, but contrary to typical regression, which would learn to set the weights that would represent a function h such that y ~ h(x), gaussian processes learn directly the *probability function*. See for example here https://blog.dominodatalab.com/fitting-gaussian-process-models-python/. The model learns to represent the mean and variance of the gaussian functions that could represent each data and its uncertainty. See :ref:`ref_formulas` for the complete formulas.
-
-To not counfound with the tensor, which is also a multivariate Gaussian. Here, the (3D, x, y, z) means of the Gaussian represent the probable next direction, and the variance represent uncertainty in each axis, whereas in a tensor, the means would represent the origin of the tensor, i.e. (0,0,0), and the variances represent the shape of the tensor in each axis.
-
-An equivalent model could learn to represent the direction on the sphere to learn a normalized direction. The means would be 2D (phi, rho) and the variances too. This has not been implemented yet. The reason for choosing a 3D model is that users could want to work with unnormalized direction and variable step sizes, for instance to reproduce compressed streamlines.
-
-- **SingleGaussianDirectionGetter**: The loss is the negative log-likelihood. Note that the model is a 2-layer NN for the means and a 2-layer NN for the variances.
-
-    - :underline:`Shape of the output`: 6 parameters: 3 means (x, y, z) and 3 variances (x, y, z).
-    - :underline:`Deterministic tracking`: The direction is directly given by the mean.
-    - :underline:`Probabilistic tracking`: A direction is sampled from the 3D distribution.
-
-- **GaussianMixtureDirectionGetter**: In this case, the models learns to represent the function probability as a mixture of N Gaussians, possibly representing direction choices in the case of fiber crossing and other special configurations. The loss is again the negative log-likelihood. Note that the model is a 2-layer NN for the mean and a 2-layer NN for the variance, for each of N Gaussians.
-
-    - :underline:`Shape of the output`: N * (6 parameters: 3 means (x, y, z) and 3 variances (x, y, z) plus a mixture parameter), where N is the number of Gaussians.
-    - :underline:`Deterministic tracking`: The direction is directly given as the mean of the most probable Gaussian; the one with biggest mixture coefficient.
-    - :underline:`Probabilistic tracking`: A direction is sampled from the 3D distribution.
-
-Note that tyically, in the literature, Gaussian mixtures are used with expectation-maximisation (EM). Here we simply update the mixture parameters and the Gaussian parameters jointly, similar to GMM in https://github.com/jych/cle/blob/master/cle/cost/__init__.py.
-
-Fisher von mises models
-'''''''''''''''''''''''
-
-Similarly to Gaussian models, this is a regression model that learns the distribution probability of the data. This model uses the Fisher - von Mises distribution, which resembles a gaussian on the sphere (`ref1 <https://en.wikipedia.org/wiki/Von_Mises%E2%80%93Fisher_distribution>`_, `ref2 <http://www.mitsuba-renderer.org/~wenzel/files/vmf.pdf>`_ . As such, it does not require unit normalization when sampling, and should be more stable while training. The loss is again the negative log-likelihood. Note that the model is a 2-layer NN for the mean and a 2-layer NN for the 'kappas'. Larger kappa leads to a more concentrated cluster of points, similar to sigma for Gaussians.
-
-- **FisherVonMisesDirectionGetter**: The loss is the negative log-likelihood. Note that the model is a 2-layer NN for the means and a 2-layer NN for the variances. See :ref:`ref_formulas` for the complete formulas.
-
-    - :underline:`Shape of the output`: 4 parameters: 3 for the means and one for kappa.
-    - :underline:`Deterministic tracking`: ?
-    - :underline:`Probabilistic tracking`: We sample using rejection sampling defined in ( Directional Statistics (Mardia and Jupp, 1999)), implemented in `ref4 <https://github.com/jasonlaska/spherecluster>`_.
-
-**FisherVonMisesMixtureDirectionGetter**: Not implemented yet.
+  Then, see further how to track from your model using our Tracker.

@@ -16,10 +16,7 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
 
     0_general_summary
     1_model
-    step_by_step/preprocessing
-    step_by_step/data_organization
-    step_by_step/creating_the_hdf5
-    formulas
+    2_creating_the_hdf5
     training
     tracking
 

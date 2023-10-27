@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import List, Union, Optional
+from typing import List, Union
 
 import numpy as np
 import torch
@@ -210,7 +210,6 @@ class MainModelAbstract(torch.nn.Module):
 
     def compute_loss(self, *model_outputs, **kw):
         raise NotImplementedError
-
 
 
 class ModelWithNeighborhood(MainModelAbstract):

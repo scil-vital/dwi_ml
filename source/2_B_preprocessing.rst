@@ -1,7 +1,7 @@
 .. _ref_preprocessing:
 
-1. Preprocessing your data (using scilpy)
-=========================================
+Preprocessing your data (using scilpy)
+======================================
 
 Running the whole tractography process
 **************************************

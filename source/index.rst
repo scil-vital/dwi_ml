@@ -15,8 +15,8 @@ This website is a guide to the github repository from the SCIL-VITAL organisatio
     :caption: How to use DWI_ML:
 
     0_general_summary
-    1_model
-    2_creating_the_hdf5
+    1_A_model
+    2_A_creating_the_hdf5
     training
     tracking
 

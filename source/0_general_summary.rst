@@ -19,10 +19,10 @@ Our repository includes:
 
 
 .. toctree::
-    :maxdepth: 1
+    :maxdepth: 3
     :caption: How to use DWI_ML
 
-    1_model
-    2_creating_the_hdf5.rst
+    1_A_model
+    2_A_creating_the_hdf5.rst
     training
     tracking

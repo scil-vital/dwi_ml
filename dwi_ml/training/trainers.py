@@ -457,16 +457,6 @@ class DWIMLAbstractTrainer:
         """
         trainer_params = checkpoint_state['params_for_init']
 
-        # Will eventually be deprecated:
-        if 'tracking_phase_nb_steps_init' in trainer_params:
-            logging.warning(
-                "Model trained with an older version of dwi_ml. Param "
-                "tracking_phase_nb_steps_init will soon be deprecated. Now "
-                "called tracking_phase_nb_segments_init, with value one less.")
-            val = trainer_params['tracking_phase_nb_steps_init']
-            del trainer_params['tracking_phase_nb_steps_init']
-            trainer_params['tracking_phase_nb_segments_init'] = val - 1
-
         trainer = cls(model=model, experiments_path=experiments_path,
                       experiment_name=experiment_name,
                       batch_sampler=batch_sampler,
@@ -538,12 +528,7 @@ class DWIMLAbstractTrainer:
 
         # F. Monitors
         for monitor in self.monitors:
-            if (monitor.name == 'unclipped_grad_norm_monitor' and
-                    'unclipped_grad_norm_monitor_state' not in current_states):
-                logging.warning("Deprecated trainer. Did not contain an "
-                                "unclipped grad monitor. Starting as new.")
-            else:
-                monitor.set_state(current_states[monitor.name + '_state'])
+            monitor.set_state(current_states[monitor.name + '_state'])
 
     def _init_comet(self):
         """

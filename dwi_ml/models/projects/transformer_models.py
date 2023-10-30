@@ -257,13 +257,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
     def _load_params(cls, model_dir):
         params = super()._load_params(model_dir)
 
-        # Fix deprecated value
-        if 'embedding_key_x' in params:
-            logging.warning("Deprecated model. Variable 'embedding_key_x' "
-                            "now called input_embedding_key. Renaming.")
-            params['input_embedding_key'] = params['embedding_key_x']
-            del params['embedding_key_x']
-
         # d_model now a property method.
         if 'd_model' in params:
             if isinstance(cls, TransformerSrcOnlyModel):
@@ -272,22 +265,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
             del params['d_model']
 
         return params
-
-    @classmethod
-    def _load_state(cls, model_dir):
-        model_state = super()._load_state(model_dir)
-
-        if 'embedding_layer_x.linear.weight' in model_state:
-            logging.warning("Deprecated variable name embedding_layer_x. Now "
-                            "called input_embedding_layer. Fixing model "
-                            "state at loading.")
-            model_state['input_embedding_layer.linear.weight'] = \
-                model_state['embedding_layer_x.linear.weight']
-            model_state['input_embedding_layer.linear.bias'] = \
-                model_state['embedding_layer_x.linear.bias']
-            del model_state['embedding_layer_x.linear.weight']
-            del model_state['embedding_layer_x.linear.bias']
-        return model_state
 
     def set_context(self, context):
         assert context in ['training', 'validation', 'tracking', 'visu']

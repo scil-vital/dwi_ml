@@ -130,13 +130,8 @@ class BatchHistoryMonitor(object):
     def set_state(self, state):
         self.average_per_epoch = state['average_per_epoch']
         self.current_epoch = state['current_epoch']
-
-        if 'ever_max' in state:
-            self.ever_max = state['ever_max']
-            self.ever_min = state['ever_min']
-        else:
-            logging.info("Deprecated model. Ever_max and ever_min values not "
-                         "set in {}. Ignoring".format(self.name))
+        self.ever_max = state['ever_max']
+        self.ever_min = state['ever_min']
 
 
 class BestEpochMonitor(object):

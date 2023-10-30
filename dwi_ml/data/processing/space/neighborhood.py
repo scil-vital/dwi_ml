@@ -80,7 +80,7 @@ def get_neighborhood_vectors_axes(radius: int, resolution: float):
     neighborhood_vectors : tensor of shape (N, 3)
         A list of vectors with last dimension = 3 (x,y,z coordinate for each
         neighbour per respect to the origin). The current point (0,0,0) is
-        included.
+        NOT included.
     """
     tmp_axes = np.identity(3)
     unit_axes = np.concatenate((tmp_axes, -tmp_axes))

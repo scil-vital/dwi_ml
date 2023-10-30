@@ -54,7 +54,6 @@ class DWIMLAbstractTrainer:
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
                  batch_loader: DWIMLAbstractBatchLoader,
                  learning_rates: Union[List, float] = None,
-                 lr_decrease_params: Tuple[float, float] = None,
                  weight_decay: float = 0.01,
                  optimizer: str = 'Adam', max_epochs: int = 10,
                  max_batches_per_epoch_training: int = 1000,
@@ -87,12 +86,6 @@ class DWIMLAbstractTrainer:
             torch's default, 0.001). A list [0.01, 0.01, 0.001], for instance,
             would use these values for the first 3 epochs, and keep the final
             value for remaining epochs.
-        lr_decrease_params: Tuple[float, float]
-            Parameters [E, L] to set the learning rate an exponential decreasing
-            curve. The final curve will be init_lr * exp(-x / r). The rate of
-            decrease, r, is defined in order to ensure that the learning rate
-            curve will hit value L at epoch E.
-            learning_rates must be a single float value.
         weight_decay: float
             Add a weight decay penalty on the parameters. Default: 0.01.
             (torch's default).
@@ -152,22 +145,9 @@ class DWIMLAbstractTrainer:
         self.comet_project = comet_project
         self.space = 'vox'
         self.origin = 'corner'
-        self.lr_decrease_params = lr_decrease_params
         self.clip_grad = clip_grad
 
         # Learning rate:
-        if lr_decrease_params is not None:
-            assert isinstance(learning_rates, float), \
-                "To use lr_decrease_params, the learning_rate cannot be a " \
-                "list of learning rates. Expecting a single float value, but " \
-                "got {}".format(learning_rates)
-            self.initial_lr = learning_rates   # Initial value
-            x, y = lr_decrease_params
-            assert x.is_integer(), \
-                "First value of lr_decrease_params should be an epoch " \
-                "(integer), but got {}".format(x)
-            self.lr_decrease_rate = -x / np.log(y / self.initial_lr)
-
         if learning_rates is None:
             self.learning_rates = [0.001]
         elif isinstance(learning_rates, float):
@@ -360,7 +340,6 @@ class DWIMLAbstractTrainer:
         # user to increase the patience when running again.
         params = {
             'learning_rates': self.learning_rates,
-            'lr_decrease_params': self.lr_decrease_params,
             'weight_decay': self.weight_decay,
             'max_epochs': self.max_epochs,
             'max_batches_per_epoch_training': self.max_batches_per_epochs_train,
@@ -478,16 +457,6 @@ class DWIMLAbstractTrainer:
         """
         trainer_params = checkpoint_state['params_for_init']
 
-        # Will eventually be deprecated:
-        if 'tracking_phase_nb_steps_init' in trainer_params:
-            logging.warning(
-                "Model trained with an older version of dwi_ml. Param "
-                "tracking_phase_nb_steps_init will soon be deprecated. Now "
-                "called tracking_phase_nb_segments_init, with value one less.")
-            val = trainer_params['tracking_phase_nb_steps_init']
-            del trainer_params['tracking_phase_nb_steps_init']
-            trainer_params['tracking_phase_nb_segments_init'] = val - 1
-
         trainer = cls(model=model, experiments_path=experiments_path,
                       experiment_name=experiment_name,
                       batch_sampler=batch_sampler,
@@ -559,12 +528,7 @@ class DWIMLAbstractTrainer:
 
         # F. Monitors
         for monitor in self.monitors:
-            if (monitor.name == 'unclipped_grad_norm_monitor' and
-                    'unclipped_grad_norm_monitor_state' not in current_states):
-                logging.warning("Deprecated trainer. Did not contain an "
-                                "unclipped grad monitor. Starting as new.")
-            else:
-                monitor.set_state(current_states[monitor.name + '_state'])
+            monitor.set_state(current_states[monitor.name + '_state'])
 
     def _init_comet(self):
         """
@@ -689,16 +653,12 @@ class DWIMLAbstractTrainer:
                         .format(epoch, epoch + 1))
 
             # Computing learning rate
-            if self.lr_decrease_params is not None:
-                # Exponential decrease
-                current_lr = self.initial_lr * np.exp(-epoch/self.lr_decrease_rate)
-            else:
-                # User-given values
-                current_lr = self.learning_rates[
-                    min(self.current_epoch, len(self.learning_rates) - 1)]
+            current_lr = self.learning_rates[
+                min(self.current_epoch, len(self.learning_rates) - 1)]
             logger.info("Learning rate = {}".format(current_lr))
             if self.comet_exp:
-                self.comet_exp.log_metric("learning_rate", current_lr, step=epoch)
+                self.comet_exp.log_metric("learning_rate", current_lr,
+                                          step=epoch)
 
             for g in self.optimizer.param_groups:
                 g['lr'] = current_lr

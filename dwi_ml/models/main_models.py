@@ -249,47 +249,6 @@ class ModelWithNeighborhood(MainModelAbstract):
 
         super().__init__(**kw)
 
-    @classmethod
-    def _load_params(cls, model_dir):
-        params = super()._load_params(model_dir)
-
-        # Will eventually be deprecated:
-        if 'neighborhood_radius' in params and \
-                'neighborhood_resolution' not in params:
-            logging.warning(
-                "Model trained with a deprecated neighborhood management. "
-                "Fixing.")
-            r = params['neighborhood_radius']
-            if params['neighborhood_type'] == 'grid':
-                res = 1
-
-                if isinstance(r, list):
-                    assert len(r) == 1
-                    rad = r[0]
-                    assert int(rad) == rad, \
-                        "Failed. Cannot interpret float radius anymore."
-                    rad = int(rad)
-                else:
-                    rad = 1
-            else:
-                if isinstance(r, list):
-                    res = r[0]
-                    rad = len(r)
-                    assert np.all(np.diff(r) == res), \
-                        "Failed. Cannot use that type of neighborhood anymore. " \
-                        "Resolution must be the same between each layer of " \
-                        "neighborhood."
-                else:
-                    res = r
-                    rad = 1
-
-            logging.warning("Guessed values are: resolution {}, radius {}"
-                            .format(res, rad))
-            params['neighborhood_resolution'] = float(res)
-            params['neighborhood_radius'] = rad
-
-        return params
-
     def move_to(self, device):
         super().move_to(device)
         if self.neighborhood_vectors is not None:
@@ -440,20 +399,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
             '--normalize_prev_dirs', action='store_true',
             help="If true, normalize the previous directions (before the "
                  "embedding layer,\n if any, and before adding to the input.")
-
-    @classmethod
-    def _load_params(cls, model_dir):
-        params = super()._load_params(model_dir)
-
-        # Will eventually be deprecated:
-        if 'prev_dirs_embedding_size' in params:
-            logging.warning(
-                "Deprecated param prev_dirs_embedding_size. Now called "
-                "prev_dirs_embedded_size. Changing")
-            params['prev_dirs_embedded_size'] = params['prev_dirs_embedding_size']
-            del params['prev_dirs_embedding_size']
-
-        return params
 
     @property
     def params_for_checkpoint(self):
@@ -682,36 +627,6 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         self.input_embedding_layer = input_embedding_cls(
             nb_features_in=input_size,
             nb_features_out=self.computed_input_embedded_size)
-
-    @classmethod
-    def _load_params(cls, model_dir):
-        params = super()._load_params(model_dir)
-
-        # Will eventually be deprecated:
-        if 'input_embedding_size' in params:
-            logging.warning(
-                "Deprecated param input_embedding_size. Now called "
-                "input_embedded_size. Changing")
-            params['input_embedded_size'] = params['input_embedding_size']
-            del params['input_embedding_size']
-
-        if 'input_embedding_size_ratio' in params:
-            if params['input_embedding_size_ratio'] is None:
-                logging.warning(
-                    "Deprecated params 'input_embedding_size_ratio', but was "
-                    "None. Ignoring")
-                del params['input_embedding_size_ratio']
-            else:
-                raise ValueError("Deprecated use of "
-                                 "'input_embedding_size_ratio'. Cannot proceed.")
-
-        # These values did not exist in older models.
-        if 'nb_cnn_filters' not in params:
-            params['nb_cnn_filters'] = None
-        if 'kernel_size' not in params:
-            params['kernel_size'] = None
-
-        return params
 
     @property
     def params_for_checkpoint(self):

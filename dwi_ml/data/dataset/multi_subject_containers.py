@@ -427,16 +427,7 @@ class MultiSubjectDataset:
             # Load main attributes from hdf file, but each process calling
             # the collate_fn must open its own hdf_file
             step_size = hdf_handle.attrs['step_size']
-            if 'compress' in hdf_handle.attrs:
-                compress = hdf_handle.attrs['compress']
-            else:
-                # Fix deprecated usages
-                logger.warning(
-                    "Using an old version of hdf database. Compression rate "
-                    "information was not saved. This only means that if you "
-                    "use --compress option anywhere, we will perform it "
-                    "again.")
-                compress = None
+            compress = hdf_handle.attrs['compress']
 
             # Can't save None in hdf5, saved a string instead. Converting.
             if step_size == 'Not defined by user':

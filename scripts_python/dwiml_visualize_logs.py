@@ -34,13 +34,13 @@ def _build_arg_parser():
     parser.add_argument("--nb_plots_per_fig", type=int, default=3,
                         help="Number of (rows) of plot per figure.")
     parser.add_argument("--save_to_csv", metavar='my_file.csv',
-                        help="If set, save the resulting logs as a csv file.")
-    parser.add_argument('--xlim', type=int,
-                        help="Graph's xlim. Makes little sense with more than "
-                             "one graph. Format: max_epoch ")
-    parser.add_argument('--ylims', type=float, nargs=2,
-                        help="Graph's ylim. Makes little sense with more than "
-                             "one graph. Format: ymin ymax ")
+                        help="If set, save the resulting logs as a csv file \n"
+                             "(chosen --graph only, if any).")
+    parser.add_argument('--xlim', type=int, metavar='epoch_max',
+                        help="All graphs' xlim.")
+    parser.add_argument('--ylims', type=float, nargs=2, metavar='ymin ymax',
+                        help="All graph's ylim. (Makes little sense with more "
+                             "than one graph.)")
 
     add_overwrite_arg(parser)
     return parser

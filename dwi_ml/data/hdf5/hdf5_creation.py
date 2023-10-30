@@ -685,8 +685,8 @@ class HDF5Creator:
         logging.debug('      *Total: {:,.0f} streamlines. Now removing '
                       'invalid streamlines.'.format(len(final_sft)))
         final_sft.remove_invalid_streamlines()
-        logging.debug("      *Remaining: {:,.0f} streamlines."
-                      "".format(len(final_sft)))
+        logging.info("         Final number of streamlines: {:,.0f}."
+                     .format(len(final_sft)))
 
         conn_matrix = None
         conn_info = None

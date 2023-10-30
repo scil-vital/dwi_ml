@@ -1,10 +1,10 @@
-7. Using your model (ex: Tracking)
+4. Using your model (ex: Tracking)
 ==================================
 
 General testing of a model
 --------------------------
 
-This step depend on your model and your choice of metrics, but in generative models, you probably want to track on new data and verify the quality of your reconstruction. We have prepared a script that allows you to track from a model.
+This step depends on your model and your choice of metrics, but in generative models, you probably want to track on new data and verify the quality of your reconstruction. We have prepared a script that allows you to track from a model.
 
 Tracking with a model
 ---------------------

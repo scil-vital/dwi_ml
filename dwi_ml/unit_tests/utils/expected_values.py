@@ -21,7 +21,7 @@ Organization of the testing data:
 └── hdf5_file.hdf5
 
 """
-# Values corresponding to the testing data, as of Nov 22, 22.
+# Values corresponding to the testing data, as of Oct 30, 23.
 # Created from Emmanuelle's preprocessed WithReversed data.
 
 TEST_EXPECTED_VOLUME_GROUPS = ['input', 'wm_mask']

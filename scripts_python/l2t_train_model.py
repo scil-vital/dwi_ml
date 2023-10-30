@@ -119,8 +119,7 @@ def init_from_args(args, sub_loggers_level):
             comet_project=args.comet_project,
             comet_workspace=args.comet_workspace,
             # TRAINING
-            learning_rates=lr, lr_decrease_params=args.lr_decrease_params,
-            weight_decay=args.weight_decay,
+            learning_rates=lr, weight_decay=args.weight_decay,
             optimizer=args.optimizer, max_epochs=args.max_epochs,
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,

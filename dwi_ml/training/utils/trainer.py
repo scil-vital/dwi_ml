@@ -19,14 +19,6 @@ def add_training_args(p: argparse.ArgumentParser,
              "for the first \n3 epochs, and 0.0001 for the remaining epochs.\n"
              "(torch's default = 0.001)")
     training_group.add_argument(
-        '--lr_decrease_params', metavar='E L', nargs=2, type=float,
-        help="Parameters [E, L] to set the learning rate an exponential "
-             "decreasing curve. \nThe final curve will be "
-             "init_lr * exp(-x / r). The rate of \ndecrease, r, is defined in "
-             "order to ensure that the learning rate curve will hit \nvalue L "
-             "at epoch E.\n"
-             "learning_rate must be a single float value.")
-    training_group.add_argument(
         '--weight_decay', type=float, default=0.01, metavar='v',
         help="Add a weight decay penalty on the parameters (regularization "
              "parameter)\n[0.01] (torch's default).")

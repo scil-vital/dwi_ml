@@ -32,7 +32,7 @@ def fetch_testing_data():
         name_as_dict = {
             'data_for_tests_dwi_ml.zip':
                 ['1beRWAorhaINCncttgwqVAP2rNOfx842Q',
-                 '8bdbf051877ec5c70aace21c9dab9bb7']}
+                 'da6c94fbef7ac13029acdb8b94325096']}
         fetch_data(name_as_dict)
 
     return testing_data_dir

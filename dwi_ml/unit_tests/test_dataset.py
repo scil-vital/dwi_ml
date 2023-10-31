@@ -76,8 +76,8 @@ def _verify_mri(mri_data, training_set, group_number):
 
     # Non-lazy: getting data as tensor directly.
     # Lazy: it should load it.
-    assert isinstance(mri_data.convert_to_tensor(device), torch.Tensor)
-    assert list(mri_data.convert_to_tensor(device).shape) == expected_shape
+    assert isinstance(mri_data.get_data_as_tensor(device), torch.Tensor)
+    assert list(mri_data.get_data_as_tensor(device).shape) == expected_shape
 
     # This should also get it.
     volume0 = training_set.get_volume_verify_cache(0, 0)
@@ -86,13 +86,13 @@ def _verify_mri(mri_data, training_set, group_number):
 
 def _verify_sft_data(sft_data, group_number):
     expected_nb = TEST_EXPECTED_NB_STREAMLINES[group_number]
-    assert len(sft_data.streamlines) == expected_nb
+    assert len(sft_data._streamlines_getter) == expected_nb
 
     # First streamline's first coordinate:
-    assert len(sft_data.streamlines[0][0]) == 3  # a x, y, z coordinate
+    assert len(sft_data._streamlines_getter[0][0]) == 3  # a x, y, z coordinate
 
     # As sft:
-    assert len(sft_data.as_sft().streamlines) == expected_nb
+    assert len(sft_data.as_sft()._streamlines_getter) == expected_nb
 
 
 def _non_lazy_version(hdf5_filename):

@@ -584,11 +584,11 @@ class HDF5Creator:
             # We need to deconstruct the streamlines into arrays with
             # types recognizable by the hdf5.
             streamlines_group.create_dataset('data',
-                                             data=sft.streamlines._data)
+                                             data=sft._streamlines_getter._data)
             streamlines_group.create_dataset('offsets',
-                                             data=sft.streamlines._offsets)
+                                             data=sft._streamlines_getter._offsets)
             streamlines_group.create_dataset('lengths',
-                                             data=sft.streamlines._lengths)
+                                             data=sft._streamlines_getter._lengths)
             streamlines_group.create_dataset('euclidean_lengths', data=lengths)
 
     def _process_one_streamline_group(

@@ -107,7 +107,7 @@ def prepare_batch_visu_error(p, args, model: MainModelAbstract,
 
     sft.to_vox()
     sft.to_corner()
-    streamlines = [torch.as_tensor(s) for s in sft.streamlines]
+    streamlines = [torch.as_tensor(s) for s in sft._streamlines_getter]
     if not model.direction_getter.add_eos:
         # We don't use the last coord because it does not have an
         # associated target direction.
@@ -148,7 +148,7 @@ def save_output_with_ref(out_dirs, args, sft):
     color_x = []
     color_y = []
     color_z = []
-    for i, s in enumerate(sft.streamlines):
+    for i, s in enumerate(sft._streamlines_getter):
         this_s_len = len(s)
 
         # Normalizing directions to step_size

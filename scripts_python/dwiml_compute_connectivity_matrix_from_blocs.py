@@ -82,14 +82,14 @@ def main():
     in_img = nib.load(args.in_volume)
 
     matrix, start_blocs, end_blocs = compute_triu_connectivity_from_blocs(
-        in_sft.streamlines, in_img.shape, args.connectivity_nb_blocs)
+        in_sft._streamlines_getter, in_img.shape, args.connectivity_nb_blocs)
 
     # Options to try to investigate the connectivity matrix:
     if args.save_biggest is not None:
         i, j = np.unravel_index(np.argmax(matrix, axis=None), matrix.shape)
         print("Saving biggest bundle: {} streamlines.".format(matrix[i, j]))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft._streamlines_getter, i, j, start_blocs, end_blocs)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_biggest)
 
@@ -98,7 +98,7 @@ def main():
         i, j = np.unravel_index(tmp_matrix.argmin(axis=None), matrix.shape)
         print("Saving smallest bundle: {} streamlines.".format(matrix[i, j]))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft._streamlines_getter, i, j, start_blocs, end_blocs)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
 

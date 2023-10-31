@@ -2,7 +2,7 @@
 import logging
 from typing import List, Union
 
-from dwi_ml.data.dataset.mri_data_containers import LazyMRIData, MRIData
+from dwi_ml.data.dataset.mri_data_containers import LazyMRIData, MRIData, MRIDataAbstract
 from dwi_ml.data.dataset.streamline_containers import LazySFTData, SFTData
 from dwi_ml.data.dataset.checks_for_groups import prepare_groups_info
 
@@ -38,7 +38,7 @@ class SubjectDataAbstract(object):
         self.is_lazy = None
 
     @property
-    def mri_data_list(self):
+    def mri_data_list(self) -> List[MRIDataAbstract]:
         """Returns a list of MRIData (lazy or not)."""
         raise NotImplementedError
 
@@ -81,7 +81,7 @@ class SubjectData(SubjectDataAbstract):
         self.is_lazy = False
 
     @property
-    def mri_data_list(self):
+    def mri_data_list(self) -> List[MRIData]:
         return self._mri_data_list
 
     @property

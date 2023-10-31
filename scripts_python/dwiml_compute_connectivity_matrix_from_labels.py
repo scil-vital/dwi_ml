@@ -87,7 +87,7 @@ def main():
     in_sft.to_vox()
     in_sft.to_corner()
     matrix, start_blocs, end_blocs = compute_triu_connectivity_from_labels(
-        in_sft.streamlines, data_labels, use_scilpy=args.use_longest_segment)
+        in_sft._streamlines_getter, data_labels, use_scilpy=args.use_longest_segment)
 
     if args.hide_background is not None:
         matrix[args.hide_background, :] = 0
@@ -100,7 +100,7 @@ def main():
         print("Saving biggest bundle: {} streamlines. From label {} to label "
               "{}".format(matrix[i, j], i, j))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft._streamlines_getter, i, j, start_blocs, end_blocs)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_biggest)
 
@@ -110,7 +110,7 @@ def main():
         print("Saving smallest bundle: {} streamlines. From label {} to label "
               "{}".format(matrix[i, j], i, j))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft._streamlines_getter, i, j, start_blocs, end_blocs)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
 

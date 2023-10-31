@@ -74,7 +74,7 @@ def main():
 
     logging.debug("            Adding noise {}"
                   .format(args.noise_gaussian_size_forward))
-    streamlines = [torch.as_tensor(s) for s in sft.streamlines]
+    streamlines = [torch.as_tensor(s) for s in sft._streamlines_getter]
     streamlines = add_noise_to_tensor(streamlines,
                                       args.noise_gaussian_size_forward,
                                       device=None)

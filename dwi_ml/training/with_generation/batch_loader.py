@@ -35,6 +35,6 @@ class DWIMLBatchLoaderWithConnectivity(DWIMLBatchLoaderOneInput):
             # We could access it only at required index, maybe. Loading the
             # whole matrix here.
             matrices[i], volume_sizes[i], connectivity_nb_blocs[i] = \
-                subj_sft_data.connectivity_matrix_and_info()
+                subj_sft_data.get_connectivity_matrix_and_info()
 
         return matrices, volume_sizes, connectivity_nb_blocs

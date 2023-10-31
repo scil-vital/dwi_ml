@@ -5,6 +5,7 @@ import os
 
 import h5py
 import torch
+from dipy.io.stateful_tractogram import StatefulTractogram
 
 from dwi_ml.data.dataset.multi_subject_containers import \
     MultiSubjectDataset, MultisubjectSubset
@@ -14,7 +15,7 @@ from dwi_ml.data.dataset.single_subject_containers import \
 from dwi_ml.data.dataset.subjectdata_list_containers import \
     SubjectsDataList, LazySubjectsDataList
 from dwi_ml.data.dataset.streamline_containers import \
-    SFTData, LazySFTData, _LazyStreamlinesGetter
+    SFTData, LazySFTData
 from dwi_ml.unit_tests.utils.expected_values import (
     TEST_EXPECTED_SUBJ_NAMES, TEST_EXPECTED_STREAMLINE_GROUPS,
     TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_NB_STREAMLINES,
@@ -86,13 +87,18 @@ def _verify_mri(mri_data, training_set, group_number):
 
 def _verify_sft_data(sft_data, group_number):
     expected_nb = TEST_EXPECTED_NB_STREAMLINES[group_number]
-    assert len(sft_data._streamlines_getter) == expected_nb
+    assert len(sft_data.as_sft()) == expected_nb
 
     # First streamline's first coordinate:
-    assert len(sft_data._streamlines_getter[0][0]) == 3  # a x, y, z coordinate
+    # Also verifying accessing by index
+    list_one = sft_data.as_sft([0])
+    assert type(list_one) == StatefulTractogram
+    assert len(list_one) == 1
+    assert len(list_one.streamlines[0][0, :]) == 3  # a x, y, z coordinate
 
-    # As sft:
-    assert len(sft_data.as_sft()._streamlines_getter) == expected_nb
+    # Assessing by slice
+    list_4 = sft_data.as_sft(slice(0, 4))
+    assert len(list_4) == 4
 
 
 def _non_lazy_version(hdf5_filename):
@@ -164,7 +170,6 @@ def _lazy_version(hdf5_filename):
     logging.debug("    Testing properties of his first Lazy SFTData.")
     sft_data = subj0.sft_data_list[0]
     assert isinstance(sft_data, LazySFTData)
-    assert isinstance(sft_data.streamlines, _LazyStreamlinesGetter)
     _verify_sft_data(sft_data, group_number=0)
 
 

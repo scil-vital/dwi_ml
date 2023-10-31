@@ -283,7 +283,7 @@ class MultisubjectSubset(Dataset):
                 logger.debug("     Counting streamlines")
                 for group in range(len(self.streamline_groups)):
                     subj_sft_data = subj_data.sft_data_list[group]
-                    n_streamlines = len(subj_sft_data._streamlines_getter)
+                    n_streamlines = len(subj_sft_data)
                     self._add_streamlines_ids(n_streamlines, subj_idx, group)
                     lengths[group].append(subj_sft_data.lengths)
                     lengths_mm[group].append(subj_sft_data.lengths_mm)

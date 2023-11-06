@@ -21,33 +21,55 @@ nb_styles = 4
 
 
 def _build_arg_parser():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=RawTextHelpFormatter)
-    parser.add_argument("paths", type=str, nargs='+',
-                        help="Path to the experiment folder (s). If more than "
-                             "one, they are shown superposed.")
-    parser.add_argument("--graph", action='append', nargs='+',
-                        help="Name of the logs to add to one graph. Can be "
-                             "used many times. \n"
-                             "Ex: --graph log1 --graph log2 log3\n"
-                             "If not set, all logs are shown separately.")
-    parser.add_argument("--nb_plots_per_fig", type=int, default=3,
-                        help="Number of (rows) of plot per figure.")
-    parser.add_argument("--save_to_csv", metavar='my_file.csv',
-                        help="If set, save the resulting logs as a csv file \n"
-                             "(chosen --graph only, if any).")
-    parser.add_argument('--xlim', type=int, metavar='epoch_max',
-                        help="All graphs' xlim.")
-    parser.add_argument('--ylims', type=float, nargs=2, metavar='ymin ymax',
-                        help="All graph's ylim. (Makes little sense with more "
-                             "than one graph.)")
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=RawTextHelpFormatter)
+    p.add_argument("paths", type=str, nargs='+',
+                   help="Path to the experiment folder (s). If more than "
+                        "one, they are shown superposed.")
+    p.add_argument("--graph", action='append', nargs='+',
+                   help="Name of the logs to add to one graph. Can be "
+                        "used many times. \n"
+                        "Ex: --graph log1 --graph log2 log3\n"
+                        "If not set, all logs are shown separately.")
+    p.add_argument("--nb_plots_per_fig", type=int, default=3,
+                   help="Number of (rows) of plot per figure.")
+    p.add_argument("--save_to_csv", metavar='my_file.csv',
+                   help="If set, save the resulting logs as a csv file \n"
+                        "(chosen --graph only, if any).")
+    p.add_argument('--xlim', type=int, metavar='epoch_max',
+                   help="All graphs' xlim.")
+    p.add_argument('--ylims', type=float, nargs=2, metavar='ymin ymax',
+                   help="All graph's ylim. (Makes little sense with more "
+                        "than one graph.)")
+    p.add_argument('--remove_outliers', action='store_true',
+                   help="If set, remove outliers (3 std) from plot line and "
+                        "adds a star sign instead.\n"
+                        "Outliers are not removed in the CSV file, if any.")
 
-    add_overwrite_arg(parser)
-    return parser
+    add_overwrite_arg(p)
+    return p
+
+
+def plot_one_line(ax, data, color, style, exp_name, legend, remove_outliers):
+    epochs = np.arange(0, len(data))
+    if remove_outliers:
+        std3 = 3 * np.std(data)
+        mean = np.mean(data)
+        outlier_idx = np.logical_or(data < mean - std3, data > mean + std3)
+
+        print("{}: Found {} outliers out of [{}, {}]."
+              .format(exp_name, outlier_idx.sum(),
+                      mean - std3, mean + std3))
+        ax.scatter(epochs[outlier_idx], data[outlier_idx],
+                   marker='*', color=color)
+        epochs = epochs[~outlier_idx]
+        data = data[~outlier_idx]
+
+    ax.plot(epochs, data, linestyle=style, label=legend, color=color)
 
 
 def visualize_logs(logs: Dict[str, Dict[str, np.ndarray]], graphs, nb_rows,
-                   writer=None, xlim=None, ylims=None):
+                   writer=None, xlim=None, ylims=None, remove_outliers=False):
     exp_names = list(logs.keys())
     writer.writerow(['Experiment name', "Log name", "Epochs..."])
 
@@ -82,12 +104,12 @@ def visualize_logs(logs: Dict[str, Dict[str, np.ndarray]], graphs, nb_rows,
                     if len(keys) > 1:
                         legend += ', ' + key
                     if key in logs[exp_name]:
-                        axs[i].plot(logs[exp_name][key], linestyle=style,
-                                    label=legend, color=color_val)
+                        data = logs[exp_name][key]
+                        plot_one_line(axs[i], data, color_val, style, exp_name,
+                                      legend, remove_outliers)
 
                         if writer is not None:
-                            writer.writerow([exp_name, key] +
-                                            list(logs[exp_name][key]))
+                            writer.writerow([exp_name, key] + list(data))
 
                 axs[i].legend()
                 if xlim is not None:
@@ -158,10 +180,12 @@ def main():
         with open(args.save_to_csv, 'w', newline='') as file:
             writer = csv.writer(file)
             visualize_logs(loaded_logs, graphs, args.nb_plots_per_fig,
-                           writer=writer, xlim=args.xlim, ylims=args.ylims)
+                           writer=writer, xlim=args.xlim, ylims=args.ylims,
+                           remove_outliers=args.remove_outliers)
     else:
         visualize_logs(loaded_logs, graphs, args.nb_plots_per_fig,
-                       xlim=args.xlim, ylims=args.ylims)
+                       xlim=args.xlim, ylims=args.ylims,
+                       remove_outliers=args.remove_outliers)
 
     plt.tight_layout()
     plt.show()

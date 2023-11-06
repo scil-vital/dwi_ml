@@ -71,7 +71,8 @@ def plot_one_line(ax, data, color, style, exp_name, legend, remove_outliers):
 def visualize_logs(logs: Dict[str, Dict[str, np.ndarray]], graphs, nb_rows,
                    writer=None, xlim=None, ylims=None, remove_outliers=False):
     exp_names = list(logs.keys())
-    writer.writerow(['Experiment name', "Log name", "Epochs..."])
+    if writer is not None:
+        writer.writerow(['Experiment name', "Log name", "Epochs..."])
 
     jet = plt.get_cmap('jet')
     c_norm = colors.Normalize(vmin=0, vmax=len(exp_names))
@@ -126,7 +127,7 @@ def main():
 
     logging.getLogger().setLevel(level=logging.INFO)
 
-    assert_outputs_exist(parser, args, args.save_to_csv)
+    assert_outputs_exist(parser, args, [], args.save_to_csv)
 
     # One element per experiment
     loaded_logs = {}  # exp: dict of logs

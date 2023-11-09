@@ -178,7 +178,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         self.max_len = max_len
         self.positional_encoding_key = positional_encoding_key
         self.nheads = nheads
-        self.n_layers_e = n_layers_e  # All our models have a
+        self.n_layers_e = n_layers_e  # All our models have an encoder
         self.dropout_rate = dropout_rate
         self.activation = activation
         self.norm_first = norm_first

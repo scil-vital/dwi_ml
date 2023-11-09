@@ -23,12 +23,13 @@ def add_args_testing_subj_hdf5(p, ask_input_group=False,
 
 def prepare_dataset_one_subj(hdf5_file, subj_id, lazy=False, cache_size=1,
                              subset_name='testing', volume_groups=None,
-                             streamline_groups=None):
+                             streamline_groups=None, log_level=None):
     # Right now, we con only track on one subject at the time. We could
     # instantiate a LazySubjectData directly, but we want to use the cache
     # manager (suited better for multiprocessing)
     dataset = MultiSubjectDataset(hdf5_file, lazy=lazy,
-                                  cache_size=cache_size)
+                                  cache_size=cache_size,
+                                  log_level=log_level)
 
     possible_subsets = ['training', 'validation', 'testing']
     if subset_name not in possible_subsets:

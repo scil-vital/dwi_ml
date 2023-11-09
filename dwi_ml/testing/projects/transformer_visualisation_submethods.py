@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import argparse
 import logging
 
 import numpy as np
@@ -9,12 +8,10 @@ import torch
 from bertviz import model_view, head_view
 
 from scilpy.io.streamlines import load_tractogram_with_reference
-from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
 from scilpy.tractograms.streamline_operations import \
     resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
-from dwi_ml.io_utils import add_logging_arg
 from dwi_ml.models.projects.transformer_models import \
     AbstractTransformerModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj
@@ -22,64 +19,6 @@ from dwi_ml.testing.utils import prepare_dataset_one_subj
 # Currently, with our quite long sequences compared to their example, this
 # is a bit ugly.
 SHOW_MODEL_VIEW = False
-
-
-def build_argparser_transformer_visu():
-    p = argparse.ArgumentParser(
-        formatter_class=argparse.RawTextHelpFormatter,
-        description=__doc__)
-
-    p.add_argument('experiment_path',
-                   help='Path to the directory containing the experiment.\n'
-                        '(Should contain a model subdir with a file \n'
-                        'parameters.json and a file best_model_state.pkl.)')
-    p.add_argument('hdf5_file',
-                   help="Path to the hdf5 file.")
-    p.add_argument('subj_id',
-                   help="Subject id to use for tractography.\n"
-                        "Will also be added as prefix to add to the "
-                        "out_tractogram name.")
-    p.add_argument('input_group',
-                   help="Input volume group name.")
-    p.add_argument('input_streamlines',
-                   help="A small tractogram; a bundle of streamlines whose "
-                        "attention mask we will average.")
-    p.add_argument('--subset', default='testing',
-                   choices=['training', 'validation', 'testing'],
-                   help="Subject id should probably come come the "
-                        "'testing' set but you can\n modify this to "
-                        "'training' or 'validation'.")
-    sub = p.add_mutually_exclusive_group()
-    sub.add_argument(
-        '--step_size', type=float, metavar='s',
-        help="Resample all streamlines to this step size (in mm). "
-             "Default = None.")
-    sub.add_argument(
-        '--compress', action='store_true',
-        help="If set, compress streamlines. Default = Not set.")
-    p.add_argument('--average_heads', action='store_true',
-                   help="If set, average heads when visualising outputs")
-
-    p.add_argument(
-        '--out_dir',
-        help="Output directory where to save the html file, as well as a \n"
-             "copy of the jupyter notebook and config file.\n"
-             "Default: experiment_path/visu")
-    p.add_argument(
-        '--out_prefix', default='',
-        help="Prefix of the three output files. Names are tt*_visu.html, \n"
-             "tt*_visu.ipynb and tt*_visu.config.")
-    p.add_argument(
-        '--run_locally', action='store_true',
-        help="Run locally. Output will probably not show, but this is useful "
-             "to debug.")
-
-    add_reference_arg(p)
-    add_bbox_arg(p)
-    add_logging_arg(p)
-    add_overwrite_arg(p)
-
-    return p
 
 
 def load_data_run_model(parser, args, model: AbstractTransformerModel,

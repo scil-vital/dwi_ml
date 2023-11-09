@@ -19,6 +19,7 @@ tqdm==4.64.*
 comet-ml==3.21.*
 contextlib2==21.6.0
 jupyterlab>=3.6.2  # For transformer's visu
+jupyter>=1.0.0
 IProgress>=0.4     # For jupyter with tdqm
 nested_lookup==0.2.25  # For lists management
 

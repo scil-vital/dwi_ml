@@ -43,7 +43,7 @@ def main():
         # 1) Finding the jupyter notebook
         dwi_ml_dir = dirname(dirname(__file__))
         ipynb_filename = os.path.join(
-            dwi_ml_dir, 'dwi_ml/visu/projects/tt_visualize_weights.ipyb')
+            dwi_ml_dir, 'dwi_ml/testing/projects/tt_visualize_weights.ipynb')
         if not os.path.isfile(ipynb_filename):
             raise ValueError(
                 "We could not find the jupyter notebook file. Probably a "
@@ -103,10 +103,10 @@ def main():
                   "   B) Hit play."
                   .format(out_config_file))
             print("3) You may try to specify which kernel (i.e. which python "
-                  "version) \nyour jupyter notebooks should run on:\n"
-                  ">> (workon your favorite python environment)\n"
-                  ">> pip install ipykernel\n"
-                  ">> python -m ipykernel install --user\n")
+                  "version) your jupyter notebooks should run on:\n"
+                  "   >> (workon your favorite python environment)\n"
+                  "   >> pip install ipykernel\n"
+                  "   >> python -m ipykernel install --user\n")
 
         # 6. Delete config file.
         os.remove(config_filename)

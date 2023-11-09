@@ -122,7 +122,7 @@ def test_execution(script_runner, experiments_path):
     logging.info("************ TESTING VISUALIZE WEIGHTS ************")
     in_sft = os.path.join(data_dir, 'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
     ret = script_runner.run(
-        'tto_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
+        'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
         input_group, in_sft, '--step_size', '0.5',
         '--subset', 'training', '--logging', 'INFO', '--run_locally')
     assert ret.success

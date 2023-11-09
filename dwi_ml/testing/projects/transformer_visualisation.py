@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
+import argparse
 import logging
 import os
-import shutil
-import subprocess
 
 import torch
 
-from scilpy.io.utils import assert_outputs_exist
+from scilpy.io.fetcher import get_home as get_scilpy_folder
+from scilpy.io.utils import add_reference_arg, add_bbox_arg, add_overwrite_arg, assert_inputs_exist
 
+from dwi_ml.io_utils import verify_which_model_in_path, add_logging_arg
 from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel
 
 # Currently, with our quite long sequences compared to their example, this
 # is a bit ugly.
-from dwi_ml.testing.projects.transformer_visualisation_utils import \
+from dwi_ml.testing.projects.transformer_visualisation_submethods import \
     load_data_run_model, tto_show_head_view, tto_show_model_view, \
     tto_prepare_tokens, ttst_prepare_tokens, ttst_show_model_view, \
     ttst_show_head_view
@@ -22,67 +23,101 @@ NORMALIZE_WEIGHTS = True
 INFORMATIVE_TOKENS = False
 
 
-def visualize_weights_using_jupyter(ipynb_filename, config_filename,
-                                    parser, args, argv):
-    # 1. Test that we correctly found the ipynb file.
-    if not os.path.isfile(ipynb_filename):
-        raise ValueError(
-            "We could not find the jupyter notebook file. Probably a "
-            "coding error on our side. We expected it to be in {}"
-            .format(ipynb_filename))
+def get_config_filename():
+    # We choose to add it in the hidden .scilpy folder in our home.
+    # (Where our test data also is).
+    hidden_folder = get_scilpy_folder()
+    config_filename = os.path.join(
+        hidden_folder, 'ipynb_tt_visualize_weights.config')
+    return config_filename
 
-    # 2. Verify that output dir exists but not output files.
-    if args.out_dir is None:
-        args.out_dir = os.path.join(args.experiment_path, 'visu')
-    out_html_filename = args.out_prefix + 'tto_visu.html'
-    out_html_file = os.path.join(args.out_dir, out_html_filename)
-    out_ipynb_file = os.path.join(
-        args.out_dir, args.out_prefix + 'tto_visu.ipynb')
-    out_config_file = os.path.join(
-        args.out_dir, args.out_prefix + 'tto_visu.config')
 
-    if not os.path.isdir(args.out_dir):
-        os.mkdir(args.out_dir)
-    assert_outputs_exist(parser, args,
-                         [out_html_file, out_ipynb_file, out_config_file])
+def build_argparser_transformer_visu():
+    """
+    This needs to be in a module, to be imported in the jupyter notebook. Do
+    not put in the script file.
+    """
+    p = argparse.ArgumentParser(
+        formatter_class=argparse.RawTextHelpFormatter,
+        description=__doc__)
 
-    # 3. Save the args to this script in a config file, to be read again
-    # by the notebook in a new argparser instance.
-    if os.path.isfile(config_filename):  # In case a previous call failed.
-        os.remove(config_filename)
-    with open(config_filename, 'w') as f:
-        f.write(' '.join(argv))
+    p.add_argument('experiment_path',
+                   help='Path to the directory containing the experiment.\n'
+                        '(Should contain a model subdir with a file \n'
+                        'parameters.json and a file best_model_state.pkl.)')
+    p.add_argument('hdf5_file',
+                   help="Path to the hdf5 file.")
+    p.add_argument('subj_id',
+                   help="Subject id to use for tractography.\n"
+                        "Will also be added as prefix to add to the "
+                        "out_tractogram name.")
+    p.add_argument('input_group',
+                   help="Input volume group name.")
+    p.add_argument('input_streamlines',
+                   help="A small tractogram; a bundle of streamlines whose "
+                        "attention mask we will average.")
+    p.add_argument('--subset', default='testing',
+                   choices=['training', 'validation', 'testing'],
+                   help="Subject id should probably come come the "
+                        "'testing' set but you can\n modify this to "
+                        "'training' or 'validation'.")
+    sub = p.add_mutually_exclusive_group()
+    sub.add_argument(
+        '--step_size', type=float, metavar='s',
+        help="Resample all streamlines to this step size (in mm). "
+             "Default = None.")
+    sub.add_argument(
+        '--compress', action='store_true',
+        help="If set, compress streamlines. Default = Not set.")
+    p.add_argument('--average_heads', action='store_true',
+                   help="If set, average heads when visualising outputs")
 
-    # 4. Copy files locally
-    shutil.copyfile(ipynb_filename, out_ipynb_file)
-    shutil.copyfile(config_filename, out_config_file)
+    p.add_argument(
+        '--out_dir', metavar='d',
+        help="Output directory where to save the html file, as well as a \n"
+             "copy of the jupyter notebook and config file.\n"
+             "Default: experiment_path/visu")
+    p.add_argument(
+        '--out_prefix', default='', metavar='name_',
+        help="Prefix of the three output files. Names are tt*_visu.html, \n"
+             "tt*_visu.ipynb and tt*_visu.config.")
+    p.add_argument(
+        '--run_locally', action='store_true',
+        help="Run locally. Output will probably not show, but this is useful "
+             "to debug. \nWithout this argument, we will run through jupyter "
+             "to allow visualizing the results with Bert.")
 
-    # 5. Launching.
-    print("\n\n"
-          "********\n"
-          "* We will run the jupyter notebook and save its result "
-          "as a html file:\n"
-          "* {}\n"
-          "********\n\n".format(out_html_file))
-    try:
-        command = 'jupyter nbconvert --output-dir={:s} --output={} ' \
-                  '--execute {:s} --to html' \
-            .format(args.out_dir, out_html_filename, ipynb_filename)
-        print("Running command:\n\n>>{}\n\n".format(command))
-        subprocess.run(command, shell=True, check=True)
-    except subprocess.CalledProcessError:
-        print("JUPYTER NOTEBOOK EXCEUTION WAS NOT SUCCESSFULL.")
-        print("You may try to use --run_locally to debug.")
-        print("You may try to run yourself the notebook copied in "
-              "--out_dir using the config file.")
-        print("You may try to specify which kernel (i.e. which python "
-              "version) \nyour jupyter notebooks should run on:\n"
-              ">> (workon your favorite python environment)\n"
-              ">> pip install ipykernel\n"
-              ">> python -m ipykernel install --user\n")
+    add_reference_arg(p)
+    add_bbox_arg(p)
+    add_logging_arg(p)
+    add_overwrite_arg(p)
 
-    # 6. Delete config file.
-    os.remove(config_filename)
+    return p
+
+
+def tt_visualize_weights(args, parser):
+    # Doing again the verification; in case this is run from the jupyter
+    # notebook from an old config file.
+    assert_inputs_exist(parser, [args.hdf5_file, args.input_streamlines],
+                        args.reference)
+    if not os.path.isdir(args.experiment_path):
+        parser.error("Experiment {} not found.".format(args.experiment_path))
+
+    logging.info("Verifying model type.")
+    model_dir = os.path.join(args.experiment_path, 'best_model')
+    model_type = verify_which_model_in_path(model_dir)
+    print("Model's class: {}".format(model_type))
+    if model_type == 'OriginalTransformerModel':
+        visualize_weights = tto_visualize_weights
+        jupyter = 'tto_visualize_weights.ipynb'
+    elif model_type == 'TransformerSrcAndTgtModel':
+        visualize_weights = ttst_visualize_weights
+        jupyter = 'ttst_visualize_weights.ipynb'
+    elif model_type == 'TransformerSrcOnlyModel':
+        raise NotImplementedError("Not ready yet for this model.")
+    else:
+        raise ValueError("Model type not a recognized transformer Transformer"
+                         "({})".format(model_type))
 
 
 def tto_visualize_weights(args, parser):

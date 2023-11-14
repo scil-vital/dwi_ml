@@ -17,7 +17,6 @@ from dwi_ml.testing.projects.transformer_visualisation_submethods import (
     reformat_attention, tto_show_head_view, tto_show_model_view,
     ttst_show_model_view, ttst_show_head_view)
 
-NORMALIZE_WEIGHTS = True
 INFORMATIVE_TOKENS = False
 
 
@@ -157,13 +156,13 @@ def tto_visualize_weights(weights, streamline1, resample_attention: int,
 
     logging.info("   Preparing encoder attention")
     encoder_attention, ind = reformat_attention(
-        encoder_attention, this_seq_len, NORMALIZE_WEIGHTS, resample_attention)
+        encoder_attention, this_seq_len, resample_attention)
     logging.info("   Preparing decoder attention")
     decoder_attention, _ = reformat_attention(
-        decoder_attention, this_seq_len, NORMALIZE_WEIGHTS, resample_attention)
+        decoder_attention, this_seq_len, resample_attention)
     logging.info("   Preparing cross-attention attention")
     cross_attention, _ = reformat_attention(
-        cross_attention, this_seq_len, NORMALIZE_WEIGHTS, resample_attention)
+        cross_attention, this_seq_len, resample_attention)
 
     encoder_tokens = prepare_encoder_tokens(streamline1, add_eos, ind)
     decoder_tokens = prepare_decoder_tokens(streamline1, ind)
@@ -183,7 +182,7 @@ def encoder_only_visualize_weights(
                  "model)")
 
     encoder_attention, ind = reformat_attention(
-        encoder_attention, this_seq_len, NORMALIZE_WEIGHTS, resample_attention)
+        encoder_attention, this_seq_len, resample_attention)
 
     encoder_tokens = prepare_encoder_tokens(streamline1, add_eos, ind)
 

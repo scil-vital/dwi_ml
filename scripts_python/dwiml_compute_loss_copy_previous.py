@@ -15,17 +15,19 @@ import argparse
 import logging
 import os
 
+import numpy as np
+from matplotlib import pyplot as plt
 import torch.nn.functional
-
-from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.projects.copy_previous_dirs import CopyPrevDirModel
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args, \
     check_args_direction_getter
-from dwi_ml.testing.projects.copy_prev_dirs_tester import TesterCopyPrevDir
-from dwi_ml.testing.visu_loss import \
-    prepare_args_visu_loss, pick_a_few, run_visu_save_colored_displacement
+from dwi_ml.testing.testers import Tester, load_sft_from_hdf5
+from dwi_ml.testing.utils import add_args_testing_subj_hdf5
+from dwi_ml.testing.visu_loss import (run_visu_save_colored_displacement,
+                                      run_visu_save_colored_sft)
+from dwi_ml.testing.visu_loss_utils import prepare_args_visu_loss, visu_checks
 
 CHOICES = ['cosine-regression', 'l2-regression', 'sphere-classification',
            'smooth-sphere-classification', 'cosine-plus-l2-regression']
@@ -34,16 +36,14 @@ CHOICES = ['cosine-regression', 'l2-regression', 'sphere-classification',
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    prepare_args_visu_loss(p, use_existing_experiment=False)
-    p.add_argument('streamlines_group',
-                   help="Streamline group to use as SFT for the given "
-                        "subject in the hdf5.")
+    add_args_testing_subj_hdf5(p, ask_input_group=False,
+                               ask_streamlines_group=True)
+    prepare_args_visu_loss(p)
     p.add_argument('--skip_first_point', action='store_true',
                    help="If set, do not compute the loss at the first point "
                         "of the streamline. \nElse (default) compute it with "
                         "previous dir = 0.")
     add_resample_or_compress_arg(p)
-
     add_direction_getter_args(p)
 
     return p
@@ -54,29 +54,12 @@ def main():
     args = p.parse_args()
     logging.getLogger().setLevel(level=args.logging)
 
-    if args.out_displacement_sft and \
-            not (args.pick_at_random or args.pick_best_and_worst or
-                 args.pick_idx):
-        p.error("You must select at least one of 'pick_at_random', "
-                "'pick_best_and_worst' and 'pick_idx'.")
-
-    # Verify output names
-    out_files = [args.out_colored_sft]
-    colorbar_name, best_sft_name, worst_sft_name = (None, None, None)
-    if args.out_colored_sft is not None:
-        base_name, _ = os.path.splitext(os.path.basename(args.out_colored_sft))
-        file_dir = os.path.dirname(args.out_colored_sft)
-
-        colorbar_name = (os.path.join(file_dir, base_name + '_colorbar.png')
-                         if args.out_colored_sft is not None else None)
-        best_sft_name = (os.path.join(file_dir, base_name + '_best.trk')
-                         if args.save_best_and_worst is not None else None)
-        worst_sft_name = (os.path.join(file_dir, base_name + '_worst.trk')
-                          if args.save_best_and_worst is not None else None)
-        out_files += [colorbar_name, best_sft_name, worst_sft_name]
-
-    assert_inputs_exist(p, args.hdf5_file)
-    assert_outputs_exist(p, args, [], out_files)
+    # Checks
+    if args.out_dir is None:
+        p.error("Please specify out_dir, as there is not experiment path for "
+                "this fake experiment.")
+    (colored_sft_name, colorbar_name, colored_best_name,
+     colored_worst_name, displacement_sft_name) = visu_checks(args, p)
 
     # Device
     device = (torch.device('cuda') if torch.cuda.is_available() and
@@ -86,32 +69,61 @@ def main():
     dg_args = check_args_direction_getter(args)
     model = CopyPrevDirModel(args.dg_key, dg_args, args.skip_first_point,
                              args.step_size, args.compress)
+    model.set_context('visu')
 
-    # 2. Compute loss
-    tester = TesterCopyPrevDir(model, args.streamlines_group,
-                               args.batch_size, device)
-    sft = tester.load_and_format_data(args.subj_id, args.hdf5_file,
-                                      args.subset)
+    # 2. Load data through the tester
+    tester = Tester(model, args.subj_id, args.hdf5_file, args.subset,
+                    args.batch_size, device)
 
-    if (args.out_displacement_sft and not args.out_colored_sft and
-            not args.pick_best_and_worst):
-        # Picking a few streamlines now to avoid running model on all
-        # streamlines for no reason.
-        sft, _ = pick_a_few(sft, [], [], args.pick_at_random,
-                            args.pick_best_and_worst, args.pick_idx)
+    # 3. Load SFT. Right now from hdf5. Could offer option to load from disk.
+    sft = load_sft_from_hdf5(args.subj_id, args.hdf5_file, args.subset,
+                             args.streamlines_group)
 
-    logging.info("Running model to compute loss")
-    outputs, losses = tester.run_model_on_sft(sft)
+    # (Subsample if possible)
+    if not (args.save_colored_tractogram or args.save_colored_best_and_worst
+            or args.displacement_on_best_and_worst):
+        # Only saving: displacement_on_nb.
+        # Avoid running on all streamlines for no reason.
+        chosen_streamlines = np.random.randint(0, len(sft),
+                                               size=args.displacement_on_nb)
+        sft = sft[chosen_streamlines]
 
-    compute_loss_only = (args.out_colored_sft is None and
-                         args.out_displacement_sft is None and
-                         args.save_best_and_worst is None)
-    if compute_loss_only:
-        return
+    # 4. Run model
+    logging.info("Running model on {} streamlines to compute loss"
+                 .format(len(sft)))
+    sft, outputs, losses, mean_loss_per_line = tester.run_model_on_sft(
+        sft, compute_loss=True)
 
-    run_visu_save_colored_displacement(args, model, losses, outputs, sft,
-                                       colorbar_name, best_sft_name,
-                                       worst_sft_name)
+    if not model.direction_getter.add_eos:
+        # We will not get a loss value nor a noutput for the last point of the
+        # streamlines. Removing from sft.
+        sft.streamlines = [line[:-1] for line in sft.streamlines]
+    assert len(losses[0]) == len(sft.streamlines[0]), \
+        ("Expecting one loss per point, for each streamline, but got {} for "
+         "streamline 0, of len {}. Error in our code?"
+         .format(len(losses[0]), len(sft.streamlines[0])))
+
+    # 5. Colored SFT
+    if args.save_colored_tractogram or args.save_colored_best_and_worst:
+        run_visu_save_colored_sft(
+            losses, mean_loss_per_line, model, sft,
+            save_whole_tractogram=args.save_colored_tractogram,
+            colored_sft_name=colored_sft_name,
+            save_separate_best_and_worst=args.save_colored_best_and_worst,
+            best_worst_nb=args.best_and_worst_nb,
+            best_sft_name=colored_best_name, worst_sft_name=colored_worst_name,
+            colorbar_name=colorbar_name, colormap=args.colormap,
+            min_range=args.min_range, max_range=args.max_range)
+
+    # 6. Displacement.
+    if args.save_displacement:
+        run_visu_save_colored_displacement(
+            model, outputs, mean_loss_per_line, sft,
+            displacement_sft_name, args.displacement_on_nb,
+            args.displacement_on_best_and_worst)
+
+    if args.show_colorbar:
+        plt.show()
 
 
 if __name__ == '__main__':

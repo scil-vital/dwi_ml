@@ -52,8 +52,5 @@ class CopyPrevDirModel(ModelWithDirectionGetter):
         if self.skip_first_point:
             target_streamlines = [t[1:] for t in target_streamlines]
 
-        if self._context == 'visu':
-            return self.direction_getter.compute_loss(
-                model_outputs, target_streamlines, average_results)
-        else:
-            raise NotImplementedError
+        return self.direction_getter.compute_loss(
+            model_outputs, target_streamlines, average_results)

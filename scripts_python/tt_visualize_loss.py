@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 import argparse
 import logging
-import os
+import os.path
 
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
 
-from dwi_ml.io_utils import add_arg_existing_experiment_path
-from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+
+from dwi_ml.io_utils import (add_arg_existing_experiment_path,
+                             verify_which_model_in_path)
+from dwi_ml.models.projects.transformers_utils import find_transformer_class
 from dwi_ml.testing.testers import TesterOneInput, load_sft_from_hdf5
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 from dwi_ml.testing.visu_loss import (run_visu_save_colored_displacement,
@@ -49,10 +51,12 @@ def main():
     device = (torch.device('cuda') if torch.cuda.is_available() and
               args.use_gpu else None)
 
-    # 1. Load model
+    # 1. Find which model and load
     logging.debug("Loading model.")
-    model = Learn2TrackModel.load_model_from_params_and_state(
-        args.experiment_path + '/best_model', log_level=sub_logger_level)
+    model_dir = os.path.join(args.experiment_path, 'best_model')
+    model_type = verify_which_model_in_path(model_dir)
+    cls = find_transformer_class(model_type)
+    model = cls.load_model_from_params_and_state(model_dir, sub_logger_level)
     model.set_context('visu')
 
     # 2. Load data through the tester
@@ -77,11 +81,19 @@ def main():
     # 4. Run model
     logging.info("Running model on {} streamlines to compute loss"
                  .format(len(sft)))
+
+    nb_before = len(sft)
     sft, outputs, losses, mean_loss_per_line = tester.run_model_on_sft(
         sft, compute_loss=True)
 
+    assert len(sft) == nb_before, \
+        "SFT has been modified, and this is not expected. Error in our code?"
+    assert len(losses) == len(sft), \
+        ("Expecting one loss tensor for each of our {} streamlines, got {}. "
+         "Error in our code?".format(len(sft), len(outputs)))
+
     if not model.direction_getter.add_eos:
-        # We will not get a loss value nor an output for the last point of the
+        # We will not get a loss value nor a output for the last point of the
         # streamlines. Removing from sft.
         sft.streamlines = [line[:-1] for line in sft.streamlines]
     assert len(losses[0]) == len(sft.streamlines[0]), \

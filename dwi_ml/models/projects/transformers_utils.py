@@ -2,7 +2,8 @@
 from dwi_ml.models.positional_encoding import (
     keys_to_positional_encodings)
 from dwi_ml.models.projects.transformer_models import (
-    AbstractTransformerModel)
+    AbstractTransformerModel, OriginalTransformerModel,
+    TransformerSrcAndTgtModel, TransformerSrcOnlyModel)
 
 sphere_choices = ['symmetric362', 'symmetric642', 'symmetric724',
                   'repulsion724', 'repulsion100', 'repulsion200']
@@ -118,3 +119,20 @@ def add_transformers_model_args(p):
 
     g = p.add_argument_group("Output")
     AbstractTransformerModel.add_args_tracking_model(g)
+
+
+def find_transformer_class(model_type):
+    """
+    model_type: returned by verify_which_model_in_path.
+    """
+    if model_type == 'OriginalTransformerModel':
+        model_cls = OriginalTransformerModel
+    elif model_type == 'TransformerSrcAndTgtModel':
+        model_cls = TransformerSrcAndTgtModel
+    elif model_type == 'TransformerSrcOnlyModel':
+        model_cls = TransformerSrcOnlyModel
+    else:
+        raise ValueError("Model type is not a recognized Transformer"
+                         "({})".format(model_type))
+
+    return model_cls

@@ -28,7 +28,7 @@ def test_help_option(script_runner):
     ret = script_runner.run('tt_track_from_model.py', '--help')
     assert ret.success
 
-    ret = script_runner.run('tto_visualize_loss.py', '--help')
+    ret = script_runner.run('tt_visualize_loss.py', '--help')
     assert ret.success
 
 
@@ -109,20 +109,28 @@ def test_execution(script_runner, experiments_path):
     assert ret.success
 
     # Test visu loss
-    out_tractogram = os.path.join(experiments_path, 'colored_tractogram.trk')
-    out_displacement = os.path.join(experiments_path, 'displacement.trk')
-    ret = script_runner.run('tto_visualize_loss.py', whole_experiment_path,
-                            hdf5_file, subj_id, '--subset', 'training',
-                            '--save_colored_tractogram', out_tractogram,
-                            '--save_displacement', out_displacement,
+    prefix = 'fornix_'
+    ret = script_runner.run('tt_visualize_loss.py', whole_experiment_path,
+                            hdf5_file, subj_id, input_group_name,
+                            streamline_group_name, '--out_prefix', prefix,
+                            '--subset', 'training', '--batch_size', '100',
+                            '--save_colored_tractogram',
+                            '--save_colored_best_and_worst',
+                            '--save_displacement',
                             '--min_range', '-1', '--max_range', '1',
-                            '--pick_at_random')
+                            '--displacement_on_nb', '1',
+                            '--displacement_on_best_and_worst')
     assert ret.success
 
-    logging.info("************ TESTING VISUALIZE WEIGHTS ************")
-    in_sft = os.path.join(data_dir, 'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
+    # Test visu weights
+    in_sft = os.path.join(data_dir,
+                          'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
+    prefix = 'fornix_'
     ret = script_runner.run(
         'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
-        input_group, in_sft, '--step_size', '0.5',
-        '--subset', 'training', '--logging', 'INFO', '--run_locally')
+        input_group, in_sft, '--out_prefix', prefix,
+        '--visu_type', 'as_matrix', 'colored_sft', 'bertviz_locally',
+        '--subset', 'training', '--logging', 'INFO',
+        '--resample_attention', '15', '--rescale')
     assert ret.success
+

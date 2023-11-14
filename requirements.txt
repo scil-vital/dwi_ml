@@ -19,7 +19,7 @@ requests==2.28.*
 # -------
 # Other important dependencies
 # -------
-bertviz~=1.4.0  # For transformer's visu
+bertviz==1.4.0  # For transformer's visu
 torch==1.13.*
 tqdm==4.64.*
 comet-ml>=3.22.0
@@ -29,6 +29,7 @@ jupyter>=1.0.0
 IProgress>=0.4     # For jupyter with tdqm
 nested_lookup==0.2.25  # For lists management
 pynvml>=11.5.0
+scikit-image
 
 # -------
 # Necessary but should be installed with scilpy (Last check: 01/2024):

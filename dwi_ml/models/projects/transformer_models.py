@@ -265,7 +265,14 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         return params
 
     def set_context(self, context):
-        assert context in ['training', 'validation', 'tracking', 'visu']
+        # Training, validation: Used by trainer. Nothing special.
+        # Tracking: Used by tracker. Returns only the last point.
+        #     Preparing_backward: Used by tracker. Nothing special, but does
+        #     not return only the last point.
+        # Visu: Nothing special. Used by tester.
+        # Visu_weights: Returns the weights too.
+        assert context in ['training', 'validation', 'tracking',
+                           'visu', 'visu_weights']
         self._context = context
 
     def _generate_future_mask(self, sz):
@@ -326,7 +333,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
 
     def forward(self, inputs: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
-                return_weights=False,
                 average_heads=False):
         """
         Params
@@ -345,8 +351,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
             adequately masked to hide future positions. The last direction is
             not used.
             - As target during training. The whole sequence is used.
-        return_weights: bool
-            If true, returns the weights of the attention layers.
         average_heads: bool
             If return_weights, you may choose to average the weights from
             different heads together.
@@ -359,10 +363,14 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
                     [total nb points all streamlines, out size]
                 - During tracking: [nb streamlines * 1, out size]
         weights: Tuple
-            If return_weights: The weights (depending on the child model)
+            If context is 'visu': The weights (depending on the child model)
         """
-        if self._context is None:
+        if self.context is None:
             raise ValueError("Please set context before usage.")
+
+        return_weights = False
+        if self.context == 'visu_weights':
+            return_weights = True
 
         # ----------- Checks
         if input_streamlines is not None:
@@ -425,7 +433,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         #         input size to dg  = [nb points total, d_model]
         #         final output size = [nb points total, regression or
         #                                           classification output size]
-        if self._context == 'tracking':
+        if self.context == 'tracking':
             # No need to actually unpad, we only take the last unpadded point
             # Ignoring both the beginning of the streamline (redundant from
             # previous tracking step) and the end of the streamline (padded
@@ -473,7 +481,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
             outputs = constant_output + outputs
 
         # Splitting back. During tracking: only one point per streamline.
-        if self._context != 'tracking':
+        if self.context != 'tracking':
             outputs = list(torch.split(outputs, list(input_lengths)))
 
         if return_weights:
@@ -505,6 +513,27 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
         inputs = self.input_embedding_layer(inputs)
         return inputs
+
+    def merge_batches_outputs(self, all_outputs, new_batch, device=None):
+        if self.context == 'visu_weights':
+            new_outputs, new_weights = new_batch
+
+            if all_outputs is None:
+                outputs, weights = None, None
+            else:
+                outputs, weights = all_outputs
+            new_outputs = super().merge_batches_outputs(outputs, new_outputs,
+                                                        device)
+            new_weights = self.merge_batches_weights(weights, new_weights,
+                                                     device)
+            return new_outputs, new_weights
+
+        else:
+            # No weights.
+            return super().merge_batches_outputs(all_outputs, new_batch)
+
+    def merge_batches_weights(self, weights, new_weights, device):
+        raise NotImplementedError
 
 
 class TransformerSrcOnlyModel(AbstractTransformerModel):
@@ -563,6 +592,16 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
             return_weights=return_weights, average_heads=average_heads)
 
         return outputs, (sa_weights,)
+
+    def merge_batches_weights(self, weights, new_weights, device):
+        # weights is a single attention tensor (encoder): a tuple of 1.
+        new_weights = [a.to(device) for a in new_weights[0]]
+
+        if weights is None:
+            return (new_weights,)
+        else:
+            weights.extend(new_weights)
+            return (weights,)
 
 
 class AbstractTransformerModelWithTarget(AbstractTransformerModel):
@@ -854,6 +893,22 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
                 return_weights=return_weights, average_heads=average_heads)
         return outputs, (sa_weights_encoder, sa_weights_decoder, mha_weights)
 
+    def merge_batches_weights(self, weights, new_weights, device):
+        # weights is a Tuple[encoder, decoder, cross]
+        new_weights_e, new_weights_d, new_weights_c = new_weights
+        new_weights_e = [a.to(device) for a in new_weights_e]
+        new_weights_d = [a.to(device) for a in new_weights_d]
+        new_weights_c = [a.to(device) for a in new_weights_c]
+
+        if weights is None:
+            return new_weights_e, new_weights_d, new_weights_c
+        else:
+            weights_e, weights_d, weights_c = weights
+            weights_e.extend(new_weights_e)
+            weights_d.extend(new_weights_d)
+            weights_c.extend(new_weights_c)
+            return weights_e, weights_d, weights_c
+
 
 class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
     """
@@ -927,3 +982,13 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
             return_weights=return_weights, average_heads=average_heads)
 
         return outputs, (sa_weights,)
+
+    def merge_batches_weights(self, weights, new_weights, device):
+        # weights is a single attention tensor (encoder)
+        new_weights = [a.to(device) for a in new_weights]
+
+        if weights is None:
+            return new_weights
+        else:
+            weights.extend(new_weights)
+            return weights

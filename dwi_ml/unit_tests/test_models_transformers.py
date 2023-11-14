@@ -68,15 +68,18 @@ def _run_original_model(model):
     logging.debug("\n****** Training")
     model.set_context('training')
     # Testing forward. (Batch size = 2)
-    output, weights = model(batch_x_various_lengths, batch_s_various_lengths,
-                            return_weights=True)
+    output = model(batch_x_various_lengths, batch_s_various_lengths)
     assert len(output) == nb_streamlines
     assert output[0].shape[1] == 3  # Here, regression, should output x, y, z
+    assert not isnan(output[0][0, 0])
+
+    # Testing forward during visu context: will return weights
+    model.set_context('visu_weights')
+    _, weights = model(batch_x_various_lengths, batch_s_various_lengths)
     assert len(weights) == 3  # Should get weights for encoder self-attention,
     #  decoder self-attention + multi-head attention.
     for weight in weights:
         assert weight is not None
-    assert not isnan(output[0][0, 0])
 
     # Testing tracking
     # Using batch with same lengths: mimicking forward tracking.
@@ -94,14 +97,17 @@ def _run_ttst_model(model):
     # Testing forward.
     logging.debug("\n****** Training")
     model.set_context('training')
-    output, weights = model(batch_x_various_lengths, batch_s_various_lengths,
-                            return_weights=True)
+    output = model(batch_x_various_lengths, batch_s_various_lengths)
     assert len(output) == nb_streamlines
     # Here, classification, output should be our sphere's size (724) + 1 for
     # EOS.
     assert output[0].shape[1] == 725
-    assert len(weights) == 1  # Should get weights for encoder self-attention
     assert not isnan(output[0][0, 0])
+
+    # Testing forward during visu context: will return weights
+    model.set_context('visu_weights')
+    _, weights = model(batch_x_various_lengths, batch_s_various_lengths)
+    assert len(weights) == 1  # Should get weights for encoder self-attention
     for weight in weights:
         assert weight is not None
 
@@ -121,11 +127,15 @@ def _run_tts_model(model):
     # Testing forward.
     logging.debug("\n****** Training")
     model.set_context('training')
-    output, weights = model(batch_x_various_lengths, None, return_weights=True)
+    output = model(batch_x_various_lengths, None)
     assert len(output) == nb_streamlines
     assert output[0].shape[1] == 3  # Here, regression, should output x, y, z
-    assert len(weights) == 1  # Should get weights for encoder self-attention
     assert not isnan(output[0][0, 0])
+
+    # Testing forward during visu context: will return weights
+    model.set_context('visu_weights')
+    _, weights = model(batch_x_various_lengths, None)
+    assert len(weights) == 1  # Should get weights for encoder self-attention
     for weight in weights:
         assert weight is not None
 

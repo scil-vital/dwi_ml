@@ -130,7 +130,7 @@ def reformat_attention(attention, this_seq_len, resample_attention: int):
         # Right now shape of attention is:
         #     [nb_streamlines=1, nb_heads, this_s_len, this_s_len]
         # (nb_heads = 1 if average_heads).
-        
+
         # Normalizing weight. Without it, we rapidly see nothing!
         # Easier to see when we normalize on the x axis.
 

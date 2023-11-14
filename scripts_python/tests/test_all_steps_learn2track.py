@@ -121,19 +121,22 @@ def test_visu(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     # Test visu loss
-    out_tractogram = os.path.join(experiments_path, 'colored_tractogram.trk')
-    out_displacement = os.path.join(experiments_path, 'displacement.trk')
+    prefix = os.path.join(experiments_path, 'test_visu')
     ret = script_runner.run('l2t_visualize_loss.py', whole_experiment_path,
-                            hdf5_file, subj_id, '--subset', 'training',
-                            '--save_colored_tractogram', out_tractogram,
-                            '--save_displacement', out_displacement,
+                            hdf5_file, subj_id, input_group_name,
+                            streamline_group_name, prefix,
+                            '--subset', 'training',
+                            '--save_colored_tractogram',
+                            '--save_colored_best_and_worst',
+                            '--save_displacement', '--batch_size', '100',
                             '--min_range', '-1', '--max_range', '1',
-                            '--pick_at_random')
+                            '--displacement_on_nb', '1',
+                            '--displacement_on_best_and_worst')
     assert ret.success
 
 
 def future_test_training_with_generation_validation(script_runner, experiments_path):
-    # NOT DOING ANYTHING NOW BECAUSE HDF5 DOES NOT CONTAIN A VALIDATION SUBJ!
+    # toDo NOT DOING ANYTHING NOW BECAUSE HDF5 DOES NOT CONTAIN A VALIDATION SUBJ!
 
     if torch.cuda.is_available():
         option = '--use_gpu'

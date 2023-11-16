@@ -4,9 +4,9 @@ from typing import List
 import numpy as np
 import torch
 
-from scilpy.tractograms.uncompress import uncompress
 from scilpy.tractanalysis.tools import \
     extract_longest_segments_from_profile as segmenting_func
+from scilpy.tractanalysis.uncompress import uncompress
 
 # We could try using nan instead of zeros for non-existing previous dirs...
 DEFAULT_UNEXISTING_VAL = torch.zeros((1, 3), dtype=torch.float32)

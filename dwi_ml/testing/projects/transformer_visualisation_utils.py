@@ -10,7 +10,7 @@ from bertviz import model_view, head_view
 
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import add_reference_arg, add_overwrite_arg, add_bbox_arg
-from scilpy.tractograms.streamline_operations import resample_streamlines_step_size
+from scilpy.tracking.tools import resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
 from dwi_ml.io_utils import add_logging_arg

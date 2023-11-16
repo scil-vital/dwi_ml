@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import itertools
-from typing import Union, List
 
 import numpy as np
 import torch

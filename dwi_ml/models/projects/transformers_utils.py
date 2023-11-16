@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.positional_encoding import (
     keys_to_positional_encodings)
 from dwi_ml.models.projects.transformer_models import (
     AbstractTransformerModel)
-from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 
 sphere_choices = ['symmetric362', 'symmetric642', 'symmetric724',
                   'repulsion724', 'repulsion100', 'repulsion200']

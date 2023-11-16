@@ -5,11 +5,8 @@ import os
 import pytest
 import tempfile
 
-import torch
-
 from dwi_ml.unit_tests.utils.expected_values import \
-    (TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_STREAMLINE_GROUPS,
-     TEST_EXPECTED_SUBJ_NAMES)
+    (TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_STREAMLINE_GROUPS)
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
 
 data_dir = fetch_testing_data()

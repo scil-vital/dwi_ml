@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import List, Dict
-
-import torch
+from typing import Dict
 
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 

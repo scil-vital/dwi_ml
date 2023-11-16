@@ -4,7 +4,6 @@ import logging
 import os
 
 import h5py
-import numpy as np
 import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import \

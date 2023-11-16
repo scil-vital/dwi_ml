@@ -27,7 +27,6 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install pytest
-        pip install -r requirements_github.txt
         pip install -e .
 
     - name: Tests

@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Union, List, Tuple
+from typing import Union, List
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import numpy as np

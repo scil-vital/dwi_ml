@@ -5,8 +5,6 @@ import os
 import pytest
 import tempfile
 
-import torch
-
 from dwi_ml.unit_tests.utils.expected_values import \
     (TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_SUBJ_NAMES)
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
@@ -23,7 +21,7 @@ def test_help_option(script_runner):
 
 @pytest.fixture(scope="session")
 def experiments_path(tmp_path_factory):
-    experiments_path = tmp_path_factory.mktemp("experiments_ttst")
+    experiments_path = tmp_path_factory.mktemp("experiments_tts")
     return str(experiments_path)
 
 
@@ -59,25 +57,6 @@ def test_execution(script_runner, experiments_path):
         experiments_path, 'test_experiment', '--new_max_epochs', '2')
     assert ret.success
 
-    # Test training GPU
-    if torch.cuda.is_available():
-        logging.info("************ TESTING TRAINING GPU ************")
-        ret = script_runner.run('tt_train_model.py',
-                                experiments_path, 'tts_test', hdf5_file,
-                                input_group_name, streamline_group_name,
-                                '--model', 'TTO',
-                                '--max_epochs', '1', '--step_size', '1',
-                                '--batch_size_training', '5',
-                                '--batch_size_units', 'nb_streamlines',
-                                '--max_batches_per_epoch_training', '2',
-                                '--max_batches_per_epoch_validation', '1',
-                                '--nheads', '2', '--max_len', str(MAX_LEN),
-                                '--input_embedding_key', 'nn_embedding',
-                                '--input_embedded_size', '6', '--n_layers_e', '1',
-                                '--ffnn_hidden_size', '3', '--logging', 'INFO',
-                                '--use_gpu')
-        assert ret.success
-
     logging.info("************ TESTING TRACKING FROM MODEL ************")
     whole_experiment_path = os.path.join(experiments_path, experiment_name)
     out_tractogram = os.path.join(tmp_dir.name, 'test_tractogram.trk')
@@ -98,10 +77,10 @@ def test_execution(script_runner, experiments_path):
     assert ret.success
 
     # Test visu loss
-    prefix = os.path.join(experiments_path, 'test_visu')
+    prefix = 'fornix_'
     ret = script_runner.run('tt_visualize_loss.py', whole_experiment_path,
                             hdf5_file, subj_id, input_group_name,
-                            streamline_group_name, prefix,
+                            streamline_group_name, '--out_prefix', prefix,
                             '--subset', 'training', '--batch_size', '100',
                             '--save_colored_tractogram',
                             '--save_colored_best_and_worst',
@@ -111,17 +90,16 @@ def test_execution(script_runner, experiments_path):
                             '--displacement_on_best_and_worst')
     assert ret.success
 
-    #logging.info("************ TESTING VISUALIZE WEIGHTS ************")
-    in_sft = os.path.join(data_dir, 'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
-    #ret = script_runner.run(
-    #    'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
-    #    input_group, in_sft, '--visu_type', 'as_matrix', 'bertviz_locally',
-    #    '--subset', 'training', '--logging', 'INFO',
-    #    '--resample_attention', '25')
-    #assert ret.success
-
+    # Test visu weights
+    in_sft = os.path.join(data_dir,
+                          'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
+    prefix = 'fornix_'
     ret = script_runner.run(
         'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
-        input_group, in_sft, '--visu_type', 'colored_sft',
-        '--subset', 'training', '--logging', 'INFO',)
+        input_group, in_sft, '--out_prefix', prefix,
+        '--visu_type', 'as_matrix', 'colored_sft', 'bertviz_locally',
+        '--subset', 'training', '--logging', 'INFO',
+        '--resample_attention', '15', '--rescale')
     assert ret.success
+
+

@@ -34,6 +34,8 @@ def main():
     args = p.parse_args()
 
     # Checks
+    if args.out_dir is None:
+        args.out_dir = os.path.join(args.experiment_path, 'visu_loss')
     (colored_sft_name, colorbar_name, colored_best_name,
      colored_worst_name, displacement_sft_name) = visu_checks(args, p)
     if not os.path.isdir(args.experiment_path):

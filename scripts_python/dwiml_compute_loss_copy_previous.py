@@ -13,6 +13,7 @@ previous direction.
 """
 import argparse
 import logging
+import os
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -54,6 +55,9 @@ def main():
     logging.getLogger().setLevel(level=args.logging)
 
     # Checks
+    if args.out_dir is None:
+        p.error("Please specify out_dir, as there is not experiment path for "
+                "this fake experiment.")
     (colored_sft_name, colorbar_name, colored_best_name,
      colored_worst_name, displacement_sft_name) = visu_checks(args, p)
 

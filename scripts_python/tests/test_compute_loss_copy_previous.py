@@ -26,10 +26,12 @@ def test_running(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
     streamline_group_name = TEST_EXPECTED_STREAMLINE_GROUPS[0]
 
-    prefix = os.path.join(experiments_path, 'test_visu')
+    prefix = 'fornix_'
+    out_dir = os.path.join(experiments_path, 'test_visu')
     ret = script_runner.run('dwiml_compute_loss_copy_previous.py',
                             hdf5_file, subj_id,
-                            streamline_group_name, prefix,
+                            streamline_group_name, '--out_prefix', prefix,
+                            '--out_dir', out_dir,
                             '--subset', 'training',
                             '--save_colored_tractogram',
                             '--save_colored_best_and_worst',

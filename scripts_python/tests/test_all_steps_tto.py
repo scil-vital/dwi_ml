@@ -109,10 +109,10 @@ def test_execution(script_runner, experiments_path):
     assert ret.success
 
     # Test visu loss
-    prefix = os.path.join(experiments_path, 'test_visu')
+    prefix = 'fornix_'
     ret = script_runner.run('tt_visualize_loss.py', whole_experiment_path,
                             hdf5_file, subj_id, input_group_name,
-                            streamline_group_name, prefix,
+                            streamline_group_name, '--out_prefix', prefix,
                             '--subset', 'training', '--batch_size', '100',
                             '--save_colored_tractogram',
                             '--save_colored_best_and_worst',
@@ -122,11 +122,15 @@ def test_execution(script_runner, experiments_path):
                             '--displacement_on_best_and_worst')
     assert ret.success
 
-    logging.info("************ TESTING VISUALIZE WEIGHTS ************")
-    in_sft = os.path.join(data_dir, 'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
+    # Test visu weights
+    in_sft = os.path.join(data_dir,
+                          'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
+    prefix = 'fornix_'
     ret = script_runner.run(
         'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
-        input_group, in_sft, '--visu_type', 'as_matrix', 'colored_sft',
-        'bertviz_locally', '--subset', 'training', '--logging', 'INFO',
-        '--resample_attention', '25')
+        input_group, in_sft, '--out_prefix', prefix,
+        '--visu_type', 'as_matrix', 'colored_sft', 'bertviz_locally',
+        '--subset', 'training', '--logging', 'INFO',
+        '--resample_attention', '15', '--rescale')
     assert ret.success
+

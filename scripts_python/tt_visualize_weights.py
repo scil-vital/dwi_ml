@@ -9,7 +9,7 @@ from scilpy.io.utils import assert_outputs_exist
 
 from dwi_ml.testing.projects.tt_visu_main import (
     build_argparser_transformer_visu, get_config_filename,
-    tt_visualize_weights_main, set_out_dir_and_create_if_not_exists)
+    tt_visualize_weights_main, set_out_dir_visu_weights_and_create_if_not_exists)
 
 
 # Note. To use through jupyter, the file
@@ -54,14 +54,14 @@ def main():
                 .format(raw_ipynb_filename))
 
         # 2) Verify that output dir exists but not the html output files.
-        args = set_out_dir_and_create_if_not_exists(args)
+        args = set_out_dir_visu_weights_and_create_if_not_exists(args)
 
-        out_html_filename = args.out_prefix + 'tt_visu.html'
+        out_html_filename = args.out_prefix + 'tt_bertviz.html'
         out_html_file = os.path.join(args.out_dir, out_html_filename)
         out_ipynb_file = os.path.join(
-            args.out_dir, args.out_prefix + 'tt_visu.ipynb')
+            args.out_dir, args.out_prefix + 'tt_bertviz.ipynb')
         out_config_file = os.path.join(
-            args.out_dir, args.out_prefix + 'tt_visu.config')
+            args.out_dir, args.out_prefix + 'tt_bertviz.config')
         assert_outputs_exist(parser, args,
                              [out_html_file, out_ipynb_file, out_config_file])
 

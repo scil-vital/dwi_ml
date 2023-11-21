@@ -984,11 +984,12 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
         return outputs, (sa_weights,)
 
     def merge_batches_weights(self, weights, new_weights, device):
-        # weights is a single attention tensor (encoder)
-        new_weights = [a.to(device) for a in new_weights]
+        # weights is a single attention tensor (encoder): a tuple of 1.
+        new_weights = [a.to(device) for a in new_weights[0]]
 
         if weights is None:
-            return new_weights
+            return (new_weights,)
         else:
             weights.extend(new_weights)
-            return weights
+            return (weights,)
+

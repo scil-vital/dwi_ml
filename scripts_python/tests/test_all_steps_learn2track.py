@@ -121,10 +121,10 @@ def test_visu(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     # Test visu loss
-    prefix = os.path.join(experiments_path, 'test_visu')
+    prefix = 'fornix_'
     ret = script_runner.run('l2t_visualize_loss.py', whole_experiment_path,
                             hdf5_file, subj_id, input_group_name,
-                            streamline_group_name, prefix,
+                            streamline_group_name, '--out_prefix', prefix,
                             '--subset', 'training',
                             '--save_colored_tractogram',
                             '--save_colored_best_and_worst',

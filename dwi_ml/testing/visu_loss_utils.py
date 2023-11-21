@@ -10,33 +10,39 @@ from dwi_ml.io_utils import add_memory_args, add_logging_arg
 
 def prepare_args_visu_loss(p: ArgumentParser):
 
-    p.add_argument('out_prefix',
-                   help="Prefix for the outputs. Names will be:"
-                        "--save_colored_tractogram: prefix_colored.trk\n"
+    p.add_argument('--out_prefix', metavar='name',
+                   help="Prefix for the outputs. Do not include a path. "
+                        "Suffixes will be:\n"
+                        "--save_colored_tractogram: _colored_all.trk\n"
                         "--save_colored_best_and_worst: "
-                        "prefix_colored_best.trk and "
-                        "prefix_colored_worst.trk\n"
-                        "Any of the two predecent: prefix_colorbar.png\n"
-                        "--save_displacement: prefix_displacement.trk")
+                        "_colored_best.trk and _colored_worst.trk\n"
+                        "   Any of the two predecent: _colorbar.png\n"
+                        "--save_displacement: _displacement.trk")
+    p.add_argument(
+        '--out_dir', metavar='d',
+        help="Output directory where to save the output files.\n"
+             "Default: experiment_path/visu_loss")
 
     # Options
-    p.add_argument('--batch_size', type=int)
+    p.add_argument('--batch_size', metavar='s', type=int,
+                   help="The batch size in number of streamlines.")
     add_memory_args(p)
 
     g = p.add_argument_group("Options to save loss as a colored SFT")
     g.add_argument('--save_colored_tractogram', action='store_true',
                    help="If set, saves the tractogram with the loss per point "
-                        "as a data per point (color).")
+                        "as \ndata_per_point (color).")
     g.add_argument('--save_colored_best_and_worst', action='store_true',
                    help="Save separately the worst x%% and best x%% of "
                         "streamlines. Default: 10%%.\n")
-    g.add_argument('--colormap', default='plasma',
+    g.add_argument('--colormap', default='plasma', metavar='name',
                    help="Select the colormap for colored trk [%(default)s].\n"
                         "Can be any matplotlib cmap.")
-    g.add_argument('--min_range', type=float,
+    g.add_argument('--min_range', type=float, metavar='m',
                    help="Inferior range of the colormap. If any loss is lower"
-                        "than that value, they will be clipped.")
-    g.add_argument('--max_range', type=float)
+                        "than that \nvalue, they will be clipped.")
+    g.add_argument('--max_range', type=float, metavar='M',
+                   help='Superior range.')
     g.add_argument('--best_and_worst_nb', type=int, default=1, metavar='n',
                    help="Number of best and worst streamlines to save.")
     g.add_argument('--show_colorbar', action='store_true',
@@ -80,22 +86,29 @@ def visu_checks(args, parser):
     colored_best_name, colored_worst_name = (None, None)
     displacement_sft_name = None
 
+    if not os.path.isdir(args.out_dir):
+        os.mkdir(args.out_dir)
+
     if args.save_colored_tractogram:
-        colored_sft_name = os.path.join(args.out_prefix + '_colored.trk')
+        colored_sft_name = os.path.join(
+            args.out_dir, args.out_prefix + '_colored_all.trk')
         out_files += [colored_sft_name]
 
     if args.save_colored_best_and_worst:
-        colored_best_name = os.path.join(args.out_prefix + '_best.trk')
-        colored_worst_name = os.path.join(args.out_prefix + '_worst.trk')
+        colored_best_name = os.path.join(
+            args.out_dir, args.out_prefix + '_colored_best.trk')
+        colored_worst_name = os.path.join(
+            args.out_dir, args.out_prefix + '_colored_worst.trk')
         out_files += [colored_best_name, colored_worst_name]
 
     if args.save_colored_tractogram or args.save_colored_best_and_worst:
-        colorbar_name = os.path.join(args.out_prefix + '_colorbar.png')
+        colorbar_name = os.path.join(
+            args.out_dir, args.out_prefix + '_colorbar.png')
         out_files += [colorbar_name]
 
     if args.save_displacement:
-        displacement_sft_name = os.path.join(args.out_prefix +
-                                             '_displacement.trk')
+        displacement_sft_name = os.path.join(
+            args.out_dir, args.out_prefix + '_displacement.trk')
         out_files += [displacement_sft_name]
 
     assert_inputs_exist(parser, args.hdf5_file)

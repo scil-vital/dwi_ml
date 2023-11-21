@@ -5,7 +5,7 @@ import torch
 from matplotlib import pyplot as plt
 
 
-def show_model_view_as_imshow(attention, tokens_x, tokens_y=None):
+def show_model_view_as_imshow(attention, fig_prefix, tokens_x, tokens_y=None):
     torch.set_printoptions(precision=2, sci_mode=False, linewidth=150)
 
     nb_layers = len(attention)
@@ -43,5 +43,7 @@ def show_model_view_as_imshow(attention, tokens_x, tokens_y=None):
                      "DATA IS NORMALIZED TO [0-1] RANGE PER ROW".format(i))
 
         fig.tight_layout()
+        name = fig_prefix + '_layer{}.png'.format(i)
+        print("Saving matrix : {}".format(name))
+        plt.savefig(name)
 
-    plt.show()

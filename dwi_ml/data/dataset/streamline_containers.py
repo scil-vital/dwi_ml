@@ -2,17 +2,15 @@
 """
 We expect the classes here to be used in single_subject_containers
 """
-import logging
-from typing import Tuple, Union, List
+from typing import Tuple, List, Union
 
-from dipy.io.stateful_tractogram import (set_sft_logger_level,
-                                         StatefulTractogram, Space, Origin)
+from dipy.io.stateful_tractogram import StatefulTractogram, Space, Origin
 import h5py
 from nibabel.streamlines import ArraySequence
 import numpy as np
 
 
-def _load_space_from_hdf(hdf_group: h5py.Group):
+def _load_space_attributes_from_hdf(hdf_group: h5py.Group):
     a = np.array(hdf_group.attrs['affine'])
     d = np.array(hdf_group.attrs['dimensions'])
     vs = np.array(hdf_group.attrs['voxel_sizes'])
@@ -25,26 +23,21 @@ def _load_space_from_hdf(hdf_group: h5py.Group):
         space_str = space_str[6:]
     space = Space(space_str)
 
-    if 'origin' in hdf_group.attrs:
-        origin_str = str(hdf_group.attrs['origin']).lower()
-        if origin_str[0:7] == 'origin.':
-            # origin was Origin.something
-            origin_str = origin_str[7:]
-        if origin_str == 'trackvis':
-            origin = Origin.TRACKVIS
-        elif origin_str == 'nifti':
-            origin = Origin.NIFTI
-        else:
-            origin = Origin(origin_str)
-    else:
-        logging.warning("Using an old hdf5! No Origin information saved. "
-                        "Using dipy defaults. Make sure your SFT looks ok.")
+    origin_str = str(hdf_group.attrs['origin']).lower()
+    if origin_str[0:7] == 'origin.':
+        # origin was Origin.something
+        origin_str = origin_str[7:]
+    if origin_str == 'trackvis':
+        origin = Origin.TRACKVIS
+    elif origin_str == 'nifti':
         origin = Origin.NIFTI
+    else:
+        origin = Origin(origin_str)
 
     return space_attributes, space, origin
 
 
-def _load_streamlines_from_hdf(hdf_group: h5py.Group):
+def _load_all_streamlines_from_hdf(hdf_group: h5py.Group):
     streamlines = ArraySequence()
     streamlines._data = np.array(hdf_group['data'])
     streamlines._offsets = np.array(hdf_group['offsets'])
@@ -57,32 +50,8 @@ class _LazyStreamlinesGetter(object):
     def __init__(self, hdf_group):
         self.hdf_group = hdf_group
 
-    def __getitem__(self, item):
-        """
-        Gets the streamlines from ids 'item', all concatenated together.
-        """
-        if isinstance(item, int):
-            return self._get_one_streamline(item)
-
-        if isinstance(item, list):
-            streamlines = []
-            for i in item:
-                streamlines.append(self._get_one_streamline(i))
-            return streamlines
-
-        if isinstance(item, slice):
-            streamlines = []
-            offsets = self.hdf_group['offsets'][item]
-            lengths = self.hdf_group['lengths'][item]
-            for offset, length in zip(offsets, lengths):
-                streamlines.append(
-                    self.hdf_group['data'][offset:offset + length])
-            return streamlines
-
-        raise ValueError("LazyStreamlinesGetter supports only int, "
-                         "list or slice")
-
     def _get_one_streamline(self, idx: int):
+        # Getting one value from a hdf: fast
         offset = self.hdf_group['offsets'][idx]
         length = self.hdf_group['lengths'][idx]
         data = self.hdf_group['data'][offset:offset + length]
@@ -91,17 +60,25 @@ class _LazyStreamlinesGetter(object):
 
     def get_array_sequence(self, item=None):
         if item is None:
-            streamlines = _load_streamlines_from_hdf(self.hdf_group)
+            streamlines = _load_all_streamlines_from_hdf(self.hdf_group)
         else:
             streamlines = ArraySequence()
+
             if isinstance(item, int):
-                streamline = self._get_one_streamline(item)
-                streamlines.append(streamline)
+                streamlines.append(self._get_one_streamline(item))
+
             elif isinstance(item, list) or isinstance(item, np.ndarray):
+                # Getting a list of value from a hdf5: slow. Uses fancy indexing.
+                # But possible. See here:
+                # https://stackoverflow.com/questions/21766145/h5py-correct-way-to-slice-array-datasets
+                # Looping and accessing ourselves.
+                # Good also load the whole data and access the indexes after.
+                # toDo Test speed for the three options.
                 for i in item:
-                    streamline = self._get_one_streamline(i)
-                    streamlines.append(streamline, cache_build=True)
+                    streamlines.append(self._get_one_streamline(i),
+                                       cache_build=True)
                 streamlines.finalize_append()
+
             elif isinstance(item, slice):
                 offsets = self.hdf_group['offsets'][item]
                 lengths = self.hdf_group['lengths'][item]
@@ -109,6 +86,7 @@ class _LazyStreamlinesGetter(object):
                     streamline = self.hdf_group['data'][offset:offset + length]
                     streamlines.append(streamline, cache_build=True)
                 streamlines.finalize_append()
+
             else:
                 raise ValueError('Item should be either a int, list, '
                                  'np.ndarray or slice but we received {}'
@@ -116,7 +94,7 @@ class _LazyStreamlinesGetter(object):
         return streamlines
 
     @property
-    def _lengths(self):
+    def lengths(self):
         """
         Get the lengths of all streamlines without loading everything into
         memory. Private to copy non-lazy SFT streamlines (ArraySequence)
@@ -161,9 +139,7 @@ class SFTDataAbstract(object):
     all information necessary to treat with streamlines: the data itself and
     _offset, _lengths, space attributes, etc.
     """
-    def __init__(self,
-                 streamlines: Union[ArraySequence, _LazyStreamlinesGetter],
-                 space_attributes: Tuple, space: Space, origin: Origin,
+    def __init__(self, space_attributes: Tuple, space: Space, origin: Origin,
                  contains_connectivity: bool,
                  connectivity_nb_blocs: List):
         """
@@ -172,10 +148,6 @@ class SFTDataAbstract(object):
         group: str
             The current streamlines group id, as loaded in the hdf5 file (it
             had type "streamlines"). Probabaly 'streamlines'.
-        streamlines: ArraySequence or LazyStreamlinesGetter
-            In the non-lazy version, data is the loaded data (ArraySequence).
-            In the lazy version, data is the LazyStreamlinesGetter, initiated
-            with the hdf_group.
         space_attributes: Tuple
             The space attributes consist of a tuple:
              (affine, dimensions, voxel_sizes, voxel_order)
@@ -187,28 +159,31 @@ class SFTDataAbstract(object):
         self.space_attributes = space_attributes
         self.space = space
         self.origin = origin
-        self.streamlines = streamlines
         self.is_lazy = None
         self.contains_connectivity = contains_connectivity
         self.connectivity_nb_blocs = connectivity_nb_blocs
 
+    def __len__(self):
+        raise NotImplementedError
+
     @property
     def lengths(self):
-        """Mimics the sft.lengths method: Returns the length (i.e. number of
-        timepoints) of the streamlines."""
-        # If streamlines are an ArraySequence: Accessing private info, ok.
-        # If streamlines are the LazyStreamlineGetter: made lengths private to
-        # mimic the ArraySequence.
-        return np.array(self.streamlines._lengths, dtype=np.int16)
+        """
+        Allowing accessing the lengths separately. In the lazy case, will
+        allow us to sample streamlines by lengths without loading them all
+        """
+        raise NotImplementedError
 
     @property
     def lengths_mm(self):
-        """New method compared to SFTs: access to the length in mm instead of
+        """
+        New method compared to SFTs: access to the length in mm instead of
         in terms of number of points, to facilitate work with compressed
-        streamlines."""
+        streamlines. Was computed when creating the hdf5.
+        """
         raise NotImplementedError
 
-    def connectivity_matrix_and_info(self, ind=None):
+    def get_connectivity_matrix_and_info(self, ind=None):
         """New method compared to SFTs: access pre-computed connectivity
         matrix. Returns the subject's connectivity matrix associated with
         current tractogram, together with information required to recompute
@@ -232,23 +207,24 @@ class SFTDataAbstract(object):
         the class's data management."""
         raise NotImplementedError
 
-    def _subset_streamlines(self, streamline_ids):
+    def _get_streamlines_as_list(self, streamline_ids) -> List[ArraySequence]:
         """Return only a subset of streamlines instead of the whole tractogram.
         Useful particularly for lazy data, to avoid loading the whole data from
         the hdf5."""
         raise NotImplementedError
 
-    def as_sft(self, streamline_ids: List = None):
+    def as_sft(self,
+               streamline_ids: Union[List[int], int, slice, None] = None) \
+            -> StatefulTractogram:
         """
         Returns chosen streamlines in a StatefulTractogram format.
 
         Params
         ------
-        streamline_ids: list[int]
+        streamline_ids: Union[List[int], int, slice, None]
             List of chosen ids. If None, use all streamlines.
         """
-        set_sft_logger_level('WARNING')
-        streamlines = self._subset_streamlines(streamline_ids)
+        streamlines = self._get_streamlines_as_list(streamline_ids)
 
         sft = StatefulTractogram(streamlines, self.space_attributes,
                                  self.space, self.origin)
@@ -257,14 +233,30 @@ class SFTDataAbstract(object):
 
 
 class SFTData(SFTDataAbstract):
-    streamlines: ArraySequence
-
-    def __init__(self, lengths_mm: List, connectivity_matrix: np.ndarray,
+    def __init__(self, streamlines: ArraySequence,
+                 lengths_mm: List, connectivity_matrix: np.ndarray,
                  **kwargs):
+        """
+        streamlines: ArraySequence or LazyStreamlinesGetter
+            In the non-lazy version, data is the loaded data (ArraySequence).
+            In the lazy version, data is the LazyStreamlinesGetter, initiated
+            with the hdf_group.
+        """
         super().__init__(**kwargs)
+        self.streamlines = streamlines
         self._lengths_mm = lengths_mm
         self._connectivity_matrix = connectivity_matrix
         self.is_lazy = False
+
+    def __len__(self):
+        return len(self.streamlines)
+
+    @property
+    def lengths(self):
+        """Mimics the sft.lengths method: Returns the length (i.e. number of
+        timepoints) of the streamlines."""
+        # If streamlines are an ArraySequence: Accessing private info, ok.
+        return np.array(self.streamlines._lengths, dtype=np.int16)
 
     @property
     def lengths_mm(self):
@@ -282,7 +274,7 @@ class SFTData(SFTDataAbstract):
         Creating class instance from the hdf in cases where data is not
         loaded yet. Non-lazy = loading the data here.
         """
-        streamlines = _load_streamlines_from_hdf(hdf_group)
+        streamlines = _load_all_streamlines_from_hdf(hdf_group)
         # Adding non-hidden parameters for nicer later access
         lengths_mm = hdf_group['euclidean_lengths']
         if 'connectivity_matrix' in hdf_group:
@@ -295,43 +287,56 @@ class SFTData(SFTDataAbstract):
             connectivity_matrix = None
             connectivity_nb_blocs = None
 
-        space_attributes, space, origin = _load_space_from_hdf(hdf_group)
+        space_attributes, space, origin = _load_space_attributes_from_hdf(hdf_group)
 
         # Return an instance of SubjectMRIData instantiated through __init__
         # with this loaded data:
-        return cls(lengths_mm, connectivity_matrix,
-                   streamlines=streamlines, space_attributes=space_attributes,
+        return cls(streamlines=streamlines, lengths_mm=lengths_mm,
+                   connectivity_matrix=connectivity_matrix,
+                   space_attributes=space_attributes,
                    space=space, origin=origin,
                    contains_connectivity=contains_connectivity,
                    connectivity_nb_blocs=connectivity_nb_blocs)
 
-    def _subset_streamlines(self, streamline_ids):
+    def _get_streamlines_as_list(self, streamline_ids):
         if streamline_ids is not None:
-            streamlines = self.streamlines[streamline_ids]
+            return self.streamlines.__getitem__(streamline_ids)
         else:
-            streamlines = self.streamlines
-        return streamlines
+            return self.streamlines
 
 
 class LazySFTData(SFTDataAbstract):
-    streamlines: _LazyStreamlinesGetter
-
-    def __init__(self, **kwargs):
+    def __init__(self, streamlines_getter: _LazyStreamlinesGetter, **kwargs):
+        """
+        streamlines_getter: LazyStreamlinesGetter
+            In the lazy version, data is the LazyStreamlinesGetter, initiated
+            with the hdf_group. Gives access to the streamlines, the
+            space attributes, the connectivity matrix, etc.
+        """
         super().__init__(**kwargs)
+        self.streamlines_getter = streamlines_getter
         self.is_lazy = True
+
+    def __len__(self):
+        return len(self.streamlines_getter)
+
+    @property
+    def lengths(self):
+        # Fetching from the lazy streamline getter
+        return np.array(self.streamlines_getter.lengths_mm)
 
     @property
     def lengths_mm(self):
         # Fetching from the lazy streamline getter
-        return np.array(self.streamlines.lengths_mm)
+        return np.array(self.streamlines_getter.lengths_mm)
 
     def _access_connectivity_matrix(self, indxyz: Tuple = None):
         # Fetching in a lazy way
-        return self.streamlines.connectivity_matrix(indxyz)
+        return self.streamlines_getter.connectivity_matrix(indxyz)
 
     @classmethod
     def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group):
-        space_attributes, space, origin = _load_space_from_hdf(hdf_group)
+        space_attributes, space, origin = _load_space_attributes_from_hdf(hdf_group)
         if 'connectivity_matrix' in hdf_group:
             contains_connectivity = True
             connectivity_nb_blocs = hdf_group.attrs['connectivity_nb_blocs']
@@ -341,11 +346,12 @@ class LazySFTData(SFTDataAbstract):
 
         streamlines = _LazyStreamlinesGetter(hdf_group)
 
-        return cls(streamlines=streamlines, space_attributes=space_attributes,
+        return cls(streamlines_getter=streamlines,
+                   space_attributes=space_attributes,
                    space=space, origin=origin,
                    contains_connectivity=contains_connectivity,
                    connectivity_nb_blocs=connectivity_nb_blocs)
 
-    def _subset_streamlines(self, streamline_ids):
-        streamlines = self.streamlines.get_array_sequence(streamline_ids)
+    def _get_streamlines_as_list(self, streamline_ids):
+        streamlines = self.streamlines_getter.get_array_sequence(streamline_ids)
         return streamlines

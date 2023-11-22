@@ -102,21 +102,23 @@ def main():
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
 
-    if args.show_now:
-        plt.imshow(matrix)
-        plt.colorbar()
+    plt.imshow(matrix)
+    plt.colorbar()
 
-        plt.figure()
-        plt.imshow(matrix > 0)
-        plt.title('Binary')
+    plt.figure()
+    plt.imshow(matrix > 0)
+    plt.title('Binary')
 
     if args.binary:
         matrix = matrix > 0
 
     # Save results.
     np.save(args.out_file, matrix)
+
     plt.savefig(out_fig)
-    plt.show()
+
+    if args.show_now:
+        plt.show()
 
 
 if __name__ == '__main__':

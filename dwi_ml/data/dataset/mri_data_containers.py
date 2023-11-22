@@ -52,7 +52,7 @@ class MRIDataAbstract(object):
         """
         raise NotImplementedError
 
-    def convert_to_tensor(self, device) -> Tensor:
+    def get_data_as_tensor(self, device) -> Tensor:
         """Returns the _data in the tensor format."""
         raise NotImplementedError
 
@@ -85,7 +85,7 @@ class MRIData(MRIDataAbstract):
 
         return cls(data, voxres, affine)
 
-    def convert_to_tensor(self, device):
+    def get_data_as_tensor(self, device):
         # Data is already a np.array
         return self._data.to(device=device)
 
@@ -103,6 +103,19 @@ class LazyMRIData(MRIDataAbstract):
 
     def __init__(self, data: Union[h5py.Group, None], voxres: np.ndarray,
                  affine: np.ndarray):
+        """
+        Here the data is a hdf5 group. Accessing it will load it.
+
+        It can be loaded entirely, or from indexing. Simple indexing is quite
+        fast (ex, 0:300 or 0:300:2), but indexing from a list of indexes is
+        slow. We suggest you load it all and index it after. See here:
+        https://stackoverflow.com/questions/21766145/h5py-correct-way-to-slice-array-datasets
+
+        In our repo, we will use our MultiSubjectContainer's method:
+        get_volume_verify_cache. We always load the whole volume first.
+        This lazy version is still useful for a big database: We can they clear
+        the volume in memory before accessing another subject's.
+        """
         super().__init__(data, voxres, affine)
 
     @classmethod
@@ -120,7 +133,7 @@ class LazyMRIData(MRIDataAbstract):
     # All three methods below load the data.
     # Data is not loaded yet, but sending it to a np.array will load it.
 
-    def convert_to_tensor(self, device):
+    def get_data_as_tensor(self, device):
         logger.debug("Loading from hdf5 now: {}".format(self._data))
         return torch.as_tensor(np.array(self._data, dtype=np.float32),
                                dtype=torch.float, device=device)

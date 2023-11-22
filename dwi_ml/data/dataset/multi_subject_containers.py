@@ -187,10 +187,10 @@ class MultisubjectSubset(Dataset):
 
         if not was_cached:
             # Either non-lazy or if lazy, data was not cached.
-            # Non-lazy: direct access. Lazy: this loads the data.
+            # Non-lazy: direct access. Lazy: this loads the whole data.
             logger.debug("Getting a new volume from the dataset.")
             mri_data = self.get_mri_data(subj_idx, group_idx)
-            mri_data_tensor = mri_data.convert_to_tensor(device)
+            mri_data_tensor = mri_data.get_data_as_tensor(device)
 
             # Add to cache the tensor (on correct device)
             if self.cache_size:
@@ -283,7 +283,7 @@ class MultisubjectSubset(Dataset):
                 logger.debug("     Counting streamlines")
                 for group in range(len(self.streamline_groups)):
                     subj_sft_data = subj_data.sft_data_list[group]
-                    n_streamlines = len(subj_sft_data.streamlines)
+                    n_streamlines = len(subj_sft_data)
                     self._add_streamlines_ids(n_streamlines, subj_idx, group)
                     lengths[group].append(subj_sft_data.lengths)
                     lengths_mm[group].append(subj_sft_data.lengths_mm)

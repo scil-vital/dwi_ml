@@ -4,8 +4,7 @@ We expect the classes here to be used in single_subject_containers
 """
 from typing import Tuple, List, Union
 
-from dipy.io.stateful_tractogram import (set_sft_logger_level,
-                                         StatefulTractogram, Space, Origin)
+from dipy.io.stateful_tractogram import StatefulTractogram, Space, Origin
 import h5py
 from nibabel.streamlines import ArraySequence
 import numpy as np

@@ -99,6 +99,7 @@ def format_model_outputs(one_fake_model_output):
 
     return fake_model_outputs
 
+
 def _verify_loss(streamline: Union[torch.Tensor, list],
                  fake_model_outputs: Union[list, Tuple[list]],
                  expected_loss: Union[torch.Tensor, np.ndarray, float],

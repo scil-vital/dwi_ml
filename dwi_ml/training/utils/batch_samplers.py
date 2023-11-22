@@ -54,6 +54,4 @@ def prepare_batch_sampler(dataset, args, sub_loggers_level):
             cycles=args.cycles,
             rng=args.rng, log_level=sub_loggers_level)
 
-
-
     return batch_sampler

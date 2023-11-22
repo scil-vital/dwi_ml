@@ -364,10 +364,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             batch_inputs = self.batch_loader.load_batch_inputs(
                 n_last_pos, ids_per_subj)
 
-            if self.model.forward_uses_streamlines:
-                model_outputs = self.model(batch_inputs, n_last_pos)
-            else:
-                model_outputs = self.model(batch_inputs)
+            model_outputs = self.model(batch_inputs, n_last_pos)
 
             next_dirs = self.model.get_tracking_directions(
                 model_outputs, algo='det', eos_stopping_thresh=0.5)

@@ -69,10 +69,6 @@ class MainModelAbstract(torch.nn.Module):
 
         self.device = None
 
-        # To tell our trainer what to send to the forward / loss methods.
-        self.forward_uses_streamlines = False
-        self.loss_uses_streamlines = False
-        
         # To tell our batch loader how to resample streamlines during training
         # (should also be the step size during tractography).
         if step_size and compress_lines:
@@ -205,10 +201,10 @@ class MainModelAbstract(torch.nn.Module):
 
         return model_state
 
-    def forward(self, *inputs, **kw):
+    def forward(self, inputs, streamlines):
         raise NotImplementedError
 
-    def compute_loss(self, *model_outputs, **kw):
+    def compute_loss(self, model_outputs, target_streamlines):
         raise NotImplementedError
 
 
@@ -369,10 +365,6 @@ class ModelWithPreviousDirections(MainModelAbstract):
             self.prev_dirs_embedded_size = None
             self.prev_dirs_embedding = None
 
-        # To tell our trainer what to send to the forward / loss methods.
-        if nb_previous_dirs > 0:
-            self.forward_uses_streamlines = True
-
     @staticmethod
     def add_args_model_with_pd(p):
         # CNN embedding makes no sense for previous dir
@@ -411,7 +403,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
         })
         return p
 
-    def forward(self, inputs, target_streamlines: List[torch.tensor], **kw):
+    def forward(self, inputs, target_streamlines: List[torch.tensor]):
         """
         Params
         ------
@@ -709,9 +701,6 @@ class ModelWithDirectionGetter(MainModelAbstract):
         if self.dg_key not in keys_to_direction_getters.keys():
             raise ValueError("Direction getter choice not understood: {}"
                              .format(self.positional_encoding_key))
-
-        # To tell our trainer what to send to the forward / loss methods.
-        self.loss_uses_streamlines = True
 
     def set_context(self, context):
         assert context in ['training', 'tracking', 'visu']

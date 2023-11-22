@@ -494,10 +494,7 @@ class DWIMLAbstractTracker:
 
     def _call_model_forward(self, inputs, lines):
         with self.grad_context:
-            if self.model.forward_uses_streamlines:
-                model_outputs = self.model(inputs, lines)
-            else:
-                model_outputs = self.model(inputs)
+            model_outputs = self.model(inputs, lines)
         return model_outputs
 
     def update_memory_after_removing_lines(self, can_continue: np.ndarray,

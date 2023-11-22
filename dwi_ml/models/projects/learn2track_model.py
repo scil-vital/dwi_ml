@@ -188,15 +188,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # 4. Direction getter:
         self.instantiate_direction_getter(self.rnn_model.output_size)
 
-        # If multiple inheritance goes well, these params should be set
-        # correctly
-        if nb_previous_dirs > 0:
-            assert self.forward_uses_streamlines
-        assert self.loss_uses_streamlines
-
-        if self.start_from_copy_prev:
-            self.forward_uses_streamlines = True
-
     def set_context(self, context):
         assert context in ['training', 'validation', 'tracking', 'visu',
                            'preparing_backward']

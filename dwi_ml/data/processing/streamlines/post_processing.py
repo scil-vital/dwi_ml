@@ -82,7 +82,8 @@ def _get_all_n_previous_dirs(streamlines_dirs: List[torch.Tensor],
         for n in range(nb_previous_dirs):
             # The n^e previous dir is just the list of dirs, shifted right
             if n > 0:
-                no_n_prev_dirs = torch.cat((unexisting_val, no_n_prev_dirs[:-1,:]))
+                no_n_prev_dirs = torch.cat((unexisting_val,
+                                            no_n_prev_dirs[:-1, :]))
             else:
                 no_n_prev_dirs = torch.cat((unexisting_val, no_n_prev_dirs))
 
@@ -309,7 +310,16 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
     data_labels: np.ndarray
         The loaded nifti image.
     binary: bool
-        If true, return a binary matrix.
+        If True, return a binary matrix.
+    use_scilpy: bool
+        If True, uses scilpy's method:
+          'Strategy is to keep the longest streamline segment
+           connecting 2 regions. If the streamline crosses other gray
+           matter regions before reaching its final connected region,
+           the kept connection is still the longest. This is robust to
+           compressed streamlines.'
+        Else, uses simple computation from endpoints. Faster. Also, works with
+        incomplete parcellation.
     """
     real_labels = np.unique(data_labels)[1:]
     nb_labels = len(real_labels)

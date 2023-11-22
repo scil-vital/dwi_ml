@@ -85,4 +85,4 @@ VERSION = __version__
 PYTHON_SCRIPTS = glob.glob("scripts_python/*.py")
 BASH_SCRIPTS = glob.glob("bash_utilities/*.sh")
 
-PREVIOUS_MAINTAINERS=[]
+PREVIOUS_MAINTAINERS = []

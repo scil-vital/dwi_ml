@@ -7,7 +7,8 @@ from dipy.tracking.metrics import length
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.unit_tests.utils.expected_values import (
     TEST_EXPECTED_SUBJ_NAMES, TEST_EXPECTED_NB_STREAMLINES)
-from dwi_ml.unit_tests.utils.data_and_models_for_tests import create_test_batch_sampler, fetch_testing_data
+from dwi_ml.unit_tests.utils.data_and_models_for_tests import (
+    create_test_batch_sampler, fetch_testing_data)
 
 
 def test_batch_sampler():

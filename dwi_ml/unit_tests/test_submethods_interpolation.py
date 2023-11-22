@@ -10,7 +10,6 @@ from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
 
 
-
 nb_points = 2
 nb_features = 2
 fake_data = torch.zeros(15, 15, 15, nb_features)

@@ -43,7 +43,7 @@ def _build_arg_parser():
              "   connecting 2 regions. If the streamline crosses other gray \n"
              "   matter regions before reaching its final connected region, \n"
              "   the kept connection is still the longest. This is robust to \n"
-             "   compressed streamlines.\n"
+             "   compressed streamlines.'\n"
              "Else, uses simple computation from endpoints. Faster. Also, "
              "works with incomplete parcellation.")
 

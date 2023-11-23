@@ -5,7 +5,7 @@ from typing import List
 import numpy as np
 import torch
 
-from scilpy.tractograms.uncompress import uncompress
+from scilpy.tractanalysis.uncompress import uncompress
 from scilpy.tractanalysis.tools import \
     extract_longest_segments_from_profile as segmenting_func
 

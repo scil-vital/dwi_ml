@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Union, List, Tuple
+from typing import Union, List
 
 from comet_ml import (Experiment as CometExperiment, ExistingExperiment)
 import numpy as np
@@ -972,7 +972,58 @@ class DWIMLAbstractTrainer:
               the list of all streamlines (if we concatenate all sfts'
               streamlines)
         """
-        raise NotImplementedError
+        # Data interpolation has not been done yet. GPU computations are done
+        # here in the main thread.
+        targets, ids_per_subj = data
+
+        # Dataloader always works on CPU. Sending to right device.
+        # (model is already moved).
+        targets = [s.to(self.device, non_blocking=True, dtype=torch.float)
+                   for s in targets]
+
+        # Getting the inputs points from the volumes.
+        # Uses the model's method, with the batch_loader's data.
+        # Possibly skipping the last point if not useful.
+        streamlines_f = targets
+        if isinstance(self.model, ModelWithDirectionGetter) and \
+                not self.model.direction_getter.add_eos:
+            # No EOS = We don't use the last coord because it does not have an
+            # associated target direction.
+            streamlines_f = [s[:-1, :] for s in streamlines_f]
+
+        # Possibly add noise to inputs here.
+        logger.debug('*** Computing forward propagation')
+        if self.model.forward_uses_streamlines:
+            # Now possibly add noise to streamlines (training / valid)
+            streamlines_f = self.batch_loader.add_noise_streamlines_forward(
+                streamlines_f, self.device)
+
+            # Possibly computing directions twice (during forward and loss)
+            # but ok, shouldn't be too heavy. Easier to deal with multiple
+            # projects' requirements by sending whole streamlines rather
+            # than only directions.
+            model_outputs = self.model(streamlines_f)
+            del streamlines_f
+        else:
+            del streamlines_f
+            model_outputs = self.model()
+
+        logger.debug('*** Computing loss')
+        if self.model.loss_uses_streamlines:
+            targets = self.batch_loader.add_noise_streamlines_loss(
+                targets, self.device)
+
+            results = self.model.compute_loss(model_outputs, targets,
+                                              average_results=True)
+        else:
+            results = self.model.compute_loss(model_outputs,
+                                              average_results=True)
+
+        if self.use_gpu:
+            log_gpu_memory_usage(logger)
+
+        # The mean tensor is a single value. Converting to float using item().
+        return results
 
     def fix_parameters(self):
         """

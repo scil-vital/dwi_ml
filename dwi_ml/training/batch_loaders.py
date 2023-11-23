@@ -190,7 +190,11 @@ class DWIMLAbstractBatchLoader:
                 self.context_subset.compress == self.model.compress_lines:
             logger.debug("Compression rate is the same as when creating "
                          "the hdf5 dataset. Not compressing again.")
-        else:
+        elif self.model.step_size is not None and \
+                self.model.compress_lines is not None:
+            logger.debug("Resample streamlines using: \n" +
+                         "- step_size: {}\n".format(self.model.step_size) +
+                         "- compress_lines: {}".format(self.model.compress_lines))
             sft = resample_or_compress(sft, self.model.step_size,
                                        self.model.compress_lines)
 
@@ -306,6 +310,7 @@ class DWIMLAbstractBatchLoader:
             sft.to_vox()
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
+
         batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
 
         return batch_streamlines, final_s_ids_per_subj

@@ -16,8 +16,7 @@ from dwi_ml.data.processing.volume.interpolation import \
 from dwi_ml.data.processing.space.neighborhood import prepare_neighborhood_vectors
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
-    AbstractDirectionGetterModel
+from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings import keys_to_embeddings, NNEmbedding, NoEmbedding
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
@@ -72,7 +71,7 @@ class MainModelAbstract(torch.nn.Module):
         # To tell our trainer what to send to the forward / loss methods.
         self.forward_uses_streamlines = False
         self.loss_uses_streamlines = False
-        
+
         # To tell our batch loader how to resample streamlines during training
         # (should also be the step size during tractography).
         if step_size and compress_lines:
@@ -208,7 +207,7 @@ class MainModelAbstract(torch.nn.Module):
     def forward(self, *inputs, **kw):
         raise NotImplementedError
 
-    def compute_loss(self, *model_outputs, **kw):
+    def compute_loss(self, model_outputs, targets):
         raise NotImplementedError
 
 

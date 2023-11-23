@@ -85,11 +85,12 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
         else:
             return torch.zeros(n, device=self.device)
 
-    def forward(self, x: list):
+    def forward(self, inputs: list, streamlines):
+        # Not using streamlines. Pretending to use inputs.
         _ = self.fake_parameter
         regressed_dir = torch.as_tensor([1., 1., 1.])
 
-        return [regressed_dir for _ in x]
+        return [regressed_dir for _ in inputs]
 
 
 class TrackingModelForTestWithPD(ModelWithPreviousDirections,
@@ -119,12 +120,6 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
             # For super MainModelForTracking:
             dg_key=dg_key, dg_args=dg_args)
 
-        # If multiple inheritance goes well, these params should be set
-        # correctly
-        if nb_previous_dirs > 0:
-            assert self.forward_uses_streamlines
-        assert self.loss_uses_streamlines
-
         self.instantiate_direction_getter(dg_input_size)
 
     def compute_loss(self, model_outputs: List[torch.Tensor],
@@ -137,7 +132,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
         return self.direction_getter.compute_loss(
             model_outputs, target_streamlines, average_results)
 
-    def get_tracking_directions(self, regressed_dirs, algo):
+    def get_tracking_directions(self, regressed_dirs, algo,
+                                eos_stopping_thresh):
         if algo == 'det':
             return regressed_dirs
         elif algo == 'prob':
@@ -148,9 +144,7 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
             raise ValueError("'algo' should be 'det' or 'prob'.")
 
     def forward(self, inputs: List[torch.tensor],
-                target_streamlines: List[torch.tensor] = None,
-                hidden_reccurent_states: tuple = None,
-                return_state: bool = False) -> List[torch.tensor]:
+                target_streamlines: List[torch.tensor]):
         # Previous dirs
         if self.nb_previous_dirs > 0:
             target_dirs = compute_directions(target_streamlines)

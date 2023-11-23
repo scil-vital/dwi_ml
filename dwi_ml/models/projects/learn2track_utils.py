@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import argparse
 
-from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 
 

@@ -224,8 +224,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         # the nb of features.
         self.instantiate_direction_getter(self.d_model)
 
-        assert self.loss_uses_streamlines
-
     @property
     def d_model(self):
         raise NotImplementedError
@@ -367,9 +365,11 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
             raise ValueError("Please set context before usage.")
 
         # ----------- Checks
-        if self.forward_uses_streamlines:
-            # Reminder. In all cases, len(each input) == len(each streamline).
-            # Correct interpolation and management of points should be done before.
+        if input_streamlines is not None:
+            # If streamlines are necessary (depending on child class):
+            # In all cases, len(each input) == len(each streamline).
+            # Correct interpolation and management of points should be done
+            # before.
             assert np.all([len(i) == len(s) for i, s in
                            zip(inputs, input_streamlines)])
 
@@ -617,8 +617,6 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
         cls_t = keys_to_embeddings[self.target_embedding_key]
         self.embedding_layer_t = cls_t(self.target_features,
                                        self.target_embedded_size)
-
-        self.forward_uses_streamlines = True
 
     @property
     def params_for_checkpoint(self):

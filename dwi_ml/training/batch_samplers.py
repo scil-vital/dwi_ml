@@ -28,8 +28,6 @@ import logging
 from typing import List, Tuple, Iterator, Union
 
 import numpy as np
-import torch
-import torch.multiprocessing
 from torch.utils.data import Sampler
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset

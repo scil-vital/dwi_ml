@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 import argparse
-import logging
 
-from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 
@@ -55,7 +53,5 @@ def prepare_batch_sampler(dataset, args, sub_loggers_level):
             nb_subjects_per_batch=args.nb_subjects_per_batch,
             cycles=args.cycles,
             rng=args.rng, log_level=sub_loggers_level)
-
-
 
     return batch_sampler

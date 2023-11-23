@@ -11,10 +11,10 @@ from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions, normalize_directions, compute_n_previous_dirs
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     convert_dirs_to_class
-from dwi_ml.models.embeddings import NoEmbedding, keys_to_embeddings
+from dwi_ml.models.embeddings import NoEmbedding
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelWithDirectionGetter,
-    ModelWithNeighborhood, MainModelOneInput, ModelOneInputWithEmbedding)
+    ModelWithNeighborhood, ModelOneInputWithEmbedding)
 from dwi_ml.models.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
@@ -187,15 +187,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         # 4. Direction getter:
         self.instantiate_direction_getter(self.rnn_model.output_size)
-
-        # If multiple inheritance goes well, these params should be set
-        # correctly
-        if nb_previous_dirs > 0:
-            assert self.forward_uses_streamlines
-        assert self.loss_uses_streamlines
-
-        if self.start_from_copy_prev:
-            self.forward_uses_streamlines = True
 
     def set_context(self, context):
         assert context in ['training', 'validation', 'tracking', 'visu',

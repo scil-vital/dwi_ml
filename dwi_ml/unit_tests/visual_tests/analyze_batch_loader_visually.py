@@ -58,9 +58,8 @@ def save_loaded_batch_for_visual_assessment(dataset, ref):
     logging.info("*********")
     logging.info("Neighborhood:")
     # Using ModelForTest with both parents OneInput and Neighborhood.
-    model = ModelForTest(experiment_name='test',
-                         neighborhood_type='axes',
-                         neighborhood_radius=[1, 2])
+    model = ModelForTest(experiment_name='test', neighborhood_type='axes',
+                         neighborhood_radius=2)
     batch_loader = create_batch_loader(dataset, model)
     batch_loader.set_context('training')
     _load_directly_and_verify(batch_loader, batch_idx_tuples, ref, 'neighb')

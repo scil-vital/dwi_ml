@@ -5,11 +5,9 @@ import numpy as np
 import torch
 
 from dwi_ml.data.processing.space.neighborhood import \
-    prepare_neighborhood_vectors, extend_coordinates_with_neighborhood, \
-    unflatten_neighborhood
+    prepare_neighborhood_vectors, unflatten_neighborhood
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
-
 
 
 nb_points = 2

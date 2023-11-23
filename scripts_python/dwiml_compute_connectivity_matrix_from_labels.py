@@ -34,16 +34,16 @@ def _build_arg_parser():
     p.add_argument('--show_now', action='store_true',
                    help="If set, shows the matrix with matplotlib.")
     p.add_argument('--hide_background', nargs='?', const=0,
-                   help="If true, set the connectivity matrix for chosen label "
-                        "(default: 0), to 0.")
+                   help="If true, set the connectivity matrix for chosen "
+                        "label (default: 0), to 0.")
     p.add_argument(
         '--use_longest_segment', action='store_true',
         help="If true, uses scilpy's method:\n"
              "  'Strategy is to keep the longest streamline segment \n"
              "   connecting 2 regions. If the streamline crosses other gray \n"
              "   matter regions before reaching its final connected region, \n"
-             "   the kept connection is still the longest. This is robust to \n"
-             "   compressed streamlines.\n"
+             "   the kept connection is still the longest. This is robust to\n"
+             "   compressed streamlines.'\n"
              "Else, uses simple computation from endpoints. Faster. Also, "
              "works with incomplete parcellation.")
 
@@ -87,7 +87,8 @@ def main():
     in_sft.to_vox()
     in_sft.to_corner()
     matrix, start_blocs, end_blocs = compute_triu_connectivity_from_labels(
-        in_sft.streamlines, data_labels, use_scilpy=args.use_longest_segment)
+        in_sft.streamlines, data_labels,
+        use_scilpy=args.use_longest_segment)
 
     if args.hide_background is not None:
         matrix[args.hide_background, :] = 0

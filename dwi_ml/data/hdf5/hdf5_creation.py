@@ -593,7 +593,7 @@ class HDF5Creator:
 
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,
-            header: nib.Nifti1Header):
+            header: nib.Nifti1Header, remove_invalid=False):
         """
         Loads and processes a group of tractograms and merges all streamlines
         together.
@@ -681,12 +681,13 @@ class HDF5Creator:
             # with Path.
             save_tractogram(final_sft, str(output_fname))
 
-        # Removing invalid streamlines
-        logging.debug('      *Total: {:,.0f} streamlines. Now removing '
-                      'invalid streamlines.'.format(len(final_sft)))
-        final_sft.remove_invalid_streamlines()
-        logging.info("         Final number of streamlines: {:,.0f}."
-                     .format(len(final_sft)))
+        if remove_invalid:
+            # Removing invalid streamlines
+            logging.debug('      *Total: {:,.0f} streamlines. Now removing '
+                          'invalid streamlines.'.format(len(final_sft)))
+            final_sft.remove_invalid_streamlines()
+            logging.info("         Final number of streamlines: {:,.0f}."
+                         .format(len(final_sft)))
 
         conn_matrix = None
         conn_info = None
@@ -741,10 +742,10 @@ class HDF5Creator:
                 "We do not support file's type: {}. We only support .trk "
                 "and .tck files.".format(tractogram_file))
         if file_extension == '.trk':
-            if not is_header_compatible(str(tractogram_file), header):
-                raise ValueError("Streamlines group is not compatible with "
-                                 "volume groups\n ({})"
-                                 .format(tractogram_file))
+            if header:
+                if not is_header_compatible(str(tractogram_file), header):
+                    raise ValueError("Streamlines group is not compatible with "
+                                     "volume groups\n ({})".format(tractogram_file))
             # overriding given header.
             header = 'same'
 

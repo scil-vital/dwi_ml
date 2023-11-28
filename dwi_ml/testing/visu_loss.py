@@ -15,8 +15,7 @@ from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
 from scilpy.io.utils import add_overwrite_arg
 
-from dwi_ml.io_utils import add_logging_arg, add_arg_existing_experiment_path
-from dwi_ml.io_utils import add_memory_args
+from dwi_ml.io_utils import add_arg_existing_experiment_path, add_logging_arg, add_memory_args
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 

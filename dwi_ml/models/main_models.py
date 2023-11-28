@@ -16,8 +16,7 @@ from dwi_ml.data.processing.volume.interpolation import \
 from dwi_ml.data.processing.space.neighborhood import prepare_neighborhood_vectors
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
-    AbstractDirectionGetterModel
+from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings import keys_to_embeddings, NNEmbedding, NoEmbedding
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 

@@ -101,6 +101,27 @@ class ModelAE(MainModelAbstract):
         self.forward_uses_streamlines = True
         self.loss_uses_streamlines = True
 
+    @property
+    def params_for_checkpoint(self):
+        """All parameters necessary to create again the same model. Will be
+        used in the trainer, when saving the checkpoint state. Params here
+        will be used to re-create the model when starting an experiment from
+        checkpoint. You should be able to re-create an instance of your
+        model with those params."""
+        #p = super().params_for_checkpoint()
+        p = {'kernel_size': self.kernel_size,
+             'latent_space_dims': self.latent_space_dims,
+             'experiment_name': self.experiment_name}
+        return p
+
+    @classmethod
+    def _load_params(cls, model_dir):
+        p = super()._load_params(model_dir)
+        p['kernel_size'] = 3
+        p['latent_space_dims'] = 32
+        return p
+        
+
     def forward(self,
                 input_streamlines: List[torch.tensor],
                 ):
@@ -119,13 +140,16 @@ class ModelAE(MainModelAbstract):
             Output data, ready to be passed to either `compute_loss()` or
             `get_tracking_directions()`.
         """
-        input_streamlines = torch.stack(input_streamlines)
-        input_streamlines = torch.swapaxes(input_streamlines, 1, 2)
+
 
         x = self.decode(self.encode(input_streamlines))
         return x
 
     def encode(self, x):
+        # x: list of tensors
+        x = torch.stack(x)
+        x = torch.swapaxes(x, 1, 2)
+
         h1 = F.relu(self.encod_conv1(x))
         h2 = F.relu(self.encod_conv2(h1))
         h3 = F.relu(self.encod_conv3(h2))
@@ -167,7 +191,7 @@ class ModelAE(MainModelAbstract):
         targets = torch.swapaxes(targets, 1, 2)
         print(targets[0, :, 0:5])
         print(model_outputs[0, :, 0:5])
-        reconstruction_loss = torch.nn.MSELoss(reduction="mean")
+        reconstruction_loss = torch.nn.MSELoss(reduction="sum")
         mse = reconstruction_loss(model_outputs, targets)
 
         # loss_function_vae

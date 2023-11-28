@@ -68,7 +68,7 @@ def init_from_args(args, sub_loggers_level):
         # INPUTS: verifying args
         model = ModelAE(
             experiment_name=args.experiment_name,
-            step_size=args.step_size, compress_lines=args.compress,
+            step_size=None, compress_lines=None,
             kernel_size=3, latent_space_dims=32,
             log_level=sub_loggers_level)
 

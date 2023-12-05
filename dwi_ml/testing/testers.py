@@ -6,7 +6,8 @@ import torch
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
-from dwi_ml.models.main_models import MainModelOneInput, MainModelAbstract, ModelWithDirectionGetter
+from dwi_ml.models.main_models import (MainModelOneInput, MainModelAbstract,
+                                       ModelWithDirectionGetter)
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 logger = logging.getLogger('tester_logger')
@@ -87,11 +88,13 @@ class Tester:
 
         Returns
         -------
-        outputs:
-            - Gaussian model: outputs = ([], [])
-            - Fisher Von mises: not Implemented
-            - Other: []
+        sft: StatefulTractogram
+            The tractogram, formatted as required by your model:
+            to_vox, to_corner, possibly resampled or compressed.
+        outputs: Any
+            Your model output.
         losses:
+
         """
         sft = resample_or_compress(sft, self.model.step_size,
                                    self.model.compress_lines)

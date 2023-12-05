@@ -9,7 +9,8 @@ from scilpy.io.utils import assert_outputs_exist
 
 from dwi_ml.testing.projects.tt_visu_main import (
     build_argparser_transformer_visu, get_config_filename,
-    tt_visualize_weights_main, set_out_dir_visu_weights_and_create_if_not_exists)
+    set_out_dir_visu_weights_and_create_if_not_exists,
+    tt_visualize_weights_main)
 
 
 # Note. To use through jupyter, the file

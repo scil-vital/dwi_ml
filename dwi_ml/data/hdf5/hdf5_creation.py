@@ -569,7 +569,7 @@ class HDF5Creator:
                 streamlines_group.create_dataset(
                     'connectivity_matrix', data=connectivity_matrix)
                 if conn_info[0] == 'from_label':
-                    streamlines_group.attrs['connectivity_labels_volume'] = \
+                    streamlines_group.attrs['connectivity_label_volume'] = \
                         conn_info[1]
                 else:
                     streamlines_group.attrs['connectivity_nb_blocs'] = \
@@ -692,30 +692,30 @@ class HDF5Creator:
         conn_info = None
         if 'connectivity_matrix' in self.groups_config[group]:
             logging.info("         Now preparing connectivity matrix")
-            if not ("connectivty_nb_blocs" in self.groups_config[group] or
-                    "connectivty_labels" in self.groups_config[group]):
+            if not ("connectivity_nb_blocs" in self.groups_config[group] or
+                    "connectivity_labels" in self.groups_config[group]):
                 raise ValueError(
                     "The config file must provide either the "
-                    "connectivty_nb_blocs or the connectivty_labels information "
+                    "connectivity_nb_blocs or the connectivity_labels option "
                     "associated with the streamline group '{}'"
                     .format(group))
-            elif ("connectivty_nb_blocs" in self.groups_config[group] and
-                    "connectivty_labels" in self.groups_config[group]):
+            elif ("connectivity_nb_blocs" in self.groups_config[group] and
+                    "connectivity_labels" in self.groups_config[group]):
                 raise ValueError(
                     "The config file must only provide ONE of the "
-                    "connectivty_nb_blocs or the connectivty_labels information "
+                    "connectivity_nb_blocs or the connectivity_labels option "
                     "associated with the streamline group '{}'"
                     .format(group))
-            elif "connectivty_nb_blocs" in self.groups_config[group]:
+            elif "connectivity_nb_blocs" in self.groups_config[group]:
                 nb_blocs = format_nb_blocs_connectivity(
-                    self.groups_config[group]['connectivty_nb_blocs'])
+                    self.groups_config[group]['connectivity_nb_blocs'])
                 conn_info = ['from_blocs', nb_blocs]
             else:
-                labels = self.groups_config[group]['connectivty_labels']
-                if labels not in self.volume_groups:
+                labels_group = self.groups_config[group]['connectivity_labels']
+                if labels_group not in self.volume_groups:
                     raise ValueError("connectivity_labels_volume must be "
                                      "an existing volume group.")
-                conn_info = ['from_labels', labels]
+                conn_info = ['from_labels', labels_group]
 
             conn_file = subj_dir.joinpath(
                 self.groups_config[group]['connectivity_matrix'])

@@ -6,6 +6,12 @@ from dwi_ml.io_utils import add_resample_or_compress_arg
 
 
 def format_nb_blocs_connectivity(connectivity_nb_blocs) -> List:
+    """
+    Convert the raw option for connectivity into a list of 3 values.
+    Ex: [10, 20, 10] is returned without modification.
+    Ex: 20 becomes [20, 20, 20]
+    With other values (ex, a list of <>3 values), an error is raised.
+    """
     if connectivity_nb_blocs is None:
         # Default/const value with argparser '+' not possible.
         # Setting it manually.
@@ -50,14 +56,14 @@ def add_hdf5_creation_args(p: ArgumentParser):
                         "-> https://dwi-ml.readthedocs.io/en/latest/"
                         "creating_hdf5.html")
     p.add_argument('training_subjs',
-                   help="txt file containing the list of subjects ids to use "
-                        "for training.")
+                   help="A txt file containing the list of subjects ids to "
+                        "use for training. \n(Can be an empty file.)")
     p.add_argument('validation_subjs',
-                   help="txt file containing the list of subjects ids to use "
-                        "for validation.")
+                   help="A txt file containing the list of subjects ids to use "
+                        "for validation. \n(Can be an empty file.)")
     p.add_argument('testing_subjs',
-                   help="txt file containing the list of subjects ids to use "
-                        "for testing.")
+                   help="A txt file containing the list of subjects ids to use "
+                        "for testing. \n(Can be an empty file.)")
 
     # Optional arguments
     p.add_argument('--enforce_files_presence', type=bool, default=True,
@@ -68,12 +74,9 @@ def add_hdf5_creation_args(p: ArgumentParser):
     p.add_argument('--save_intermediate', action="store_true",
                    help="If set, save intermediate processing files for "
                         "each subject inside the \nhdf5 folder, in sub-"
-                        "folders named subjid_intermediate.")
-
-    p.add_argument('--logging',
-                   choices=['error', 'warning', 'info', 'debug'],
-                   default='warning',
-                   help="Logging level. [warning]")
+                        "folders named subjid_intermediate.\n"
+                        "(Final concatenated standardized volumes and \n"
+                        "final concatenated resampled/compressed streamlines.)")
 
 
 def add_mri_processing_args(p: ArgumentParser):

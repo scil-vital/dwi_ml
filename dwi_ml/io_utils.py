@@ -10,7 +10,8 @@ def add_logging_arg(p):
         '--logging', default='WARNING', metavar='level',
         choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
         help="Logging level. Note that, for readability, not all debug logs \n"
-             "are printed in DEBUG mode, only the main ones.")
+             "are printed in DEBUG mode, only the main ones. \n"
+             "Default: WARNING.")
 
 
 def add_resample_or_compress_arg(p: ArgumentParser):

@@ -44,7 +44,7 @@ def add_hdf5_creation_args(p: ArgumentParser):
                         "-> https://dwi-ml.readthedocs.io/en/latest/"
                         "creating_hdf5.html")
     p.add_argument('out_hdf5_file',
-                   help="Path and name of the output hdf5 file.\n If "
+                   help="Path and name of the output hdf5 file. \nIf "
                         "--save_intermediate is set, the intermediate files "
                         "will be saved in \nthe same location, in a folder "
                         "name based on date and hour of creation.\n"
@@ -77,18 +77,6 @@ def add_hdf5_creation_args(p: ArgumentParser):
                         "folders named subjid_intermediate.\n"
                         "(Final concatenated standardized volumes and \n"
                         "final concatenated resampled/compressed streamlines.)")
-
-
-def add_mri_processing_args(p: ArgumentParser):
-    g = p.add_argument_group('Volumes processing options:')
-    g.add_argument(
-        '--std_mask', nargs='+', metavar='m',
-        help="Mask defining the voxels used for data standardization. \n"
-             "-> Should be the name of a file inside dwi_ml_ready/{subj_id}.\n"
-             "-> You may add wildcards (*) that will be replaced by the "
-             "subject's id. \n"
-             "-> If none is given, all non-zero voxels will be used.\n"
-             "-> If more than one are given, masks will be combined.")
 
 
 def add_streamline_processing_args(p: ArgumentParser):

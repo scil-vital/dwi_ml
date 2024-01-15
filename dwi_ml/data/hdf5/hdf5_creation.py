@@ -107,8 +107,7 @@ class HDF5Creator:
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
-                 std_mask: str, step_size: float = None,
-                 compress: float = None,
+                 step_size: float = None, compress: float = None,
                  enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
@@ -126,8 +125,6 @@ class HDF5Creator:
             List of subject names for each data set.
         groups_config: dict
             Information from json file loaded as a dict.
-        std_mask: str
-            Name of the standardization mask inside each subject's folder.
         step_size: float
             Step size to resample streamlines. Default: None.
         compress: float
@@ -152,7 +149,6 @@ class HDF5Creator:
         self.compress = compress
 
         # Optional
-        self.std_mask = std_mask  # (could be None)
         self.save_intermediate = save_intermediate
         self.enforce_files_presence = enforce_files_presence
         self.intermediate_folder = intermediate_folder
@@ -295,19 +291,10 @@ class HDF5Creator:
         config_file_list = sum(nested_lookup('files', self.groups_config), [])
         config_file_list += nested_lookup(
             'connectivity_matrix', self.groups_config)
+        config_file_list += nested_lookup('std_mask', self.groups_config)
 
         for subj_id in self.all_subjs:
             subj_input_dir = Path(self.root_folder).joinpath(subj_id)
-
-            # Find subject's standardization mask
-            if self.std_mask is not None:
-                for sub_mask in self.std_mask:
-                    sub_std_mask_file = subj_input_dir.joinpath(
-                        sub_mask.replace('*', subj_id))
-                    if not sub_std_mask_file.is_file():
-                        raise FileNotFoundError(
-                            "Standardization mask {} not found for subject {}!"
-                            .format(sub_std_mask_file, subj_id))
 
             # Find subject's files from group_config
             for this_file in config_file_list:
@@ -368,31 +355,14 @@ class HDF5Creator:
 
         subj_hdf_group = hdf_handle.create_group(subj_id)
 
-        # Find subject's standardization mask
-        subj_std_mask_data = None
-        if self.std_mask is not None:
-            for sub_mask in self.std_mask:
-                sub_mask = sub_mask.replace('*', subj_id)
-                logging.info("    - Loading standardization mask {}"
-                             .format(sub_mask))
-                sub_mask_file = subj_input_dir.joinpath(sub_mask)
-                sub_mask_img = nib.load(sub_mask_file)
-                sub_mask_data = np.asanyarray(sub_mask_img.dataobj) > 0
-                if subj_std_mask_data is None:
-                    subj_std_mask_data = sub_mask_data
-                else:
-                    subj_std_mask_data = np.logical_or(sub_mask_data,
-                                                       subj_std_mask_data)
-
         # Add the subj data based on groups in the json config file
-        ref = self._create_volume_groups(
-            subj_id, subj_input_dir, subj_std_mask_data, subj_hdf_group)
+        ref = self._create_volume_groups(subj_id, subj_input_dir,
+                                         subj_hdf_group)
 
         self._create_streamline_groups(ref, subj_input_dir, subj_id,
                                        subj_hdf_group)
 
-    def _create_volume_groups(self, subj_id, subj_input_dir,
-                              subj_std_mask_data, subj_hdf_group):
+    def _create_volume_groups(self, subj_id, subj_input_dir, subj_hdf_group):
         """
         Create the hdf5 groups for all volume groups in the config_file for a
         given subject.
@@ -407,7 +377,7 @@ class HDF5Creator:
 
             (group_data, group_affine,
              group_header, group_res) = self._process_one_volume_group(
-                group, subj_id, subj_input_dir, subj_std_mask_data)
+                group, subj_id, subj_input_dir)
             if ref_header is None:
                 ref_header = group_header
             else:
@@ -431,8 +401,7 @@ class HDF5Creator:
         return ref_header
 
     def _process_one_volume_group(self, group: str, subj_id: str,
-                                  subj_input_path: Path,
-                                  subj_std_mask_data: np.ndarray = None):
+                                  subj_input_dir: Path):
         """
         Processes each volume group from the json config file for a given
         subject:
@@ -448,10 +417,8 @@ class HDF5Creator:
             Group name.
         subj_id: str
             The subject's id.
-        subj_input_path: Path
+        subj_input_dir: Path
             Path where the files from file_list should be found.
-        subj_std_mask_data: np.ndarray of bools, optional
-            Binary mask that will be used for data standardization.
 
         Returns
         -------
@@ -460,19 +427,44 @@ class HDF5Creator:
         group_affine: np.ndarray
             Affine for the group.
         """
-        standardization = self.groups_config[group]['standardization']
+        std_mask = None
+        std_option = 'none'
+        if 'standardization' in self.groups_config[group]:
+            std_option = self.groups_config[group]['standardization']
+        if 'std_mask' in self.groups_config[group]:
+            if std_option == 'none':
+                logging.warning("You provided a std_mask for volume group {}, "
+                                "but std_option is 'none'. Skipping.")
+            else:
+                # Load subject's standardization mask. Can be a list of files.
+                std_masks = self.groups_config[group]['std_mask']
+                if isinstance(std_masks, str):
+                    std_masks = [std_masks]
+
+                for sub_mask in std_masks:
+                    sub_mask = sub_mask.replace('*', subj_id)
+                    logging.info("    - Loading standardization mask {}"
+                                 .format(sub_mask))
+                    sub_mask_file = subj_input_dir.joinpath(sub_mask)
+                    sub_mask_img = nib.load(sub_mask_file)
+                    sub_mask_data = np.asanyarray(sub_mask_img.dataobj) > 0
+                    if std_mask is None:
+                        std_mask = sub_mask_data
+                    else:
+                        std_mask = np.logical_or(sub_mask_data, std_mask)
+
         file_list = self.groups_config[group]['files']
 
         # First file will define data dimension and affine
         file_name = file_list[0].replace('*', subj_id)
-        first_file = subj_input_path.joinpath(file_name)
+        first_file = subj_input_dir.joinpath(file_name)
         logging.info("       - Processing file {}".format(file_name))
         group_data, group_affine, group_res, group_header = load_file_to4d(
             first_file)
 
-        if standardization == 'per_file':
+        if std_option == 'per_file':
             logging.debug('      *Standardizing sub-data')
-            group_data = standardize_data(group_data, subj_std_mask_data,
+            group_data = standardize_data(group_data, std_mask,
                                           independent=False)
 
         # Other files must fit (data shape, affine, voxel size)
@@ -480,12 +472,12 @@ class HDF5Creator:
         # is a minimal check.
         for file_name in file_list[1:]:
             file_name = file_name.replace('*', subj_id)
-            data = _load_and_verify_file(file_name, subj_input_path, group,
+            data = _load_and_verify_file(file_name, subj_input_dir, group,
                                          group_affine, group_res)
 
-            if standardization == 'per_file':
+            if std_option == 'per_file':
                 logging.debug('      *Standardizing sub-data')
-                data = standardize_data(data, subj_std_mask_data,
+                data = standardize_data(data, std_mask,
                                         independent=False)
 
             # Append file data to hdf group.
@@ -497,15 +489,15 @@ class HDF5Creator:
                     'Wrong dimensions?'.format(file_name, group))
 
         # Standardize data (per channel) (if not done 'per_file' yet).
-        if standardization == 'independent':
+        if std_option == 'independent':
             logging.debug('      *Standardizing data on each feature.')
-            group_data = standardize_data(group_data, subj_std_mask_data,
+            group_data = standardize_data(group_data, std_mask,
                                           independent=True)
-        elif standardization == 'all':
+        elif std_option == 'all':
             logging.debug('      *Standardizing data as a whole.')
-            group_data = standardize_data(group_data, subj_std_mask_data,
+            group_data = standardize_data(group_data, std_mask,
                                           independent=False)
-        elif standardization not in ['none', 'per_file']:
+        elif std_option not in ['none', 'per_file']:
             raise ValueError("standardization must be one of "
                              "['all', 'independent', 'per_file', 'none']")
 

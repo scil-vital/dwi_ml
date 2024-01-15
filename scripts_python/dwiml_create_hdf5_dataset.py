@@ -32,8 +32,7 @@ from dipy.io.stateful_tractogram import set_sft_logger_level
 
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
 from dwi_ml.data.hdf5.utils import (
-    add_hdf5_creation_args, add_mri_processing_args,
-    add_streamline_processing_args)
+    add_hdf5_creation_args, add_streamline_processing_args)
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg
 
@@ -89,8 +88,8 @@ def prepare_hdf5_creator(args):
     # Instantiate a creator and perform checks
     creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
                           training_subjs, validation_subjs, testing_subjs,
-                          groups_config, args.std_mask, args.step_size,
-                          args.compress, args.enforce_files_presence,
+                          groups_config, args.step_size, args.compress,
+                          args.enforce_files_presence,
                           args.save_intermediate, intermediate_subdir)
 
     return creator
@@ -101,7 +100,6 @@ def _parse_args():
                                 formatter_class=argparse.RawTextHelpFormatter)
 
     add_hdf5_creation_args(p)
-    add_mri_processing_args(p)
     add_streamline_processing_args(p)
     add_overwrite_arg(p)
     add_logging_arg(p)

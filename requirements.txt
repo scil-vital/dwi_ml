@@ -23,7 +23,7 @@ IProgress>=0.4     # For jupyter with tdqm
 nested_lookup==0.2.25  # For lists management
 
 # -------
-# Necessary but should be installed with scilpy (Last check: 09/2023):
+# Necessary but should be installed with scilpy (Last check: 01/2024):
 # -------
 future==0.18.*
 h5py==3.7.*   # h5py must absolutely be >2.4: that's when it became thread-safe

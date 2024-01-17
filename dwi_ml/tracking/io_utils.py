@@ -129,18 +129,18 @@ def prepare_seed_generator(parser, args, hdf_handle):
     seed_generator = SeedGenerator(seed_data, seed_res, space=ALWAYS_VOX_SPACE,
                                    origin=ALWAYS_CORNER)
 
-    if len(seed_generator.seeds_vox) == 0:
+    if len(seed_generator.seeds_vox_corner) == 0:
         parser.error('Seed mask "{}" does not have any voxel with value > 0.'
                      .format(args.in_seed))
 
     if args.npv:
         # Note. Not really nb seed per voxel, just in average.
-        nbr_seeds = len(seed_generator.seeds_vox) * args.npv
+        nbr_seeds = len(seed_generator.seeds_vox_corner) * args.npv
     elif args.nt:
         nbr_seeds = args.nt
     else:
         # Setting npv = 1.
-        nbr_seeds = len(seed_generator.seeds_vox)
+        nbr_seeds = len(seed_generator.seeds_vox_corner)
 
     seed_header = nib.Nifti1Image(seed_data, affine).header
 

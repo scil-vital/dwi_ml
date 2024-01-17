@@ -8,7 +8,8 @@ from dipy.io.stateful_tractogram import StatefulTractogram
 from nibabel.streamlines.tractogram import (PerArrayDict, PerArraySequenceDict)
 import numpy as np
 
-from scilpy.tracking.tools import resample_streamlines_step_size
+from scilpy.tractograms.streamline_operations import \
+    resample_streamlines_step_size
 from scilpy.utils.streamlines import compress_sft
 
 

@@ -28,6 +28,9 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
     if use_existing_experiment:
         # Should only be False for debugging tests.
         add_arg_existing_experiment_path(p)
+        p.add_argument('--use_latest_epoch', action='store_true',
+                       help="If true, use model at latest epoch rather than "
+                            "default (best model).")
         p.add_argument('--uncompress_loss', action='store_true',
                        help="If model uses compressed loss, take uncompressed "
                             "equivalent.")
@@ -45,8 +48,9 @@ def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
     add_args_testing_subj_hdf5(p)
 
     # Options
-    p.add_argument('--batch_size', type=int)
-    add_memory_args(p)
+    g = add_memory_args(p)
+    g.add_argument('--batch_size', type=int, metavar='n',
+                   help="Batch size in number of streamlines. Default: None.")
 
     g = p.add_argument_group("Options to save loss as a colored SFT")
     g.add_argument('--save_colored_tractogram', metavar='out_name.trk',
@@ -221,7 +225,14 @@ def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
 def run_visu_save_colored_displacement(
         args, model: ModelWithDirectionGetter, losses: List[torch.Tensor],
         outputs: List[torch.Tensor], sft: StatefulTractogram,
-        colorbar_name: str, best_sft_name: str, worst_sft_name: str):
+        colorbar_name: str, best_sft_name: str, worst_sft_name: str,
+        show_histogram: bool = True):
+
+    if show_histogram:
+        tmp = torch.hstack(losses)
+        plt.figure()
+        _ = plt.hist(tmp.numpy(), bins='auto')
+        plt.title("Histogram of losses")
 
     if model.direction_getter.compress_loss:
         if not ('uncompress_loss' in args and args.uncompress_loss):
@@ -291,5 +302,5 @@ def run_visu_save_colored_displacement(
 
         save_tractogram(sft, args.out_displacement_sft, bbox_valid_check=False)
 
-    if args.show_colorbar:
+    if args.show_colorbar or show_histogram:
         plt.show()

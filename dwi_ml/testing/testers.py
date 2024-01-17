@@ -5,6 +5,7 @@ import os
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
@@ -23,6 +24,7 @@ class Tester:
     from the hdf5. This choice allows to test the loss on various bundles for
     a better interpretation of the models' performances.
     """
+
     def __init__(self, experiment_path: str, model: ModelWithDirectionGetter,
                  batch_size: int = None, device: torch.device = None):
         """
@@ -101,8 +103,7 @@ class Tester:
 
     def run_model_on_sft(self, sft, add_zeros_if_no_eos=True,
                          compute_loss=True, uncompress_loss=False,
-                         force_compress_loss=False,
-                         weight_with_angle=False):
+                         force_compress_loss=False, weight_with_angle=False):
         """
         Equivalent of one validation pass.
 
@@ -153,9 +154,9 @@ class Tester:
         batch_start = 0
         batch_end = batch_size
         with torch.no_grad():
-            for batch in range(nb_batches):
-                logging.info("  Batch #{}:  {} - {}"
-                             .format(batch + 1, batch_start, batch_end))
+            for batch in tqdm(range(nb_batches),
+                              desc="Batches", total=nb_batches):
+
                 # 1. Prepare batch
                 streamlines = [
                     torch.as_tensor(s, dtype=torch.float32, device=self.device)
@@ -201,14 +202,18 @@ class Tester:
 
             if self.model.direction_getter.compress_loss:
                 total_n = sum(compressed_n)
-                total_loss = sum([loss * n for loss, n in
-                                  zip(losses, compressed_n)]) / total_n
+                mean_loss = sum([loss * n for loss, n in
+                                 zip(losses, compressed_n)]) / total_n
+                print("Loss function, averaged over all {} compressed points "
+                      "in the chosen SFT, is: {}.".format(total_n, mean_loss))
             else:
                 total_n = sum([len(line_loss) for line_loss in losses])
-                total_loss = torch.mean(torch.hstack(losses))
-
-            print("Loss function, averaged over all {} points in the chosen "
-                  "SFT, is: {}.".format(total_n, total_loss))
+                tmp = torch.hstack(losses)
+                # \u00B1 is the plus or minus sign.
+                print(u"Loss function, averaged over all {} points in the "
+                      "chosen SFT, is: {} \u00B1 {}. Min: {}. Max: {}"
+                      .format(total_n, torch.mean(tmp), torch.std(tmp),
+                              torch.min(tmp), torch.max(tmp)))
 
             if (not self.model.direction_getter.compress_loss) and \
                     add_zeros_if_no_eos and \
@@ -216,9 +221,9 @@ class Tester:
                 zero = torch.zeros(1)
                 losses = [torch.hstack([line, zero]) for line in losses]
                 total_n = sum([len(line_loss) for line_loss in losses])
-                total_loss = torch.mean(torch.hstack(losses))
+                mean_loss = torch.mean(torch.hstack(losses))
                 print("When adding a 0 loss at the EOS position, the mean "
-                      "loss for {} points is {}.".format(total_n, total_loss))
+                      "loss for {} points is {}.".format(total_n, mean_loss))
 
         self.model.direction_getter.compress_loss = save_val
         self.model.direction_getter.weight_loss_with_angle = save_val_angle

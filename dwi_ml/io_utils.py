@@ -43,7 +43,7 @@ def add_memory_args(p: ArgumentParser, add_lazy_options=False,
         add_processes_arg(ram_options)
         ram_options.add_argument(
             '--use_gpu', action='store_true',
-            help="If set, use GPU for processing. Cannot be used \ntogether "
+            help="If set, use GPU for processing. Cannot be used together "
                  "with --processes.")
     else:
         p.add_argument('--use_gpu', action='store_true',

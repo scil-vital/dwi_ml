@@ -4,6 +4,7 @@ Runs the model, computes the loss, and saves the loss as data_per_point to view
 as color.
 """
 import itertools
+from argparse import ArgumentParser
 import logging
 from typing import List
 
@@ -12,15 +13,83 @@ import torch
 from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
+from scilpy.io.utils import add_overwrite_arg
 
+from dwi_ml.io_utils import add_logging_arg, add_arg_existing_experiment_path
+from dwi_ml.io_utils import add_memory_args
 from dwi_ml.models.main_models import ModelWithDirectionGetter
+from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 
 blue = [2., 75., 252.]
+
+
+def prepare_args_visu_loss(p: ArgumentParser, use_existing_experiment=True):
+    # Mandatory
+    if use_existing_experiment:
+        # Should only be False for debugging tests.
+        add_arg_existing_experiment_path(p)
+        p.add_argument('--use_latest_epoch', action='store_true',
+                       help="If true, use model at latest epoch rather than "
+                            "default (best model).")
+        p.add_argument('--uncompress_loss', action='store_true',
+                       help="If model uses compressed loss, take uncompressed "
+                            "equivalent.")
+        p.add_argument('--force_compress_loss', nargs='?', type=float,
+                       const=1e-3,
+                       help="Compress loss, even if model uses uncompressed "
+                            "loss.")
+        g = p.add_mutually_exclusive_group()
+        g.add_argument('--weight_with_angle', action='store_true',
+                       help="Change model's weight loss with angle parameter "
+                            "value (True/False).")
+        g.add_argument('--do_not_weight_with_angle', dest='weight_with_angle',
+                       action='store_false')
+
+    add_args_testing_subj_hdf5(p)
+
+    # Options
+    g = add_memory_args(p)
+    g.add_argument('--batch_size', type=int, metavar='n',
+                   help="Batch size in number of streamlines. Default: None.")
+
+    g = p.add_argument_group("Options to save loss as a colored SFT")
+    g.add_argument('--save_colored_tractogram', metavar='out_name.trk',
+                   dest='out_colored_sft',
+                   help="If set, saves the tractogram with the loss per point "
+                        "as a data per point (color)")
+    g.add_argument('--min_range', type=float,
+                   help="Inferior range of the colormap. If any loss is lower"
+                        "than that value, they will be clipped.")
+    g.add_argument('--max_range', type=float)
+    g.add_argument('--colormap', default='plasma',
+                   help="Select the colormap for colored trk [%(default)s].\n"
+                        "Can be any matplotlib cmap.")
+    g.add_argument('--save_best_and_worst', type=int, nargs='?', const=10,
+                   metavar='x',
+                   help="Save separately the worst x%% and best x%% of "
+                        "streamlines. Default: 10%%.")
+    g.add_argument('--show_colorbar')
+
+    g = p.add_argument_group("Options to save output direction as "
+                             "displacement")
+    g.add_argument('--save_displacement', metavar='out_name.trk',
+                   dest='out_displacement_sft',
+                   help="If set, picks one streamline and computes the "
+                        "outputs at each position.\n Saves a streamline that "
+                        "starts at each real coordinates and moves in the "
+                        "output direction.")
+    g.add_argument('--pick_at_random', action='store_true')
+    g.add_argument('--pick_best_and_worst', action='store_true')
+    g.add_argument('--pick_idx', type=int, nargs='*')
+
+    add_overwrite_arg(p)
+    add_logging_arg(p)
 
 
 def prepare_colors_from_loss(
         losses: List[torch.Tensor], sft: StatefulTractogram, colormap: str,
         min_range: float = None, max_range: float = None):
+
     losses = np.concatenate(losses)
     # normalize between 0 and 1
     # Keeping as tensor because the split method below is easier to use
@@ -31,6 +100,7 @@ def prepare_colors_from_loss(
                  .format(min_val, max_val))
     losses = np.clip(losses, min_val, max_val)
     losses = (losses - min_val) / (max_val - min_val)
+    print("Loss ranges between {} and {}".format(min_val, max_val))
 
     cmap = plt.colormaps.get_cmap(colormap)
     color = cmap(losses)[:, 0:3] * 255
@@ -46,36 +116,37 @@ def prepare_colors_from_loss(
     return sft, colorbar_fig
 
 
-def pick_best_and_worst(nb, mean_losses):
-    """
-    Parameters
-    ----------
-    nb: int
-        Will take the top n and the bottom n.
-    mean_losses: list
-        The lost of each streamline
+def separate_best_and_worst(percent, losses, sft):
+    losses = [np.mean(s_losses) for s_losses in losses]
 
-    Returns
-    ------
-    best_idx: List
-    worst_idx: List
-    """
-    nb_max = int(len(mean_losses) / 2)
-    if nb > nb_max:
-        logging.warning("You asked for the top {} and bottom {} but the "
-                        "SFT contains {} streamlines; there would be overlap."
-                        "Selecting the {} top and bottom."
-                        .format(nb, nb, len(mean_losses), nb_max))
-        nb = nb_max
+    percent = int(percent / 100 * len(sft))
+    idx = np.argsort(losses)
+    best_idx = idx[0:percent]
+    worst_idx = idx[-percent:]
 
-    idx = np.argsort(mean_losses)
-    best_idx = idx[0:nb]
-    worst_idx = idx[-nb:]
-
+    print("Best / worst streamline's loss: \n"
+          "      Best : {}\n"
+          "      Worst: {}".format(losses[best_idx[0]], losses[worst_idx[-1]]))
     return best_idx, worst_idx
 
 
-def combine_displacement_with_ref(out_dirs, sft, model):
+def pick_a_few(sft, ids_best, ids_worst,
+               pick_at_random: bool, pick_best_and_worst: bool,
+               pick_idx: List[int]):
+    chosen_streamlines = []
+    if pick_at_random:
+        chosen_streamlines.extend(np.random.randint(0, len(sft), size=1))
+    if pick_best_and_worst:
+        chosen_streamlines.extend(ids_best[0])
+        chosen_streamlines.extend(ids_worst[-1])
+    if pick_idx is not None and len(pick_idx) > 0:
+        chosen_streamlines.extend(pick_idx)
+
+    chosen_streamlines = np.unique(chosen_streamlines)
+    return sft[chosen_streamlines], chosen_streamlines
+
+
+def combine_displacement_with_ref(out_dirs, sft, step_size_mm=None):
     """
     Normalizes directions.
     Saves the model-learned streamlines together with the input streamlines:
@@ -87,8 +158,8 @@ def combine_displacement_with_ref(out_dirs, sft, model):
     """
     epsilon = 0.000005
     _step_size_vox = None
-    if model.step_size is not None:
-        _step_size_vox = model.step_size / sft.space_attributes[2]
+    if step_size_mm is not None:
+        _step_size_vox = step_size_mm / sft.space_attributes[2]
 
     out_streamlines = []
     color_x = []
@@ -97,27 +168,22 @@ def combine_displacement_with_ref(out_dirs, sft, model):
 
     for i, s in enumerate(sft.streamlines):
         this_s_len = len(s)
-        streamline_out_dir = out_dirs[i]
-
-        # We expect user to have already removed the last data point if there
-        # is no out_dir associated to it (if no EOS).
-        assert len(streamline_out_dir) == this_s_len, \
-            ("Expecting model outputs for line {} to be of length {}, got "
-             "{}. Error in our code?"
-             .format(i, this_s_len - 1, len(streamline_out_dir)))
 
         # Normalizing directions to step_size
+        streamline_out_dir = out_dirs[i]
+
         if _step_size_vox is not None:
             streamline_out_dir /= np.maximum(
                 epsilon, np.linalg.norm(streamline_out_dir, axis=1)[:, None])
             streamline_out_dir *= _step_size_vox
 
         streamline_out_dir = [list(d) for d in streamline_out_dir]
+        assert len(streamline_out_dir) == this_s_len - 1
 
         # output : Starts on first point
         #          + tmp = each point = true previous point + learned dir
         #                 + in between each point, comes back to correct point.
-        tmp = [[s[p] + streamline_out_dir[p], s[p + 1]]
+        tmp = [[s[p] + streamline_out_dir[p], s[p+1]]
                for p in range(this_s_len - 1)]
         out_streamline = [s[0]] + list(itertools.chain.from_iterable(tmp))
         out_streamline = out_streamline[:-1]
@@ -136,7 +202,7 @@ def combine_displacement_with_ref(out_dirs, sft, model):
         # Learned streamline = from green to pink
         ranging_2 = [[i / this_s_len2 * 252.] for i in range(this_s_len2)]
 
-        color_x.extend([all_x_blue, ranging_2], )
+        color_x.extend([all_x_blue, ranging_2],)
         color_y.extend([all_y_blue, [[150.]] * this_s_len2])
         color_z.extend([all_z_blue, ranging_2])
 
@@ -156,87 +222,85 @@ def combine_displacement_with_ref(out_dirs, sft, model):
     return sft
 
 
-def run_visu_save_colored_sft(
-        losses: List[torch.Tensor], mean_losses: List, model,
-        sft: StatefulTractogram,
-        save_whole_tractogram, colored_sft_name: str,
-        save_separate_best_and_worst, best_worst_nb,
-        best_sft_name, worst_sft_name,
-        colorbar_name: str, colormap: str = None,
-        min_range: float = None, max_range: float = None):
-    """
-    Saves the losses as data per point.
-    """
-    assert save_whole_tractogram or save_separate_best_and_worst
-
-    logging.info("Adding losses as data per point:")
-    sft, colorbar_fig = prepare_colors_from_loss(
-        losses, sft, colormap, min_range, max_range)
-    print("Saving colorbar as {}".format(colorbar_name))
-    colorbar_fig.savefig(colorbar_name)
-
-    if save_whole_tractogram:
-        print("Saving colored SFT as {}".format(colored_sft_name))
-        save_tractogram(sft, colored_sft_name)
-
-    if save_separate_best_and_worst:
-        best_idx, worst_idx = pick_best_and_worst(best_worst_nb, mean_losses)
-
-        best_streamlines = [sft.streamlines[i] for i in best_idx]
-        worst_streamlines = [sft.streamlines[i] for i in worst_idx]
-        best_sft = sft.from_sft(best_streamlines, sft)
-        worst_sft = sft.from_sft(worst_streamlines, sft)
-        print("Saving best and worst streamlines as {} \nand {}"
-              .format(best_sft_name, worst_sft_name))
-        print("Best / worst {} streamlines's losses: \n"
-              "      Best : {}\n"
-              "      Worst: {}"
-              .format(best_worst_nb,
-                      mean_losses[best_idx], mean_losses[worst_idx]))
-
-        save_tractogram(best_sft, best_sft_name)
-        save_tractogram(worst_sft, worst_sft_name)
-
-
 def run_visu_save_colored_displacement(
-        model: ModelWithDirectionGetter, outputs: List[torch.Tensor],
-        mean_losses, sft: StatefulTractogram, displacement_sft_name: str,
-        displacement_on_nb: int, displacement_on_best_and_worst: bool):
-    # Select a few streamlines
-    idx = []
-    if displacement_on_best_and_worst:
-        id_best, id_worst = pick_best_and_worst(1, mean_losses)
-        idx.extend(id_best)
-        idx.extend(id_worst)
-    if displacement_on_nb and len(sft) > displacement_on_nb:
-        idx.extend(np.random.randint(0, len(sft), size=displacement_on_nb))
-    idx = np.unique(idx)
-    print("Selecting {} streamlines out of {} for visualisation of the "
-          "output direction.".format(len(idx), len(sft)))
-    sft = sft[idx]
-    if 'gaussian' in model.direction_getter.key:
-        # outputs = means, sigmas
-        out0 = [outputs[0][i] for i in idx]
-        out1 = [outputs[1][i] for i in idx]
-        outputs = (torch.vstack(out0), torch.vstack(out1))
-    else:
-        outputs = [outputs[i] for i in idx]
-        outputs = torch.vstack(outputs)
+        args, model: ModelWithDirectionGetter, losses: List[torch.Tensor],
+        outputs: List[torch.Tensor], sft: StatefulTractogram,
+        colorbar_name: str, best_sft_name: str, worst_sft_name: str,
+        show_histogram: bool = True):
 
-    # Get out_dirs from model_outputs using the direction getter.
-    # Use eos_thresh of 1 to be sure we don't output a NaN
-    lengths = [len(s) for s in sft.streamlines]
-    logging.info("Using EOS threshold 1 to avoid getting NANs. "
-                 "We will get an output direction at each point even "
-                 "tough the model would have rather stopped.")
-    with torch.no_grad():
-        out_dirs = model.get_tracking_directions(
-            outputs, algo='det', eos_stopping_thresh=1.0)
-        out_dirs = torch.split(out_dirs, lengths)
+    if show_histogram:
+        tmp = torch.hstack(losses)
+        plt.figure()
+        _ = plt.hist(tmp.numpy(), bins='auto')
+        plt.title("Histogram of losses")
 
-    out_dirs = [o.numpy() for o in out_dirs]
+    if model.direction_getter.compress_loss:
+        if not ('uncompress_loss' in args and args.uncompress_loss):
+            print("Can't save colored SFT for compressed loss")
 
-    # Save error together with ref
-    sft = combine_displacement_with_ref(out_dirs, sft, model)
+    # Save colored SFT
+    if args.out_colored_sft is not None:
+        logging.info("Preparing colored sft")
+        sft, colorbar_fig = prepare_colors_from_loss(
+            losses, sft, args.colormap, args.min_range, args.max_range)
+        print("Saving colored SFT as {}".format(args.out_colored_sft))
+        save_tractogram(sft, args.out_colored_sft)
 
-    save_tractogram(sft, displacement_sft_name, bbox_valid_check=False)
+        print("Saving colorbar as {}".format(colorbar_name))
+        colorbar_fig.savefig(colorbar_name)
+
+    # Separate best and worst
+    best_idx = []
+    worst_idx = []
+    if args.save_best_and_worst is not None or args.pick_best_and_worst:
+        best_idx, worst_idx = separate_best_and_worst(
+            args.save_best_and_worst, losses, sft)
+
+        if args.out_colored_sft is not None:
+            best_sft = sft[best_idx]
+            worst_sft = sft[worst_idx]
+            print("Saving best and worst streamlines as {} \nand {}"
+                  .format(best_sft_name, worst_sft_name))
+            save_tractogram(best_sft, best_sft_name)
+            save_tractogram(worst_sft, worst_sft_name)
+
+    # Save displacement
+    args.pick_idx = list(range(10))
+    if args.out_displacement_sft:
+        if args.out_colored_sft:
+            # We have run model on all streamlines. Picking a few now.
+            sft, idx = pick_a_few(
+                sft, best_idx, worst_idx, args.pick_at_random,
+                args.pick_best_and_worst, args.pick_idx)
+
+            # ToDo. See if we can simplify to fit with all models
+            if 'gaussian' in model.direction_getter.key:
+                means, sigmas = outputs
+                means = [means[i] for i in idx]
+                lengths = [len(line) for line in means]
+                outputs = (torch.vstack(means),
+                           torch.vstack([sigmas[i] for i in idx]))
+
+            elif 'fisher' in model.direction_getter.key:
+                raise NotImplementedError
+            else:
+                outputs = [outputs[i] for i in idx]
+                lengths = [len(line) for line in outputs]
+                outputs = torch.vstack(outputs)
+
+        # Use eos_thresh of 1 to be sure we don't output a NaN
+        with torch.no_grad():
+            out_dirs = model.get_tracking_directions(
+                outputs, algo='det', eos_stopping_thresh=1.0)
+
+            out_dirs = torch.split(out_dirs, lengths)
+
+        out_dirs = [o.numpy() for o in out_dirs]
+
+        # Save error together with ref
+        sft = combine_displacement_with_ref(out_dirs, sft, model.step_size)
+
+        save_tractogram(sft, args.out_displacement_sft, bbox_valid_check=False)
+
+    if args.show_colorbar or show_histogram:
+        plt.show()

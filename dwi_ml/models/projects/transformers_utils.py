@@ -26,8 +26,8 @@ def add_transformers_model_args(p):
 
     gx = p.add_argument_group(
         "Embedding of the input (X)",
-        "Input embedding size defines the d_model. The d_model must be divisible "
-        "by the number of heads.\n"
+        "Input embedding size defines the d_model. The d_model must be "
+        "divisible by the number of heads.\n"
         "Note that for TTST, total d_model will rather be "
         "input_embedded_size + target_embedded_size.\n")
     AbstractTransformerModel.add_args_input_embedding(
@@ -56,7 +56,8 @@ def add_transformers_model_args(p):
     gt.add_argument(
         '--target_embedded_size', type=int, metavar='n',
         help="Embedding size for targets (for TTST only). \n"
-             "Total d_model will be input_embedded_size + target_embedded_size.")
+             "Total d_model will be input_embedded_size + "
+             "target_embedded_size.")
 
     gtt = p.add_argument_group(title='Transformer: main layers')
     gtt.add_argument(
@@ -119,20 +120,3 @@ def add_transformers_model_args(p):
 
     g = p.add_argument_group("Output")
     AbstractTransformerModel.add_args_tracking_model(g)
-
-
-def find_transformer_class(model_type):
-    """
-    model_type: returned by verify_which_model_in_path.
-    """
-    if model_type == 'OriginalTransformerModel':
-        model_cls = OriginalTransformerModel
-    elif model_type == 'TransformerSrcAndTgtModel':
-        model_cls = TransformerSrcAndTgtModel
-    elif model_type == 'TransformerSrcOnlyModel':
-        model_cls = TransformerSrcOnlyModel
-    else:
-        raise ValueError("Model type is not a recognized Transformer"
-                         "({})".format(model_type))
-
-    return model_cls

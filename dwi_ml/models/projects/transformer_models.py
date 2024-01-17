@@ -11,7 +11,8 @@ from torch.nn.functional import pad
 
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     add_label_as_last_dim, convert_dirs_to_class
-from dwi_ml.data.processing.streamlines.post_processing import compute_directions
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
 from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.main_models import (ModelWithDirectionGetter,
@@ -993,3 +994,18 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
             weights.extend(new_weights)
             return (weights,)
 
+
+def find_transformer_class(model_type: str):
+    """
+    model_type: returned by verify_which_model_in_path.
+    """
+    transformers_dict = {
+        OriginalTransformerModel.__name__: OriginalTransformerModel,
+        TransformerSrcAndTgtModel.__name__: TransformerSrcAndTgtModel,
+        TransformerSrcOnlyModel.__name: TransformerSrcOnlyModel
+    }
+    if model_type not in transformers_dict.keys():
+        raise ValueError("Model type is not a recognized Transformer"
+                         "({})".format(model_type))
+
+    return transformers_dict[model_type]

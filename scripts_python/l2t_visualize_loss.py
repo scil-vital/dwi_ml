@@ -2,42 +2,29 @@
 # -*- coding: utf-8 -*-
 import argparse
 import logging
-import os
+import os.path
 
-import numpy as np
 import torch
-from matplotlib import pyplot as plt
 
-from dwi_ml.io_utils import add_arg_existing_experiment_path
+from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
+
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
-from dwi_ml.testing.testers import TesterOneInput, load_sft_from_hdf5
-from dwi_ml.testing.utils import add_args_testing_subj_hdf5
-from dwi_ml.testing.visu_loss import (run_visu_save_colored_displacement,
-                                      run_visu_save_colored_sft)
-from dwi_ml.testing.visu_loss_utils import prepare_args_visu_loss, visu_checks
-
-
-def prepare_argparser():
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawTextHelpFormatter)
-    add_arg_existing_experiment_path(p)
-    add_args_testing_subj_hdf5(p, ask_input_group=True,
-                               ask_streamlines_group=True)
-    prepare_args_visu_loss(p)
-    return p
+from dwi_ml.testing.testers import TesterOneInput
+from dwi_ml.testing.visu_loss import \
+    prepare_args_visu_loss, pick_a_few, run_visu_save_colored_displacement
 
 
 def main():
-    p = prepare_argparser()
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawTextHelpFormatter)
+    prepare_args_visu_loss(p)
     args = p.parse_args()
 
-    # Checks
-    if args.out_dir is None:
-        args.out_dir = os.path.join(args.experiment_path, 'visu_loss')
-    (colored_sft_name, colorbar_name, colored_best_name,
-     colored_worst_name, displacement_sft_name) = visu_checks(args, p)
-    if not os.path.isdir(args.experiment_path):
-        p.error("Experiment {} not found.".format(args.experiment_path))
+    if args.out_displacement_sft and \
+            not (args.pick_at_random or args.pick_best_and_worst or
+                 args.pick_idx):
+        p.error("You must select at least one of 'pick_at_random', "
+                "'pick_best_and_worst' and 'pick_idx'.")
 
     # Loggers
     sub_logger_level = args.logging.upper()
@@ -45,75 +32,66 @@ def main():
         sub_logger_level = 'INFO'
     logging.getLogger().setLevel(level=args.logging)
 
+    # Verify output names
+    out_files = [args.out_colored_sft]
+    colorbar_name, best_sft_name, worst_sft_name = (None, None, None)
+    if args.out_colored_sft is not None:
+        base_name, _ = os.path.splitext(os.path.basename(args.out_colored_sft))
+        file_dir = os.path.dirname(args.out_colored_sft)
+
+        colorbar_name = (os.path.join(file_dir, base_name + '_colorbar.png')
+                         if args.out_colored_sft is not None else None)
+        best_sft_name = (os.path.join(file_dir, base_name + '_best.trk')
+                         if args.save_best_and_worst is not None else None)
+        worst_sft_name = (os.path.join(file_dir, base_name + '_worst.trk')
+                          if args.save_best_and_worst is not None else None)
+        out_files += [colorbar_name, best_sft_name, worst_sft_name]
+
+    assert_inputs_exist(p, args.hdf5_file)
+    assert_outputs_exist(p, args, [], out_files)
+
     # Device
     device = (torch.device('cuda') if torch.cuda.is_available() and
               args.use_gpu else None)
 
     # 1. Load model
     logging.debug("Loading model.")
-    model = Learn2TrackModel.load_model_from_params_and_state(
-        args.experiment_path + '/best_model', log_level=sub_logger_level)
-    model.set_context('visu')
+    if args.use_latest_epoch:
+        model = Learn2TrackModel.load_model_from_params_and_state(
+            args.experiment_path + '/checkpoint/model',
+            log_level=sub_logger_level)
+    else:
+        model = Learn2TrackModel.load_model_from_params_and_state(
+            args.experiment_path + '/best_model',
+            log_level=sub_logger_level)
 
-    # 2. Load data through the tester
-    tester = TesterOneInput(
-        model=model, batch_size=args.batch_size, device=device,
-        subj_id=args.subj_id, hdf5_file=args.hdf5_file,
-        subset_name=args.subset, volume_group=args.input_group)
+    # 2. Compute loss
+    tester = TesterOneInput(args.experiment_path, model, args.batch_size, device)
+    sft = tester.load_and_format_data(args.subj_id, args.hdf5_file, args.subset)
 
-    # 3. Load SFT. Right now from hdf5. Could offer option to load from disk.
-    sft = load_sft_from_hdf5(args.subj_id, args.hdf5_file, args.subset,
-                             args.streamlines_group)
+    if (args.out_displacement_sft and not args.out_colored_sft and
+            not args.pick_best_and_worst):
+        # Picking a few streamlines now to avoid running model on all
+        # streamlines for no reason.
+        sft, _ = pick_a_few(sft, [], [], args.pick_at_random,
+                            args.pick_best_and_worst, args.pick_idx)
 
-    # (Subsample if possible)
-    if not (args.save_colored_tractogram or args.save_colored_best_and_worst
-            or args.displacement_on_best_and_worst):
-        # Only saving: displacement_on_nb.
-        # Avoid running on all streamlines for no reason.
-        chosen_streamlines = np.random.randint(0, len(sft),
-                                               size=args.displacement_on_nb)
-        sft = sft[chosen_streamlines]
+    logging.info("Running model to compute loss")
 
-    # 4. Run model
-    logging.info("Running model on {} streamlines to compute loss"
-                 .format(len(sft)))
-    sft, outputs, losses, mean_loss_per_line = tester.run_model_on_sft(
-        sft, compute_loss=True)
+    outputs, losses = tester.run_model_on_sft(
+        sft, uncompress_loss=args.uncompress_loss,
+        force_compress_loss=args.force_compress_loss,
+        weight_with_angle=args.weight_with_angle)
 
-    if not model.direction_getter.add_eos:
-        # We will not get a loss value nor an output for the last point of the
-        # streamlines. Removing from sft.
-        sft.streamlines = [line[:-1] for line in sft.streamlines]
-    assert len(losses[0]) == len(sft.streamlines[0]), \
-        ("Expecting one loss per point, for each streamline, but got {} for "
-         "streamline 0, of len {}. Error in our code?"
-         .format(len(losses[0]), len(sft.streamlines[0])))
+    compute_loss_only = (args.out_colored_sft is None and
+                         args.out_displacement_sft is None and
+                         args.save_best_and_worst is None)
+    if compute_loss_only:
+        return
 
-    # 5. Colored SFT
-    if args.save_colored_tractogram or args.save_colored_best_and_worst:
-        run_visu_save_colored_sft(
-            losses, mean_loss_per_line, model, sft,
-            save_whole_tractogram=args.save_colored_tractogram,
-            colored_sft_name=colored_sft_name,
-            save_separate_best_and_worst=args.save_colored_best_and_worst,
-            best_worst_nb=args.best_and_worst_nb,
-            best_sft_name=colored_best_name, worst_sft_name=colored_worst_name,
-            colorbar_name=colorbar_name, colormap=args.colormap,
-            min_range=args.min_range, max_range=args.max_range)
-
-    # 6. Displacement.
-    if args.save_displacement:
-        run_visu_save_colored_displacement(
-            model, outputs, mean_loss_per_line, sft,
-            displacement_sft_name, args.displacement_on_nb,
-            args.displacement_on_best_and_worst)
-
-    if model.direction_getter.add_eos:
-        # toDo : Save EOS prob at each point.
-        print("EOS prob: toDo.")
-
-    if args.show_colorbar:
-        plt.show()
+    run_visu_save_colored_displacement(args, model, losses, outputs, sft,
+                                       colorbar_name, best_sft_name,
+                                       worst_sft_name)
 
 
 if __name__ == '__main__':

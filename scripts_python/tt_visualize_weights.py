@@ -5,18 +5,31 @@ import subprocess
 import sys
 from os.path import dirname
 
+from scilpy.io.fetcher import get_home as get_scilpy_folder
 from scilpy.io.utils import assert_outputs_exist
 
 from dwi_ml.testing.projects.tt_visu_main import (
-    build_argparser_transformer_visu, get_config_filename,
-    tt_visualize_weights_main, set_out_dir_visu_weights_and_create_if_not_exists)
+    build_argparser_transformer_visu, create_out_dir_visu_weights,
+    tt_visualize_weights_main)
 
 
-# Note. To use through jupyter, the file
-# must also be up-to-date.
+# Note. To use through jupyter, the file must also be up-to-date.
 # To modify it as developers:
 # jupyter notebook dwi_ml/testing/projects/tt_visualise_weights.ipynb
 # Do not run it there though! Else, saving it will save the outputs too!
+
+
+def _get_config_filename():
+    """
+    File that will be saved by the python script with all the args. The
+    jupyter notebook can then load them again.
+    """
+    # We choose to add it in the hidden .scilpy folder in our home.
+    # (Where our test data also is).
+    hidden_folder = get_scilpy_folder()
+    config_filename = os.path.join(
+        hidden_folder, 'ipynb_tt_visualize_weights.config')
+    return config_filename
 
 
 def main():
@@ -26,18 +39,21 @@ def main():
     parser = build_argparser_transformer_visu()
     args = parser.parse_args()
 
-    run_locally = False
-    if 'bertviz_locally' in args.visu_type:
-        if 'bertviz' in args.visu_type:
-            parser.error("Please choose either 'bertviz' or "
-                         "'bertviz_locally', not both.")
-
+    # Verifying if jupyter is required.
+    if 'bertviz' in args.visu_type and 'bertviz_locally' in args.visu_type:
+        raise ValueError("Please only select 'bertviz' or 'bertviz_locally', "
+                         "not both.")
+    elif 'bertviz_locally' in args.visu_type:
         print("--DEBUGGING MODE--\n"
               "We will run the bertviz but it will not save any output!")
         run_locally = True
-    if 'bertviz' not in args.visu_type:
+    elif 'bertviz' in args.visu_type:
+        print("Preparing to run through jupyter.")
+        run_locally = False
+    else:
         run_locally = True
 
+    # Running.
     if run_locally:
         tt_visualize_weights_main(args, parser)
     else:
@@ -54,7 +70,7 @@ def main():
                 .format(raw_ipynb_filename))
 
         # 2) Verify that output dir exists but not the html output files.
-        args = set_out_dir_visu_weights_and_create_if_not_exists(args)
+        args = create_out_dir_visu_weights(args)
 
         out_html_filename = args.out_prefix + 'tt_bertviz.html'
         out_html_file = os.path.join(args.out_dir, out_html_filename)
@@ -69,9 +85,8 @@ def main():
         # by the notebook in a new argparse instance.
         # Jupyter notebook needs to know where to load the config file.
         # Needs to be always at the same place because we cannot send an
-        # argument to jupyter. Or, we could ask it here and tell user to
-        # add it manually inside the jupyter notebook... complicated.
-        hidden_config_filename = get_config_filename()
+        # argument to jupyter.
+        hidden_config_filename = _get_config_filename()
         if os.path.isfile(hidden_config_filename):
             # In case a previous call failed.
             os.remove(hidden_config_filename)

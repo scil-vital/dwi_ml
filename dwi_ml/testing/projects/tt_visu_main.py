@@ -1,30 +1,29 @@
 # -*- coding: utf-8 -*-
 
 """
-Main part for the tt_visualize_weights, separated to be callable by the
-jupyter notebook.
+Main part for the tt_visualize_weights, separated to be callable by the jupyter
+notebook.
 """
 import argparse
 import glob
 import logging
 import os
-from typing import List
 
+from dipy.io.streamline import save_tractogram
 import numpy as np
 import torch
-from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
 
-from scilpy.io.fetcher import get_home as get_scilpy_folder
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
                              assert_outputs_exist, add_reference_arg)
 
-from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path, add_memory_args, \
-    add_arg_existing_experiment_path
+from dwi_ml.io_utils import (add_logging_arg, add_memory_args,
+                             verify_which_model_in_path,
+                             add_arg_existing_experiment_path)
 from dwi_ml.models.projects.transformer_models import (
-    OriginalTransformerModel, TransformerSrcAndTgtModel)
-from dwi_ml.models.projects.transformers_utils import find_transformer_class
+    OriginalTransformerModel, TransformerSrcAndTgtModel,
+    find_transformer_class)
 from dwi_ml.testing.projects.tt_visu_bertviz import (
     encoder_decoder_show_head_view, encoder_decoder_show_model_view,
     encoder_show_model_view, encoder_show_head_view)
@@ -33,30 +32,9 @@ from dwi_ml.testing.projects.tt_visu_colored_sft import add_attention_as_dpp
 from dwi_ml.testing.projects.tt_visu_matrix import show_model_view_as_imshow
 from dwi_ml.testing.projects.tt_visu_utils import (
     prepare_encoder_tokens, prepare_decoder_tokens,
-    reshape_attention_to4d_tocpu, unpad_rescale_attention, resample_attention_one_line)
+    reshape_attention_to4d_tocpu, unpad_rescale_attention,
+    resample_attention_one_line)
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
-
-
-def set_out_dir_visu_weights_and_create_if_not_exists(args):
-    if args.out_dir is None:
-        args.out_dir = os.path.join(args.experiment_path, 'visu_weights')
-    if not os.path.isdir(args.out_dir):
-        os.mkdir(args.out_dir)
-
-    return args
-
-
-def get_config_filename():
-    """
-    File that will be saved by the python script with all the args. The
-    jupyter notebook can then load them again.
-    """
-    # We choose to add it in the hidden .scilpy folder in our home.
-    # (Where our test data also is).
-    hidden_folder = get_scilpy_folder()
-    config_filename = os.path.join(
-        hidden_folder, 'ipynb_tt_visualize_weights.config')
-    return config_filename
 
 
 def build_argparser_transformer_visu():
@@ -68,12 +46,13 @@ def build_argparser_transformer_visu():
         formatter_class=argparse.RawTextHelpFormatter,
         description=__doc__)
 
+    # Main dataset arguments:
     add_arg_existing_experiment_path(p)
     add_args_testing_subj_hdf5(p, ask_input_group=True)
-
     p.add_argument('in_sft',
-                   help="A small tractogram; a bundle of streamlines whose "
-                        "attention mask we will average.")
+                   help="A small tractogram; a bundle of streamlines that "
+                        "should be \nuniformized. Else, see option "
+                        "--align_endpoints")
     p.add_argument(
         '--out_prefix', metavar='name',
         help="Prefix of the all output files. Do not include a path. "
@@ -81,14 +60,15 @@ def build_argparser_transformer_visu():
              "   1) 'as_matrix': tt_matrix_[encoder|decoder|cross].png.\n"
              "   2) 'bertviz': tt_bertviz.html, tt_bertviz.ipynb, "
              "tt_bertviz.config.\n"
-             "   3) 'colored_sft': colored_sft.trk."
+             "   3) 'colored_sft': colored_sft.trk.\n"
              "   4) 'bertviz_locally': None")
     p.add_argument(
         '--out_dir', metavar='d',
         help="Output directory where to save the output files.\n"
              "Default: experiment_path/visu_weights")
 
-    p.add_argument(
+    g = p.add_argument_group("Visualization options")
+    g.add_argument(
         '--visu_type', required=True, nargs='+',
         choices=['as_matrix', 'bertviz', 'colored_sft', 'bertviz_locally'],
         help="Output option. Choose any number (at least one). \n"
@@ -99,34 +79,31 @@ def build_argparser_transformer_visu():
              "      Will create a html file that can be viewed (see "
              "--out_dir)\n"
              "   3) 'colored_sft': Save a colored sft.\n"
-             "   4) 'bertviz_locally': Run the bertviz without using jupyter "
-             "(debug purposes).\n"
-             "      Output will not not show, but html stuff will print in "
-             "the terminal.")
-    p.add_argument(
-        '--rescale', action='store_true',
-        help="If true, rescale to max 1 per row.")
-
-    g = p.add_mutually_exclusive_group()
+             "   4) 'bertviz_locally': Run the bertviz without using jupyter\n"
+             "      (Debugging purposes. Output will not not show, but html\n"
+             "       stuff will print in the terminal.")
+    g.add_argument('--rescale', action='store_true',
+                   help="If true, rescale to max 1 per row.")
     g.add_argument('--align_endpoints', action='store_true',
-                   help="If set, align endpoints of the batch. Either this "
-                        "or --inverse_align_endpoints. \nProbably helps"
-                        "visualisation with option --visu_type 'colored_sft'.")
-    g.add_argument('--inverse_align_endpoints', action='store_true',
-                   help="If set, aligns endpoints and then reverses the "
-                        "bundle.")
-    p.add_argument('--resample_attention', type=int,
-                   help="Streamline will be sampled as decided by the model."
-                        "However, \nattention will be resampled to fit better "
-                        "in the html page. \n (Resampling is done by "
-                        "averaging the attention every N points).\n"
-                        "(only for bertviz and as_matrix")
-    p.add_argument('--average_heads', action='store_true',
+                   help="If set, try aligning endpoints of the sft. Will use "
+                        "the automatic \nalignment. For more options, align "
+                        "your streamlines first, using \n"
+                        "  >> scil_tractogram_uniformize_endpoints.py.\n")
+    g.add_argument('--reverse', action='store_true',
+                   help="If set, reverses all streamlines first.\n"
+                        "(With option --align_endpoints, reversing is done "
+                        "after.)")
+    g.add_argument('--resample_matrix', type=int, metavar='n',
+                   help="Streamlines will be sampled (nb points) as decided "
+                        "by the model. \nHowever, attention shown as a matrix "
+                        "can be resampled \nto better fit in the html page.")
+    g.add_argument('--average_heads', action='store_true',
                    help="If true, resample all heads (per layer per "
                         "attention type).")
 
-    p.add_argument('--batch_size', type=int)
-    add_memory_args(p)
+    g = add_memory_args(p)
+    g.add_argument('--batch_size', metavar='s', type=int,
+                   help="The batch size in number of streamlines.")
 
     p.add_argument('--show_now', action='store_true',
                    help="If set, shows the matrices on screen. Else, only "
@@ -136,6 +113,16 @@ def build_argparser_transformer_visu():
     add_overwrite_arg(p)
 
     return p
+
+
+def create_out_dir_visu_weights(args):
+    # Define out_dir as experiment_path/visu_weights if not defined.
+    # Create it if it does not exist.
+    if args.out_dir is None:
+        args.out_dir = os.path.join(args.experiment_path, 'visu_weights')
+    if not os.path.isdir(args.out_dir):
+        os.mkdir(args.out_dir)
+    return args
 
 
 def tt_visualize_weights_main(args, parser):
@@ -166,7 +153,7 @@ def tt_visualize_weights_main(args, parser):
         parser.error("Experiment {} not found.".format(args.experiment_path))
 
     # Out files: jupyter stuff already managed in main script. Remains the sft.
-    args = set_out_dir_visu_weights_and_create_if_not_exists(args)
+    args = create_out_dir_visu_weights(args)
     out_files = []
     out_sft = None
     prefix_total = os.path.join(args.out_dir, args.out_prefix)
@@ -244,7 +231,7 @@ def tt_visualize_weights_main(args, parser):
     else:  # TransformerSrcOnlyModel
         visu_fct = visu_encoder_only
 
-    visu_fct(weights, sft, args.resample_attention, args.rescale,
+    visu_fct(weights, sft, args.resample_matrix, args.rescale,
              model.direction_getter.add_eos, save_colored_sft,
              run_bertviz, show_as_matrices, colored_sft_name=out_sft,
              matrices_prefix=prefix_total)

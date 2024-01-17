@@ -32,7 +32,7 @@ def prepare_args_visu_loss(p: ArgumentParser):
     g.add_argument('--save_colored_tractogram', action='store_true',
                    help="If set, saves the tractogram with the loss per point "
                         "as \ndata_per_point (color).")
-    g.add_argument('--save_colored_best_and_worst', action='store_true',
+    g.add_argument('--save_colored_best_and_worst', type=int, const=10,
                    help="Save separately the worst x%% and best x%% of "
                         "streamlines. Default: 10%%.\n")
     g.add_argument('--colormap', default='plasma', metavar='name',
@@ -43,10 +43,8 @@ def prepare_args_visu_loss(p: ArgumentParser):
                         "than that \nvalue, they will be clipped.")
     g.add_argument('--max_range', type=float, metavar='M',
                    help='Superior range.')
-    g.add_argument('--best_and_worst_nb', type=int, default=1, metavar='n',
-                   help="Number of best and worst streamlines to save.")
-    g.add_argument('--show_colorbar', action='store_true',
-                   help="If set, shows the colorbar now. Else, saves it.")
+    g.add_argument('--show_now', action='store_true',
+                   help="If set, shows the colorbar now. Else, only saves it.")
 
     g = p.add_argument_group("Options to save output direction as "
                              "displacement")

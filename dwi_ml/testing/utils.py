@@ -17,7 +17,7 @@ def add_args_testing_subj_hdf5(p, ask_input_group=False,
     p.add_argument('--subset', default='testing',
                    choices=['training', 'validation', 'testing'],
                    help="Subject id should probably come come the "
-                        "'testing' set but you can\n modify this to "
+                        "'testing' set but you can \nmodify this to "
                         "'training' or 'validation'.")
 
 

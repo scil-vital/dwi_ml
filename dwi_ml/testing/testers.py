@@ -3,6 +3,7 @@ import logging
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
@@ -118,9 +119,7 @@ class Tester:
         batch_start = 0
         batch_end = batch_size
         with torch.no_grad():
-            for batch in range(nb_batches):
-                logging.info("  Batch #{}:  {} - {}"
-                             .format(batch + 1, batch_start, batch_end - 1))
+            for _ in tqdm(range(nb_batches), desc="Batches", total=nb_batches):
 
                 # 1. Prepare batch. Same process as in trainer, but no option
                 # to add noise.
@@ -157,11 +156,19 @@ class Tester:
         if compute_loss:
             losses = [loss.cpu().numpy() for loss in losses]
             mean_per_line = np.asarray([np.mean(loss) for loss in losses])
-            print("Final losses for the {} streamlines is : {:.4f} ± {:.4f}. "
-                  "Max: {:.4f}. Min: {:.4f}"
+            # \u00B1 is the plus or minus sign.
+            print("Losses: ")
+            print(u"    Average per streamline for the {} streamlines is: "
+                  u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
                   .format(len(sft), np.mean(mean_per_line),
-                          np.std(mean_per_line), np.max(mean_per_line),
-                          np.min(mean_per_line)))
+                          np.std(mean_per_line), np.min(mean_per_line),
+                          np.max(mean_per_line)))
+
+            tmp = np.hstack(losses)
+            print(u"    Mean, averaged over all {} points, is: "
+                  u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
+                  .format(len(tmp), np.mean(tmp), np.std(tmp),
+                          np.min(tmp), np.max(tmp)))
 
         return sft, outputs, losses, mean_per_line
 

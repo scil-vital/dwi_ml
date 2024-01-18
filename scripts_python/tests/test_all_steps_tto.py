@@ -129,8 +129,8 @@ def test_execution(script_runner, experiments_path):
     ret = script_runner.run(
         'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
         input_group, in_sft, '--out_prefix', prefix,
-        '--visu_type', 'as_matrix', 'colored_sft', 'bertviz_locally',
+        '--visu_type', 'as_matrices', 'colored_sft', 'bertviz_locally',
         '--subset', 'training', '--logging', 'INFO',
-        '--resample_attention', '15', '--rescale')
+        '--resample_plots', '15', '--rescale')
     assert ret.success
 

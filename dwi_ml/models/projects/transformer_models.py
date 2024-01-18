@@ -988,3 +988,19 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
         if weights is None:
             weights = (None,)
         return (merge_one_weight_type(weights[0], new_weights[0], device), )
+
+
+def find_transformer_class(model_type: str):
+    """
+    model_type: returned by verify_which_model_in_path.
+    """
+    transformers_dict = {
+        OriginalTransformerModel.__name__: OriginalTransformerModel,
+        TransformerSrcAndTgtModel.__name__: TransformerSrcAndTgtModel,
+        TransformerSrcOnlyModel.__name__: TransformerSrcOnlyModel
+    }
+    if model_type not in transformers_dict.keys():
+        raise ValueError("Model type is not a recognized Transformer"
+                         "({})".format(model_type))
+
+    return transformers_dict[model_type]

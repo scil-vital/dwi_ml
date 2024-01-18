@@ -156,14 +156,24 @@ def combine_displacement_with_ref(out_dirs, sft, model):
     return sft
 
 
+def plot_histogram(losses, mean_per_line, histogram_name):
+    logging.info("Preparing histogram!")
+    tmp = np.hstack(losses)
+    fig, axs = plt.subplots(2, 1)
+    axs[0].hist(tmp, bins='auto')
+    axs[0].set_title("Histogram of the losses per point")
+    axs[1].hist(mean_per_line, bins='auto')
+    axs[1].set_title("Histogram of the losses per streamline")
+    print("\n---> Saving histogram as {}".format(histogram_name))
+    plt.savefig(histogram_name)
+
+
 def run_visu_save_colored_sft(
-        losses: List[torch.Tensor], mean_losses: List, model,
-        sft: StatefulTractogram,
+        losses: List[torch.Tensor], mean_losses: List, sft: StatefulTractogram,
         save_whole_tractogram, colored_sft_name: str,
-        save_separate_best_and_worst, best_worst_nb,
-        best_sft_name, worst_sft_name,
-        colorbar_name: str, colormap: str = None,
-        min_range: float = None, max_range: float = None):
+        save_separate_best_and_worst: int, best_sft_name, worst_sft_name,
+        colorbar_name: str, colormap: str = None, min_range: float = None,
+        max_range: float = None):
     """
     Saves the losses as data per point.
     """
@@ -176,23 +186,19 @@ def run_visu_save_colored_sft(
     colorbar_fig.savefig(colorbar_name)
 
     if save_whole_tractogram:
-        print("Saving colored SFT as {}".format(colored_sft_name))
+        print("\n---> Saving colored data as {}".format(colored_sft_name))
         save_tractogram(sft, colored_sft_name)
 
-    if save_separate_best_and_worst:
-        best_idx, worst_idx = pick_best_and_worst(best_worst_nb, mean_losses)
+    if save_separate_best_and_worst > 0:
+        nb = int(save_separate_best_and_worst / 100 * len(sft))
+        best_idx, worst_idx = pick_best_and_worst(nb, mean_losses)
 
         best_streamlines = [sft.streamlines[i] for i in best_idx]
         worst_streamlines = [sft.streamlines[i] for i in worst_idx]
         best_sft = sft.from_sft(best_streamlines, sft)
         worst_sft = sft.from_sft(worst_streamlines, sft)
-        print("Saving best and worst streamlines as {} \nand {}"
+        print("\n---> Saving best and worst colored streamlines as {} \nand {}"
               .format(best_sft_name, worst_sft_name))
-        print("Best / worst {} streamlines's losses: \n"
-              "      Best : {}\n"
-              "      Worst: {}"
-              .format(best_worst_nb,
-                      mean_losses[best_idx], mean_losses[worst_idx]))
 
         save_tractogram(best_sft, best_sft_name)
         save_tractogram(worst_sft, worst_sft_name)
@@ -211,8 +217,8 @@ def run_visu_save_colored_displacement(
     if displacement_on_nb and len(sft) > displacement_on_nb:
         idx.extend(np.random.randint(0, len(sft), size=displacement_on_nb))
     idx = np.unique(idx)
-    print("Selecting {} streamlines out of {} for visualisation of the "
-          "output direction.".format(len(idx), len(sft)))
+    logging.info("Selecting {} streamlines out of {} for visualisation of the "
+                 "output direction.".format(len(idx), len(sft)))
     sft = sft[idx]
     if 'gaussian' in model.direction_getter.key:
         # outputs = means, sigmas
@@ -226,7 +232,8 @@ def run_visu_save_colored_displacement(
     # Get out_dirs from model_outputs using the direction getter.
     # Use eos_thresh of 1 to be sure we don't output a NaN
     lengths = [len(s) for s in sft.streamlines]
-    logging.info("Using EOS threshold 1 to avoid getting NANs. "
+    logging.info("Getting tracking directions from the model output.\n"
+                 "Using EOS threshold 1 to avoid getting NANs.\n"
                  "We will get an output direction at each point even "
                  "tough the model would have rather stopped.")
     with torch.no_grad():
@@ -239,4 +246,5 @@ def run_visu_save_colored_displacement(
     # Save error together with ref
     sft = combine_displacement_with_ref(out_dirs, sft, model)
 
+    print("\n---> Saving displacement as {}".format(displacement_sft_name))
     save_tractogram(sft, displacement_sft_name, bbox_valid_check=False)

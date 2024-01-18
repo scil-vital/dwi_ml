@@ -24,9 +24,7 @@ from scilpy.tracking.utils import (add_seeding_options,
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
-from dwi_ml.models.projects.transformer_models import \
-    OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
-from dwi_ml.models.projects.transformers_utils import find_transformer_class
+from dwi_ml.models.projects.transformer_models import find_transformer_class
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.transformer_tracker import \
     TransformerTracker
@@ -89,7 +87,10 @@ def prepare_tracker(parser, args):
             streamline_groups=[])
 
         logging.info("Loading model.")
-        model_dir = os.path.join(args.experiment_path, 'best_model')
+        if args.use_latest_epoch:
+            model_dir = os.path.join(args.experiment_path, 'best_model')
+        else:
+            model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
         model_type = verify_which_model_in_path(model_dir)
         print("Model's class: {}".format(model_type))
         cls = find_transformer_class(model_type)

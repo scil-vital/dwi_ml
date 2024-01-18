@@ -85,9 +85,12 @@ def prepare_tracker(parser, args):
             streamline_groups=[])
 
         logging.info("Loading model.")
+        if args.use_latest_epoch:
+            model_dir = os.path.join(args.experiment_path, 'best_model')
+        else:
+            model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
         model = Learn2TrackModel.load_model_from_params_and_state(
-            os.path.join(args.experiment_path, 'best_model'),
-            log_level=sub_logger_level)
+            model_dir, log_level=sub_logger_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 

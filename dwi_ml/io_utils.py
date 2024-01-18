@@ -31,6 +31,9 @@ def add_arg_existing_experiment_path(p: ArgumentParser):
                    help='Path to the directory containing the experiment.\n'
                         '(Should contain a model subdir with a file \n'
                         'parameters.json and a file best_model_state.pkl.)')
+    p.add_argument('--use_latest_epoch', action='store_true',
+                   help="If true, use model at latest epoch rather than "
+                        "default (best model).")
 
 
 def add_memory_args(p: ArgumentParser, add_lazy_options=False,
@@ -44,8 +47,8 @@ def add_memory_args(p: ArgumentParser, add_lazy_options=False,
         add_processes_arg(ram_options)
         ram_options.add_argument(
             '--use_gpu', action='store_true',
-            help="If set, use GPU for processing. Cannot be used \ntogether "
-                 "with --processes.")
+            help="If set, use GPU for processing. Cannot be used together "
+                 "with \noption --processes.")
     else:
         p.add_argument('--use_gpu', action='store_true',
                        help="If set, use GPU for processing.")

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from typing import List, Tuple
 
 # Ref: # https://github.com/jessevig/bertviz
 from bertviz import model_view, head_view
@@ -49,6 +48,11 @@ def print_neuron_view_help():
 def encoder_decoder_show_head_view(
         encoder_attention, decoder_attention, cross_attention,
         encoder_tokens, decoder_tokens):
+    """
+    Expecting attentions of shape:
+        A list: nb_layers x
+               [nb_streamlines, nheads, batch_max_len, batch_max_len]
+    """
     print_head_view_help()
     head_view(encoder_attention=encoder_attention,
               decoder_attention=decoder_attention,

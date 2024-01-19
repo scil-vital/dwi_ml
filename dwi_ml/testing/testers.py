@@ -65,7 +65,7 @@ class Tester:
         self.input_info = None
 
         # Load subject
-        logging.debug("Loading subject {} from hdf5.".format(subj_id))
+        logging.info("Loading subject {} from hdf5.".format(subj_id))
         self.subset = prepare_dataset_one_subj(
             hdf5_file, subj_id, subset_name=subset_name,
             volume_groups=self._volume_groups, streamline_groups=[],

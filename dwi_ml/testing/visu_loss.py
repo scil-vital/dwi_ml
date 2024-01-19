@@ -19,16 +19,18 @@ from dwi_ml.testing.testers import load_sft_from_hdf5
 blue = [2., 75., 252.]
 
 
-def run_all_visu_loss(tester, model, args, names):
+def run_all_visu_loss(tester, model: ModelWithDirectionGetter, args, names):
     (histogram_name, colored_sft_name, colorbar_name, colored_best_name,
      colored_worst_name, displacement_sft_name) = names
 
     # 3. Load SFT. Either from hdf5 or directly from file
+    # Will be resampled by tester if needed.
     if args.streamlines_group:
         sft = load_sft_from_hdf5(args.subj_id, args.hdf5_file, args.subset,
                                  args.streamlines_group)
     else:
-        sft = load_tractogram()
+        # Header compatibility with hdf5 not checked.
+        sft = load_tractogram(args.streamlines_file, args.reference)
 
     # (Subsample if possible)
     if not (args.save_colored_tractogram or args.save_colored_best_and_worst

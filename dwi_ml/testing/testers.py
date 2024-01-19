@@ -83,6 +83,7 @@ class Tester:
         Parameters
         ----------
         sft: StatefulTractogram
+            Will be resampled / compress based on model's params.
         compute_loss: bool
             If True, compute the loss per streamline.
             (If False, the method returns the outputs after a forward pass

@@ -119,8 +119,15 @@ def visu_checks(args, parser):
         out_files += [histogram_name]
 
     suffix = ''
-    if args.min_range or args.max_range:
-        suffix = "_clipped{}-{}".format(args.min_range, args.max_range)
+    if args.min_range is not None or args.max_range is not None:
+        if args.min_range is not None and args.max_range is not None:
+            if args.min_range >= args.max_range:
+                parser.error("Min range should be smaller than max range")
+            suffix = "_clipped{}-{}".format(args.min_range, args.max_range)
+        elif args.min_range is not None:
+            suffix = "_clipped{}".format(args.min_range)
+        elif args.max_range is not None:
+            suffix = "_clipped{}".format(args.max_range)
 
     if args.save_colored_tractogram:
         colored_sft_name = os.path.join(
@@ -128,10 +135,11 @@ def visu_checks(args, parser):
         out_files += [colored_sft_name]
 
     if args.save_colored_best_and_worst:
+        p = args.save_colored_best_and_worst
         colored_best_name = os.path.join(
-            args.out_dir, args.out_prefix + '_colored_best' + suffix + '.trk')
+            args.out_dir, args.out_prefix + '_best{}percent.trk'.format(p))
         colored_worst_name = os.path.join(
-            args.out_dir, args.out_prefix + '_colored_worst' + suffix + '.trk')
+            args.out_dir, args.out_prefix + '_worst{}percent.trk'.format(p))
         out_files += [colored_best_name, colored_worst_name]
 
     if args.save_colored_tractogram or args.save_colored_best_and_worst:
@@ -144,7 +152,8 @@ def visu_checks(args, parser):
             args.out_dir, args.out_prefix + '_displacement.trk')
         out_files += [displacement_sft_name]
 
-    assert_inputs_exist(parser, args.hdf5_file, args.streamlines_file)
+    assert_inputs_exist(parser, args.hdf5_file,
+                        [args.streamlines_file, args.reference])
     assert_outputs_exist(parser, args, [], out_files)
 
     return (histogram_name, colored_sft_name, colorbar_name, colored_best_name,

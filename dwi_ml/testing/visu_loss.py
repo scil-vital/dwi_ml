@@ -253,7 +253,7 @@ def run_visu_save_colored_sft(
         print("\n---> Saving colored data as {}".format(colored_sft_name))
         save_tractogram(sft, colored_sft_name)
 
-    if save_separate_best_and_worst > 0:
+    if save_separate_best_and_worst:
         nb = int(save_separate_best_and_worst / 100 * len(sft))
         best_idx, worst_idx = pick_best_and_worst(nb, mean_losses)
 

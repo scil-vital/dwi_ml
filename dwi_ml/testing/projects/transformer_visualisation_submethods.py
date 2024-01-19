@@ -32,8 +32,8 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
 
     # Prepare data
     logging.info("   Loading subject.")
-    subset, subj_idx = prepare_dataset_one_subj(
-        args.hdf5_file, args.subj_id, lazy=False, cache_size=None,
+    subset = prepare_dataset_one_subj(
+        args.hdf5_file, args.subj_id, lazy=False, cache_size=1,
         subset_name=args.subset, volume_groups=[args.input_group],
         streamline_groups=[], log_level=sub_logger_level)
 
@@ -94,6 +94,7 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
 
     # Prepare inputs
     group_idx = subset.volume_groups.index(args.input_group)
+    subj_idx = 0
     batch_input = model.prepare_batch_one_input(
         streamlines, subset, subj_idx, group_idx)
 

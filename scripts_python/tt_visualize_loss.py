@@ -22,8 +22,17 @@ def prepare_argparser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_arg_existing_experiment_path(p)
-    add_args_testing_subj_hdf5(p, ask_input_group=True,
-                               ask_streamlines_group=True)
+    add_args_testing_subj_hdf5(p, ask_input_group=True)
+    g = p.add_mutually_exclusive_group()
+    g.add_argument('--streamlines_group',
+                   help="Streamlines group in the hdf5 to use.")
+    g.add_argument('--streamlines_file',
+                   help="Optionally, instead of using streamlines in the "
+                        "hdf5, you may \nprovide your own streamlines to use."
+                        "\nUse with care: they must correspond with the "
+                        "hdf5's input data. \nOffered for easier "
+                        "visualisation of sub-divisions of your testing \n"
+                        "tractogram.")
     prepare_args_visu_loss(p)
     return p
 
@@ -69,9 +78,7 @@ def main():
         subj_id=args.subj_id, hdf5_file=args.hdf5_file,
         subset_name=args.subset, volume_group=args.input_group)
 
-    # 3. Load SFT. Right now from hdf5. Could offer option to load from disk.
-    sft = load_sft_from_hdf5(args.subj_id, args.hdf5_file, args.subset,
-                             args.streamlines_group)
+
 
     # (Subsample if possible)
     if not (args.save_colored_tractogram or args.save_colored_best_and_worst

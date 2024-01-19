@@ -78,11 +78,10 @@ def prepare_tracker(parser, args):
             tracking_mask = TrackingMask(dim)
 
         logging.info("Loading subject's data.")
-        subset, subj_idx = prepare_dataset_one_subj(
+        subset = prepare_dataset_one_subj(
             args.hdf5_file, args.subj_id, lazy=False,
-            cache_size=args.cache_size,
-            subset_name=args.subset, volume_groups=[args.input_group],
-            streamline_groups=[])
+            cache_size=args.cache_size, subset_name=args.subset,
+            volume_groups=[args.input_group], streamline_groups=[])
 
         logging.info("Loading model.")
         if args.use_latest_epoch:
@@ -99,7 +98,7 @@ def prepare_tracker(parser, args):
         append_last_point = not args.discard_last_point
         tracker = RecurrentTracker(
             input_volume_group=args.input_group,
-            dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
+            dataset=subset, subj_idx=0, model=model, mask=tracking_mask,
             seed_generator=seed_generator, nbr_seeds=nbr_seeds,
             min_len_mm=args.min_length, max_len_mm=args.max_length,
             compression_th=args.compress, nbr_processes=args.nbr_processes,

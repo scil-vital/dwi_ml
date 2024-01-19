@@ -9,7 +9,16 @@ from dwi_ml.io_utils import add_memory_args, add_logging_arg
 
 
 def prepare_args_visu_loss(p: ArgumentParser):
-
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument('--streamlines_group',
+                   help="Streamlines group in the hdf5 to use.")
+    g.add_argument('--streamlines_file',
+                   help="Optionally, instead of using streamlines in the "
+                        "hdf5, you may \nprovide your own streamlines to use."
+                        "\nUse with care: they must correspond with the "
+                        "hdf5's input data. \nOffered for easier "
+                        "visualisation of sub-divisions of your testing \n"
+                        "tractogram.")
     p.add_argument('--out_prefix', metavar='name',
                    help="Prefix for the outputs. Do not include a path. "
                         "Suffixes will be:\n"

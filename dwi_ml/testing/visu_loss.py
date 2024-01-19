@@ -10,12 +10,74 @@ from typing import List
 import numpy as np
 import torch
 from dipy.io.stateful_tractogram import StatefulTractogram
-from dipy.io.streamline import save_tractogram
+from dipy.io.streamline import save_tractogram, load_tractogram
 from matplotlib import pyplot as plt
 
 from dwi_ml.models.main_models import ModelWithDirectionGetter
+from dwi_ml.testing.testers import load_sft_from_hdf5
 
 blue = [2., 75., 252.]
+
+
+def run_all_visu_loss(tester, model, args, names):
+    (histogram_name, colored_sft_name, colorbar_name, colored_best_name,
+     colored_worst_name, displacement_sft_name) = names
+
+    # 3. Load SFT. Either from hdf5 or directly from file
+    if args.streamlines_group:
+        sft = load_sft_from_hdf5(args.subj_id, args.hdf5_file, args.subset,
+                                 args.streamlines_group)
+    else:
+        sft = load_tractogram()
+
+    # (Subsample if possible)
+    if not (args.save_colored_tractogram or args.save_colored_best_and_worst
+            or args.displacement_on_best_and_worst or args.compute_histogram):
+        # Only saving: displacement_on_nb.
+        # Avoid running on all streamlines for no reason.
+        chosen_streamlines = np.random.randint(0, len(sft),
+                                               size=args.displacement_on_nb)
+        sft = sft[chosen_streamlines]
+
+    # 4. Run model
+    logging.info("Running model on {} streamlines to compute loss."
+                 .format(len(sft)))
+    sft, outputs, losses, mean_loss_per_line = tester.run_model_on_sft(
+        sft, compute_loss=True)
+
+    if not model.direction_getter.add_eos:
+        # We will not get a loss value nor an output for the last point of the
+        # streamlines. Removing from sft.
+        sft.streamlines = [line[:-1] for line in sft.streamlines]
+
+    # 5. Show histogram.
+    if args.compute_histogram:
+        plot_histogram(losses, mean_loss_per_line, histogram_name)
+
+    # 6. Colored SFT
+    if args.save_colored_tractogram or args.save_colored_best_and_worst:
+        run_visu_save_colored_sft(
+            losses, mean_loss_per_line, sft,
+            save_whole_tractogram=args.save_colored_tractogram,
+            colored_sft_name=colored_sft_name,
+            save_separate_best_and_worst=args.save_colored_best_and_worst,
+            best_sft_name=colored_best_name, worst_sft_name=colored_worst_name,
+            colorbar_name=colorbar_name, colormap=args.colormap,
+            min_range=args.min_range, max_range=args.max_range)
+
+    # 7. Displacement.
+    if args.save_displacement:
+        run_visu_save_colored_displacement(
+            model, outputs, mean_loss_per_line, sft,
+            displacement_sft_name, args.displacement_on_nb,
+            args.displacement_on_best_and_worst)
+
+    if model.direction_getter.add_eos:
+        # toDo : Save EOS prob at each point.
+        print("EOS prob: toDo.")
+
+    if args.show_now:
+        plt.show()
 
 
 def prepare_colors_from_loss(
@@ -169,8 +231,8 @@ def plot_histogram(losses, mean_per_line, histogram_name):
 
 
 def run_visu_save_colored_sft(
-        losses: List[torch.Tensor], mean_losses: List, sft: StatefulTractogram,
-        save_whole_tractogram, colored_sft_name: str,
+        losses: List[torch.Tensor], mean_losses: np.ndarray,
+        sft: StatefulTractogram, save_whole_tractogram, colored_sft_name: str,
         save_separate_best_and_worst: int, best_sft_name, worst_sft_name,
         colorbar_name: str, colormap: str = None, min_range: float = None,
         max_range: float = None):

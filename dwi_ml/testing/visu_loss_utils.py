@@ -15,6 +15,7 @@ def prepare_args_visu_loss(p: ArgumentParser):
                         "Suffixes will be:\n"
                         "--show_histogram: _histogram.png\n"
                         "--save_colored_tractogram: _colored.trk\n"
+                        "  (or _colored_clippedm-M.trk with range options)\n"
                         "--save_colored_best_and_worst: "
                         "_colored_best.trk and _colored_worst.trk\n"
                         "   Any of the two predecent: _colorbar.png\n"
@@ -25,7 +26,7 @@ def prepare_args_visu_loss(p: ArgumentParser):
              "Default: experiment_path/visu_loss")
     p.add_argument('--show_now', action='store_true',
                    help="If set, shows the matplotlib figures now (colorbar/"
-                        "histogram). Else, only saves them.")
+                        "histogram). \nElse, only saves them.")
 
     # Options
     g = add_memory_args(p)
@@ -41,10 +42,11 @@ def prepare_args_visu_loss(p: ArgumentParser):
                    help="If set, saves the tractogram with the loss per point "
                         "as \ndata_per_point (color).")
     g.add_argument('--save_colored_best_and_worst', type=int, nargs='?',
-                   const='10',
-                   help="If set (and a number between 0-100 is given), saves "
-                        "separately \nthe worst x%% and best x%% of "
-                        "streamlines. Default: 10%%.")
+                   const='10', metavar='percentage',
+                   help="If set, saves separately the worst x%% and best x%% "
+                        "streamlines. \nOptional int to give is a number "
+                        "between 0-100: the percentile of \nstreamlines "
+                        "to separate as best/worst. Default: 10%%.")
     g.add_argument('--colormap', default='plasma', metavar='name',
                    help="Select the colormap for colored trk [%(default)s].\n"
                         "Can be any matplotlib cmap.")
@@ -107,21 +109,25 @@ def visu_checks(args, parser):
             args.out_dir, args.out_prefix + '_histogram.png')
         out_files += [histogram_name]
 
+    suffix = ''
+    if args.min_range or args.max_range:
+        suffix = "_clipped{}-{}".format(args.min_range, args.max_range)
+
     if args.save_colored_tractogram:
         colored_sft_name = os.path.join(
-            args.out_dir, args.out_prefix + '_colored.trk')
+            args.out_dir, args.out_prefix + '_colored' + suffix + '.trk')
         out_files += [colored_sft_name]
 
     if args.save_colored_best_and_worst:
         colored_best_name = os.path.join(
-            args.out_dir, args.out_prefix + '_colored_best.trk')
+            args.out_dir, args.out_prefix + '_colored_best' + suffix + '.trk')
         colored_worst_name = os.path.join(
-            args.out_dir, args.out_prefix + '_colored_worst.trk')
+            args.out_dir, args.out_prefix + '_colored_worst' + suffix + '.trk')
         out_files += [colored_best_name, colored_worst_name]
 
     if args.save_colored_tractogram or args.save_colored_best_and_worst:
         colorbar_name = os.path.join(
-            args.out_dir, args.out_prefix + '_colorbar.png')
+            args.out_dir, args.out_prefix + '_colorbar' + suffix + '.png')
         out_files += [colorbar_name]
 
     if args.save_displacement:
@@ -129,7 +135,7 @@ def visu_checks(args, parser):
             args.out_dir, args.out_prefix + '_displacement.trk')
         out_files += [displacement_sft_name]
 
-    assert_inputs_exist(parser, args.hdf5_file)
+    assert_inputs_exist(parser, args.hdf5_file, args.streamlines_file)
     assert_outputs_exist(parser, args, [], out_files)
 
     return (histogram_name, colored_sft_name, colorbar_name, colored_best_name,

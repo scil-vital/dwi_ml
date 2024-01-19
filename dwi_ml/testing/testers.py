@@ -14,19 +14,19 @@ from dwi_ml.testing.utils import prepare_dataset_one_subj
 logger = logging.getLogger('tester_logger')
 
 
-def load_sft_from_hdf5(subj_id, hdf5_file, subset_name,
-                       streamline_group):
+def load_sft_from_hdf5(subj_id: str, hdf5_file: str, subset_name: str,
+                       streamline_group: str):
     # Load SFT as in dataloader, except we don't loop on many subject,
     # we don't verify streamline ids (loading all), and we don't split /
     # reverse streamlines. But we resample / compress.
-    subset, subj_idx = prepare_dataset_one_subj(
+    subset = prepare_dataset_one_subj(
         hdf5_file, subj_id, subset_name=subset_name,
         streamline_groups=[streamline_group],
         lazy=False, cache_size=1)
 
     logging.info("Loading its streamlines as SFT.")
     streamline_group_idx = subset.streamline_groups.index(streamline_group)
-    subj_data = subset.subjs_data_list.get_subj_with_handle(subj_idx)
+    subj_data = subset.subjs_data_list.get_subj_with_handle(subject_idx=0)
     subj_sft_data = subj_data.sft_data_list[streamline_group_idx]
     sft = subj_sft_data.as_sft()
 
@@ -66,10 +66,11 @@ class Tester:
 
         # Load subject
         logging.debug("Loading subject {} from hdf5.".format(subj_id))
-        self.subset, self.subj_idx = prepare_dataset_one_subj(
+        self.subset = prepare_dataset_one_subj(
             hdf5_file, subj_id, subset_name=subset_name,
             volume_groups=self._volume_groups, streamline_groups=[],
             lazy=False, cache_size=1, log_level=logging.WARNING)
+        self.subj_idx = 0
 
     @property
     def _volume_groups(self):
@@ -94,8 +95,8 @@ class Tester:
             to_vox, to_corner, possibly resampled or compressed.
         outputs: Any
             Your model output.
-        losses:
-
+        losses: List[Tensor]
+        mean_per_line: np.ndarray
         """
         sft = resample_or_compress(sft, self.model.step_size,
                                    self.model.compress_lines)

@@ -30,7 +30,8 @@ def test_running(script_runner, experiments_path):
     out_dir = os.path.join(experiments_path, 'test_visu')
     ret = script_runner.run('dwiml_compute_loss_copy_previous.py',
                             hdf5_file, subj_id,
-                            streamline_group_name, '--out_prefix', prefix,
+                            '--streamlines_group', streamline_group_name,
+                            '--out_prefix', prefix,
                             '--out_dir', out_dir,
                             '--subset', 'training',
                             '--save_colored_tractogram',

@@ -7,7 +7,7 @@
 #    which installs a version >2.28. Adding request version explicitely.
 # -------
 requests==2.28.*
--e git+https://github.com/scilus/scilpy.git#egg=scilpy
+scilpy @ git+https://github.com/scilus/scilpy.git@1.7.0-dev
 
 
 # -------

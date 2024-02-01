@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from typing import List
 
 import numpy as np
@@ -320,13 +321,28 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
            compressed streamlines.'
         Else, uses simple computation from endpoints. Faster. Also, works with
         incomplete parcellation.
-    """
-    real_labels = np.unique(data_labels)[1:]
-    nb_labels = len(real_labels)
-    matrix = np.zeros((nb_labels + 1, nb_labels + 1), dtype=int)
 
-    start_blocs = []
-    end_blocs = []
+    Returns
+    -------
+    matrix: np.ndarray
+        With use_scilpy: shape (nb_labels + 1, nb_labels + 1)
+        (last label is "Not Found")
+        Else, shape (nb_labels, nb_labels)
+    labels: List
+        The list of labels
+    """
+    real_labels = list(np.sort(np.unique(data_labels)))
+    nb_labels = len(real_labels)
+    logging.debug("Computing connectivity matrix for {} labels."
+                  .format(nb_labels))
+
+    if use_scilpy:
+        matrix = np.zeros((nb_labels + 1, nb_labels + 1), dtype=int)
+    else:
+        matrix = np.zeros((nb_labels, nb_labels), dtype=int)
+
+    start_labels = []
+    end_labels = []
 
     if use_scilpy:
         indices, points_to_idx = uncompress(streamlines, return_mapping=True)
@@ -334,29 +350,33 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
         for strl_vox_indices in indices:
             segments_info = segmenting_func(strl_vox_indices, data_labels)
             if len(segments_info) > 0:
-                start = segments_info[0]['start_label']
-                end = segments_info[0]['end_label']
-                start_blocs.append(start)
-                end_blocs.append(end)
-
-                matrix[start, end] += 1
-                if start != end:
-                    matrix[end, start] += 1
-
+                start = real_labels.index(segments_info[0]['start_label'])
+                end = real_labels.index(segments_info[0]['end_label'])
             else:
-                # Putting it in 0,0, we will remember that this means 'other'
-                matrix[0, 0] += 1
-                start_blocs.append(0)
-                end_blocs.append(0)
+                start = nb_labels
+                end = nb_labels
+
+            start_labels.append(start)
+            end_labels.append(end)
+
+            matrix[start, end] += 1
+            if start != end:
+                matrix[end, start] += 1
+
+        real_labels = real_labels + [np.NaN]
+
     else:
         for s in streamlines:
             # Vox space, corner origin
             # = we can get the nearest neighbor easily.
             # Coord 0 = voxel 0. Coord 0.9 = voxel 0. Coord 1 = voxel 1.
-            start = data_labels[tuple(np.floor(s[0, :]).astype(int))]
-            end = data_labels[tuple(np.floor(s[-1, :]).astype(int))]
-            start_blocs.append(start)
-            end_blocs.append(end)
+            start = real_labels.index(
+                data_labels[tuple(np.floor(s[0, :]).astype(int))])
+            end = real_labels.index(
+                data_labels[tuple(np.floor(s[-1, :]).astype(int))])
+
+            start_labels.append(start)
+            end_labels.append(end)
             matrix[start, end] += 1
             if start != end:
                 matrix[end, start] += 1
@@ -367,7 +387,7 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
     if binary:
         matrix = matrix.astype(bool)
 
-    return matrix, start_blocs, end_blocs
+    return matrix, real_labels, start_labels, end_labels
 
 
 def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,

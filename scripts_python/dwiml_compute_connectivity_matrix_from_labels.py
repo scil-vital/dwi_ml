@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+"""
+Computes the connectivity matrix.
+Labels associated with each line / row will be printed.
+"""
+
 import argparse
 import logging
 import os.path
@@ -65,10 +71,16 @@ def main():
     args = p.parse_args()
 
     if args.verbose:
+        # Currenlty, with debug, matplotlib prints a lot of stuff. Why??
         logging.getLogger().setLevel(logging.INFO)
 
     tmp, ext = os.path.splitext(args.out_file)
+
+    if ext != '.npy':
+        p.error("--out_file should have a .npy extension.")
+
     out_fig = tmp + '.png'
+    out_ordered_labels = tmp + '_labels.txt'
     assert_inputs_exist(p, [args.in_labels, args.streamlines])
     assert_outputs_exist(p, args, [args.out_file, out_fig],
                          [args.save_biggest, args.save_smallest])
@@ -80,26 +92,36 @@ def main():
             p.error("Streamlines not compatible with chosen volume.")
     else:
         args.reference = args.in_labels
+
+    logging.info("Loading tractogram.")
     in_sft = load_tractogram_with_reference(p, args, args.streamlines)
     in_img = nib.load(args.in_labels)
     data_labels = get_data_as_labels(in_img)
 
     in_sft.to_vox()
     in_sft.to_corner()
-    matrix, start_blocs, end_blocs = compute_triu_connectivity_from_labels(
-        in_sft.streamlines, data_labels,
-        use_scilpy=args.use_longest_segment)
+    matrix, ordered_labels, start_blocs, end_blocs = \
+        compute_triu_connectivity_from_labels(
+            in_sft.streamlines, data_labels,
+            use_scilpy=args.use_longest_segment)
 
     if args.hide_background is not None:
-        matrix[args.hide_background, :] = 0
-        matrix[:, args.hide_background] = 0
+        idx = ordered_labels.idx(args.hide_background)
+        matrix[idx, :] = 0
+        matrix[:, idx] = 0
+        ordered_labels[idx] = ("Hidden background ({})"
+                               .format(args.hide_background))
+
+    logging.info("Labels are, in order: {}".format(ordered_labels))
 
     # Options to try to investigate the connectivity matrix:
     # masking point (0,0) = streamline ending in wm.
     if args.save_biggest is not None:
         i, j = np.unravel_index(np.argmax(matrix, axis=None), matrix.shape)
         print("Saving biggest bundle: {} streamlines. From label {} to label "
-              "{}".format(matrix[i, j], i, j))
+              "{} (line {}, column {} in the matrix)"
+              .format(matrix[i, j], ordered_labels[i], ordered_labels[j],
+                      i, j))
         biggest = find_streamlines_with_chosen_connectivity(
             in_sft.streamlines, i, j, start_blocs, end_blocs)
         sft = in_sft.from_sft(biggest, in_sft)
@@ -109,15 +131,22 @@ def main():
         tmp_matrix = np.ma.masked_equal(matrix, 0)
         i, j = np.unravel_index(tmp_matrix.argmin(axis=None), matrix.shape)
         print("Saving smallest bundle: {} streamlines. From label {} to label "
-              "{}".format(matrix[i, j], i, j))
-        biggest = find_streamlines_with_chosen_connectivity(
+              "{} (line {}, column {} in the matrix)"
+              .format(matrix[i, j], ordered_labels[i], ordered_labels[j],
+                      i, j))
+        smallest = find_streamlines_with_chosen_connectivity(
             in_sft.streamlines, i, j, start_blocs, end_blocs)
-        sft = in_sft.from_sft(biggest, in_sft)
+        sft = in_sft.from_sft(smallest, in_sft)
         save_tractogram(sft, args.save_smallest)
+
+    ordered_labels = str(ordered_labels)
+    with open(out_ordered_labels, "w") as text_file:
+        text_file.write(ordered_labels)
 
     if args.show_now:
         plt.imshow(matrix)
         plt.colorbar()
+        plt.title("Raw streamline count")
 
         plt.figure()
         plt.imshow(matrix > 0)

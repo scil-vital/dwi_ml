@@ -336,8 +336,8 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
     """
     real_labels = list(np.sort(np.unique(data_labels)))
     nb_labels = len(real_labels)
-    logging.debug("Computing connectivity matrix for {} labels."
-                  .format(nb_labels))
+    logging.info("Computing connectivity matrix for {} labels."
+                 .format(nb_labels))
 
     if use_scilpy:
         matrix = np.zeros((nb_labels + 1, nb_labels + 1), dtype=int)

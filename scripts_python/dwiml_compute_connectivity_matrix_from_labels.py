@@ -39,7 +39,7 @@ def _build_arg_parser():
                         "streamline count is saved.")
     p.add_argument('--show_now', action='store_true',
                    help="If set, shows the matrix with matplotlib.")
-    p.add_argument('--hide_background', nargs='?', const=0,
+    p.add_argument('--hide_background', nargs='?', const=0, type=float,
                    help="If true, set the connectivity matrix for chosen "
                         "label (default: 0), to 0.")
     p.add_argument(
@@ -80,9 +80,10 @@ def main():
         p.error("--out_file should have a .npy extension.")
 
     out_fig = tmp + '.png'
+    out_fig_noback = tmp + '_hidden_background.png'
     out_ordered_labels = tmp + '_labels.txt'
     assert_inputs_exist(p, [args.in_labels, args.streamlines])
-    assert_outputs_exist(p, args, [args.out_file, out_fig],
+    assert_outputs_exist(p, args, [args.out_file, out_fig, out_fig_noback],
                          [args.save_biggest, args.save_smallest])
 
     ext = os.path.splitext(args.streamlines)[1]
@@ -105,14 +106,33 @@ def main():
             in_sft.streamlines, data_labels,
             use_scilpy=args.use_longest_segment)
 
+    prepare_figure_connectivity(matrix)
+    plt.savefig(out_fig)
+
     if args.hide_background is not None:
-        idx = ordered_labels.idx(args.hide_background)
+        idx = ordered_labels.index(args.hide_background)
+        nb_hidden = np.sum(matrix[idx, :]) + np.sum(matrix[:, idx]) - \
+            matrix[idx, idx]
+        if nb_hidden > 0:
+            logging.info("CAREFUL! Deleting from the matrix {} streamlines "
+                         "with one or both endpoints in a non-labelled area "
+                         "(background = {}; line/column {})"
+                         .format(nb_hidden, args.hide_background, idx))
+        else:
+            logging.info("No streamlines with endpoints in the background :)")
         matrix[idx, :] = 0
         matrix[:, idx] = 0
         ordered_labels[idx] = ("Hidden background ({})"
                                .format(args.hide_background))
 
-    logging.info("Labels are, in order: {}".format(ordered_labels))
+        prepare_figure_connectivity(matrix)
+        plt.savefig(out_fig_noback)
+
+    if args.binary:
+        matrix = matrix > 0
+
+    # Save results.
+    np.save(args.out_file, matrix)
 
     # Options to try to investigate the connectivity matrix:
     # masking point (0,0) = streamline ending in wm.
@@ -139,18 +159,10 @@ def main():
         sft = in_sft.from_sft(smallest, in_sft)
         save_tractogram(sft, args.save_smallest)
 
-    ordered_labels = str(ordered_labels)
     with open(out_ordered_labels, "w") as text_file:
-        text_file.write(ordered_labels)
-
-    prepare_figure_connectivity(matrix)
-
-    if args.binary:
-        matrix = matrix > 0
-
-    # Save results.
-    np.save(args.out_file, matrix)
-    plt.savefig(out_fig)
+        logging.info("Labels are saved in: {}".format(out_ordered_labels))
+        for i, label in enumerate(ordered_labels):
+            text_file.write("{} = {}\n".format(i, label))
 
     if args.show_now:
         plt.show()
@@ -158,6 +170,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-

@@ -16,7 +16,7 @@ def _build_arg_parser():
                    help='Input file name, in nifti format.')
 
     p.add_argument(
-        'out', metavar='OUT_FILE', dest='out_filename',
+        'out_filename',
         help='name of the output file, which will be saved as a text file.')
 
     add_overwrite_arg(p)

@@ -50,7 +50,7 @@ def main():
 
     assert_inputs_exist(parser, args.in_image)
     assert_outputs_exist(parser, args, required=args.out_filename)
-    
+
     volume = nib.load(args.in_image)
     final_volume = color_mri_connectivity_blocs([6, 6, 6], volume.shape)
     img = nib.Nifti1Image(final_volume, volume.affine)

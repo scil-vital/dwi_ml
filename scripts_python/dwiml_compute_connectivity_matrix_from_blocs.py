@@ -23,8 +23,8 @@ def _build_arg_parser():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument('in_volume',
-                   help='Input nifti volume. Only used to get the shape of the '
-                        'volume.')
+                   help='Input nifti volume. Only used to get the shape of '
+                        'the volume.')
     p.add_argument('streamlines',
                    help='Tractogram (trk or tck).')
     p.add_argument('out_file',
@@ -85,6 +85,15 @@ def main():
     matrix, start_blocs, end_blocs = compute_triu_connectivity_from_blocs(
         in_sft.streamlines, in_img.shape, args.connectivity_nb_blocs)
 
+    prepare_figure_connectivity(matrix)
+
+    if args.binary:
+        matrix = matrix > 0
+
+    # Save results.
+    np.save(args.out_file, matrix)
+    plt.savefig(out_fig)
+
     # Options to try to investigate the connectivity matrix:
     if args.save_biggest is not None:
         i, j = np.unravel_index(np.argmax(matrix, axis=None), matrix.shape)
@@ -103,22 +112,9 @@ def main():
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
 
-    prepare_figure_connectivity(matrix)
-
-    if args.binary:
-        matrix = matrix > 0
-
-    # Save results.
-    np.save(args.out_file, matrix)
-
-    plt.savefig(out_fig)
-
     if args.show_now:
         plt.show()
 
 
 if __name__ == '__main__':
     main()
-
-
-

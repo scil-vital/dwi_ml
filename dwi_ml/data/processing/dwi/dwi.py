@@ -5,8 +5,9 @@ from dipy.data import get_sphere
 from dipy.reconst.shm import sph_harm_lookup
 import nibabel as nib
 import numpy as np
+
 from scilpy.io.utils import validate_sh_basis_choice
-from scilpy.reconst.raw_signal import compute_sh_coefficients
+from scilpy.reconst.sh import compute_sh_coefficients
 
 eps = 1e-6
 

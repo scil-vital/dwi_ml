@@ -22,7 +22,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, \
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     find_streamlines_with_chosen_connectivity, \
-    compute_triu_connectivity_from_labels
+    compute_triu_connectivity_from_labels, prepare_figure_connectivity
 
 
 def _build_arg_parser():
@@ -143,14 +143,7 @@ def main():
     with open(out_ordered_labels, "w") as text_file:
         text_file.write(ordered_labels)
 
-    if args.show_now:
-        plt.imshow(matrix)
-        plt.colorbar()
-        plt.title("Raw streamline count")
-
-        plt.figure()
-        plt.imshow(matrix > 0)
-        plt.title('Binary')
+    prepare_figure_connectivity(matrix)
 
     if args.binary:
         matrix = matrix > 0
@@ -158,7 +151,9 @@ def main():
     # Save results.
     np.save(args.out_file, matrix)
     plt.savefig(out_fig)
-    plt.show()
+
+    if args.show_now:
+        plt.show()
 
 
 if __name__ == '__main__':

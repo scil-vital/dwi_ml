@@ -15,7 +15,8 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, \
 
 from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs, find_streamlines_with_chosen_connectivity
+    compute_triu_connectivity_from_blocs, \
+    find_streamlines_with_chosen_connectivity, prepare_figure_connectivity
 
 
 def _build_arg_parser():
@@ -102,12 +103,7 @@ def main():
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
 
-    plt.imshow(matrix)
-    plt.colorbar()
-
-    plt.figure()
-    plt.imshow(matrix > 0)
-    plt.title('Binary')
+    prepare_figure_connectivity(matrix)
 
     if args.binary:
         matrix = matrix > 0

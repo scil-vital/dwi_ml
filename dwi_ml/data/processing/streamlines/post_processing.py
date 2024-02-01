@@ -4,6 +4,9 @@ from typing import List
 
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
+from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from scilpy.tractanalysis.tools import \
     extract_longest_segments_from_profile as segmenting_func
@@ -431,6 +434,34 @@ def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
         matrix = matrix.astype(bool)
 
     return matrix, start_block, end_block
+
+
+def prepare_figure_connectivity(matrix):
+    matrix = np.copy(matrix)
+
+    fig, axs = plt.subplots(2, 2)
+    im = axs[0, 0].imshow(matrix)
+    divider = make_axes_locatable(axs[0, 0])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[0, 0].set_title("Raw streamline count")
+
+    im = axs[0, 1].imshow(matrix + np.min(matrix[matrix > 0]), norm=LogNorm())
+    divider = make_axes_locatable(axs[0, 1])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[0, 1].set_title("Raw streamline count (log view)")
+
+    matrix = matrix / matrix.sum() * 100
+    im = axs[1, 0].imshow(matrix)
+    divider = make_axes_locatable(axs[1, 0])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[1, 0].set_title("Percentage")
+
+    matrix = matrix > 0
+    axs[1, 1].imshow(matrix)
+    axs[1, 1].set_title("Binary")
 
 
 def find_streamlines_with_chosen_connectivity(

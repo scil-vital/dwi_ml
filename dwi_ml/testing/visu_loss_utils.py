@@ -3,7 +3,8 @@ import os.path
 from argparse import ArgumentParser
 
 from scilpy.io.utils import (add_overwrite_arg,
-                             assert_inputs_exist, assert_outputs_exist)
+                             assert_inputs_exist, assert_outputs_exist,
+                             add_reference_arg)
 
 from dwi_ml.io_utils import add_memory_args, add_logging_arg
 
@@ -80,6 +81,7 @@ def prepare_args_visu_loss(p: ArgumentParser):
 
     add_overwrite_arg(p)
     add_logging_arg(p)
+    add_reference_arg(p)
 
 
 def visu_checks(args, parser):

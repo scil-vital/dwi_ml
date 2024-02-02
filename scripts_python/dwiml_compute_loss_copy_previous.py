@@ -13,20 +13,16 @@ previous direction.
 """
 import argparse
 import logging
-import os
 
-import numpy as np
-from matplotlib import pyplot as plt
 import torch.nn.functional
 
 from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.projects.copy_previous_dirs import CopyPrevDirModel
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args, \
     check_args_direction_getter
-from dwi_ml.testing.testers import Tester, load_sft_from_hdf5
+from dwi_ml.testing.testers import Tester
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
-from dwi_ml.testing.visu_loss import (run_visu_save_colored_displacement,
-                                      run_visu_save_colored_sft, run_all_visu_loss)
+from dwi_ml.testing.visu_loss import run_all_visu_loss
 from dwi_ml.testing.visu_loss_utils import prepare_args_visu_loss, visu_checks
 
 CHOICES = ['cosine-regression', 'l2-regression', 'sphere-classification',

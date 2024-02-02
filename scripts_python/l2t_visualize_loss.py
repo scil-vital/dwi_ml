@@ -21,7 +21,6 @@ def prepare_argparser():
     add_arg_existing_experiment_path(p)
     add_args_testing_subj_hdf5(p, ask_input_group=True)
     prepare_args_visu_loss(p)
-    add_reference_arg(p)
     return p
 
 

@@ -223,11 +223,13 @@ def combine_displacement_with_ref(out_dirs, sft, model):
 def plot_histogram(losses, mean_per_line, histogram_name):
     logging.info("Preparing histogram!")
     tmp = np.hstack(losses)
-    fig, axs = plt.subplots(2, 1)
+    fig, axs = plt.subplots(3, 1)
     axs[0].hist(tmp, bins='auto')
     axs[0].set_title("Histogram of the losses per point")
-    axs[1].hist(mean_per_line, bins='auto')
-    axs[1].set_title("Histogram of the losses per streamline")
+    axs[1].hist(tmp, bins='auto', log=True)
+    axs[1].set_title("Histogram of the losses per point (log norm)")
+    axs[2].hist(mean_per_line, bins='auto')
+    axs[2].set_title("Histogram of the losses per streamline")
     print("\n---> Saving histogram as {}".format(histogram_name))
     plt.savefig(histogram_name)
 

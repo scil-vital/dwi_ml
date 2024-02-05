@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 def reshape_unpad_rescale_attention(
         attention_per_layer, average_heads: bool, average_layers,
-        group_with_max, lengths, rescale):
+        group_with_max, lengths, rescale_0_1, rescale_dev):
     """
     Also sends to CPU.
 
@@ -23,7 +23,7 @@ def reshape_unpad_rescale_attention(
     group_with_max: bool
     lengths: List[int]
         Unpadded lengths of the streamlines.
-    rescale: bool
+    rescale_0_1: bool
 
     Returns
     -------
@@ -33,7 +33,7 @@ def reshape_unpad_rescale_attention(
                        [nheads, length, length]
         Where nheads=1 if average_heads.
     """
-    if rescale:
+    if rescale_0_1:
         logging.info(
             "We will normalize the attention: per row, to the range [0, 1]: \n"
             "    The attention when deciding the next direction at point N \n"
@@ -72,7 +72,7 @@ def reshape_unpad_rescale_attention(
             # Easier to see when we normalize on the x axis.
             # Normalizing each row so that max value = 1.
             # Axis=2: Horizontally for each matrix.
-            if rescale:
+            if rescale_0_1:
                 line_att = line_att / np.max(line_att, axis=2, keepdims=True)
 
             if average_heads and group_with_max:

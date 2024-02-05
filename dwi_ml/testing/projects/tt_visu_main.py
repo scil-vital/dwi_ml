@@ -11,6 +11,7 @@ import os
 
 import numpy as np
 import torch
+from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
 
 from scilpy.io.fetcher import get_home as get_scilpy_folder
@@ -315,9 +316,15 @@ def visu_encoder_decoder(
             print("Choosing only one streamline from the bundle to show "
                   "as matrices/bertviz. Not ready yet for multiple "
                   "streamlines.")
-            sft.streamlines = sft.streamlines[0]
+            sft.streamlines = [sft.streamlines[0]]
         # Else we already chose one streamline before running the whole model.
 
+        print("DEBUGGING LINE TO BE REMOVED")
+        print("Saving the single line used for matrices")
+        save_tractogram(sft, prefix_name + '_single_streamline.trk')
+
+        step_size = np.linalg.norm(np.diff(sft.streamlines[0], axis=0), axis=1)
+        step_size = np.mean(step_size)
         encoder_attention = encoder_attention[0]
         if has_decoder:
             decoder_attention = decoder_attention[0]
@@ -336,7 +343,8 @@ def visu_encoder_decoder(
 
         if resample_nb and this_seq_len > resample_nb:
             this_seq_len = resample_nb
-        encoder_tokens = prepare_encoder_tokens(this_seq_len, has_eos)
+        encoder_tokens = prepare_encoder_tokens(this_seq_len, step_size,
+                                                has_eos)
         decoder_tokens = prepare_decoder_tokens(this_seq_len)
 
         if show_as_matrices:

@@ -5,13 +5,11 @@ from matplotlib import pyplot as plt
 
 
 def show_model_view_as_imshow(attention_one_line, fig_prefix,
-                              tokens_x, tokens_y=None):
+                              tokens_x, tokens_y, rescale,
+                              average_heads, average_layers, group_with_max):
 
     nb_layers = len(attention_one_line)
     size_x = len(tokens_x)
-
-    if tokens_y is None:
-        tokens_y = tokens_x.copy()
     size_y = len(tokens_y)
 
     cmap = plt.get_cmap("jet")
@@ -29,7 +27,12 @@ def show_model_view_as_imshow(attention_one_line, fig_prefix,
             a = np.squeeze(att[h, :, :])
             a = np.ma.masked_where(a == 0, a)
             im = axs[h].imshow(a, interpolation='None', cmap='viridis')
-            if nb_heads > 1:
+            if average_heads:
+                if group_with_max:
+                    axs[h].set_title("Max of Rescaled Heads")
+                else:
+                    axs[h].set_title("Mean Head (before rescaling)")
+            else:
                 axs[h].set_title("Head {}".format(h))
             axs[h].set_xticks(np.arange(size_x), fontsize=10)
             axs[h].set_yticks(np.arange(size_y), fontsize=10)
@@ -38,14 +41,28 @@ def show_model_view_as_imshow(attention_one_line, fig_prefix,
 
             plt.colorbar(im, ax=axs[h])
 
-        plt.suptitle("Layer {}\n"
+        if average_layers:
+            if group_with_max:
+                layer_title = "Max of layers (after rescaling)"
+                layer_name = "_maxRescaledLayers"
+            else:
+                layer_title = "Average of layers (before rescaling)"
+                layer_name = '_meanLayer'
+        else:
+            layer_title = i
+            layer_name = '_layer{}'.format(i)
+        if rescale:
+            explanation = '\nDATA IS NORMALIZED TO [0-1] RANGE PER ROW'
+        else:
+            explanation = ''
+        plt.suptitle("Layer: {}\n"
                      "Each row: When getting next direction for this point, "
                      "what do we look at?\n"
                      "Each column: This data was used to decide which "
-                     "directions?\n"
-                     "DATA IS NORMALIZED TO [0-1] RANGE PER ROW".format(i))
+                     "directions?{}"
+                     .format(layer_title, explanation))
 
-        name = fig_prefix + '_layer{}.png'.format(i)
+        name = fig_prefix + layer_name + '.png'
         print("Saving matrix : {}".format(name))
         plt.savefig(name)
 

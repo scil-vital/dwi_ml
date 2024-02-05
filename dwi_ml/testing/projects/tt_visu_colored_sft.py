@@ -6,12 +6,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
+
 from scilpy.viz.utils import get_colormap
 
 
 def save_sft_with_attention_as_dpp(
         sft: StatefulTractogram, lengths, prefix_name: str,
         attentions_per_line: Tuple, attention_names: Tuple,
+        average_heads: bool, average_layers: bool, group_with_max: bool,
         sft_delta: bool = False, sft_all_info: bool = True):
     """
     Adds the attention's value to the data per point.
@@ -26,6 +28,12 @@ def save_sft_with_attention_as_dpp(
         Each is: List[np.array] of length nb layers.
         Each attention is of shape: [nb_heads, line_length, line_length]
     attention_names: Tuple[str]
+    average_heads: bool
+        Whethers heads have been averaged. (Used to define suffixes)
+    average_layers: bool
+        Idem
+    group_with_max: bool
+        Idem
     sft_delta: bool
         If true, save the "Delta" colors: save a file '_max' and a file '_nb'.
     sft_all_info: bool
@@ -47,24 +55,40 @@ def save_sft_with_attention_as_dpp(
     nb_layers = len(attentions_per_line[0][0])
     nb_heads = attentions_per_line[0][0][0].shape[0]
 
+    if average_heads:
+        assert nb_heads == 1
+    if average_layers:
+        assert nb_layers == 1
+
     # Converting Tuple to list for easier management
     attentions_per_line = list(attentions_per_line)
 
     if sft_delta:
         _save_sft_delta(sft, prefix_name, attentions_per_line,
-                        attention_names, nb_layers, nb_heads)
+                        attention_names, nb_layers, nb_heads,
+                        average_heads, average_layers, group_with_max)
 
     if sft_all_info:
         _save_sft_all_info(sft, lengths, prefix_name, attentions_per_line,
-                           attention_names, nb_layers, nb_heads)
+                           attention_names, nb_layers, nb_heads,
+                           average_heads, average_layers, group_with_max)
 
 
-def _save_sft_delta(sft: StatefulTractogram, prefix_name: str,
+def _save_sft_delta(sft: StatefulTractogram, prefix: str,
                     attentions_per_line: list, attention_names: Tuple[str],
-                    nb_layers, nb_heads):
+                    nb_layers, nb_heads,
+                    average_heads, average_layers, group_with_max):
 
     for i, att_type in enumerate(attentions_per_line):
         for layer in range(nb_layers):
+            if average_layers:
+                if group_with_max:
+                    layer_prefix = 'maxRescaledLayers'
+                else:
+                    layer_prefix = 'meanLayer'
+            else:
+                layer_prefix = 'l{}'.format(layer)
+
             for head in range(nb_heads):
                 dpp_max = []
                 dpp_nb = []
@@ -81,34 +105,42 @@ def _save_sft_delta(sft: StatefulTractogram, prefix_name: str,
 
                     # Mean, mean weighted, etc.: Do not seem to represent much.
                     THRESH = 0.5
-                    nb_points_above_thresh = np.sum(weights > THRESH, axis=1,
-                                                    keepdims=True).astype(float)
+                    nb_points_above_thresh = np.sum(
+                        weights > THRESH, axis=1, keepdims=True).astype(float)
                     dpp_nb.append(nb_points_above_thresh)
 
-                prefix = attention_names[i] + 'l{}_h{}'.format(layer, head)
+                if average_heads:
+                    if group_with_max:
+                        head_suffix = '_maxRescaledHeads'
+                    else:
+                        head_suffix = '_meanHead'
+                else:
+                    head_suffix = '_h{}'.format(head)
 
-                dpp = prefix + '_max'
-                tractogram_name = prefix_name + dpp + '.trk'
-                sft.data_per_point[dpp] = dpp_max
-                sft = color_sft_from_dpp(sft, dpp)
+                dpp_name = 'DeltaMax'
+                name = attention_names[i] + layer_prefix + head_suffix + '_'
+                tractogram_name = prefix + name + dpp_name + '.trk'
+                sft.data_per_point[dpp_name] = dpp_max
+                sft = color_sft_from_dpp(sft, dpp_name)
                 print("Saving tractogram {}".format(tractogram_name))
                 save_tractogram(sft, tractogram_name)
-                del sft.data_per_point[dpp]
+                del sft.data_per_point[dpp_name]
                 del sft.data_per_point['color']
 
-                dpp = prefix + '_nb'
-                tractogram_name = prefix_name + dpp + '.trk'
-                sft.data_per_point[dpp] = dpp_nb
-                sft = color_sft_from_dpp(sft, dpp)
+                dpp_name = 'DeltaNb'
+                tractogram_name = prefix + dpp_name + '.trk'
+                sft.data_per_point[dpp_name] = dpp_nb
+                sft = color_sft_from_dpp(sft, dpp_name)
                 print("Saving tractogram {}".format(tractogram_name))
                 save_tractogram(sft, tractogram_name)
-                del sft.data_per_point[dpp]
+                del sft.data_per_point[dpp_name]
                 del sft.data_per_point['color']
 
 
 def _save_sft_all_info(sft: StatefulTractogram, lengths, prefix_name: str,
                        attentions_per_line: list, attention_names: Tuple,
-                       nb_layers, nb_heads):
+                       nb_layers, nb_heads,
+                       average_heads, average_layers, group_with_max):
     remaining_streamlines = sft.streamlines
     whole_sft = None
 
@@ -137,22 +169,37 @@ def _save_sft_all_info(sft: StatefulTractogram, lengths, prefix_name: str,
         # Saving many ddp key for these streamlines: per layer, per head.
         for att_name, att_type in zip(attention_names, attentions_per_line):
             for layer in range(nb_layers):
+                if average_layers:
+                    if group_with_max:
+                        layer_prefix = '_maxL'
+                    else:
+                        layer_prefix = '_meanL'
+                else:
+                    layer_prefix = 'l{}'.format(layer)
+
                 for head in range(nb_heads):
                     # Adding data per point: attention_name_layerX_headX
                     # (Careful. Nibabel force names to be <18 character)
                     # attention_lX_hX
-                    suffix = "_l{}_h{}".format(layer, head)
+                    if average_heads:
+                        if group_with_max:
+                            head_suffix = '_maxH'
+                        else:
+                            head_suffix = '_meanH'
+                    else:
+                        head_suffix = '_h{}'.format(head)
 
-                    # Taking the right line of the matrix, up to the current point
-                    # (i.e. before the diagonal)
-                    # Nibabel required data_per_point to have the same number of
-                    # dimensions as the streamlines (N, 3) = 2D. Adding a fake
-                    # second dimension.
+                    # Taking the right line of the matrix, up to the current
+                    # point(i.e. before the diagonal)
+                    # Nibabel required data_per_point to have the same number
+                    # of dimensions as the streamlines (N, 3) = 2D. Adding a
+                    # fake second dimension.
                     dpp = [line_att[layer][head, current_point - 1,
                                            0:current_point][:, None]
                            for line_att in att_type]
 
-                    tmp_sft.data_per_point[att_name + suffix] = dpp
+                    name = att_name + layer_prefix + head_suffix
+                    tmp_sft.data_per_point[name] = dpp
 
         if whole_sft is None:
             whole_sft = tmp_sft

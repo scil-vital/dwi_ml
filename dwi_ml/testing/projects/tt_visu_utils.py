@@ -7,8 +7,9 @@ from scipy.ndimage import zoom
 from tqdm import tqdm
 
 
-def reshape_unpad_rescale_attention(attention_per_layer, average_heads: bool,
-                                    lengths, rescale):
+def reshape_unpad_rescale_attention(
+        attention_per_layer, average_heads: bool, average_layers,
+        group_with_max, lengths, rescale):
     """
     Also sends to CPU.
 
@@ -18,11 +19,11 @@ def reshape_unpad_rescale_attention(attention_per_layer, average_heads: bool,
         A list: nb_layers x
                    [nb_streamlines, nheads, batch_max_len, batch_max_len]
     average_heads: bool
-        If true, average heads.
+    average_layers: bool,
+    group_with_max: bool
     lengths: List[int]
         Unpadded lengths of the streamlines.
     rescale: bool
-        If True, rescale between [0, 1]
 
     Returns
     -------
@@ -32,8 +33,6 @@ def reshape_unpad_rescale_attention(attention_per_layer, average_heads: bool,
                        [nheads, length, length]
         Where nheads=1 if average_heads.
     """
-    nb_layers = len(attention_per_layer)
-
     if rescale:
         logging.info(
             "We will normalize the attention: per row, to the range [0, 1]: \n"
@@ -42,15 +41,21 @@ def reshape_unpad_rescale_attention(attention_per_layer, average_heads: bool,
             "    that the point with most attention has value 1. "
             "(att = att/max)")
 
-    # 1. To numpy. Possibly average layers.
+    # 1. To numpy. Possibly average heads.
+    nb_layers = len(attention_per_layer)
     for ll in range(nb_layers):
         # To numpy arrays
         attention_per_layer[ll] = attention_per_layer[ll].cpu().numpy()
 
         # Averaging heads (but keeping 4D).
-        if average_heads:
+        if average_heads and not group_with_max:
             attention_per_layer[ll] = np.mean(attention_per_layer[ll],
                                               axis=1, keepdims=True)
+
+    # Possibly average layers (but keeping as list)
+    if average_layers and not group_with_max:
+        attention_per_layer = [np.mean(attention_per_layer, axis=0)]
+        nb_layers = 1
 
     # 2. Rearrange attention into one list per line, unpadded, rescaled.
     attention_per_line = []
@@ -58,9 +63,10 @@ def reshape_unpad_rescale_attention(attention_per_layer, average_heads: bool,
                      desc="Rearranging, unpadding, rescaling (if asked)",
                      maxinterval=3):
         attention_per_line.append([None] * nb_layers)
-        for i in range(nb_layers):
+        for layer in range(nb_layers):
             # 1. Taking one streamline, unpadding.
-            line_att = attention_per_layer[i][line, :, 0:lengths[line], 0:lengths[line]]
+            line_att = attention_per_layer[layer][line, :, :, :]
+            line_att = line_att[:, 0:lengths[line], 0:lengths[line]]
 
             # 2. Normalizing weight. Without it, we rapidly see nothing!
             # Easier to see when we normalize on the x axis.
@@ -69,14 +75,19 @@ def reshape_unpad_rescale_attention(attention_per_layer, average_heads: bool,
             if rescale:
                 line_att = line_att / np.max(line_att, axis=2, keepdims=True)
 
-            attention_per_line[-1][i] = line_att
+            if average_heads and group_with_max:
+                line_att = np.max(line_att, axis=0, keepdims=True)
+
+            attention_per_line[-1][layer] = line_att
+
+        if average_layers and group_with_max:
+            attention_per_line[-1] = [np.max(attention_per_line[-1], axis=0)]
 
     return attention_per_line
 
 
 def resample_attention_one_line(line_att, this_seq_len, resample_nb):
     """
-
     Parameters
     ----------
     line_att: List[np.ndarray]
@@ -84,10 +95,6 @@ def resample_attention_one_line(line_att, this_seq_len, resample_nb):
               [nheads, length, length]
     this_seq_len: int
     resample_nb: int
-
-    Returns
-    -------
-
     """
     if resample_nb and this_seq_len > resample_nb:
         nb_layers = len(line_att)

@@ -8,9 +8,11 @@ import argparse
 import glob
 import logging
 import os
+from typing import Tuple
 
 import numpy as np
 import torch
+from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
 from matplotlib import pyplot as plt
 
@@ -123,9 +125,24 @@ def build_argparser_transformer_visu():
                    help="Streamlines will be sampled (nb points) as decided "
                         "by the model. \nHowever, attention shown as a matrix "
                         "can be resampled \nto better fit in the html page.")
-    g.add_argument('--average_heads', action='store_true',
-                   help="If true, resample all heads (per layer per "
-                        "attention type).")
+
+    gg = g.add_mutually_exclusive_group()
+    gg.add_argument('--group_heads', action='store_true',
+                    help="If true, average all heads (per layer, per "
+                         "attention type).\n"
+                         "To regroup using maximum instead, use "
+                         "--group_with_max")
+    gg.add_argument('--group_all', action='store_true',
+                    help="If true, average all heads in all layers (per "
+                         "attention type).\n"
+                         "To regroup using maximum instead, use "
+                         "--group_with_max")
+    g.add_argument('--group_with_max', action='store_true',
+                   help="Default grouping option is to average heads. Use "
+                        "this option to group with maximal value.\n"
+                        "NOTE: Average is done BEFORE rescaling (averaging "
+                        "the raw weight),\nand max is done AFTER rescaling "
+                        "(max of the rank use usefullness).")
 
     g = add_memory_args(p)
     g.add_argument('--batch_size', type=int, metavar='n',
@@ -259,9 +276,15 @@ def tt_visualize_weights_main(args, parser):
     else:
         has_decoder = False
 
+    average_heads = args.group_heads or args.group_all
+    average_layers = args.group_all
+    if args.group_with_max and not args.rescale:
+        parser.error("--group_with_max is expected to be used together with "
+                     "option --rescale.")
     visu_encoder_decoder(
-        weights, sft, model.direction_getter.add_eos, args.average_heads,
-        args.resample_attention, args.rescale, save_colored_sft, run_bertviz,
+        weights, sft, model.direction_getter.add_eos, average_heads,
+        average_layers, args.group_with_max, args.resample_attention,
+        args.rescale, save_colored_sft, run_bertviz,
         show_as_matrices, prefix_total, has_decoder=has_decoder)
 
     if args.show_now:
@@ -269,13 +292,49 @@ def tt_visualize_weights_main(args, parser):
 
 
 def visu_encoder_decoder(
-        weights, sft, has_eos: bool,
-        average_heads: bool, resample_nb: int, rescale: bool,
+        weights: Tuple, sft: StatefulTractogram, has_eos: bool,
+        average_heads: bool, average_layers: bool, group_with_max: bool,
+        resample_nb: int, rescale: bool,
         save_colored_sft: bool, run_bertviz: bool, show_as_matrices: bool,
-        prefix_name: str, has_decoder=True):
+        prefix_name: str, has_decoder: bool = True):
     """
     Visualizing the 3 attentions.
+
+    Parameters
+    ----------
+    weights: Tuple
+        Either (encoder_attention,) or
+               (encoder_attention, decoder_attention, cross_attention)
+        Each attention is a list per layer, of tensors of shape
+            [nb_streamlines, nheads, batch_max_len, batch_max_len]
+    sft: StatefulTractogram
+        The tractogram.
+    has_eos: bool
+        Whether the model uses EOS. Else, we have no weights for the last
+        position.
+    average_heads: bool
+        Argparser's default = False
+    average_layers: bool,
+        Argparser's default = False. Must be False if average_head is False.
+    group_with_max: bool
+        Argparser's default = False (i.e. use average)
+    group_after_rescale: bool
+        Argparser's default = False (i.e. before)
+    resample_nb: int
+        Number of values to resample matrices
+    rescale: bool,
+        If true, rescale each line of the matrix between 0 and 1.
+    save_colored_sft: bool
+    run_bertviz: bool
+        For now, on one streamline.
+    show_as_matrices: bool
+        For now, on one streamline.
+    prefix_name: str
+    has_decoder: bool
     """
+    if average_layers:
+        assert average_heads
+
     if has_decoder:
         encoder_attention, decoder_attention, cross_attention = weights
     else:
@@ -290,12 +349,15 @@ def visu_encoder_decoder(
     lengths = [len(s) for s in sft.streamlines]
 
     encoder_attention = reshape_unpad_rescale_attention(
-        encoder_attention, average_heads, lengths, rescale)
+        encoder_attention, average_heads, average_layers, group_with_max,
+        lengths, rescale)
     if has_decoder:
         decoder_attention = reshape_unpad_rescale_attention(
-            decoder_attention, average_heads, lengths, rescale)
+            decoder_attention, average_heads, average_layers, group_with_max,
+            lengths, rescale)
         cross_attention = reshape_unpad_rescale_attention(
-            cross_attention, average_heads, lengths, rescale)
+            cross_attention, average_heads, average_layers, group_with_max,
+            lengths, rescale)
 
     if save_colored_sft:
         print("\n\n-------------- Preparing the data_per_point to color sft "
@@ -304,12 +366,14 @@ def visu_encoder_decoder(
             save_sft_with_attention_as_dpp(
                 sft, lengths, prefix_name,
                 (encoder_attention, decoder_attention, cross_attention),
-                ('encoder', 'decoder', 'cross'))
+                ('encoder', 'decoder', 'cross'),
+                average_heads, average_layers, group_with_max)
         else:
             save_sft_with_attention_as_dpp(
                 sft, lengths, prefix_name,
                 (encoder_attention,),
-                ('encoder',))
+                ('encoder',),
+                average_heads, average_layers, group_with_max)
 
     if run_bertviz or show_as_matrices:
         if save_colored_sft:
@@ -319,9 +383,10 @@ def visu_encoder_decoder(
             sft.streamlines = [sft.streamlines[0]]
         # Else we already chose one streamline before running the whole model.
 
-        print("DEBUGGING LINE TO BE REMOVED")
-        print("Saving the single line used for matrices")
-        save_tractogram(sft, prefix_name + '_single_streamline.trk')
+        name = prefix_name + '_single_streamline.trk'
+        print("Saving the single line used for matrices, for debugging "
+              "purposes, as ", name)
+        save_tractogram(sft, name)
 
         step_size = np.linalg.norm(np.diff(sft.streamlines[0], axis=0), axis=1)
         step_size = np.mean(step_size)
@@ -351,17 +416,20 @@ def visu_encoder_decoder(
             print("ENCODER ATTENTION: ")
             show_model_view_as_imshow(
                 encoder_attention, prefix_name + '_matrix_encoder',
-                encoder_tokens, encoder_tokens)
+                encoder_tokens, encoder_tokens, rescale,
+                average_heads, average_layers, group_with_max)
 
             if has_decoder:
                 print("DECODER ATTENTION: ")
                 show_model_view_as_imshow(
                     decoder_attention, prefix_name + '_matrix_decoder',
-                    decoder_tokens, decoder_tokens)
+                    decoder_tokens, decoder_tokens, rescale,
+                    average_heads, average_layers, group_with_max)
                 print("CROSS ATTENTION: ")
                 show_model_view_as_imshow(
                     cross_attention, prefix_name + '_matrix_cross_attention',
-                    encoder_tokens, decoder_tokens)
+                    encoder_tokens, decoder_tokens, rescale,
+                    average_heads, average_layers, group_with_max)
 
         if run_bertviz:
             # Sending to 4D torch for Bertviz (each layer)

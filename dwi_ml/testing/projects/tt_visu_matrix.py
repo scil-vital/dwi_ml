@@ -28,7 +28,7 @@ def show_model_view_as_imshow(attention_one_line, fig_prefix,
         for h in range(nb_heads):
             a = np.squeeze(att[h, :, :])
             a = np.ma.masked_where(a == 0, a)
-            im = axs[h].imshow(a, interpolation='None')
+            im = axs[h].imshow(a, interpolation='None', cmap='viridis')
             if nb_heads > 1:
                 axs[h].set_title("Head {}".format(h))
             axs[h].set_xticks(np.arange(size_x), fontsize=10)

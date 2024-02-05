@@ -114,11 +114,12 @@ def prepare_decoder_tokens(this_seq_len):
     return decoder_tokens
 
 
-def prepare_encoder_tokens(this_seq_len, add_eos: bool):
+def prepare_encoder_tokens(this_seq_len, step_size, add_eos: bool):
     # If encoder = concat X | Y, then , point0 = point0 | SOS
     #                                   point1 = point1 | dir0
     # etc. But ok. We will understand.
-    encoder_tokens = ['point {}'.format(i) for i in range(this_seq_len)]
+    encoder_tokens = ['point {} ({:.1f}mm)'.format(i+1, i*step_size)
+                      for i in range(this_seq_len)]
 
     if add_eos:
         encoder_tokens[-1] += '(SOS)'

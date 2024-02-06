@@ -8,7 +8,7 @@ from os.path import dirname
 from scilpy.io.utils import assert_outputs_exist
 
 from dwi_ml.testing.projects.tt_visu_main import (
-    build_argparser_transformer_visu, create_out_dir_visu_weights,
+    build_argparser_transformer_visu, get_out_dir_and_create,
     get_config_filename, tt_visualize_weights_main)
 
 
@@ -57,7 +57,7 @@ def main():
                 .format(raw_ipynb_filename))
 
         # 2) Verify that output dir exists but not the html output files.
-        args = create_out_dir_visu_weights(args)
+        args = get_out_dir_and_create(args)
 
         out_html_filename = args.out_prefix + 'tt_bertviz.html'
         out_html_file = os.path.join(args.out_dir, out_html_filename)

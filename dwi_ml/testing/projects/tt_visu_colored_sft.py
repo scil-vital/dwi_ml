@@ -9,69 +9,8 @@ from dipy.io.streamline import save_tractogram
 
 from scilpy.viz.utils import get_colormap
 
-
-def save_sft_with_attention_as_dpp(
-        sft: StatefulTractogram, lengths, prefix_name: str,
-        attentions_per_line: Tuple, attention_names: Tuple,
-        average_heads: bool, average_layers: bool, group_with_max: bool,
-        sft_delta: bool = False, sft_all_info: bool = True):
-    """
-    Adds the attention's value to the data per point.
-
-    Parameters
-    ----------
-    sft: StatefulTractogram
-    lengths: list
-    prefix_name: str
-    attentions_per_line: Tuple. For each attention:
-        List of length nb_streamlines (after unpad_rescale_attention).
-        Each is: List[np.array] of length nb layers.
-        Each attention is of shape: [nb_heads, line_length, line_length]
-    attention_names: Tuple[str]
-    average_heads: bool
-        Whethers heads have been averaged. (Used to define suffixes)
-    average_layers: bool
-        Idem
-    group_with_max: bool
-        Idem
-    sft_delta: bool
-        If true, save the "Delta" colors: save a file '_max' and a file '_nb'.
-    sft_all_info: bool
-        If true, save the streamlines of all lengths with color at each point.
-    """
-    assert len(attentions_per_line[0]) == len(sft), \
-        ("Expecting attention to be one list per line for {} streamlines, "
-         "got a list of length {}".format(len(sft), len(attentions_per_line)))
-    assert isinstance(attentions_per_line[0][0], list), \
-        ("Expecting attention per line to be a list (per streamline) of LIST "
-         "(per layer) of attentions, but got a list of {}"
-         .format(type(attentions_per_line[0][0])))
-    assert isinstance(attentions_per_line[0][0][0], np.ndarray), \
-        ("Expecting attention per line to be a list (per streamline) of list "
-         "(per layer) of attentions AS NP.NDARRAY, but got a list of list of "
-         "{}".format(type(attentions_per_line[0][0][0])))
-
-    # Supposing the same nb layers / head for each type of attention.
-    nb_layers = len(attentions_per_line[0][0])
-    nb_heads = attentions_per_line[0][0][0].shape[0]
-
-    if average_heads:
-        assert nb_heads == 1
-    if average_layers:
-        assert nb_layers == 1
-
-    # Converting Tuple to list for easier management
-    attentions_per_line = list(attentions_per_line)
-
-    if sft_delta:
-        _save_sft_delta(sft, prefix_name, attentions_per_line,
-                        attention_names, nb_layers, nb_heads,
-                        average_heads, average_layers, group_with_max)
-
-    if sft_all_info:
-        _save_sft_all_info(sft, lengths, prefix_name, attentions_per_line,
-                           attention_names, nb_layers, nb_heads,
-                           average_heads, average_layers, group_with_max)
+from dwi_ml.testing.projects.tt_visu_utils import get_visu_params_from_options, \
+    prepare_colors_from_options
 
 
 def _save_sft_delta(sft: StatefulTractogram, prefix: str,
@@ -137,12 +76,27 @@ def _save_sft_delta(sft: StatefulTractogram, prefix: str,
                 del sft.data_per_point['color']
 
 
-def _save_sft_all_info(sft: StatefulTractogram, lengths, prefix_name: str,
-                       attentions_per_line: list, attention_names: Tuple,
-                       nb_layers, nb_heads,
-                       average_heads, average_layers, group_with_max):
+def color_sft_duplicate_lines(
+        sft: StatefulTractogram, lengths, prefix_name: str,
+        attentions_per_line: list, attention_names: Tuple,
+        average_heads, average_layers, group_with_max):
+    """
+    Saves the whole weight matrix on streamlines of all lengths.
+
+    Output name is:
+    prefix_name_colored_sft_encoder_lN_hM.trk,
+                  where N is the layer, M is the head. OR:
+    prefix_name_colored_sft_encoder_lN_meanH.trk
+                  with option --group_heads (or _maxH). OR:
+    prefix_name_colored_sft_encoder_meanL_meanH.trk
+                 with option --group_all (or _maxL_maxH).
+    """
     remaining_streamlines = sft.streamlines
     whole_sft = None
+
+    # Supposing the same nb layers / head for each type of attention.
+    nb_layers = len(attentions_per_line[0][0])
+    nb_heads = attentions_per_line[0][0][0].shape[0]
 
     # Using s[0:current_point], so starting current point 2, to have
     # [s0, s1]. Else, cannot visualize a single point.
@@ -215,11 +169,10 @@ def _save_sft_all_info(sft: StatefulTractogram, lengths, prefix_name: str,
     del sft
     del tmp_sft
 
-    # Inverting the order. Right now: smallest to biggest. But in Mi-Brain,
-    # The first has priority on the view. So when limiting length to see the
-    # growth, smallest line is always visible above the others.
-    # Tried to flip order in memory, but does not fix view in MI-Brain. I don't
-    # know which internal order MI-Brain uses.
+    # Currently, when limiting length to see the growth, smallest line stay
+    # visible above the others. Tried to flip order in memory, but it does not
+    # fix the view in MI-Brain. I don't know which internal order MI-Brain
+    # uses.
     # order = np.flip(np.arange(len(whole_sft)))
     # whole_sft = deepcopy(whole_sft[order])
 
@@ -238,27 +191,71 @@ def _save_sft_all_info(sft: StatefulTractogram, lengths, prefix_name: str,
         save_tractogram(colored_sft, name)
 
 
-def color_sft_from_dpp(sft, key):
+def color_sft_importance_where_looked(
+    sft: StatefulTractogram, lengths, prefix_name: str,
+    attentions_per_line: list, attention_names: Tuple,
+    average_heads, average_layers,
+    rescale_0_1, rescale_non_lin, rescale_z):
 
-    cmap = get_colormap('viridis')
+    (options_main, options_importance, options_where_looked,
+     explanation, rescale_name) = get_visu_params_from_options(
+        rescale_0_1, rescale_non_lin, rescale_z, max(lengths), max(lengths))
+
+    # Supposing the same nb layers / head for each type of attention.
+    nb_layers = len(attentions_per_line[0][0])
+    nb_heads = attentions_per_line[0][0][0].shape[0]
+
+    for i, att_type in enumerate(attentions_per_line):
+        for layer in range(nb_layers):
+            for head in range(nb_heads):
+                colors_where_looked = []
+                colors_importance = []
+                for s in range(len(sft.streamlines)):
+                    a = att_type[s][layer][head, :, :]
+                    a, where_looked, importance = prepare_colors_from_options(
+                        a, rescale_0_1, rescale_non_lin, rescale_z)
+                    colors_importance.append(importance)
+                    colors_where_looked.append(colors_where_looked)
+
+                # Save results for this attention, head, layer
+                name = prefix_name + '{}_l{}_h{}'.format(attention_names[i],
+                                                         layer, head)
+                sft.data_per_point['importance'] = colors_importance
+                color_sft_from_dpp(sft, 'importance',
+                                   options_importance['cmap'],
+                                   options_importance['vmin'],
+                                   options_importance['vmax'])
+                save_tractogram(sft, name + '_importance.trk')
+                del sft.data_per_point['importance']
+
+                sft.data_per_point['where_looked'] = colors_importance
+                color_sft_from_dpp(sft, 'where_looked',
+                                   options_where_looked['cmap'],
+                                   options_where_looked['vmin'],
+                                   options_where_looked['vmax'])
+                save_tractogram(sft, name + '_where_looked.trk')
+                del sft.data_per_point['where_looked']
+
+
+def color_sft_from_dpp(sft, key, map_name='viridis', mmin=None, mmax=None):
+
+    cmap = get_colormap(map_name)
     tmp = [np.squeeze(sft.data_per_point[key][s]) for s in range(len(sft))]
     data = np.hstack(tmp)
 
-    mmin = np.min(data)
-    mmax = np.max(data)
+    mmin = mmin or np.min(data)
+    mmax = mmax or np.max(data)
     data = data - np.min(data)
     data = data / np.max(data)
     color = cmap(data)[:, 0:3] * 255
     sft.data_per_point['color'] = sft.streamlines
     sft.data_per_point['color']._data = color
 
-    DEBUG = False
-    if DEBUG:
-        plt.figure(figsize=(1.5, 9))
-        plt.imshow(np.array([[1, 0]]), cmap=cmap, vmin=mmin, vmax=mmax)
-        plt.gca().set_visible(False)
-        cax = plt.axes([0.1, 0.1, 0.6, 0.85])
-        plt.colorbar(orientation="vertical", cax=cax, aspect=50)
-        plt.show()
+    # ToDo. Save associated colorbar
+    plt.figure(figsize=(1.5, 9))
+    plt.imshow(np.array([[1, 0]]), cmap=cmap, vmin=mmin, vmax=mmax)
+    plt.gca().set_visible(False)
+    cax = plt.axes([0.1, 0.1, 0.6, 0.85])
+    plt.colorbar(orientation="vertical", cax=cax, aspect=50)
 
     return sft

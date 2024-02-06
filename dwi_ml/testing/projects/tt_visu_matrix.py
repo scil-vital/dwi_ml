@@ -4,8 +4,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from dwi_ml.testing.projects.tt_visu_utils import get_visu_params_from_options, \
-    prepare_colors_from_options
+from dwi_ml.testing.projects.tt_visu_utils import (
+    get_visu_params_from_options,
+    prepare_colors_from_options)
 
 
 def show_model_view_as_imshow(
@@ -18,7 +19,7 @@ def show_model_view_as_imshow(
 
     (options_main, options_importance, options_where_looked,
      explanation, rescale_name) = get_visu_params_from_options(
-        rescale_0_1, rescale_non_lin, rescale_z)
+        rescale_0_1, rescale_non_lin, rescale_z, size_x, size_y)
 
     for i in range(nb_layers):
         att = attention_one_line[i]
@@ -29,7 +30,7 @@ def show_model_view_as_imshow(
             axs = [axs]
 
         for h in range(nb_heads):
-            (a, where_looked, importance) = prepare_colors_from_options(
+            a, where_looked, importance = prepare_colors_from_options(
                 att[h, :, :], rescale_0_1, rescale_non_lin, rescale_z)
 
             divider = make_axes_locatable(axs[h])

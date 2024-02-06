@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
-import logging
-from typing import List, Tuple
+import os
+from typing import List
 
 import numpy as np
 from scipy.ndimage import zoom
 from tqdm import tqdm
+
+from scilpy.io.fetcher import get_home as get_scilpy_folder
 
 
 def reshape_unpad_rescale_attention(
         attention_per_layer, average_heads: bool, average_layers,
         group_with_max, lengths, rescale_0_1, rescale_z, rescale_non_lin):
     """
+    Get the weights as a list per layer. Transforms to a list per streamline.
+    Allows unpadding.
+
     Also sends to CPU.
 
     Parameters
@@ -175,7 +180,12 @@ def prepare_encoder_tokens(this_seq_len, step_size, add_eos: bool):
     return encoder_tokens
 
 
-def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
+def get_visu_params_from_options(
+        rescale_0_1, rescale_non_lin, rescale_z, size_x, size_y):
+    """
+    Defines options for prefix names, colormaps, vmin, vmax, explanation text,
+    etc.
+    """
     vmin_main, vmax_main, cmap_main = (0, 1, 'viridis')
     vmin_bottom, vmax_bottom, cmap_bottom = (0, 1, 'viridis')
     vmin_right, vmax_right, cmap_right = (0, 1, 'viridis')
@@ -185,8 +195,8 @@ def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
                 'Data is rescaled: to [0-1] range per row.\n'
                 'Bottom row: Number of times that this point was very '
                 'important (> 0.9).\n'
-                'Right column: Where are situated the important points to '
-                'decide next direction. 0 = looks at current point. Max = '
+                'Right column: Where are situated the important points (>0.9) '
+                'to decide next direction. 0 = looks at current point. Max = '
                 'looks very far behind.\n'
                 'cbar1: main matrix. cbar2: bottom row.')
             rescale_name = 'rescale_0_1'
@@ -196,12 +206,15 @@ def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
                 "that the point had an average importance (raw value "
                 "was 1/N)\n"
                 "Bottom row: Number of times that this point was more"
-                "important than the average >0.5")
+                "important than the average >0.5."
+                "Right column: Where are situated the important points (>0.5) "
+                "to decide next direction. 0 = looks at current point. Max = "
+                "looks very far behind.\n")
             rescale_name = 'rescale_non_lin'
             cmap_main = 'rainbow'  # See also turbo
-        vmax_bottom = None
+        vmax_bottom = size_y
         cmap_bottom = 'plasma'  # See also rainbow, inferno
-        vmax_right = None
+        vmax_right = size_x
         cmap_right = 'plasma'
     elif rescale_z:
         explanation = ("Data is rescaled to z-scores per row.\n"
@@ -254,3 +267,26 @@ def prepare_colors_from_options(a, rescale_0_1, rescale_non_lin, rescale_z):
         raise NotImplemented("Where looked not defined.")
 
     return a, where_looked, importance
+
+
+def get_config_filename():
+    """
+    File that will be saved by the python script with all the args. The
+    jupyter notebook can then load them again.
+    """
+    # We choose to add it in the hidden .scilpy folder in our home.
+    # (Where our test data also is).
+    hidden_folder = get_scilpy_folder()
+    config_filename = os.path.join(
+        hidden_folder, 'ipynb_tt_visualize_weights.config')
+    return config_filename
+
+
+def get_out_dir_and_create(args):
+    # Define out_dir as experiment_path/visu_weights if not defined.
+    # Create it if it does not exist.
+    if args.out_dir is None:
+        args.out_dir = os.path.join(args.experiment_path, 'visu_weights')
+    if not os.path.isdir(args.out_dir):
+        os.mkdir(args.out_dir)
+    return args

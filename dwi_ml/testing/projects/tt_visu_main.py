@@ -125,14 +125,15 @@ def build_argparser_transformer_visu():
     gg = g.add_mutually_exclusive_group()
     gg.add_argument('--rescale_0_1', action='store_true',
                     help="If set, rescale to max 1 per row. X = X/max(row)")
-    gg.add_argument('--rescale_dev', action='store_true',
-                    help="If set, transform each value to X = (X - mu) / mu, "
-                         "where mu=mean(row).\nThis acts as a modified "
-                         "z-score / std, but \n"
-                         "- When all values are equal, z-score is not "
-                         "defined. This value is."
-                         "- Compensates for the increasing length of the "
-                         "rows.")
+    gg.add_argument('--rescale_z', action='store_true',
+                    help="If set, transform each value to X = (X - mu) / std, "
+                         "where \nmu and std are computed per row.")
+    gg.add_argument('--rescale_non_lin', action='store_true',
+                    help="If set, transform each value so that values below "
+                         "the equal \nattention are transformed to [0-0.5], "
+                         "and values above to [0.5, 1].\n"
+                         "(Ex: At point #3, 0.33 --> 0.5. At point #40, "
+                         "0.025 --> 0.5.")
 
     g = p.add_argument_group("Options defining how to deal with the heads")
     gg = g.add_mutually_exclusive_group()
@@ -315,14 +316,16 @@ def tt_visualize_weights_main(args, parser):
 
     average_heads = args.group_heads or args.group_all
     average_layers = args.group_all
-    if args.group_with_max and not (args.rescale_0_1 or args.rescale_dev):
+    if args.group_with_max and not \
+            (args.rescale_0_1 or args.rescale_z or args.rescale_non_lin):
         parser.error("--group_with_max is expected to be used together with "
                      "a rescaling option.")
     visu_encoder_decoder(
         weights, sft, model.direction_getter.add_eos, average_heads,
         average_layers, args.group_with_max, args.resample_attention,
-        args.rescale_0_1, args.rescale_dev, save_colored_sft, run_bertviz,
-        show_as_matrices, prefix_total, has_decoder=has_decoder)
+        args.rescale_0_1, args.rescale_z, args.rescale_non_lin,
+        save_colored_sft, run_bertviz, show_as_matrices, prefix_total,
+        has_decoder=has_decoder)
 
     if args.show_now:
         plt.show()
@@ -331,7 +334,8 @@ def tt_visualize_weights_main(args, parser):
 def visu_encoder_decoder(
         weights: Tuple, sft: StatefulTractogram, has_eos: bool,
         average_heads: bool, average_layers: bool, group_with_max: bool,
-        resample_nb: int, rescale_0_1: bool, rescale_dev: bool,
+        resample_nb: int, rescale_0_1: bool, rescale_z: bool,
+        rescale_non_lin: bool,
         save_colored_sft: bool, run_bertviz: bool, show_as_matrices: bool,
         prefix_name: str, has_decoder: bool = True):
     """
@@ -359,8 +363,10 @@ def visu_encoder_decoder(
         Number of values to resample matrices
     rescale_0_1: bool,
         If true, rescale each line of the matrix using X / max(X).
-    rescale_dev: bool
-        If true, rescale each line of the matrix using (X-mu)/mu.
+    rescale_z: bool
+        If true, rescale each line of the matrix using (X-mu)/std
+    rescale_non_lin: bool
+        If true, rescale each line of the matrix to [0 - 0.5] and [0.5 - 1]
     save_colored_sft: bool
     run_bertviz: bool
         For now, on one streamline.
@@ -382,7 +388,7 @@ def visu_encoder_decoder(
     for i in range(len(weights)):
         weights[i] = reshape_unpad_rescale_attention(
             weights[i], average_heads, average_layers, group_with_max,
-            lengths, rescale_0_1, rescale_dev)
+            lengths, rescale_0_1, rescale_z, rescale_non_lin)
 
     if has_decoder:
         attention_names = ('encoder',)

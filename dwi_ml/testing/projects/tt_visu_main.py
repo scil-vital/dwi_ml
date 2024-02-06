@@ -283,6 +283,8 @@ def tt_visualize_weights_main(args, parser):
     if len(sft) > 1 and not save_colored_sft:
         # Taking only one streamline
         line_id = np.random.randint(0, len(sft), size=1)[0]
+        print("DEBUGGING LINE. FIXING THE ID")
+        line_id = 0
         logging.info("    Picking ONE streamlines at random to show with "
                      "bertviz / show as matrices: #{} / {}."
                      .format(line_id, len(sft)))
@@ -404,10 +406,14 @@ def visu_encoder_decoder(
 
     if run_bertviz or show_as_matrices:
         if save_colored_sft:
-            print("Choosing only one streamline from the bundle to show "
-                  "as matrices/bertviz. Not ready yet for multiple "
-                  "streamlines.")
-            sft.streamlines = [sft.streamlines[0]]
+            # Taking only one streamline. Was not done yet.
+            line_id = np.random.randint(0, len(sft), size=1)[0]
+            logging.info("    Picking ONE streamlines at random to show with "
+                         "bertviz / show as matrices: #{} / {}."
+                         .format(line_id, len(sft)))
+            print("DEBUGGING LINE. FIXING THE ID")
+            line_id = 0
+            sft = sft[[line_id]]
         # Else we already chose one streamline before running the whole model.
 
         name = prefix_name + '_single_streamline.trk'
@@ -439,7 +445,7 @@ def visu_encoder_decoder(
                 print("Matrix for ", attention_names[i])
                 show_model_view_as_imshow(
                     weights[i], prefix_name + '_matrix_' + attention_names[i],
-                    *weights_token[i], rescale_0_1,
+                    *weights_token[i], rescale_0_1, rescale_z, rescale_non_lin,
                     average_heads, average_layers, group_with_max)
 
         if run_bertviz:

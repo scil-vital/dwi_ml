@@ -88,7 +88,7 @@ def reshape_unpad_rescale_attention(
                 mu = np.sum(line_att, axis=2) / nb[None, :]
                 mu = mu[:, :, None]
 
-                std = (line_att - mu)**2
+                std = (line_att - mu) ** 2
                 std = np.sqrt(np.sum(std * mask, axis=2) / nb[None, :])
                 std = std[:, :, None]
 
@@ -98,7 +98,7 @@ def reshape_unpad_rescale_attention(
                 line_att = line_att * mask
             elif rescale_non_lin:
                 nb = np.arange(line_att.shape[1]) + 1
-                mean = 1/nb[None, :, None]
+                mean = 1 / nb[None, :, None]
 
                 where_below = line_att <= mean
                 where_above = ~where_below
@@ -166,10 +166,91 @@ def prepare_encoder_tokens(this_seq_len, step_size, add_eos: bool):
     # If encoder = concat X | Y, then , point0 = point0 | SOS
     #                                   point1 = point1 | dir0
     # etc. But ok. We will understand.
-    encoder_tokens = ['point {} ({:.1f}mm)'.format(i+1, i*step_size)
+    encoder_tokens = ['p {} ({:.1f}mm)'.format(i + 1, i * step_size)
                       for i in range(this_seq_len)]
 
     if add_eos:
         encoder_tokens[-1] += '(SOS)'
 
     return encoder_tokens
+
+
+def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
+    vmin_main, vmax_main, cmap_main = (0, 1, 'viridis')
+    vmin_bottom, vmax_bottom, cmap_bottom = (0, 1, 'viridis')
+    vmin_right, vmax_right, cmap_right = (0, 1, 'viridis')
+    if rescale_0_1 or rescale_non_lin:
+        if rescale_0_1:
+            explanation = (
+                'Data is rescaled: to [0-1] range per row.\n'
+                'Bottom row: Number of times that this point was very '
+                'important (> 0.9).\n'
+                'Right column: Where are situated the important points to '
+                'decide next direction. 0 = looks at current point. Max = '
+                'looks very far behind.\n'
+                'cbar1: main matrix. cbar2: bottom row.')
+            rescale_name = 'rescale_0_1'
+        else:
+            explanation = (
+                "Data is rescaled: On each row, a value of 0.5 means "
+                "that the point had an average importance (raw value "
+                "was 1/N)\n"
+                "Bottom row: Number of times that this point was more"
+                "important than the average >0.5")
+            rescale_name = 'rescale_non_lin'
+            cmap_main = 'rainbow'  # See also turbo
+        vmax_bottom = None
+        cmap_bottom = 'plasma'  # See also rainbow, inferno
+        vmax_right = None
+        cmap_right = 'plasma'
+    elif rescale_z:
+        explanation = ("Data is rescaled to z-scores per row.\n"
+                       "Bottom row: Average.")
+        rescale_name = 'rescale_z'
+        vmin_main = None
+        vmax_main = None
+        vmax_bottom = None
+        vmin_bottom = None
+    else:
+        explanation = 'Bottom row: Average.'
+        rescale_name = ''
+
+    options_main = {'interpolation': 'None',
+                    'cmap': cmap_main,
+                    'vmin': vmin_main,
+                    'vmax': vmax_main}
+
+    options_importance = {'interpolation': 'None',
+                          'cmap': cmap_bottom,
+                          'vmin': vmin_bottom,
+                          'vmax': vmax_bottom}
+
+    options_where_looked = {'interpolation': 'None',
+                            'cmap': cmap_right,
+                            'vmin': vmin_right,
+                            'vmax': vmax_right}
+
+    return (options_main, options_importance, options_where_looked,
+            explanation, rescale_name)
+
+
+def prepare_colors_from_options(a, rescale_0_1, rescale_non_lin, rescale_z):
+    a = np.squeeze(a)
+    a = np.ma.masked_where(a == 0, a)
+    if rescale_0_1 or rescale_non_lin:
+        if rescale_0_1:
+            thresh = 0.9
+        else:
+            thresh = 0.5
+
+        # To set as percent: / np.flip(np.arange(1, a.shape[1] + 1))
+        importance = np.sum(a > thresh, axis=0)
+        indexes = np.arange(1, a.shape[1] + 1)
+        indexes = np.abs(indexes[None, :] - indexes[:, None])
+        indexes = np.ma.masked_where(~(a > thresh), indexes)
+        where_looked = np.mean((a > thresh) * indexes, axis=1)
+    else:
+        importance = np.mean(a, axis=0)
+        raise NotImplemented("Where looked not defined.")
+
+    return a, where_looked, importance

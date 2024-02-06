@@ -218,8 +218,10 @@ def _save_sft_all_info(sft: StatefulTractogram, lengths, prefix_name: str,
     # Inverting the order. Right now: smallest to biggest. But in Mi-Brain,
     # The first has priority on the view. So when limiting length to see the
     # growth, smallest line is always visible above the others.
-    order = np.flip(np.arange(len(whole_sft)))
-    whole_sft = deepcopy(whole_sft[order])
+    # Tried to flip order in memory, but does not fix view in MI-Brain. I don't
+    # know which internal order MI-Brain uses.
+    # order = np.flip(np.arange(len(whole_sft)))
+    # whole_sft = deepcopy(whole_sft[order])
 
     dpp_keys = list(whole_sft.data_per_point.keys())
     for key in dpp_keys:

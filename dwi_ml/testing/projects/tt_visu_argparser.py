@@ -73,14 +73,15 @@ def build_argparser_transformer_visu():
     g = p.add_argument_group("Visualization options. At least one required.")
     g.add_argument('--as_matrices', action='store_true',
                    help="See description above.")
-    g.add_argument('--bertviz', action='store_true',
+    g.add_argument('--color_multi_length', action='store_true',
                    help="See description above.")
-    g.add_argument('--color_sft', action='store_true',
+    g.add_argument('--color_x_y_summary', action='store_true',
                    help="See description above.")
-    g.add_argument('--color_x_y', action='store_true',
-                   help="See description above.")
-    g.add_argument('--bertviz_locally',
-                   help="See description above.")
+    gg =g.add_mutually_exclusive_group()
+    gg.add_argument('--bertviz', action='store_true',
+                    help="See description above.")
+    gg.add_argument('--bertviz_locally',
+                    help="See description above.")
 
     g = p.add_argument_group("Saving options")
     g.add_argument(
@@ -93,7 +94,7 @@ def build_argparser_transformer_visu():
              "   3) color_sft: _encoder_colored_sft_*.trk\n"
              "      (with layer and head information)\n"
              "   4) color_x_y: _encoder_colored_sft_importance_*.trk and \n"
-             "                   _encoder_colored_sft_importance_where_looked.trk\n"
+             "                 _encoder_colored_sft_importance_where_looked.trk\n"
              "   5) bertviz_locally: None")
     g.add_argument(
         '--out_dir', metavar='d',
@@ -146,7 +147,7 @@ def build_argparser_transformer_visu():
                    help="If set, shows the matrices on screen. Else, only "
                         "saves them.")
     g.add_argument('--resample_plots', type=int, metavar='nb',
-                   dest='resample_attention',
+                   dest='resample_nb',
                    help="Streamlines will be sampled (nb points) as decided "
                         "by the model. \nHowever, attention shown as a matrix "
                         "can be resampled.")

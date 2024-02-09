@@ -193,23 +193,24 @@ def get_visu_params_from_options(
         if rescale_0_1:
             explanation = (
                 'Data is rescaled: to [0-1] range per row.\n'
-                'Bottom row: Number of times that this point was very '
-                'important (> 0.9).\n'
-                'Right column: Where are situated the important points (>0.9) '
-                'to decide next direction. 0 = looks at current point. Max = '
-                'looks very far behind.\n'
-                'cbar1: main matrix. cbar2: bottom row.')
+                'Bottom row = Importance: Number of times that this point was '
+                'very important (> 0.9).\n'
+                "Right column = Where looked: Where the important points "
+                "(>0.9) to decide next direction are situated.\n"
+                "0 = looks at current point. Max = looks very far behind.\n"
+                'cbar1: main matrix. cbar2: bottom row. cbar3: right column')
             rescale_name = 'rescale_0_1'
         else:
             explanation = (
                 "Data is rescaled: On each row, a value of 0.5 means "
                 "that the point had an average importance (raw value "
                 "was 1/N)\n"
-                "Bottom row: Number of times that this point was more"
-                "important than the average >0.5."
-                "Right column: Where are situated the important points (>0.5) "
-                "to decide next direction. 0 = looks at current point. Max = "
-                "looks very far behind.\n")
+                "Bottom row = Importance: Number of times that this point was "
+                "more important than the average >0.5.\n"
+                "Right column = Where looked: Where the important points "
+                "(>0.5) to decide next direction are situated.\n"
+                "0 = looks at current point. Max = looks very far behind.\n"
+                "cbar1: main matrix. cbar2: bottom row. cbar3: right column")
             rescale_name = 'rescale_non_lin'
             cmap_main = 'rainbow'  # See also turbo
         vmax_bottom = size_y

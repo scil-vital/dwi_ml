@@ -7,9 +7,11 @@ from os.path import dirname
 
 from scilpy.io.utils import assert_outputs_exist
 
-from dwi_ml.testing.projects.tt_visu_main import (
-    build_argparser_transformer_visu, get_out_dir_and_create,
-    get_config_filename, tt_visualize_weights_main)
+from dwi_ml.testing.projects.tt_visu_argparser import \
+    build_argparser_transformer_visu
+from dwi_ml.testing.projects.tt_visu_main import tt_visualize_weights_main
+from dwi_ml.testing.projects.tt_visu_utils import get_out_dir_and_create, \
+    get_config_filename
 
 
 # Note. To use through jupyter, the file
@@ -27,14 +29,11 @@ def main():
     args = parser.parse_args()
 
     # Verifying if jupyter is required.
-    if 'bertviz' in args.visu_type and 'bertviz_locally' in args.visu_type:
-        raise ValueError("Please only select 'bertviz' or 'bertviz_locally', "
-                         "not both.")
-    elif 'bertviz_locally' in args.visu_type:
+    if args.bertviz_locally:
         print("--DEBUGGING MODE--\n"
               "We will run the bertviz but it will not save any output!")
         run_locally = True
-    elif 'bertviz' in args.visu_type:
+    elif args.bertviz:
         print("Preparing to run through jupyter.")
         run_locally = False
     else:

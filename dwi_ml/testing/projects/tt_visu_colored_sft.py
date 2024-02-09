@@ -9,15 +9,15 @@ from dipy.io.streamline import save_tractogram
 
 from scilpy.viz.utils import get_colormap
 
-from dwi_ml.testing.projects.tt_visu_utils import get_visu_params_from_options, \
-    prepare_colors_from_options
+from dwi_ml.testing.projects.tt_visu_utils import (
+    get_visu_params_from_options,
+    prepare_colors_from_options)
 
 
 def _save_sft_delta(sft: StatefulTractogram, prefix: str,
                     attentions_per_line: list, attention_names: Tuple[str],
                     nb_layers, nb_heads,
                     average_heads, average_layers, group_with_max):
-
     for i, att_type in enumerate(attentions_per_line):
         for layer in range(nb_layers):
             if average_layers:
@@ -93,6 +93,7 @@ def color_sft_duplicate_lines(
     """
     remaining_streamlines = sft.streamlines
     whole_sft = None
+    attentions_per_line = deepcopy(attentions_per_line)
 
     # Supposing the same nb layers / head for each type of attention.
     nb_layers = len(attentions_per_line[0][0])
@@ -118,7 +119,7 @@ def color_sft_duplicate_lines(
         # Saving first part of streamlines, up to current_point:
         #  = "At current_point: which point did we look at?"
         tmp_sft = sft.from_sft([s[0:current_point]
-                               for s in remaining_streamlines], sft)
+                                for s in remaining_streamlines], sft)
 
         # Saving many ddp key for these streamlines: per layer, per head.
         for att_name, att_type in zip(attention_names, attentions_per_line):
@@ -149,7 +150,7 @@ def color_sft_duplicate_lines(
                     # of dimensions as the streamlines (N, 3) = 2D. Adding a
                     # fake second dimension.
                     dpp = [line_att[layer][head, current_point - 1,
-                                           0:current_point][:, None]
+                           0:current_point][:, None]
                            for line_att in att_type]
 
                     name = att_name + layer_prefix + head_suffix
@@ -192,10 +193,10 @@ def color_sft_duplicate_lines(
 
 
 def color_sft_importance_where_looked(
-    sft: StatefulTractogram, lengths, prefix_name: str,
-    attentions_per_line: list, attention_names: Tuple,
-    average_heads, average_layers,
-    rescale_0_1, rescale_non_lin, rescale_z):
+        sft: StatefulTractogram, lengths, prefix_name: str,
+        attentions_per_line: list, attention_names: Tuple,
+        average_heads, average_layers,
+        rescale_0_1, rescale_non_lin, rescale_z):
 
     (options_main, options_importance, options_where_looked,
      explanation, rescale_name) = get_visu_params_from_options(
@@ -208,37 +209,43 @@ def color_sft_importance_where_looked(
     for i, att_type in enumerate(attentions_per_line):
         for layer in range(nb_layers):
             for head in range(nb_heads):
-                colors_where_looked = []
-                colors_importance = []
+                all_where_looked = []
+                all_importance = []
                 for s in range(len(sft.streamlines)):
                     a = att_type[s][layer][head, :, :]
                     a, where_looked, importance = prepare_colors_from_options(
                         a, rescale_0_1, rescale_non_lin, rescale_z)
-                    colors_importance.append(importance)
-                    colors_where_looked.append(colors_where_looked)
+                    all_importance.append(importance[:, None])
+                    all_where_looked.append(where_looked[:, None])
 
                 # Save results for this attention, head, layer
                 name = prefix_name + '{}_l{}_h{}'.format(attention_names[i],
                                                          layer, head)
-                sft.data_per_point['importance'] = colors_importance
+
+                sft.data_per_point['importance'] = all_importance
                 color_sft_from_dpp(sft, 'importance',
                                    options_importance['cmap'],
                                    options_importance['vmin'],
                                    options_importance['vmax'])
+                print("Saving {} with dpp {}"
+                      .format(name + '_importance.trk',
+                              list(sft.data_per_point.keys())))
                 save_tractogram(sft, name + '_importance.trk')
                 del sft.data_per_point['importance']
 
-                sft.data_per_point['where_looked'] = colors_importance
+                sft.data_per_point['where_looked'] = all_where_looked
                 color_sft_from_dpp(sft, 'where_looked',
                                    options_where_looked['cmap'],
                                    options_where_looked['vmin'],
                                    options_where_looked['vmax'])
-                save_tractogram(sft, name + '_where_looked.trk')
+                print("Saving {} with dpp {}"
+                      .format(name + '_looked_far.trk',
+                              list(sft.data_per_point.keys())))
+                save_tractogram(sft, name + '_looked_far.trk')
                 del sft.data_per_point['where_looked']
 
 
 def color_sft_from_dpp(sft, key, map_name='viridis', mmin=None, mmax=None):
-
     cmap = get_colormap(map_name)
     tmp = [np.squeeze(sft.data_per_point[key][s]) for s in range(len(sft))]
     data = np.hstack(tmp)

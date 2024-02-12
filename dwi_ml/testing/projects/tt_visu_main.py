@@ -17,16 +17,14 @@ from matplotlib import pyplot as plt
 
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
-from scilpy.utils.streamlines import uniformize_bundle_sft
 
 from dwi_ml.io_utils import verify_which_model_in_path
-from dwi_ml.models.projects.transformer_models import (
-    find_transformer_class, OriginalTransformerModel)
+from dwi_ml.models.projects.transformer_models import find_transformer_class
 from dwi_ml.testing.projects.tt_visu_bertviz import (
     encoder_decoder_show_head_view, encoder_decoder_show_model_view,
     encoder_show_model_view, encoder_show_head_view)
 from dwi_ml.testing.projects.tt_visu_colored_sft import (
-    color_sft_duplicate_lines, color_sft_importance_where_looked)
+    color_sft_duplicate_lines, color_sft_importance_looked_far)
 from dwi_ml.testing.projects.tt_visu_matrix import show_model_view_as_imshow
 from dwi_ml.testing.projects.tt_visu_utils import (
     prepare_encoder_tokens, prepare_decoder_tokens,
@@ -42,8 +40,8 @@ def tt_visualize_weights_main(args, parser):
     method.
     """
     # ------ Finalize parser verification
-    if not (args.as_matrices or args.bertviz or args.colored_sft or
-            args.colored_x_y or args.bertviz_locally):
+    if not (args.as_matrices or args.bertviz or args.colored_multi_length or
+            args.colored_x_y_summary or args.bertviz_locally):
         parser.error("Expecting at least one visualisation option.")
 
     if args.resample_nb is not None and \
@@ -54,36 +52,24 @@ def tt_visualize_weights_main(args, parser):
 
     average_heads = args.group_heads or args.group_all
     average_layers = args.group_all
-    if args.group_with_max and not \
-            (args.rescale_0_1 or args.rescale_z or args.rescale_non_lin):
-        parser.error("--group_with_max is expected to be used together with "
-                     "a rescaling option.")
 
     # -------- Verify inputs and outputs
     assert_inputs_exist(parser, [args.hdf5_file, args.in_sft])
     if not os.path.isdir(args.experiment_path):
         parser.error("Experiment {} not found.".format(args.experiment_path))
 
-    # Default out_dir: experiment_path/visu_weights
     # Out files: jupyter stuff already managed in main script. Remains the sft.
     # Whole filenames depend on rescaling options and grouping option.
     # Using the prefix to find any output.
     args = get_out_dir_and_create(args)
-    out_files = []
     prefix_total = os.path.join(args.out_dir, args.out_prefix)
-    if args.color_multi_length or args.color_x_y_summary:
-        # Total sft names will be, ex:
-        # prefix_total + _colored_sft_encoder_layerX_headX.trk
-        any_existing = glob.glob(prefix_total + '*_colored_sft_*.trk')
-        out_files.extend(any_existing)
-    if args.as_matrices:
-        # Total matrices names will be, ex:
-        # prefix_total + _matrix_encoder_layerX_headX.png
-        any_existing = glob.glob(prefix_total + '*_matrix_*.png')
-        out_files.extend(any_existing)
+    out_files = glob.glob(prefix_total + '*colored*.trk') + \
+        glob.glob(prefix_total + '*.png')
 
     assert_outputs_exist(parser, args, out_files)
-    if args.overwrite:
+    if args.overwrite and len(out_files) > 0:
+        # logging.warning("Removing these files from a previous run: {}"
+        #                 .format(out_files))
         for f in out_files:
             if os.path.isfile(f):
                 os.remove(f)
@@ -130,15 +116,17 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
         model_dir, log_level=sub_logger_level)
 
     # 2. Load SFT
-    logging.info("Loading analysed bundle. Note that space comptability "
+    logging.info("Loading tractogram. Note that space comptability "
                  "with training data will NOT be verified.")
+    args.bbox_check = False
     sft = load_tractogram_with_reference(parser, args, args.in_sft)
     sft.to_vox()
     sft.to_corner()
     logging.debug("   Got {} streamlines.".format(len(sft)))
 
     # 3. Preprocess SFT
-    if len(sft) > 1 and not (args.color_multi_length or args.color_x_y_summary):
+    if len(sft) > 1 and not (
+            args.color_multi_length or args.color_x_y_summary):
         # Taking only one streamline
         line_id = 0
         logging.info("    Picking THE FIRST streamline ONLY to show with "
@@ -146,15 +134,11 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
                      .format(line_id, len(sft)))
         sft = sft[[line_id]]
 
-    if args.uniformize_endpoints:
-        # Done in-place
-        uniformize_bundle_sft(sft)
-
     if args.reverse_lines:
         sft.streamlines = [np.flip(line, axis=0) for line in sft.streamlines]
 
     # 4. Load the rest of the data through the hdf5 (input_group and so on)
-    logging.debug("Loading the data from the hdf5...")
+    logging.debug("Loading the input data from the hdf5...")
     tester = TesterOneInput(
         model=model, hdf5_file=args.hdf5_file, subj_id=args.subj_id,
         subset_name=args.subset, volume_group=args.input_group,
@@ -178,7 +162,7 @@ def _visu_encoder_decoder(
     """
     Parameters
     ----------
-    weights: Tuple
+    weights: Tuple[List]
         Either (encoder_attention,) or
                (encoder_attention, decoder_attention, cross_attention)
         Each attention is a list per layer, of tensors of shape
@@ -195,7 +179,7 @@ def _visu_encoder_decoder(
     prefix_name: str
         Includes the output path.
     """
-    if isinstance(model, OriginalTransformerModel):
+    if len(weights) == 3:
         has_decoder = True
     else:
         has_decoder = False
@@ -210,8 +194,9 @@ def _visu_encoder_decoder(
 
     # 2. Arrange the weights
     weights = list(weights)
+    explanation = None
     for i in range(len(weights)):
-        weights[i] = reshape_unpad_rescale_attention(
+        weights[i], explanation = reshape_unpad_rescale_attention(
             weights[i], average_heads, average_layers, args.group_with_max,
             lengths, args.rescale_0_1, args.rescale_z, args.rescale_non_lin)
 
@@ -222,20 +207,22 @@ def _visu_encoder_decoder(
 
     if args.color_multi_length:
         print(
-            "\n\n-------------- Preparing the colors for each length or "
+            "\n\n-------------- Preparing the colors for each length of "
             "each streamline --------------")
         color_sft_duplicate_lines(sft, lengths, prefix_name, weights,
                                   attention_names, average_heads,
-                                  average_layers, args.group_with_max)
+                                  average_layers, args.group_with_max,
+                                  explanation)
 
     if args.color_x_y_summary:
         print(
             "\n\n-------------- Preparing the colors summary (importance, "
             "where looked) for each streamline --------------")
-        color_sft_importance_where_looked(
+        color_sft_importance_looked_far(
             sft, lengths, prefix_name, weights, attention_names,
-            average_heads, average_layers,
-            args.rescale_0_1, args.rescale_non_lin, args.rescale_z)
+            average_heads, average_layers, args.group_with_max,
+            args.rescale_0_1, args.rescale_non_lin, args.rescale_z,
+            explanation)
 
     if args.bertviz or args.as_matrices:
         if args.color_multi_length or args.color_x_y_summary:
@@ -250,7 +237,7 @@ def _visu_encoder_decoder(
         name = prefix_name + '_single_streamline.trk'
         print("Saving the single line used for matrices, for debugging "
               "purposes, as ", name)
-        save_tractogram(sft, name)
+        save_tractogram(sft, name, bbox_valid_check=False)
 
         this_seq_len = lengths[0]
         for i in range(len(weights)):

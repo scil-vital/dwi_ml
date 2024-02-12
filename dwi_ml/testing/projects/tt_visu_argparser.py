@@ -4,26 +4,40 @@
 TT weights visualisation choices.
 
 Output options. Choose any number (at least one).
+     ** Example output names below are for the encoder. The same outputs
+     are named decoder_ or cross_ for other attention types.
+     ** See the --prefix option. Below are listed the output suffixes. Suffixes
+     with * include layer and head information.
      ** Currently, options bertviz and as_matrices use only the first
-     streamline in the data.
+     streamline in the data. Then, a file _single_streamline.trk is saved.
 
-    1) 'as_matrices': Show attention as matrices.
-       If bertviz is also chosen, matrices will show in the html.
-    2) 'bertviz': Show using bertviz head_view visualisation.
-       Will create a html file that can be viewed (see --out_dir)
-    3) 'color_sft': Save a colored sft. Streamlines are duplicated at all
-       lengths. Color of the streamline of length n is the weight of each point
-       when getting the next direction at point n.
-    4) 'color_x_y': Save two colored sft:
-        - Projection on x: This is a measure of the importance of each
-        point on the streamline.
-        - Projection on y: This is an indication of where we were looking
-        at when deciding the next direction at each point on the
-        streamline.
-        The projection technique depends on the chosen rescaling options.
+    1) 'as_matrices': Shows attention as matrices.
+       - Outputs: _matrix_encoder.png
+       - N.B. If bertviz is also chosen, matrices will show in the html file.
+    2) 'bertviz': Shows attention using bertviz head_view visualisation.
+       - Outputs: _bertviz.html, _bertviz.ipynb, _bertviz.config
+       - Will create a html file that can be viewed (see --out_dir)
+    3) 'color_multi_length': Saves a colored tractogram. Streamlines are
+       duplicated at all lengths. Color of the streamline of length n is the
+       weight of each point when getting the next direction at point n. This is
+       the most complete option, but the most difficult to visualise. Hint: In
+       Mi-Brain, limit the length of viewed streamlines to inspect attention at
+       a specific point.
+       - Outputs: _encoder_colored_multi_length_*.trk,
+                  _encoder_colored_multi_length_cbar.png
+    4) 'color_x_y_summary': Saves two colored tractogram:
+       - Projection on x: This is a measure of the importance of each
+       point on the streamline.
+       - Projection on y: This is an indication of where we were looking
+       at when deciding the next direction at each point on the
+       streamline.
+       - The projection technique depends on the chosen rescaling options.
+       - Outputs: _encoder_colored_importance_*.trk
+                  _encoder_colored_looked_far*.trk
     5) 'bertviz_locally': Run the bertviz without using jupyter.
        (Debugging purposes. Output will not show, but html stuff will print
        in the terminal.)
+       - Outputs: None.
 """
 import argparse
 
@@ -50,22 +64,15 @@ def build_argparser_transformer_visu():
     add_args_testing_subj_hdf5(p, ask_input_group=True)
     p.add_argument('in_sft',
                    help="A small tractogram; a bundle of streamlines that "
-                        "should be \nuniformized. Else, see option "
-                        "--align_endpoints")
+                        "should probably be \nuniformized with: \n"
+                        ">> scil_tractogram_uniformize_endpoints.py")
 
     # --------------
     # Args to load data
     # --------------
     g = p.add_argument_group("Loading options")
-    g.add_argument('--uniformize_endpoints', action='store_true',
-                   help="If set, try aligning endpoints of the sft. Will use "
-                        "the automatic \nalignment. For more options, align "
-                        "your streamlines first, using \n"
-                        "  >> scil_tractogram_uniformize_endpoints.py.\n")
     g.add_argument('--reverse_lines', action='store_true',
-                   help="If set, reverses all streamlines first.\n"
-                        "(With option --uniformize_endpoints, reversing is "
-                        "done after.)")
+                   help="If set, reverses all streamlines first.\n")
 
     # --------------
     # Args to save data
@@ -85,17 +92,9 @@ def build_argparser_transformer_visu():
 
     g = p.add_argument_group("Saving options")
     g.add_argument(
-        '--out_prefix', metavar='name', default='tt',
+        '--out_prefix', metavar='name', default='tt_',
         help="Prefix of the all output files. Do not include a path."
-             "Default: 'tt'\n"
-             "Suffixes are: (here, example, for the encoder matrix)\n"
-             "   1) as_matrices: _matrix_encoder.png\n"
-             "   2) bertviz: _bertviz.html, _bertviz.ipynb, _bertviz.config\n"
-             "   3) color_sft: _encoder_colored_sft_*.trk\n"
-             "      (with layer and head information)\n"
-             "   4) color_x_y: _encoder_colored_sft_importance_*.trk and \n"
-             "                 _encoder_colored_sft_importance_where_looked.trk\n"
-             "   5) bertviz_locally: None")
+             "Default: 'tt_'. Suffixes are described above.")
     g.add_argument(
         '--out_dir', metavar='d',
         help="Output directory where to save the output files.\n"
@@ -106,9 +105,15 @@ def build_argparser_transformer_visu():
     # --------------
     g = p.add_argument_group(
         "Weights processing options",
-        description="By default, the sum per row in the matrix is 1. "
-                    "Meaning: If all positions are equally important, their "
-                    "value will be 1/n in the nth row.")
+        description="The attention matrix is the state of Q_scaled * K, "
+                    "after the softmax.\n"
+                    "The softmax is done on the last dim (per row). So the "
+                    "sum per row = 1.\n"
+                    "With the future mask, the first row has 1 value, the "
+                    "second has 2, the 50th has 50. \n"
+                    "So equal attention is 0.5 on second row, 0.02 at 50th.\n"
+                    "Trying different ways to view better the important "
+                    "points.")
     gg = g.add_mutually_exclusive_group()
     gg.add_argument('--rescale_0_1', action='store_true',
                     help="If set, rescale to max 1 per row. X = X/max(row)")

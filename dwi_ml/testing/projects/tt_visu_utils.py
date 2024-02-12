@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import os
 from typing import List
 
@@ -43,12 +44,13 @@ def reshape_unpad_rescale_attention(
                        [nheads, length, length]
         Where nheads=1 if average_heads.
     """
-    if rescale_0_1:
-        print("Rescaling between 0-1: X = X/ max(row)")
-    elif rescale_z:
-        print("Rescaling using X = (X-mu) / mu.")
+    logging.info("Arranging attention based on visualisation options "
+                 "(rescaling, averaging, etc.)")
+    explanation = ''
 
     # 1. To numpy. Possibly average heads.
+    if average_heads and not group_with_max:
+        explanation += "Attentions heads on each layer have been averaged.\n"
     nb_layers = len(attention_per_layer)
     for layer in range(nb_layers):
         # To numpy arrays
@@ -63,8 +65,21 @@ def reshape_unpad_rescale_attention(
     if average_layers and not group_with_max:
         attention_per_layer = [np.mean(attention_per_layer, axis=0)]
         nb_layers = 1
+        explanation += "Attention of each layer were then averaged.\n"
 
     # 2. Rearrange attention into one list per line, unpadded, rescaled.
+    if rescale_0_1:
+        explanation += ("For each streamline, attention at each point (each "
+                        "row of the matrix) \nhas been "
+                        "rescaled between 0-1: X = X / max(row)")
+    elif rescale_z:
+        explanation += ("For each streamline, attention at each point (each "
+                        "row of the matrix) \nhas been "
+                        "rescaled to a z-score: X = (X-mu) / std")
+    elif rescale_non_lin:
+        explanation += ("For each streamline, attention at each point (each "
+                        "row of the matrix) \nhas been "
+                        "rescaled so that 0.5 is an average point.")
     attention_per_line = []
     for line in tqdm(range(len(lengths)), total=len(lengths),
                      desc="Rearranging, unpadding, rescaling (if asked)",
@@ -83,7 +98,7 @@ def reshape_unpad_rescale_attention(
                 # Rescale [0, max] -->  [0, 1]
                 line_att = line_att / np.max(line_att, axis=2, keepdims=True)
             elif rescale_z:
-                # Mu is not np.mean here. Ignoring future values.
+                # Mu is not np.mean here: Ignoring future values.
                 # Expected values for mu = [1, 1/2, 1/3, etc.]
                 mask = np.ones((line_att.shape[1], line_att.shape[2]))
                 mask = np.tril(mask)[None, :, :]
@@ -122,14 +137,17 @@ def reshape_unpad_rescale_attention(
                 line_att = tmp1 * where_below + tmp2 * where_above
 
             if average_heads and group_with_max:
+                explanation += "We then the maximal value through heads.\n"
                 line_att = np.max(line_att, axis=0, keepdims=True)
 
             attention_per_line[-1][layer] = line_att
 
         if average_layers and group_with_max:
+            explanation += "We then kept the maximal value trough layers."
             attention_per_line[-1] = [np.max(attention_per_line[-1], axis=0)]
 
-    return attention_per_line
+    logging.info(explanation)
+    return attention_per_line, explanation
 
 
 def resample_attention_one_line(line_att, this_seq_len, resample_nb):
@@ -187,44 +205,36 @@ def get_visu_params_from_options(
     etc.
     """
     vmin_main, vmax_main, cmap_main = (0, 1, 'viridis')
-    vmin_bottom, vmax_bottom, cmap_bottom = (0, 1, 'viridis')
-    vmin_right, vmax_right, cmap_right = (0, 1, 'viridis')
+    vmin_importance, vmax_importance, cmap_importance = (0, 1, 'viridis')
+    vmin_pos, vmax_pos, cmap_pos = (0, size_x, 'viridis')
     if rescale_0_1 or rescale_non_lin:
         if rescale_0_1:
             explanation = (
-                'Data is rescaled: to [0-1] range per row.\n'
-                'Bottom row = Importance: Number of times that this point was '
-                'very important (> 0.9).\n'
-                "Right column = Where looked: Where the important points "
-                "(>0.9) to decide next direction are situated.\n"
-                "0 = looks at current point. Max = looks very far behind.\n"
-                'cbar1: main matrix. cbar2: bottom row. cbar3: right column')
+                'Importance: Number of times that this point was '
+                'very important (> 0.75).\n'
+                "Looked far: Where the important points (>0.75) to decide "
+                "next direction are situated."
+                "0 = current point. Max = very far behind.")
             rescale_name = 'rescale_0_1'
         else:
             explanation = (
-                "Data is rescaled: On each row, a value of 0.5 means "
-                "that the point had an average importance (raw value "
-                "was 1/N)\n"
-                "Bottom row = Importance: Number of times that this point was "
-                "more important than the average >0.5.\n"
-                "Right column = Where looked: Where the important points "
-                "(>0.5) to decide next direction are situated.\n"
-                "0 = looks at current point. Max = looks very far behind.\n"
-                "cbar1: main matrix. cbar2: bottom row. cbar3: right column")
+                "Importance: Number of times that this point was more "
+                "important than the average >0.5.\n"
+                "Looked far: Where the important points (>0.5) to decide next "
+                "direction are situated. "
+                "0 = current point. Max = very far behind.")
             rescale_name = 'rescale_non_lin'
-            cmap_main = 'rainbow'  # See also turbo
-        vmax_bottom = size_y
-        cmap_bottom = 'plasma'  # See also rainbow, inferno
-        vmax_right = size_x
-        cmap_right = 'plasma'
+            cmap_main = 'coolwarm'  # See also turbo, rainbow
+        vmax_importance = size_y
+        cmap_importance = 'plasma'  # See also rainbow, inferno
+        cmap_pos = 'plasma'
     elif rescale_z:
-        explanation = ("Data is rescaled to z-scores per row.\n"
-                       "Bottom row: Average.")
+        explanation = "Bottom row: Average."
         rescale_name = 'rescale_z'
         vmin_main = None
         vmax_main = None
-        vmax_bottom = None
-        vmin_bottom = None
+        vmax_importance = None
+        vmin_importance = None
     else:
         explanation = 'Bottom row: Average.'
         rescale_name = ''
@@ -235,39 +245,51 @@ def get_visu_params_from_options(
                     'vmax': vmax_main}
 
     options_importance = {'interpolation': 'None',
-                          'cmap': cmap_bottom,
-                          'vmin': vmin_bottom,
-                          'vmax': vmax_bottom}
+                          'cmap': cmap_importance,
+                          'vmin': vmin_importance,
+                          'vmax': vmax_importance}
 
-    options_where_looked = {'interpolation': 'None',
-                            'cmap': cmap_right,
-                            'vmin': vmin_right,
-                            'vmax': vmax_right}
+    options_position = {'interpolation': 'None',
+                        'cmap': cmap_pos,
+                        'vmin': vmin_pos,
+                        'vmax': vmax_pos}
 
-    return (options_main, options_importance, options_where_looked,
+    return (options_main, options_importance, options_position,
             explanation, rescale_name)
 
 
-def prepare_colors_from_options(a, rescale_0_1, rescale_non_lin, rescale_z):
+def prepare_projections_from_options(a, rescale_0_1, rescale_non_lin,
+                                     rescale_z):
     a = np.squeeze(a)
     a = np.ma.masked_where(a == 0, a)
     if rescale_0_1 or rescale_non_lin:
         if rescale_0_1:
-            thresh = 0.9
+            thresh = 0.75
         else:
             thresh = 0.5
 
-        # To set as percent: / np.flip(np.arange(1, a.shape[1] + 1))
+        # Importance = nb of points > thresh as x projection
         importance = np.sum(a > thresh, axis=0)
+
+        # Nb looked = nb of points > thresh as y projection
+        nb_looked = np.sum(a > thresh, axis=1)
+
+        # Looked far = mean index of points where > thresh.
         indexes = np.arange(1, a.shape[1] + 1)
         indexes = np.abs(indexes[None, :] - indexes[:, None])
         indexes = np.ma.masked_where(~(a > thresh), indexes)
-        where_looked = np.mean((a > thresh) * indexes, axis=1)
+        looked_far = np.mean((a > thresh) * indexes, axis=1)
+        # looked_far /= np.flip(np.arange(1, a.shape[1] + 1))
+
     else:
         importance = np.mean(a, axis=0)
         raise NotImplemented("Where looked not defined.")
 
-    return a, where_looked, importance
+    # Position of maximal point
+    max_pos = np.argmax(a, axis=1) + 1
+    max_pos = np.arange(1, a.shape[1] + 1) - max_pos
+
+    return a, looked_far, importance, max_pos, nb_looked
 
 
 def get_config_filename():

@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
+from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.models.main_models import (MainModelOneInput, MainModelAbstract,
                                        ModelWithDirectionGetter)
 from dwi_ml.testing.utils import prepare_dataset_one_subj
@@ -138,7 +139,8 @@ class Tester:
 
                 # 2. Run forward
                 batch_out = self.model(inputs, streamlines_f)
-                outputs = self.model.merge_batches_outputs(outputs, batch_out)
+                outputs = self.model.merge_batches_outputs(outputs, batch_out,
+                                                           device='cpu')
 
                 # 3. Compute loss: not averaged = one tensor of losses per
                 # streamline.
@@ -149,14 +151,15 @@ class Tester:
                     else:
                         tmp_losses = self.model.compute_loss(
                             batch_out, streamlines)
-                    losses.extend(tmp_losses)
+                    losses.extend([loss.cpu().numpy() for loss in tmp_losses])
+
+                # log_gpu_memory_usage()
 
                 # Prepare next batch
                 batch_start = batch_end
                 batch_end = min(batch_start + batch_size, len(sft))
 
         if compute_loss:
-            losses = [loss.cpu().numpy() for loss in losses]
             mean_per_line = np.asarray([np.mean(loss) for loss in losses])
             # \u00B1 is the plus or minus sign.
             print("Losses: ")

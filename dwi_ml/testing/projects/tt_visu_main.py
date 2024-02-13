@@ -24,7 +24,7 @@ from dwi_ml.testing.projects.tt_visu_bertviz import (
     encoder_decoder_show_head_view, encoder_decoder_show_model_view,
     encoder_show_model_view, encoder_show_head_view)
 from dwi_ml.testing.projects.tt_visu_colored_sft import (
-    color_sft_duplicate_lines, color_sft_importance_looked_far)
+    color_sft_duplicate_lines, color_sft_x_y_projections)
 from dwi_ml.testing.projects.tt_visu_matrix import show_model_view_as_imshow
 from dwi_ml.testing.projects.tt_visu_utils import (
     prepare_encoder_tokens, prepare_decoder_tokens,
@@ -201,13 +201,13 @@ def _visu_encoder_decoder(
             lengths, args.rescale_0_1, args.rescale_z, args.rescale_non_lin)
 
     if has_decoder:
-        attention_names = ('encoder',)
-    else:
         attention_names = ('encoder', 'decoder', 'cross')
+    else:
+        attention_names = ('encoder',)
 
     if args.color_multi_length:
         print(
-            "\n\n-------------- Preparing the colors for each length of "
+            "\n-------------- Preparing the colors for each length of "
             "each streamline --------------")
         color_sft_duplicate_lines(sft, lengths, prefix_name, weights,
                                   attention_names, average_heads,
@@ -216,10 +216,10 @@ def _visu_encoder_decoder(
 
     if args.color_x_y_summary:
         print(
-            "\n\n-------------- Preparing the colors summary (importance, "
-            "where looked) for each streamline --------------")
-        color_sft_importance_looked_far(
-            sft, lengths, prefix_name, weights, attention_names,
+            "\n-------------- Preparing the colors summary (nb_usage, "
+            "where looked, etc) for each streamline --------------")
+        color_sft_x_y_projections(
+            sft, prefix_name, weights, attention_names,
             average_heads, average_layers, args.group_with_max,
             args.rescale_0_1, args.rescale_non_lin, args.rescale_z,
             explanation)

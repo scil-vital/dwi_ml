@@ -28,11 +28,21 @@ Output options. Choose any number (at least one).
     4) 'color_x_y_summary': Saves two colored tractogram:
        - Projection on x: This is a measure of the importance of each
        point on the streamline.
+            - x_mean_att* = mean attention strength at this point.
+            - x_nb_usage* = percentage of points using current point
+              importantly.
        - Projection on y: This is an indication of where we were looking
        at when deciding the next direction at each point on the
        streamline.
+            - y_looked_far: average index (in percentage of length) of points
+              used importantly. 0 = current point. 1/length = Looked at
+              preceding point. 1 = looked very far.
+            - y_nb_looked: number of points (in % of length) that were
+              important.
+            - y_max_pos: index (in % of length) of the maximal point.
+             0 = current point. 1/length = Looked at preceding point.
+             1 = looked very far.
        - The projection technique depends on the chosen rescaling options.
-       - Outputs: _encoder_colored_importance_*.trk
                   _encoder_colored_looked_far*.trk
     5) 'bertviz_locally': Run the bertviz without using jupyter.
        (Debugging purposes. Output will not show, but html stuff will print
@@ -87,7 +97,7 @@ def build_argparser_transformer_visu():
     gg =g.add_mutually_exclusive_group()
     gg.add_argument('--bertviz', action='store_true',
                     help="See description above.")
-    gg.add_argument('--bertviz_locally',
+    gg.add_argument('--bertviz_locally', action='store_true',
                     help="See description above.")
 
     g = p.add_argument_group("Saving options")

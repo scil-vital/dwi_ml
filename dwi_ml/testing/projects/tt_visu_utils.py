@@ -10,6 +10,14 @@ from tqdm import tqdm
 from scilpy.io.fetcher import get_home as get_scilpy_folder
 
 
+THRESH_IMPORTANT = {
+    'rescale_0_1': 0.75,  # No idea...  1 = the most important.
+    'rescale_non_lin': 0.5,   # 0.5 = Value when all equal.
+    'rescale_z': 1.96,  # The 95 percent confidence level with p<0.05
+    'None': 0.5  # NOT SIGNIFICATIVE AT ALL.
+}
+
+
 def reshape_unpad_rescale_attention(
         attention_per_layer, average_heads: bool, average_layers,
         group_with_max, lengths, rescale_0_1, rescale_z, rescale_non_lin):
@@ -198,98 +206,87 @@ def prepare_encoder_tokens(this_seq_len, step_size, add_eos: bool):
     return encoder_tokens
 
 
-def get_visu_params_from_options(
-        rescale_0_1, rescale_non_lin, rescale_z, size_x, size_y):
+def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
     """
     Defines options for prefix names, colormaps, vmin, vmax, explanation text,
     etc.
     """
-    vmin_main, vmax_main, cmap_main = (0, 1, 'viridis')
-    vmin_importance, vmax_importance, cmap_importance = (0, 1, 'viridis')
-    vmin_pos, vmax_pos, cmap_pos = (0, size_x, 'viridis')
-    if rescale_0_1 or rescale_non_lin:
-        if rescale_0_1:
-            explanation = (
-                'Importance: Number of times that this point was '
-                'very important (> 0.75).\n'
-                "Looked far: Where the important points (>0.75) to decide "
-                "next direction are situated."
-                "0 = current point. Max = very far behind.")
-            rescale_name = 'rescale_0_1'
-        else:
-            explanation = (
-                "Importance: Number of times that this point was more "
-                "important than the average >0.5.\n"
-                "Looked far: Where the important points (>0.5) to decide next "
-                "direction are situated. "
-                "0 = current point. Max = very far behind.")
-            rescale_name = 'rescale_non_lin'
-            cmap_main = 'coolwarm'  # See also turbo, rainbow
-        vmax_importance = size_y
-        cmap_importance = 'plasma'  # See also rainbow, inferno
-        cmap_pos = 'plasma'
+    vmin_main, vmax_main, cmap_main = (0, 1, 'turbo')
+    vmin_pos, vmax_pos, cmap_pos = (0, 1, 'CMRmap')
+    if rescale_0_1:
+        rescale_name = 'rescale_0_1'
+    elif rescale_non_lin:
+        rescale_name = 'rescale_non_lin'
+        # cmap_main = 'coolwarm'
     elif rescale_z:
-        explanation = "Bottom row: Average."
         rescale_name = 'rescale_z'
-        vmin_main = None
-        vmax_main = None
-        vmax_importance = None
-        vmin_importance = None
+        #  Range: We could limit it to help view better. Ex: ±3 std.
+        vmin_main = -3
+        vmax_main = 3
     else:
-        explanation = 'Bottom row: Average.'
-        rescale_name = ''
+        rescale_name = 'None'
+
+    thresh = THRESH_IMPORTANT[rescale_name]
+    explanation = (
+        'Importance: Number of times that this point was very important '
+        '(>{:.2f}).\n'
+        "Looked far: Mean index of the important points (>{:.2f}) to decide "
+        "the next direction. 0 = current point. 100%% = very far behind.\n"
+        "Max_pos: Index of the point of maximal attention.\n"
+        "Nb_looked: Number of points of important attention."
+        .format(thresh, thresh))
 
     options_main = {'interpolation': 'None',
                     'cmap': cmap_main,
                     'vmin': vmin_main,
                     'vmax': vmax_main}
 
-    options_importance = {'interpolation': 'None',
-                          'cmap': cmap_importance,
-                          'vmin': vmin_importance,
-                          'vmax': vmax_importance}
-
     options_position = {'interpolation': 'None',
                         'cmap': cmap_pos,
                         'vmin': vmin_pos,
                         'vmax': vmax_pos}
 
-    return (options_main, options_importance, options_position,
-            explanation, rescale_name)
+    return options_main, options_position, explanation, rescale_name, thresh
 
 
 def prepare_projections_from_options(a, rescale_0_1, rescale_non_lin,
                                      rescale_z):
     a = np.squeeze(a)
     a = np.ma.masked_where(a == 0, a)
-    if rescale_0_1 or rescale_non_lin:
-        if rescale_0_1:
-            thresh = 0.75
-        else:
-            thresh = 0.5
-
-        # Importance = nb of points > thresh as x projection
-        importance = np.sum(a > thresh, axis=0)
-
-        # Nb looked = nb of points > thresh as y projection
-        nb_looked = np.sum(a > thresh, axis=1)
-
-        # Looked far = mean index of points where > thresh.
-        indexes = np.arange(1, a.shape[1] + 1)
-        indexes = np.abs(indexes[None, :] - indexes[:, None])
-        indexes = np.ma.masked_where(~(a > thresh), indexes)
-        looked_far = np.mean((a > thresh) * indexes, axis=1)
-        # looked_far /= np.flip(np.arange(1, a.shape[1] + 1))
-
+    if rescale_0_1:
+        rescale_name = 'rescale_0_1'
+    elif rescale_non_lin:
+        rescale_name = 'rescale_non_lin'
+    elif rescale_z:
+        rescale_name = 'rescale_z'
     else:
-        importance = np.mean(a, axis=0)
-        raise NotImplemented("Where looked not defined.")
+        rescale_name = 'None'
+    thresh = THRESH_IMPORTANT[rescale_name]
+
+    length = float(a.shape[1])
+    flipped_range = np.flip(np.arange(1, a.shape[1] + 1))
+
+    # Mean = masked mean.
+    mean_att = np.sum(a, axis=0) / flipped_range
+
+    # Importance = nb of points > thresh as x projection
+    importance = np.sum(a > thresh, axis=0) / length
+
+    # Looked far = mean index of points where > thresh.
+    indexes = np.arange(1, a.shape[1] + 1)
+    indexes = np.abs(indexes[None, :] - indexes[:, None])
+    indexes = np.ma.masked_where(~(a > thresh), indexes)
+    looked_far = np.mean((a > thresh) * indexes, axis=1) / length
 
     # Position of maximal point
     max_pos = np.argmax(a, axis=1) + 1
     max_pos = np.arange(1, a.shape[1] + 1) - max_pos
+    max_pos = max_pos / length
 
-    return a, looked_far, importance, max_pos, nb_looked
+    # Nb looked = nb of points > thresh as y projection
+    nb_looked = np.sum(a > thresh, axis=1) / length
+
+    return a, mean_att, importance, looked_far, max_pos, nb_looked
 
 
 def get_config_filename():

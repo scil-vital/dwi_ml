@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
+import glob
 import logging
 import os
 from pathlib import Path
@@ -22,6 +23,39 @@ from scilpy.tractograms.tractogram_operations import concatenate_sft
 
 from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data
+
+
+def format_filelist(filenames, enforce_presence, folder=None) -> List[str]:
+    """
+    If folder is not None, it will be added as prefix to all files.
+    """
+    if isinstance(filenames, str):
+        filenames = [filenames]
+
+    new_files = []
+    for i, f in enumerate(filenames):
+        if folder is not None:
+            f = str(folder.joinpath(f))
+        if '*' in f:
+            tmp = glob.glob(f)
+            if len(tmp) == 0:
+                msg = "File not found, even with the wildcard: {}".format(f)
+                if enforce_presence:
+                    raise FileNotFoundError(msg)
+                else:
+                    logging.warning(msg)
+            else:
+                new_files.extend(f)
+        else:
+            if not Path(f).is_file():
+                msg = "File not found: {}".format(f)
+                if enforce_presence:
+                    raise FileNotFoundError(msg)
+                else:
+                    logging.warning(msg)
+            else:
+                new_files.append(f)
+    return new_files
 
 
 def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
@@ -297,19 +331,9 @@ class HDF5Creator:
             subj_input_dir = Path(self.root_folder).joinpath(subj_id)
 
             # Find subject's files from group_config
-            for this_file in config_file_list:
-                this_file = this_file.replace('*', subj_id)
-                if this_file.endswith('/ALL'):
-                    logging.debug(
-                        "    Keyword 'ALL' detected; we will load all "
-                        "files in the folder '{}'"
-                        .format(this_file.replace('/ALL', '')))
-                else:
-                    this_file = subj_input_dir.joinpath(this_file)
-                    if not this_file.is_file():
-                        raise FileNotFoundError(
-                            "File from groups_config ({}) not found for "
-                            "subject {}!".format(this_file, subj_id))
+            config_file_list = format_filelist(config_file_list,
+                                               self.enforce_files_presence,
+                                               folder=subj_input_dir)
 
     def create_database(self):
         """
@@ -441,26 +465,25 @@ class HDF5Creator:
                 if isinstance(std_masks, str):
                     std_masks = [std_masks]
 
-                for sub_mask in std_masks:
-                    sub_mask = sub_mask.replace('*', subj_id)
+                std_masks = format_filelist(std_masks, folder=subj_input_dir)
+                for mask in std_masks:
                     logging.info("    - Loading standardization mask {}"
-                                 .format(sub_mask))
-                    sub_mask_file = subj_input_dir.joinpath(sub_mask)
-                    sub_mask_img = nib.load(sub_mask_file)
-                    sub_mask_data = np.asanyarray(sub_mask_img.dataobj) > 0
+                                 .format(os.path.basename(mask)))
+                    sub_mask_data = nib.load(mask).get_fdata() > 0
                     if std_mask is None:
                         std_mask = sub_mask_data
                     else:
                         std_mask = np.logical_or(sub_mask_data, std_mask)
 
         file_list = self.groups_config[group]['files']
+        file_list = format_filelist(file_list, self.enforce_files_presence,
+                                    folder=subj_input_dir)
 
         # First file will define data dimension and affine
-        file_name = file_list[0].replace('*', subj_id)
-        first_file = subj_input_dir.joinpath(file_name)
-        logging.info("       - Processing file {}".format(file_name))
+        logging.info("       - Processing file {}"
+                     .format(os.path.basename(file_list[0])))
         group_data, group_affine, group_res, group_header = load_file_to4d(
-            first_file)
+            file_list[0])
 
         if std_option == 'per_file':
             logging.debug('      *Standardizing sub-data')
@@ -470,23 +493,24 @@ class HDF5Creator:
         # Other files must fit (data shape, affine, voxel size)
         # It is not a promise that data has been correctly registered, but it
         # is a minimal check.
-        for file_name in file_list[1:]:
-            file_name = file_name.replace('*', subj_id)
-            data = _load_and_verify_file(file_name, subj_input_dir, group,
-                                         group_affine, group_res)
+        if len(file_list) > 1:
+            for file_name in file_list[1:]:
+                logging.info("       - Processing file {}"
+                             .format(os.path.basename(file_name)))
+                data = _load_and_verify_file(file_name, subj_input_dir, group,
+                                             group_affine, group_res)
 
-            if std_option == 'per_file':
-                logging.debug('      *Standardizing sub-data')
-                data = standardize_data(data, std_mask,
-                                        independent=False)
+                if std_option == 'per_file':
+                    logging.debug('      *Standardizing sub-data')
+                    data = standardize_data(data, std_mask, independent=False)
 
-            # Append file data to hdf group.
-            try:
-                group_data = np.append(group_data, data, axis=-1)
-            except ImportError:
-                raise ImportError(
-                    'Data file {} could not be added to data group {}. '
-                    'Wrong dimensions?'.format(file_name, group))
+                # Append file data to hdf group.
+                try:
+                    group_data = np.append(group_data, data, axis=-1)
+                except ImportError:
+                    raise ImportError(
+                        'Data file {} could not be added to data group {}. '
+                        'Wrong dimensions?'.format(file_name, group))
 
         # Standardize data (per channel) (if not done 'per_file' yet).
         if std_option == 'independent':
@@ -590,9 +614,6 @@ class HDF5Creator:
         Loads and processes a group of tractograms and merges all streamlines
         together.
 
-        Note. Wildcards will be replaced by the subject id. If the list is
-        folder/ALL, all tractograms in the folder will be used.
-
         Parameters
         ----------
         subj_dir : Path
@@ -628,41 +649,26 @@ class HDF5Creator:
         final_sft = None
         output_lengths = []
 
-        for instructions in tractograms:
-            if instructions.endswith('/ALL'):
-                # instructions are to get all tractograms in given folder.
-                tractograms_dir = instructions.split('/ALL')
-                tractograms_dir = ''.join(tractograms_dir[:-1])
-                tractograms_sublist = [
-                    instructions.replace('/ALL', '/' + os.path.basename(p))
-                    for p in subj_dir.glob(tractograms_dir + '/*')]
-            else:
-                # instruction is to get one specific tractogram
-                tractograms_sublist = [instructions]
+        tractograms = format_filelist(tractograms, self.enforce_files_presence,
+                                      folder=subj_dir)
+        for tractogram_file in tractograms:
+            sft = self._load_and_process_sft(tractogram_file, header)
 
-            # Either a loop on "ALL" or a loop on only one file.
-            for tractogram_name in tractograms_sublist:
-                tractogram_name = tractogram_name.replace('*', subj_id)
-                tractogram_file = subj_dir.joinpath(tractogram_name)
+            if sft is not None:
+                # Compute euclidean lengths (rasmm space)
+                sft.to_space(Space.RASMM)
+                output_lengths.extend(length(sft.streamlines))
 
-                sft = self._load_and_process_sft(
-                    tractogram_file, tractogram_name, header)
+                # Sending to common space
+                sft.to_vox()
+                sft.to_corner()
 
-                if sft is not None:
-                    # Compute euclidean lengths (rasmm space)
-                    sft.to_space(Space.RASMM)
-                    output_lengths.extend(length(sft.streamlines))
-
-                    # Sending to common space
-                    sft.to_vox()
-                    sft.to_corner()
-
-                    # Add processed tractogram to final big tractogram
-                    if final_sft is None:
-                        final_sft = sft
-                    else:
-                        final_sft = concatenate_sft([final_sft, sft],
-                                                    erase_metadata=False)
+                # Add processed tractogram to final big tractogram
+                if final_sft is None:
+                    final_sft = sft
+                else:
+                    final_sft = concatenate_sft([final_sft, sft],
+                                                erase_metadata=False)
 
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
@@ -716,16 +722,7 @@ class HDF5Creator:
 
         return final_sft, output_lengths, conn_matrix, conn_info
 
-    def _load_and_process_sft(self, tractogram_file, tractogram_name, header):
-        if not tractogram_file.is_file():
-            logging.debug(
-                "      Skipping file {} because it was not found in this "
-                "subject's folder".format(tractogram_name))
-            # Note: if args.enforce_files_presence was set to true,
-            # this case is not possible, already checked in
-            # create_hdf5_dataset
-            return None
-
+    def _load_and_process_sft(self, tractogram_file, header):
         # Check file extension
         _, file_extension = os.path.splitext(str(tractogram_file))
         if file_extension not in ['.trk', '.tck']:
@@ -742,7 +739,7 @@ class HDF5Creator:
 
         # Loading tractogram and sending to wanted space
         logging.info("       - Processing tractogram {}"
-                     .format(os.path.basename(tractogram_name)))
+                     .format(os.path.basename(tractogram_file)))
         sft = load_tractogram(str(tractogram_file), header)
 
         # Resample or compress streamlines

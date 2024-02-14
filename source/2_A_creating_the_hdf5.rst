@@ -87,7 +87,7 @@ To create the hdf5 file, you will need a config file such as below. HDF groups w
              }
         "bad_streamlines": {
             "type": "streamlines",
-            "files": ["bad_tractograms/ALL"] ---> Will get all trk and tck files.
+            "files": ["bad_tractograms/*"] ---> Will get all trk and tck files.
              }
         "wm_mask": {
             "type": "volume",
@@ -111,8 +111,7 @@ Each group may have a number of parameters:
 
     - **"files"**: The listed file(s) must exist in every subject folder inside the root repository. That is: the files must be organized correctly on your computer (except if option 'enforce_files_presence is set to False). If there are more than one files, they will be concatenated (on the 4th dimension for volumes, using the union of tractograms for streamlines).
 
-        - There is the possibility to add a wildcard (\*) that will be replaced by the subject's id while loading. Ex: anat/\*__t1.nii.gz would become anat/subjX__t1.nii.gz.
-        - For streamlines, there is the possibility to use 'ALL' to load all tractograms present in a folder.
+        - There is the possibility to add a wildcard (\*).
 
 Additional attributes for volume groups:
 """"""""""""""""""""""""""""""""""""""""

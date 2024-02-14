@@ -9,7 +9,7 @@ See here for the complete explanation!
     - How to organize your data
     - How to prepare the config file
     - How to run this script.
-    https://dwi-ml.readthedocs.io/en/latest/2_B_preprocessing.html
+    https://dwi-ml.readthedocs.io/en/latest/2_A_creating_the_hdf5.html
 --------------------------------------
 
 ** Note: The memory is a delicate question here, but checks have been made, and

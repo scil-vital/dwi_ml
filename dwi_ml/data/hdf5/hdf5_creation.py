@@ -309,6 +309,7 @@ class HDF5Creator:
                 "testing set!".format(ignored_subj))
         return unique_subjs
 
+
     def _check_files_presence(self):
         """
         Verifying now the list of files. Prevents stopping after a long
@@ -320,20 +321,29 @@ class HDF5Creator:
         """
         logging.debug("Verifying files presence")
 
+        def flatten_list(a_list):
+            new_list = []
+            for element in a_list:
+                if isinstance(element, list):
+                    new_list.extend(flatten_list(element))
+                else:
+                    new_list.append(element)
+            return new_list
+
         # concatenating files from all groups files:
-        # sum: concatenates list of sub-lists
-        config_file_list = sum(nested_lookup('files', self.groups_config), [])
-        config_file_list += nested_lookup(
-            'connectivity_matrix', self.groups_config)
-        config_file_list += nested_lookup('std_mask', self.groups_config)
+        config_file_list = [
+            nested_lookup('files', self.groups_config),
+            nested_lookup('connectivity_matrix', self.groups_config),
+            nested_lookup('std_mask', self.groups_config)]
+        config_file_list = flatten_list(config_file_list)
 
         for subj_id in self.all_subjs:
             subj_input_dir = Path(self.root_folder).joinpath(subj_id)
 
             # Find subject's files from group_config
-            config_file_list = format_filelist(config_file_list,
-                                               self.enforce_files_presence,
-                                               folder=subj_input_dir)
+            _ = format_filelist(config_file_list,
+                                self.enforce_files_presence,
+                                folder=subj_input_dir)
 
     def create_database(self):
         """
@@ -465,7 +475,9 @@ class HDF5Creator:
                 if isinstance(std_masks, str):
                     std_masks = [std_masks]
 
-                std_masks = format_filelist(std_masks, folder=subj_input_dir)
+                std_masks = format_filelist(std_masks,
+                                            self.enforce_files_presence,
+                                            folder=subj_input_dir)
                 for mask in std_masks:
                     logging.info("    - Loading standardization mask {}"
                                  .format(os.path.basename(mask)))

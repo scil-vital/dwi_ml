@@ -83,7 +83,7 @@ To create the hdf5 file, you will need a config file such as below. HDF groups w
             "files": ["tractograms/bundle1.trk", "tractograms/wholebrain.trk", "tractograms/*__wholebrain.trk"], ----> Will get, for instance, sub1000__bundle1.trk
             "connectivity_matrix": "my_file.npy",
             "connectivity_nb_blocs": 6  ---> OR
-            "connectivity_labels": labels_volume
+            "connectivity_labels": labels_volume_group
              }
         "bad_streamlines": {
             "type": "streamlines",
@@ -136,7 +136,7 @@ Additional attributes for streamlines groups:
     - **connectivity_matrix**: The name of the connectivity matrix to associate to the streamline group. This matrix will probably be used as a mean of validation during training. Then, you also need to explain how the matrix was created, so that you can create the connectivity matrix of the streamlines being validated, in order to compare it with the expected result. ONE of the two next options must be given:
 
         - **connectivity_nb_blocs**: This explains that the connectivity matrix was created by dividing the volume space into regular blocs. See dwiml_compute_connectivity_matrix_from_blocs for a description. The value should be either an integers or a list of three integers.
-        - **connectivity_labels_volume**: This explains that the connectivity matrix was created by dividing the cortex into a list of regions associated with labels. The value must be the name of another volume group in the same config file, which refers to a map with one label per region. NOTE: This option is offered in preparation of future use only. Currently, you can create the hdf5 with this option, but connectivity computation using labels is not yet implemented in dwi_ml.
+        - **connectivity_labels**: This explains that the connectivity matrix was created by dividing the cortex into a list of regions associated with labels. The value must be the name of the associated labels file (typically a nifti file filled with integers).
 
 2.4. Creating the hdf5
 **********************

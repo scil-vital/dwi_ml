@@ -11,6 +11,7 @@ from dipy.io.streamline import load_tractogram, save_tractogram
 from dipy.io.utils import is_header_compatible
 from dipy.tracking.utils import length
 import h5py
+from scilpy.image.labels import get_data_as_labels
 
 from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.data_augmentation import \
@@ -45,7 +46,7 @@ def format_filelist(filenames, enforce_presence, folder=None) -> List[str]:
                 else:
                     logging.warning(msg)
             else:
-                new_files.extend(f)
+                new_files.extend(tmp)
         else:
             if not Path(f).is_file():
                 msg = "File not found: {}".format(f)
@@ -79,8 +80,6 @@ def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
         The loaded file's resolution must be equal (or very close) to this res.
     """
     data_file = subj_input_path.joinpath(filename)
-
-    logging.info("       - Processing file {}".format(filename))
 
     if not data_file.is_file():
         logging.debug("      Skipping file {} because it was not "
@@ -309,7 +308,6 @@ class HDF5Creator:
                 "testing set!".format(ignored_subj))
         return unique_subjs
 
-
     def _check_files_presence(self):
         """
         Verifying now the list of files. Prevents stopping after a long
@@ -334,6 +332,7 @@ class HDF5Creator:
         config_file_list = [
             nested_lookup('files', self.groups_config),
             nested_lookup('connectivity_matrix', self.groups_config),
+            nested_lookup('connectivity_labels', self.groups_config),
             nested_lookup('std_mask', self.groups_config)]
         config_file_list = flatten_list(config_file_list)
 
@@ -472,14 +471,11 @@ class HDF5Creator:
             else:
                 # Load subject's standardization mask. Can be a list of files.
                 std_masks = self.groups_config[group]['std_mask']
-                if isinstance(std_masks, str):
-                    std_masks = [std_masks]
-
                 std_masks = format_filelist(std_masks,
                                             self.enforce_files_presence,
                                             folder=subj_input_dir)
                 for mask in std_masks:
-                    logging.info("    - Loading standardization mask {}"
+                    logging.info("       - Loading standardization mask {}"
                                  .format(os.path.basename(mask)))
                     sub_mask_data = nib.load(mask).get_fdata() > 0
                     if std_mask is None:
@@ -492,7 +488,7 @@ class HDF5Creator:
                                     folder=subj_input_dir)
 
         # First file will define data dimension and affine
-        logging.info("       - Processing file {}"
+        logging.info("       - Processing file {} (first file=reference) "
                      .format(os.path.basename(file_list[0])))
         group_data, group_affine, group_res, group_header = load_file_to4d(
             file_list[0])
@@ -513,7 +509,7 @@ class HDF5Creator:
                                              group_affine, group_res)
 
                 if std_option == 'per_file':
-                    logging.debug('      *Standardizing sub-data')
+                    logging.info('          - Standardizing')
                     data = standardize_data(data, std_mask, independent=False)
 
                 # Append file data to hdf group.
@@ -526,11 +522,11 @@ class HDF5Creator:
 
         # Standardize data (per channel) (if not done 'per_file' yet).
         if std_option == 'independent':
-            logging.debug('      *Standardizing data on each feature.')
+            logging.info('       - Standardizing data on each feature.')
             group_data = standardize_data(group_data, std_mask,
                                           independent=True)
         elif std_option == 'all':
-            logging.debug('      *Standardizing data as a whole.')
+            logging.info('       - Standardizing data as a whole.')
             group_data = standardize_data(group_data, std_mask,
                                           independent=False)
         elif std_option not in ['none', 'per_file']:
@@ -596,9 +592,9 @@ class HDF5Creator:
                     'connectivity_matrix_type'] = conn_info[0]
                 streamlines_group.create_dataset(
                     'connectivity_matrix', data=connectivity_matrix)
-                if conn_info[0] == 'from_label':
-                    streamlines_group.attrs['connectivity_label_volume'] = \
-                        conn_info[1]
+                if conn_info[0] == 'from_labels':
+                    streamlines_group.create_dataset(
+                        'connectivity_label_volume', data=conn_info[1])
                 else:
                     streamlines_group.attrs['connectivity_nb_blocs'] = \
                         conn_info[1]
@@ -606,7 +602,8 @@ class HDF5Creator:
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
             if len(sft.data_per_streamline) > 0:
-                logging.debug('sft contained data_per_streamlines. Data not kept.')
+                logging.debug('sft contained data_per_streamlines. Data not '
+                              'kept.')
 
             # Accessing private Dipy values, but necessary.
             # We need to deconstruct the streamlines into arrays with
@@ -720,12 +717,11 @@ class HDF5Creator:
                 nb_blocs = format_nb_blocs_connectivity(
                     self.groups_config[group]['connectivity_nb_blocs'])
                 conn_info = ['from_blocs', nb_blocs]
-            else:
-                labels_group = self.groups_config[group]['connectivity_labels']
-                if labels_group not in self.volume_groups:
-                    raise ValueError("connectivity_labels_volume must be "
-                                     "an existing volume group.")
-                conn_info = ['from_labels', labels_group]
+            else:  # labels
+                labels_file = self.groups_config[group]['connectivity_labels']
+                labels_file = os.path.join(subj_dir, labels_file)
+                labels_data = get_data_as_labels(nib.load(labels_file))
+                conn_info = ['from_labels', labels_data]
 
             conn_file = subj_dir.joinpath(
                 self.groups_config[group]['connectivity_matrix'])

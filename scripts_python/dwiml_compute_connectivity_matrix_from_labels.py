@@ -39,7 +39,7 @@ def _build_arg_parser():
                         "streamline count is saved.")
     p.add_argument('--show_now', action='store_true',
                    help="If set, shows the matrix with matplotlib.")
-    p.add_argument('--hide_background', nargs='?', const=0, type=float,
+    p.add_argument('--hide_background', nargs='?', const=0, type=int,
                    help="If true, set the connectivity matrix for chosen "
                         "label (default: 0), to 0.")
     p.add_argument(
@@ -80,10 +80,11 @@ def main():
         p.error("--out_file should have a .npy extension.")
 
     out_fig = tmp + '.png'
-    out_fig_noback = tmp + '_hidden_background.png'
     out_ordered_labels = tmp + '_labels.txt'
+    out_rejected_streamlines = tmp + '_rejected_from_background.trk'
     assert_inputs_exist(p, [args.in_labels, args.streamlines])
-    assert_outputs_exist(p, args, [args.out_file, out_fig, out_fig_noback],
+    assert_outputs_exist(p, args,
+                         [args.out_file, out_fig, out_rejected_streamlines],
                          [args.save_biggest, args.save_smallest])
 
     ext = os.path.splitext(args.streamlines)[1]
@@ -101,23 +102,26 @@ def main():
 
     in_sft.to_vox()
     in_sft.to_corner()
-    matrix, ordered_labels, start_blocs, end_blocs = \
+    matrix, ordered_labels, start_labels, end_labels = \
         compute_triu_connectivity_from_labels(
             in_sft.streamlines, data_labels,
             use_scilpy=args.use_longest_segment)
-
-    prepare_figure_connectivity(matrix)
-    plt.savefig(out_fig)
 
     if args.hide_background is not None:
         idx = ordered_labels.index(args.hide_background)
         nb_hidden = np.sum(matrix[idx, :]) + np.sum(matrix[:, idx]) - \
             matrix[idx, idx]
         if nb_hidden > 0:
-            logging.info("CAREFUL! Deleting from the matrix {} streamlines "
-                         "with one or both endpoints in a non-labelled area "
-                         "(background = {}; line/column {})"
-                         .format(nb_hidden, args.hide_background, idx))
+            logging.warning("CAREFUL! Deleting from the matrix {} streamlines "
+                            "with one or both endpoints in a non-labelled "
+                            "area (background = {}; line/column {})"
+                            .format(nb_hidden, args.hide_background, idx))
+            rejected = find_streamlines_with_chosen_connectivity(
+                in_sft.streamlines, start_labels, end_labels, idx)
+            logging.info("Saving rejected streamlines in {}"
+                         .format(out_rejected_streamlines))
+            sft = in_sft.from_sft(rejected, in_sft)
+            save_tractogram(sft, out_rejected_streamlines)
         else:
             logging.info("No streamlines with endpoints in the background :)")
         matrix[idx, :] = 0
@@ -125,8 +129,9 @@ def main():
         ordered_labels[idx] = ("Hidden background ({})"
                                .format(args.hide_background))
 
-        prepare_figure_connectivity(matrix)
-        plt.savefig(out_fig_noback)
+    # Save figure will all versions of the matrix.
+    prepare_figure_connectivity(matrix)
+    plt.savefig(out_fig)
 
     if args.binary:
         matrix = matrix > 0
@@ -143,7 +148,7 @@ def main():
               .format(matrix[i, j], ordered_labels[i], ordered_labels[j],
                       i, j))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft.streamlines, i, j, start_labels, end_labels)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_biggest)
 
@@ -155,7 +160,7 @@ def main():
               .format(matrix[i, j], ordered_labels[i], ordered_labels[j],
                       i, j))
         smallest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft.streamlines, i, j, start_labels, end_labels)
         sft = in_sft.from_sft(smallest, in_sft)
         save_tractogram(sft, args.save_smallest)
 

@@ -99,7 +99,7 @@ def main():
         i, j = np.unravel_index(np.argmax(matrix, axis=None), matrix.shape)
         print("Saving biggest bundle: {} streamlines.".format(matrix[i, j]))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft.streamlines, start_blocs, end_blocs, i, j)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_biggest)
 
@@ -108,7 +108,7 @@ def main():
         i, j = np.unravel_index(tmp_matrix.argmin(axis=None), matrix.shape)
         print("Saving smallest bundle: {} streamlines.".format(matrix[i, j]))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft.streamlines, start_blocs, end_blocs, i, j)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
 

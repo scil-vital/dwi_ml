@@ -302,7 +302,6 @@ def _compute_origin_finish_blocs(streamlines, volume_size, nb_blocs):
 
 
 def compute_triu_connectivity_from_labels(streamlines, data_labels,
-                                          binary: bool = False,
                                           use_scilpy=False):
     """
     Compute a connectivity matrix.
@@ -313,8 +312,6 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
         Streamlines, in vox space, corner origin.
     data_labels: np.ndarray
         The loaded nifti image.
-    binary: bool
-        If True, return a binary matrix.
     use_scilpy: bool
         If True, uses scilpy's method:
           'Strategy is to keep the longest streamline segment
@@ -380,15 +377,13 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
 
             start_labels.append(start)
             end_labels.append(end)
+
             matrix[start, end] += 1
             if start != end:
                 matrix[end, start] += 1
 
     matrix = np.triu(matrix)
     assert matrix.sum() == len(streamlines)
-
-    if binary:
-        matrix = matrix.astype(bool)
 
     return matrix, real_labels, start_labels, end_labels
 
@@ -463,9 +458,11 @@ def prepare_figure_connectivity(matrix):
     axs[1, 1].imshow(matrix)
     axs[1, 1].set_title("Binary")
 
+    plt.suptitle("All versions of the connectivity matrix.")
+
 
 def find_streamlines_with_chosen_connectivity(
-        streamlines, label1, label2, start_labels, end_labels):
+        streamlines, start_labels, end_labels, label1, label2=None):
     """
     Returns streamlines corresponding to a (label1, label2) or (label2, label1)
     connection.
@@ -474,19 +471,32 @@ def find_streamlines_with_chosen_connectivity(
     ----------
     streamlines: list of np arrays or list of tensors.
         Streamlines, in vox space, corner origin.
-    label1: int
-        The bloc of interest, either as starting or finishing point.
-    label2: int
-        The bloc of interest, either as starting or finishing point.
     start_labels: list[int]
         The starting bloc for each streamline.
     end_labels: list[int]
         The ending bloc for each streamline.
+    label1: int
+        The bloc of interest, either as starting or finishing point.
+    label2: int, optional
+        The bloc of interest, either as starting or finishing point.
+        If label2 is None, then all connections (label1, Y) and (X, label1)
+        are found.
     """
+    start_labels = np.asarray(start_labels)
+    end_labels = np.asarray(end_labels)
 
-    str_ind1 = np.logical_and(start_labels == label1,
-                              end_labels == label2)
-    str_ind2 = np.logical_and(start_labels == label2,
-                              end_labels == label1)
-    str_ind = np.logical_or(str_ind1, str_ind2)
-    return [s for i, s in enumerate(streamlines) if str_ind[i]]
+    if label2 is None:
+        labels2 = np.unique(np.concatenate((start_labels[:], end_labels[:])))
+    else:
+        labels2 = [label2]
+
+    found = np.zeros(len(streamlines))
+    for label2 in labels2:
+        str_ind1 = np.logical_and(start_labels == label1,
+                                  end_labels == label2)
+        str_ind2 = np.logical_and(start_labels == label2,
+                                  end_labels == label1)
+        str_ind = np.logical_or(str_ind1, str_ind2)
+        found = np.logical_or(found, str_ind)
+
+    return [s for i, s in enumerate(streamlines) if found[i]]

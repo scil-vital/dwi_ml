@@ -43,7 +43,7 @@ import torch
 from torch.nn import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs
+    compute_triu_connectivity_from_blocs, compute_triu_connectivity_from_labels
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.io_utils import prepare_tracking_mask
@@ -317,7 +317,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         compares with expected values for the subject.
         """
         if self.compute_connectivity:
-            connectivity_matrices, volume_sizes, connectivity_nb_blocs = \
+            (connectivity_matrices, volume_sizes,
+             connectivity_nb_blocs, connectivity_labels) = \
                 self.batch_loader.load_batch_connectivity_matrices(ids_per_subj)
 
             score = 0.0
@@ -325,20 +326,29 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 real_matrix = connectivity_matrices[i]
                 volume_size = volume_sizes[i]
                 nb_blocs = connectivity_nb_blocs[i]
+                labels = connectivity_labels[i]
                 _lines = lines[ids_per_subj[subj]]
 
-                batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
-                    _lines, volume_size, nb_blocs, binary=False)
+                # Reference matrices are saved as binary in create_hdf5,
+                # but still. Ensuring.
+                real_matrix = real_matrix > 0
+
+                # But our matrix here won't be!
+                if nb_blocs is not None:
+                    batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
+                        _lines, volume_size, nb_blocs)
+                else:
+                    # ToDo. Allow use_scilpy?
+                    batch_matrix, _, _ = compute_triu_connectivity_from_labels(
+                        _lines, labels, use_scilpy=False)
 
                 # Where our batch has a 0: not important, maybe it was simply
                 # not in this batch.
                 # Where our batch has a 1, if there was really a one: score
-                # should be 0.   = 1 - 1.
-                # Else, score should be high (1).  = 1 - 0.
+                # should be 0.   = 1 - 1 = 1 - real
+                # Else, score should be high (1).  = 1 - 0 = 1 - real
                 # If two streamlines have the same connection, score is
                 # either 0 or 2 for that voxel.  ==> nb * (1 - real).
-
-                # Reference matrices are saved as binary in create_hdf5.
                 where_one = np.where(batch_matrix > 0)
                 score += np.sum(batch_matrix[where_one] *
                                 (1.0 - real_matrix[where_one]))

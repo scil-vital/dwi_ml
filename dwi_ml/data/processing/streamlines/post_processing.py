@@ -330,6 +330,10 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
         Else, shape (nb_labels, nb_labels)
     labels: List
         The list of labels
+    start_labels: List
+        For each streamline, the label at starting point.
+    end_labels: List
+        For each streamline, the label at ending point.
     """
     real_labels = list(np.sort(np.unique(data_labels)))
     nb_labels = len(real_labels)
@@ -388,8 +392,7 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
     return matrix, real_labels, start_labels, end_labels
 
 
-def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
-                                         binary: bool = False):
+def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs):
     """
     Compute a connectivity matrix.
 
@@ -405,8 +408,6 @@ def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
         In 3D, with 20x20x20, this is an 8000 x 8000 matrix (triangular). It
         probably contains a lot of zeros with the background being included.
         Can be saved as sparse.
-    binary: bool
-        If true, return a binary matrix.
     """
     nb_blocs = np.asarray(nb_blocs)
     start_block, end_block = _compute_origin_finish_blocs(
@@ -424,9 +425,6 @@ def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
 
     matrix = np.triu(matrix)
     assert matrix.sum() == len(streamlines)
-
-    if binary:
-        matrix = matrix.astype(bool)
 
     return matrix, start_block, end_block
 

@@ -379,7 +379,8 @@ class LazySFTData(SFTDataAbstract):
                    space_attributes=space_attributes,
                    space=space, origin=origin,
                    contains_connectivity=contains_connectivity,
-                   connectivity_nb_blocs=connectivity_nb_blocs)
+                   connectivity_nb_blocs=connectivity_nb_blocs,
+                   connectivity_labels=connectivity_labels)
 
     def _get_streamlines_as_list(self, streamline_ids):
         streamlines = self.streamlines_getter.get_array_sequence(streamline_ids)

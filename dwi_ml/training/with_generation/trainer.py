@@ -317,6 +317,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         compares with expected values for the subject.
         """
         if self.compute_connectivity:
+            # toDo. See if it's too much to keep them all in memory. Could be
+            #  done in the loop for each subject.
             (connectivity_matrices, volume_sizes,
              connectivity_nb_blocs, connectivity_labels) = \
                 self.batch_loader.load_batch_connectivity_matrices(ids_per_subj)
@@ -329,6 +331,9 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 labels = connectivity_labels[i]
                 _lines = lines[ids_per_subj[subj]]
 
+                # Move to cpu, numpy now.
+                _lines = [line.cpu().numpy() for line in _lines]
+
                 # Reference matrices are saved as binary in create_hdf5,
                 # but still. Ensuring.
                 real_matrix = real_matrix > 0
@@ -338,9 +343,10 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                     batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
                         _lines, volume_size, nb_blocs)
                 else:
-                    # ToDo. Allow use_scilpy?
-                    batch_matrix, _, _ = compute_triu_connectivity_from_labels(
-                        _lines, labels, use_scilpy=False)
+                    # Note: scilpy usage not ready! Simple endpoints position
+                    batch_matrix, _, _, _ =\
+                        compute_triu_connectivity_from_labels(
+                            _lines, labels, use_scilpy=False)
 
                 # Where our batch has a 0: not important, maybe it was simply
                 # not in this batch.

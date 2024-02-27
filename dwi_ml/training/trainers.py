@@ -798,12 +798,6 @@ class DWIMLAbstractTrainer:
 
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
-                # Break if maximum number of batches has been reached
-                if batch_id == self.nb_batches_train:
-                    # Explicitly close tqdm's progress bar to fix possible bugs
-                    # when breaking the loop
-                    pbar.close()
-                    break
 
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
@@ -813,6 +807,15 @@ class DWIMLAbstractTrainer:
                 unclipped_grad_norm, grad_norm = self.back_propagation(mean_loss)
                 self.unclipped_grad_norm_monitor.update(unclipped_grad_norm)
                 self.grad_norm_monitor.update(grad_norm)
+
+                # Break if maximum number of batches has been reached
+                # Break before calling the next train_iterator because it would load
+                # the batch.
+                if batch_id == self.nb_batches_train - 1:
+                    # Explicitly close tqdm's progress bar to fix possible bugs
+                    # when breaking the loop
+                    pbar.close()
+                    break
 
             # Explicitly delete iterator to kill threads and free memory before
             # running validation
@@ -854,16 +857,18 @@ class DWIMLAbstractTrainer:
                                    tqdm_class=tqdm) as pbar:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
-                # Break if maximum number of epochs has been reached
-                if batch_id == self.nb_batches_valid:
-                    # Explicitly close tqdm's progress bar to fix possible bugs
-                    # when breaking the loop
-                    pbar.close()
-                    break
 
                 # Validate this batch: forward propagation + loss
                 with torch.no_grad():
                     self.validate_one_batch(data, epoch)
+
+                # Break if maximum number of epochs has been reached
+                # Break before calling the next valid_iterator to avoid loading batch
+                if batch_id == self.nb_batches_valid - 1:
+                    # Explicitly close tqdm's progress bar to fix possible bugs
+                    # when breaking the loop
+                    pbar.close()
+                    break
 
             # Explicitly delete iterator to kill threads and free memory before
             # running training again

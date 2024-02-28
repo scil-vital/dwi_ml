@@ -14,7 +14,8 @@ from tqdm import tqdm
 
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
-from dwi_ml.models.main_models import MainModelAbstract, ModelWithDirectionGetter
+from dwi_ml.models.main_models import (MainModelAbstract,
+                                       ModelWithDirectionGetter)
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -220,8 +221,10 @@ class DWIMLAbstractTrainer:
                 os.mkdir(self.saving_path)
                 os.mkdir(self.log_dir)
 
-        assert np.all([param == self.batch_loader.dataset.params_for_checkpoint[key] for
-                       key, param in self.batch_sampler.dataset.params_for_checkpoint.items()])
+        assert np.all(
+            [param == self.batch_loader.dataset.params_for_checkpoint[key] for
+             key, param in
+             self.batch_sampler.dataset.params_for_checkpoint.items()])
         if self.batch_sampler.dataset.validation_set.nb_subjects == 0:
             self.use_validation = False
             logger.warning(
@@ -324,7 +327,8 @@ class DWIMLAbstractTrainer:
             cls = torch.optim.SGD
 
         # Learning rate will be set at each epoch.
-        self.optimizer = cls(self.model.parameters(), weight_decay=weight_decay)
+        self.optimizer = cls(self.model.parameters(),
+                             weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
@@ -373,7 +377,8 @@ class DWIMLAbstractTrainer:
                  },
                 indent=4, separators=(',', ': ')))
 
-        json_filename2 = os.path.join(self.saving_path, "parameters_latest.json")
+        json_filename2 = os.path.join(self.saving_path,
+                                      "parameters_latest.json")
         shutil.copyfile(json_filename, json_filename2)
 
     def save_checkpoint(self):
@@ -486,7 +491,8 @@ class DWIMLAbstractTrainer:
         return trainer
 
     @staticmethod
-    def load_params_from_checkpoint(experiments_path: str, experiment_name: str):
+    def load_params_from_checkpoint(experiments_path: str,
+                                    experiment_name: str):
         total_path = os.path.join(
             experiments_path, experiment_name, "checkpoint",
             "checkpoint_state.pkl")
@@ -619,7 +625,8 @@ class DWIMLAbstractTrainer:
         - For each epoch
             - uses _train_one_epoch and _validate_one_epoch,
             - saves a checkpoint,
-            - checks for earlyStopping if the loss is bad or patience is reached,
+            - checks for earlyStopping if the loss is bad or patience is
+              reached,
             - saves the model if the loss is good.
         """
         logger.debug("Trainer {}: \nRunning the model {}.\n\n"
@@ -690,7 +697,8 @@ class DWIMLAbstractTrainer:
 
             if self.comet_exp:
                 self.comet_exp.log_metric(
-                    "best_loss", self.best_epoch_monitor.best_value, step=epoch)
+                    "best_loss", self.best_epoch_monitor.best_value,
+                    step=epoch)
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
@@ -804,14 +812,21 @@ class DWIMLAbstractTrainer:
                 with grad_context():
                     mean_loss = self.train_one_batch(data)
 
-                unclipped_grad_norm, grad_norm = self.back_propagation(mean_loss)
+                unclipped_grad_norm, grad_norm = self.back_propagation(
+                    mean_loss)
                 self.unclipped_grad_norm_monitor.update(unclipped_grad_norm)
                 self.grad_norm_monitor.update(grad_norm)
 
                 # Break if maximum number of batches has been reached
-                # Break before calling the next train_iterator because it would load
-                # the batch.
                 if batch_id == self.nb_batches_train - 1:
+                    # Explicitly breaking the loop here, else it calls the
+                    # train_dataloader one more time, which samples a new
+                    # batch that is not used (if we have not finished sampling
+                    # all after nb_batches).
+                    # Sending one more step to the tqdm bar, else it finishes
+                    # at nb - 1.
+                    pbar.update(1)
+
                     # Explicitly close tqdm's progress bar to fix possible bugs
                     # when breaking the loop
                     pbar.close()
@@ -863,8 +878,15 @@ class DWIMLAbstractTrainer:
                     self.validate_one_batch(data, epoch)
 
                 # Break if maximum number of epochs has been reached
-                # Break before calling the next valid_iterator to avoid loading batch
                 if batch_id == self.nb_batches_valid - 1:
+                    # Explicitly breaking the loop here, else it calls the
+                    # train_dataloader one more time, which samples a new
+                    # batch that is not used (if we have not finished sampling
+                    # all after nb_batches).
+                    # Sending one more step to the tqdm bar, else it finishes
+                    # at nb - 1.
+                    pbar.update(1)
+
                     # Explicitly close tqdm's progress bar to fix possible bugs
                     # when breaking the loop
                     pbar.close()
@@ -992,7 +1014,8 @@ class DWIMLAbstractTrainer:
             unclipped_grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.clip_grad)
         else:
-            unclipped_grad_norm = compute_gradient_norm(self.model.parameters())
+            unclipped_grad_norm = compute_gradient_norm(
+                self.model.parameters())
         if torch.isnan(unclipped_grad_norm):
             raise ValueError("Exploding gradients. Experiment failed.")
 

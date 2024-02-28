@@ -368,7 +368,8 @@ class LazySFTData(SFTDataAbstract):
 
     @classmethod
     def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group):
-        space_attributes, space, origin = _load_space_attributes_from_hdf(hdf_group)
+        space_attributes, space, origin = _load_space_attributes_from_hdf(
+            hdf_group)
 
         contains_connectivity, connectivity_nb_blocs, connectivity_labels = \
             _load_connectivity_info(hdf_group)
@@ -383,5 +384,6 @@ class LazySFTData(SFTDataAbstract):
                    connectivity_labels=connectivity_labels)
 
     def _get_streamlines_as_list(self, streamline_ids):
-        streamlines = self.streamlines_getter.get_array_sequence(streamline_ids)
+        streamlines = self.streamlines_getter.get_array_sequence(
+            streamline_ids)
         return streamlines

@@ -11,7 +11,7 @@
 #    master branch for now, easier to manage for me (Emmanuelle)
 # -------
 requests==2.28.*
-git+https://github.com/scilus/scilpy.git#egg=scilpy
+-e git+https://github.com/scilus/scilpy.git#egg=scilpy
 
 # -------
 # Other important dependencies

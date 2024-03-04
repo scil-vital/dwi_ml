@@ -54,7 +54,7 @@ then
 fi
 
 echo '------------- FINAL SCORING ------------'
-scil_score_bundles.py -v $config_file_tractometry $out_dir \
-      --gt_dir $scoring_data --reference $ref --no_bbox_check
+scil_bundle_score_many_bundles_one_tractogram.py $config_file_tractometry $out_dir \
+      --gt_dir $scoring_data --reference $ref --no_bbox_check -v 
 
 cat $out_dir/results.json

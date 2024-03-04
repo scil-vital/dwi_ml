@@ -80,9 +80,8 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Setting root logger with high level, but we will set trainer to
-    # user-defined level.
-    logging.getLogger().setLevel(level=logging.INFO)
+    # General logging (ex, scilpy: Warning)
+    logging.getLogger().setLevel(level=logging.WARNING)
 
     # Verify if a checkpoint has been saved.
     checkpoint_path = os.path.join(

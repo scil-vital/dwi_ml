@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import os
+
 import nibabel as nib
 import numpy as np
 
@@ -19,7 +21,7 @@ def load_file_to4d(data_file):
     voxel_size: np.array with size 3,
     header: nibabel header.
     """
-    ext = data_file.suffix
+    _, ext = os.path.splitext(data_file)
 
     if ext != '.gz' and ext != '.nii':
         raise ValueError('All data files should be nifti (.nii or .nii.gz) '

@@ -2,16 +2,15 @@
 # -*- coding: utf-8 -*-
 """
 This script combines multiple diffusion MRI volumes and their streamlines into
-a single .hdf5 file. A hdf5 folder will be created alongside dwi_ml_ready. It
-will contain the .hdf5 file and possibly intermediate files.
+a single .hdf5 file.
 
-** You should have a file dwi_ml_ready organized as described in our doc:
-https://dwi-ml.readthedocs.io/en/latest/data_organization.html
-
-** You should have a config file as described in our doc:
-https://dwi-ml.readthedocs.io/en/latest/config_file.html
-
-
+--------------------------------------
+See here for the complete explanation!
+    - How to organize your data
+    - How to prepare the config file
+    - How to run this script.
+    https://dwi-ml.readthedocs.io/en/latest/2_A_creating_the_hdf5.html
+--------------------------------------
 
 ** Note: The memory is a delicate question here, but checks have been made, and
 it appears that the SFT's garbage collector may not be working entirely well.
@@ -33,9 +32,9 @@ from dipy.io.stateful_tractogram import set_sft_logger_level
 
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
 from dwi_ml.data.hdf5.utils import (
-    add_hdf5_creation_args, add_mri_processing_args,
-    add_streamline_processing_args)
+    add_hdf5_creation_args, add_streamline_processing_args)
 from dwi_ml.experiment_utils.timer import Timer
+from dwi_ml.io_utils import add_logging_arg
 
 
 def _initialize_intermediate_subdir(hdf5_file, save_intermediate):
@@ -89,8 +88,8 @@ def prepare_hdf5_creator(args):
     # Instantiate a creator and perform checks
     creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
                           training_subjs, validation_subjs, testing_subjs,
-                          groups_config, args.std_mask, args.step_size,
-                          args.compress, args.enforce_files_presence,
+                          groups_config, args.step_size, args.compress,
+                          args.enforce_files_presence,
                           args.save_intermediate, intermediate_subdir)
 
     return creator
@@ -101,9 +100,9 @@ def _parse_args():
                                 formatter_class=argparse.RawTextHelpFormatter)
 
     add_hdf5_creation_args(p)
-    add_mri_processing_args(p)
     add_streamline_processing_args(p)
     add_overwrite_arg(p)
+    add_logging_arg(p)
 
     return p
 
@@ -114,7 +113,7 @@ def main():
     args = p.parse_args()
 
     # Initialize logger
-    logging.getLogger().setLevel(level=str(args.logging).upper())
+    logging.getLogger().setLevel(level=args.logging)
 
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!

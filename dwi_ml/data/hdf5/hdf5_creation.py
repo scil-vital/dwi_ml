@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
+import glob
 import logging
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ from dipy.io.streamline import load_tractogram, save_tractogram
 from dipy.io.utils import is_header_compatible
 from dipy.tracking.utils import length
 import h5py
+from scilpy.image.labels import get_data_as_labels
 
 from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.data_augmentation import \
@@ -22,6 +24,39 @@ from scilpy.tractograms.tractogram_operations import concatenate_sft
 
 from dwi_ml.data.io import load_file_to4d
 from dwi_ml.data.processing.dwi.dwi import standardize_data
+
+
+def format_filelist(filenames, enforce_presence, folder=None) -> List[str]:
+    """
+    If folder is not None, it will be added as prefix to all files.
+    """
+    if isinstance(filenames, str):
+        filenames = [filenames]
+
+    new_files = []
+    for i, f in enumerate(filenames):
+        if folder is not None:
+            f = str(folder.joinpath(f))
+        if '*' in f:
+            tmp = glob.glob(f)
+            if len(tmp) == 0:
+                msg = "File not found, even with the wildcard: {}".format(f)
+                if enforce_presence:
+                    raise FileNotFoundError(msg)
+                else:
+                    logging.warning(msg)
+            else:
+                new_files.extend(tmp)
+        else:
+            if not Path(f).is_file():
+                msg = "File not found: {}".format(f)
+                if enforce_presence:
+                    raise FileNotFoundError(msg)
+                else:
+                    logging.warning(msg)
+            else:
+                new_files.append(f)
+    return new_files
 
 
 def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
@@ -45,8 +80,6 @@ def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
         The loaded file's resolution must be equal (or very close) to this res.
     """
     data_file = subj_input_path.joinpath(filename)
-
-    logging.info("       - Processing file {}".format(filename))
 
     if not data_file.is_file():
         logging.debug("      Skipping file {} because it was not "
@@ -107,8 +140,7 @@ class HDF5Creator:
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
-                 std_mask: str, step_size: float = None,
-                 compress: float = None,
+                 step_size: float = None, compress: float = None,
                  enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
@@ -126,8 +158,6 @@ class HDF5Creator:
             List of subject names for each data set.
         groups_config: dict
             Information from json file loaded as a dict.
-        std_mask: str
-            Name of the standardization mask inside each subject's folder.
         step_size: float
             Step size to resample streamlines. Default: None.
         compress: float
@@ -152,7 +182,6 @@ class HDF5Creator:
         self.compress = compress
 
         # Optional
-        self.std_mask = std_mask  # (could be None)
         self.save_intermediate = save_intermediate
         self.enforce_files_presence = enforce_files_presence
         self.intermediate_folder = intermediate_folder
@@ -290,39 +319,30 @@ class HDF5Creator:
         """
         logging.debug("Verifying files presence")
 
+        def flatten_list(a_list):
+            new_list = []
+            for element in a_list:
+                if isinstance(element, list):
+                    new_list.extend(flatten_list(element))
+                else:
+                    new_list.append(element)
+            return new_list
+
         # concatenating files from all groups files:
-        # sum: concatenates list of sub-lists
-        config_file_list = sum(nested_lookup('files', self.groups_config), [])
-        config_file_list += nested_lookup(
-            'connectivity_matrix', self.groups_config)
+        config_file_list = [
+            nested_lookup('files', self.groups_config),
+            nested_lookup('connectivity_matrix', self.groups_config),
+            nested_lookup('connectivity_labels', self.groups_config),
+            nested_lookup('std_mask', self.groups_config)]
+        config_file_list = flatten_list(config_file_list)
 
         for subj_id in self.all_subjs:
             subj_input_dir = Path(self.root_folder).joinpath(subj_id)
 
-            # Find subject's standardization mask
-            if self.std_mask is not None:
-                for sub_mask in self.std_mask:
-                    sub_std_mask_file = subj_input_dir.joinpath(
-                        sub_mask.replace('*', subj_id))
-                    if not sub_std_mask_file.is_file():
-                        raise FileNotFoundError(
-                            "Standardization mask {} not found for subject {}!"
-                            .format(sub_std_mask_file, subj_id))
-
             # Find subject's files from group_config
-            for this_file in config_file_list:
-                this_file = this_file.replace('*', subj_id)
-                if this_file.endswith('/ALL'):
-                    logging.debug(
-                        "    Keyword 'ALL' detected; we will load all "
-                        "files in the folder '{}'"
-                        .format(this_file.replace('/ALL', '')))
-                else:
-                    this_file = subj_input_dir.joinpath(this_file)
-                    if not this_file.is_file():
-                        raise FileNotFoundError(
-                            "File from groups_config ({}) not found for "
-                            "subject {}!".format(this_file, subj_id))
+            _ = format_filelist(config_file_list,
+                                self.enforce_files_presence,
+                                folder=subj_input_dir)
 
     def create_database(self):
         """
@@ -368,31 +388,14 @@ class HDF5Creator:
 
         subj_hdf_group = hdf_handle.create_group(subj_id)
 
-        # Find subject's standardization mask
-        subj_std_mask_data = None
-        if self.std_mask is not None:
-            for sub_mask in self.std_mask:
-                sub_mask = sub_mask.replace('*', subj_id)
-                logging.info("    - Loading standardization mask {}"
-                             .format(sub_mask))
-                sub_mask_file = subj_input_dir.joinpath(sub_mask)
-                sub_mask_img = nib.load(sub_mask_file)
-                sub_mask_data = np.asanyarray(sub_mask_img.dataobj) > 0
-                if subj_std_mask_data is None:
-                    subj_std_mask_data = sub_mask_data
-                else:
-                    subj_std_mask_data = np.logical_or(sub_mask_data,
-                                                       subj_std_mask_data)
-
         # Add the subj data based on groups in the json config file
-        ref = self._create_volume_groups(
-            subj_id, subj_input_dir, subj_std_mask_data, subj_hdf_group)
+        ref = self._create_volume_groups(subj_id, subj_input_dir,
+                                         subj_hdf_group)
 
         self._create_streamline_groups(ref, subj_input_dir, subj_id,
                                        subj_hdf_group)
 
-    def _create_volume_groups(self, subj_id, subj_input_dir,
-                              subj_std_mask_data, subj_hdf_group):
+    def _create_volume_groups(self, subj_id, subj_input_dir, subj_hdf_group):
         """
         Create the hdf5 groups for all volume groups in the config_file for a
         given subject.
@@ -407,7 +410,7 @@ class HDF5Creator:
 
             (group_data, group_affine,
              group_header, group_res) = self._process_one_volume_group(
-                group, subj_id, subj_input_dir, subj_std_mask_data)
+                group, subj_id, subj_input_dir)
             if ref_header is None:
                 ref_header = group_header
             else:
@@ -431,8 +434,7 @@ class HDF5Creator:
         return ref_header
 
     def _process_one_volume_group(self, group: str, subj_id: str,
-                                  subj_input_path: Path,
-                                  subj_std_mask_data: np.ndarray = None):
+                                  subj_input_dir: Path):
         """
         Processes each volume group from the json config file for a given
         subject:
@@ -448,10 +450,8 @@ class HDF5Creator:
             Group name.
         subj_id: str
             The subject's id.
-        subj_input_path: Path
+        subj_input_dir: Path
             Path where the files from file_list should be found.
-        subj_std_mask_data: np.ndarray of bools, optional
-            Binary mask that will be used for data standardization.
 
         Returns
         -------
@@ -460,52 +460,76 @@ class HDF5Creator:
         group_affine: np.ndarray
             Affine for the group.
         """
-        standardization = self.groups_config[group]['standardization']
+        std_mask = None
+        std_option = 'none'
+        if 'standardization' in self.groups_config[group]:
+            std_option = self.groups_config[group]['standardization']
+        if 'std_mask' in self.groups_config[group]:
+            if std_option == 'none':
+                logging.warning("You provided a std_mask for volume group {}, "
+                                "but std_option is 'none'. Skipping.")
+            else:
+                # Load subject's standardization mask. Can be a list of files.
+                std_masks = self.groups_config[group]['std_mask']
+                std_masks = format_filelist(std_masks,
+                                            self.enforce_files_presence,
+                                            folder=subj_input_dir)
+                for mask in std_masks:
+                    logging.info("       - Loading standardization mask {}"
+                                 .format(os.path.basename(mask)))
+                    sub_mask_data = nib.load(mask).get_fdata() > 0
+                    if std_mask is None:
+                        std_mask = sub_mask_data
+                    else:
+                        std_mask = np.logical_or(sub_mask_data, std_mask)
+
         file_list = self.groups_config[group]['files']
+        file_list = format_filelist(file_list, self.enforce_files_presence,
+                                    folder=subj_input_dir)
 
         # First file will define data dimension and affine
-        file_name = file_list[0].replace('*', subj_id)
-        first_file = subj_input_path.joinpath(file_name)
-        logging.info("       - Processing file {}".format(file_name))
+        logging.info("       - Processing file {} (first file=reference) "
+                     .format(os.path.basename(file_list[0])))
         group_data, group_affine, group_res, group_header = load_file_to4d(
-            first_file)
+            file_list[0])
 
-        if standardization == 'per_file':
+        if std_option == 'per_file':
             logging.debug('      *Standardizing sub-data')
-            group_data = standardize_data(group_data, subj_std_mask_data,
+            group_data = standardize_data(group_data, std_mask,
                                           independent=False)
 
         # Other files must fit (data shape, affine, voxel size)
         # It is not a promise that data has been correctly registered, but it
         # is a minimal check.
-        for file_name in file_list[1:]:
-            file_name = file_name.replace('*', subj_id)
-            data = _load_and_verify_file(file_name, subj_input_path, group,
-                                         group_affine, group_res)
+        if len(file_list) > 1:
+            for file_name in file_list[1:]:
+                logging.info("       - Processing file {}"
+                             .format(os.path.basename(file_name)))
+                data = _load_and_verify_file(file_name, subj_input_dir, group,
+                                             group_affine, group_res)
 
-            if standardization == 'per_file':
-                logging.debug('      *Standardizing sub-data')
-                data = standardize_data(data, subj_std_mask_data,
-                                        independent=False)
+                if std_option == 'per_file':
+                    logging.info('          - Standardizing')
+                    data = standardize_data(data, std_mask, independent=False)
 
-            # Append file data to hdf group.
-            try:
-                group_data = np.append(group_data, data, axis=-1)
-            except ImportError:
-                raise ImportError(
-                    'Data file {} could not be added to data group {}. '
-                    'Wrong dimensions?'.format(file_name, group))
+                # Append file data to hdf group.
+                try:
+                    group_data = np.append(group_data, data, axis=-1)
+                except ImportError:
+                    raise ImportError(
+                        'Data file {} could not be added to data group {}. '
+                        'Wrong dimensions?'.format(file_name, group))
 
         # Standardize data (per channel) (if not done 'per_file' yet).
-        if standardization == 'independent':
-            logging.debug('      *Standardizing data on each feature.')
-            group_data = standardize_data(group_data, subj_std_mask_data,
+        if std_option == 'independent':
+            logging.info('       - Standardizing data on each feature.')
+            group_data = standardize_data(group_data, std_mask,
                                           independent=True)
-        elif standardization == 'all':
-            logging.debug('      *Standardizing data as a whole.')
-            group_data = standardize_data(group_data, subj_std_mask_data,
+        elif std_option == 'all':
+            logging.info('       - Standardizing data as a whole.')
+            group_data = standardize_data(group_data, std_mask,
                                           independent=False)
-        elif standardization not in ['none', 'per_file']:
+        elif std_option not in ['none', 'per_file']:
             raise ValueError("standardization must be one of "
                              "['all', 'independent', 'per_file', 'none']")
 
@@ -568,9 +592,9 @@ class HDF5Creator:
                     'connectivity_matrix_type'] = conn_info[0]
                 streamlines_group.create_dataset(
                     'connectivity_matrix', data=connectivity_matrix)
-                if conn_info[0] == 'from_label':
-                    streamlines_group.attrs['connectivity_labels_volume'] = \
-                        conn_info[1]
+                if conn_info[0] == 'from_labels':
+                    streamlines_group.create_dataset(
+                        'connectivity_label_volume', data=conn_info[1])
                 else:
                     streamlines_group.attrs['connectivity_nb_blocs'] = \
                         conn_info[1]
@@ -578,7 +602,8 @@ class HDF5Creator:
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
             if len(sft.data_per_streamline) > 0:
-                logging.debug('sft contained data_per_streamlines. Data not kept.')
+                logging.debug('sft contained data_per_streamlines. Data not '
+                              'kept.')
 
             # Accessing private Dipy values, but necessary.
             # We need to deconstruct the streamlines into arrays with
@@ -597,9 +622,6 @@ class HDF5Creator:
         """
         Loads and processes a group of tractograms and merges all streamlines
         together.
-
-        Note. Wildcards will be replaced by the subject id. If the list is
-        folder/ALL, all tractograms in the folder will be used.
 
         Parameters
         ----------
@@ -636,41 +658,26 @@ class HDF5Creator:
         final_sft = None
         output_lengths = []
 
-        for instructions in tractograms:
-            if instructions.endswith('/ALL'):
-                # instructions are to get all tractograms in given folder.
-                tractograms_dir = instructions.split('/ALL')
-                tractograms_dir = ''.join(tractograms_dir[:-1])
-                tractograms_sublist = [
-                    instructions.replace('/ALL', '/' + os.path.basename(p))
-                    for p in subj_dir.glob(tractograms_dir + '/*')]
-            else:
-                # instruction is to get one specific tractogram
-                tractograms_sublist = [instructions]
+        tractograms = format_filelist(tractograms, self.enforce_files_presence,
+                                      folder=subj_dir)
+        for tractogram_file in tractograms:
+            sft = self._load_and_process_sft(tractogram_file, header)
 
-            # Either a loop on "ALL" or a loop on only one file.
-            for tractogram_name in tractograms_sublist:
-                tractogram_name = tractogram_name.replace('*', subj_id)
-                tractogram_file = subj_dir.joinpath(tractogram_name)
+            if sft is not None:
+                # Compute euclidean lengths (rasmm space)
+                sft.to_space(Space.RASMM)
+                output_lengths.extend(length(sft.streamlines))
 
-                sft = self._load_and_process_sft(
-                    tractogram_file, tractogram_name, header)
+                # Sending to common space
+                sft.to_vox()
+                sft.to_corner()
 
-                if sft is not None:
-                    # Compute euclidean lengths (rasmm space)
-                    sft.to_space(Space.RASMM)
-                    output_lengths.extend(length(sft.streamlines))
-
-                    # Sending to common space
-                    sft.to_vox()
-                    sft.to_corner()
-
-                    # Add processed tractogram to final big tractogram
-                    if final_sft is None:
-                        final_sft = sft
-                    else:
-                        final_sft = concatenate_sft([final_sft, sft],
-                                                    erase_metadata=False)
+                # Add processed tractogram to final big tractogram
+                if final_sft is None:
+                    final_sft = sft
+                else:
+                    final_sft = concatenate_sft([final_sft, sft],
+                                                erase_metadata=False)
 
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
@@ -692,30 +699,29 @@ class HDF5Creator:
         conn_info = None
         if 'connectivity_matrix' in self.groups_config[group]:
             logging.info("         Now preparing connectivity matrix")
-            if not ("connectivty_nb_blocs" in self.groups_config[group] or
-                    "connectivty_labels" in self.groups_config[group]):
+            if not ("connectivity_nb_blocs" in self.groups_config[group] or
+                    "connectivity_labels" in self.groups_config[group]):
                 raise ValueError(
                     "The config file must provide either the "
-                    "connectivty_nb_blocs or the connectivty_labels information "
+                    "connectivity_nb_blocs or the connectivity_labels option "
                     "associated with the streamline group '{}'"
                     .format(group))
-            elif ("connectivty_nb_blocs" in self.groups_config[group] and
-                    "connectivty_labels" in self.groups_config[group]):
+            elif ("connectivity_nb_blocs" in self.groups_config[group] and
+                    "connectivity_labels" in self.groups_config[group]):
                 raise ValueError(
                     "The config file must only provide ONE of the "
-                    "connectivty_nb_blocs or the connectivty_labels information "
+                    "connectivity_nb_blocs or the connectivity_labels option "
                     "associated with the streamline group '{}'"
                     .format(group))
-            elif "connectivty_nb_blocs" in self.groups_config[group]:
+            elif "connectivity_nb_blocs" in self.groups_config[group]:
                 nb_blocs = format_nb_blocs_connectivity(
-                    self.groups_config[group]['connectivty_nb_blocs'])
+                    self.groups_config[group]['connectivity_nb_blocs'])
                 conn_info = ['from_blocs', nb_blocs]
-            else:
-                labels = self.groups_config[group]['connectivty_labels']
-                if labels not in self.volume_groups:
-                    raise ValueError("connectivity_labels_volume must be "
-                                     "an existing volume group.")
-                conn_info = ['from_labels', labels]
+            else:  # labels
+                labels_file = self.groups_config[group]['connectivity_labels']
+                labels_file = os.path.join(subj_dir, labels_file)
+                labels_data = get_data_as_labels(nib.load(labels_file))
+                conn_info = ['from_labels', labels_data]
 
             conn_file = subj_dir.joinpath(
                 self.groups_config[group]['connectivity_matrix'])
@@ -724,16 +730,7 @@ class HDF5Creator:
 
         return final_sft, output_lengths, conn_matrix, conn_info
 
-    def _load_and_process_sft(self, tractogram_file, tractogram_name, header):
-        if not tractogram_file.is_file():
-            logging.debug(
-                "      Skipping file {} because it was not found in this "
-                "subject's folder".format(tractogram_name))
-            # Note: if args.enforce_files_presence was set to true,
-            # this case is not possible, already checked in
-            # create_hdf5_dataset
-            return None
-
+    def _load_and_process_sft(self, tractogram_file, header):
         # Check file extension
         _, file_extension = os.path.splitext(str(tractogram_file))
         if file_extension not in ['.trk', '.tck']:
@@ -750,7 +747,7 @@ class HDF5Creator:
 
         # Loading tractogram and sending to wanted space
         logging.info("       - Processing tractogram {}"
-                     .format(os.path.basename(tractogram_name)))
+                     .format(os.path.basename(tractogram_file)))
         sft = load_tractogram(str(tractogram_file), header)
 
         # Resample or compress streamlines

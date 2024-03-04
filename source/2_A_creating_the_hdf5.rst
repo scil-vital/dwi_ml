@@ -75,18 +75,19 @@ To create the hdf5 file, you will need a config file such as below. HDF groups w
         "input": {
             "type": "volume",
             "files": ["dwi/dwi.nii.gz", "anat/t1.nii.gz", "dwi/*__dwi.nii.gz], --> Will get, for instance, subX__dwi.nii.gz
-            "standardization": "all"
+            "standardization": "all",
+            "std_mask": [masks/some_mask.nii.gz]
              },
         "target": {
             "type": "streamlines",
             "files": ["tractograms/bundle1.trk", "tractograms/wholebrain.trk", "tractograms/*__wholebrain.trk"], ----> Will get, for instance, sub1000__bundle1.trk
             "connectivity_matrix": "my_file.npy",
             "connectivity_nb_blocs": 6  ---> OR
-            "connectivity_labels": labels_volume
+            "connectivity_labels": labels_volume_group
              }
         "bad_streamlines": {
             "type": "streamlines",
-            "files": ["bad_tractograms/ALL"] ---> Will get all trk and tck files.
+            "files": ["bad_tractograms/*"] ---> Will get all trk and tck files.
              }
         "wm_mask": {
             "type": "volume",
@@ -94,59 +95,58 @@ To create the hdf5 file, you will need a config file such as below. HDF groups w
             }
     }
 
+|
+
 General group attributes in the config file:
+""""""""""""""""""""""""""""""""""""""""""""
 
-- The group's **name** could be 'input_volume', 'target_volume', 'target_directions', or anything.
+Each group key will become the group's **name** in the hdf5. It can be anything you want. We suggest you keep it significative, ex 'input_volume', 'target_volume', 'target_directions'. In other scripts (ex, l2t_train_model.py, tt_train_model.py, etc), you will often be asked for the labels given to your groups.
 
-    - We will see further how to tell your model and your batch loader the group names of interest.
+Each group may have a number of parameters:
 
-- The group's **"files"** must exist in every subject folder inside a repository. That is: the files must be organized correctly on your computer. See (except if option 'enforce_files_presence is set to False).
+    - **"type"**: It must be recognized in dwi_ml. Currently, accepted datatype are:
 
-    - There is the possibility to add a wildcard (*) that will be replaced by the subject's id while loading. Ex: anat/\*__t1.nii.gz would become anat/subjX__t1.nii.gz.
-    - For streamlines, there is the possibility to use 'ALL' to load all tractograms present in a folder.
-    - The files from each group will be concatenated in the hdf5 (either as a final volume or as a final tractogram).
+        - 'volume': for instance, a dwi, an anat, mask, t1, fa, etc.
+        - 'streamlines': for instance, a .trk, .tck file (any format accepted by Dipy's *Stateful Tractogram*).
 
-- The groups **"type"** must be recognized in dwi_ml. Currently, accepted datatype are:
+    - **"files"**: The listed file(s) must exist in every subject folder inside the root repository. That is: the files must be organized correctly on your computer (except if option 'enforce_files_presence is set to False). If there are more than one files, they will be concatenated (on the 4th dimension for volumes, using the union of tractograms for streamlines).
 
-    - 'volume': for instance, a dwi, an anat, mask, t1, fa, etc.
-    - 'streamlines': for instance, a .trk, .tck file (anything accepted by Dipy's Stateful Tractogram).
+        - There is the possibility to add a wildcard (\*).
 
-Additional attribute for volume groups:
+Additional attributes for volume groups:
+""""""""""""""""""""""""""""""""""""""""
 
-- The groups **"standardization"** must be one of:
+    - **std_mask**: The name of the standardization mask. Data is standardized (normalized) during data creation: data = (data - mean_in_mask) / std_in_mask. If more than one files are given, the union (logical_or) of all masks is used (ex of usage: ["masks/wm_mask.nii.gz", "masks/gm_mask.nii.gz"] would use a mask of all the brain).
 
-    - "all", to apply standardization (normalization) to the final (concatenated) file
-    - "independent", to apply it independently on the last dimension of the data (ex, for a fODF, it would apply it independently on each SH).
-    - "per_file", to apply it independently on each file included in the group.
-    - "none", to skip this step (ex: for binary masks, which must stay binary).
+    - **"standardization"**: It defined the standardization option applied to the volume group. It must be one of:
+
+        - "all", to apply standardization (normalization) to the final (concatenated) file.
+        - "independent", to apply it independently on the last dimension of the data (ex, for a fODF, it would apply it independently on each SH).
+        - "per_file", to apply it independently on each file included in the group.
+        - "none", to skip this step (default)
 
 ****A note about data standardization**
 
-    Data is standardized (normalized) during data creation: data = (data - mean) / std.
-
-    If all voxel were to be used, most of them would probably contain the background of the data, bringing the mean and std probably very close to 0. Thus, non-zero voxels only are used to compute the mean and std, or voxels inside the provided mask if any. If a mask is provided, voxels outside the mask could have been set to NaN, but the simpler choice made here was to simply modify all voxels [ data = (data - mean) / std ], even voxels outside the mask, with the mean and std of voxels in the mask. Mask name for each subject is provided using --std_mask in the script create_hdf5_dataset.py.
+If all voxel were to be used, most of them would probably contain the background of the data, bringing the mean and std probably very close to 0. Thus, non-zero voxels only are used to compute the mean and std, or voxels inside the provided mask if any. If a mask is provided, voxels outside the mask could have been set to NaN, but the simpler choice made here was to simply modify all voxels [ data = (data - mean) / std ], even voxels outside the mask, with the mean and std of voxels in the mask. Mask name is provided through the config file. It is formatted as a list: if many files are listed, the union of the binary masks will be used.
 
 
-Additional attribute for streamlines groups:
+Additional attributes for streamlines groups:
+"""""""""""""""""""""""""""""""""""""""""""""
 
-    - connectivity_nb_blocs: See dwiml_compute_connectivity_matrix_from_blocs for a description.
+    - **connectivity_matrix**: The name of the connectivity matrix to associate to the streamline group. This matrix will probably be used as a mean of validation during training. Then, you also need to explain how the matrix was created, so that you can create the connectivity matrix of the streamlines being validated, in order to compare it with the expected result. ONE of the two next options must be given:
 
-    OR
-
-    - connectivity_labels: The name of one volume group.
-
+        - **connectivity_nb_blocs**: This explains that the connectivity matrix was created by dividing the volume space into regular blocs. See dwiml_compute_connectivity_matrix_from_blocs for a description. The value should be either an integers or a list of three integers.
+        - **connectivity_labels**: This explains that the connectivity matrix was created by dividing the cortex into a list of regions associated with labels. The value must be the name of the associated labels file (typically a nifti file filled with integers).
 
 2.4. Creating the hdf5
 **********************
 
-You will use the **create_hdf5_dataset.py** script to create a hdf5 file. You need to prepare config files to use this script (see :ref:`ref_config_file`).
-
-Exemple of use: (See also please_copy_and_adapt/ALL_STEPS.sh)
+You will use the **dwiml_create_hdf5_dataset.py** script to create a hdf5 file.
 
 .. code-block:: bash
 
     dwi_ml_folder=YOUR_PATH
-    hdf5_folder=YOUR_PATH
+    hdf5_file=YOUR_OUT_FILE.hdf5
     config_file=YOUR_FILE.json
     training_subjs=YOUR_FILE.txt
     validation_subjs=YOUR_FILE.txt
@@ -154,28 +154,11 @@ Exemple of use: (See also please_copy_and_adapt/ALL_STEPS.sh)
 
     dwiml_create_hdf5_dataset.py --name $name --std_mask $mask --space $space \
             --enforce_files_presence True \
-            $dwi_ml_folder $hdf5_folder $config_file \
+            $dwi_ml_folder $hdf5_file $config_file \
             $training_subjs $validation_subjs $testing_subjs
 
 .. toctree::
     :maxdepth: 1
     :caption: Detailed explanations for developers:
 
-    2_C_advanced_hdf5_organization
-
-
-P.S How to get data?
-********************
-
-Here in the SCIL lab, we often suggest to use the Tractoflow pipeline to process your data. If you need help for the pre-processing and reorgnization of your database, consult the following pages:
-
-.. toctree::
-    :maxdepth: 2
-
-    2_B_preprocessing
-
-
-Organizing data from tractoflow to dwi_ml_ready
------------------------------------------------
-
-If you used tractoflow to preprocess your data, you may organize automatically the dwi_ml_ready folder. We have started to prepare a script for you, which you can find in bash_utilities/**organizse_from_tractoflow.sh**, which creates symlinks between your tractoflow results and a dwi_ml_ready folder. However, Tractoflow may have changed since we create this help, filenames could not correspond to your files. We encourage you to modify this script in your own project depending on your needs.
+    2_B_advanced_hdf5_organization

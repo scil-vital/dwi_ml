@@ -905,7 +905,8 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         if self.entropy_weight > 0:
             # Trying to ensure that sigma values are not too small.
             # Entropy values range between 0 and log(K). 0 = high probability.
-            # We want a high entropy / low certainty = we will minimize -entropy.
+            # We want a high entropy / low certainty = we will minimize
+            # -entropy.
             entropy = distribution.entropy()
             logging.info("Computing batch loss with sigma {}, entropy: {}"
                          .format(torch.mean(sigmas), torch.mean(entropy)))
@@ -918,11 +919,11 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         # 2. EOS loss:
         if self.add_eos:
             # Binary cross-entropy
-            loss_eos = binary_cross_entropy_eos(learned_eos, target_dirs[:, -1],
+            loss_eos = binary_cross_entropy_eos(learned_eos,
+                                                target_dirs[:, -1],
                                                 average_results)
             return nll_loss + self.eos_weight * loss_eos, n
         else:
-            n = 1
             return nll_loss, n
 
     def _sample_tracking_direction_prob(
@@ -1156,13 +1157,30 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
                          loss_description='negative log-likelihood',
                          **kwargs)
 
-        if self.add_eos:
-            raise NotImplementedError
-        self.layers_mean = init_2layer_fully_connected(self.input_size, 3)
+        # Layers
+        # 3 values as mean, 1 value as kappa
+        # If EOS: Adding it to the mean layer. Could be separated.
+        oneifeos = 1 if self.add_eos else 0
+        self.layers_mean = init_2layer_fully_connected(self.input_size,
+                                                       3 + oneifeos)
         self.layers_kappa = init_2layer_fully_connected(self.input_size, 1)
 
         self.output_size = 4
         # Loss will be defined in _compute_loss, using torch distribution
+
+    def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
+        """
+        Should be called before _compute_loss, before concatenating your
+        streamlines.
+
+        Returns: list[Tensors], the directions.
+        """
+        # Need to normalize before adding EOS labels (dir = 0,0,0)
+        if self.normalize_targets is not None:
+            target_dirs = normalize_directions(target_dirs,
+                                               new_norm=self.normalize_targets)
+        return add_label_as_last_dim(target_dirs, add_sos=False,
+                                     add_eos=self.add_eos)
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         """Run the inputs through the fully-connected layer.
@@ -1203,15 +1221,28 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
         # mu.shape : [flattened_sequences, 3]
-        mu, kappa = learned_fisher_params
+        mus, kappa = learned_fisher_params
+        learned_eos = mus[:, -1]
+        mus = mus[:, 0:3]
 
-        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs)
+        # 1. Main loss
+        log_prob = fisher_von_mises_log_prob(mus, kappa, target_dirs)
         nll_losses = -log_prob
 
+        n = 1
         if average_results:
-            return _mean_and_weight(nll_losses)
+            nll_loss, n = _mean_and_weight(nll_losses)
+
+        # 2. EOS loss:
+        if self.add_eos:
+            # Binary cross-entropy
+            loss_eos = binary_cross_entropy_eos(learned_eos,
+                                                target_dirs[:, -1],
+                                                average_results)
+            return nll_loss + self.eos_weight * loss_eos, n
         else:
-            return nll_losses
+            n = 1
+            return nll_loss, n
 
     def _sample_tracking_direction_prob(
             self, learned_fisher_params: Tuple[Tensor, Tensor],

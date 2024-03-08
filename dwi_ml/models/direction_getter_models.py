@@ -41,9 +41,7 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
 
 
 def binary_cross_entropy_eos(learned_eos, target_eos, average_results=True):
-    reduction = 'none'
-    if average_results:
-        reduction = 'mean'
+    reduction = 'mean' if average_results else 'none'
 
     learned_eos = torch.sigmoid(learned_eos)
     losses_eos = torch.nn.functional.binary_cross_entropy(
@@ -893,8 +891,9 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         """
         # 1. Main loss
         means, sigmas = learned_gaussian_params
-        learned_eos = means[:, -1]
-        means = means[:, 0:3]
+        if self.add_eos:
+            learned_eos = means[:, -1]
+            means = means[:, 0:3]
 
         # Create an official function-probability distribution from the means
         # and variances
@@ -957,6 +956,7 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         Get the predicted class with highest logits (=probabilities).
         """
         # Returns the direction of the max of the Gaussian = the mean.
+        # Not using sigma
         means, sigmas = learned_gaussian_params
         dirs = means[:, 0:3]
 
@@ -1187,14 +1187,14 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
 
         Returns
         -------
-        means : torch.Tensor with shape [batch_size x 3]
-            ?
+        mus : torch.Tensor with shape [batch_size x 3]
+            The 3D coordinate of the mean.
         kappas : torch.Tensor with shape [batch_size x 1]
-            ?
+            The kappa concentration parameter.
         """
-        means = self.loop_on_layers(inputs, self.layers_mean)
+        mu = self.loop_on_layers(inputs, self.layers_mean)
         # mean should be a unit vector for Fisher Von-Mises distribution
-        means = torch.nn.functional.normalize(means, dim=-1)
+        mu = torch.nn.functional.normalize(mu, dim=-1)
 
         # Need to restrict kappa to a certain range, e.g. [0, 20]
         unbound_kappa = self.loop_on_layers(inputs, self.layers_kappa)
@@ -1203,14 +1203,14 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         # Squeeze the trailing dim, the kappa parameter is a scalar
         kappas = kappas.squeeze(dim=-1)
 
-        return means, kappas
+        return mu, kappas
 
     @staticmethod
     def stack_batch(outputs, target_dirs):
         target_dirs = torch.vstack(target_dirs)
-        mus = torch.vstack(outputs[0])
-        kappas = torch.vstack(outputs[1])
-        return (mus, kappas), target_dirs
+        mu = torch.vstack(outputs[0])
+        kappa = torch.vstack(outputs[1])
+        return (mu, kappa), target_dirs
 
     def _compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
                       target_dirs, average_results=True):
@@ -1220,18 +1220,19 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         See the doc for explanation on the formulas:
         https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
-        # mu.shape : [flattened_sequences, 3]
-        mus, kappa = learned_fisher_params
-        learned_eos = mus[:, -1]
-        mus = mus[:, 0:3]
+        # mu.shape : [all_point, 4]. 3 first values are x, y, z. Last is EOS.
+        mu, kappa = learned_fisher_params
+        if self.add_eos:
+            learned_eos = mu[:, -1]
+            mu = mu[:, 0:3]
 
         # 1. Main loss
-        log_prob = fisher_von_mises_log_prob(mus, kappa, target_dirs)
-        nll_losses = -log_prob
+        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs)
+        nll_loss = -log_prob
 
         n = 1
         if average_results:
-            nll_loss, n = _mean_and_weight(nll_losses)
+            nll_loss, n = _mean_and_weight(nll_loss)
 
         # 2. EOS loss:
         if self.add_eos:
@@ -1241,7 +1242,6 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
                                                 average_results)
             return nll_loss + self.eos_weight * loss_eos, n
         else:
-            n = 1
             return nll_loss, n
 
     def _sample_tracking_direction_prob(
@@ -1278,7 +1278,20 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
 
     def _get_tracking_direction_det(self, learned_fisher_params: Tensor,
                                     eos_stopping_thresh):
-        raise NotImplementedError
+        """
+        Get the predicted class with highest logits (=probabilities).
+        """
+        # Returns the direction of the max of the Gaussian = the mean.
+        # Not using sigma
+        mus, kappas = learned_fisher_params
+        dirs = mus[:, 0:3]
+
+        if self.add_eos:
+            eos_prob = torch.sigmoid(mus[:, -1])
+            eos_prob = torch.gt(eos_prob, eos_stopping_thresh)
+            return torch.masked_fill(dirs, eos_prob[:, None], torch.nan)
+        else:
+            return dirs
 
     @staticmethod
     def _sample_weight(kappa):

@@ -207,6 +207,22 @@ class MainModelAbstract(torch.nn.Module):
     def compute_loss(self, model_outputs, target_streamlines):
         raise NotImplementedError
 
+    def merge_batches_outputs(self, all_outputs, new_batch):
+        """
+        To be used at testing time. At training or validation time, outputs are
+        discarded after each batch; only the loss is measured. At testing time,
+        it may be necessary to merge batches. The way to do it will depend on
+        your model's format.
+
+        Parameters
+        ----------
+        all_outputs: Any or None
+            All previous outputs from previous batches, already combined.
+        new_batch:
+            The batch to merge
+        """
+        raise NotImplementedError
+
 
 class ModelWithNeighborhood(MainModelAbstract):
     """
@@ -752,3 +768,27 @@ class ModelWithDirectionGetter(MainModelAbstract):
     def move_to(self, device):
         super().move_to(device)
         self.direction_getter.move_to(device)
+
+    def merge_batches_outputs(self, all_outputs, new_batch, device=None):
+        # 1. Send new batch to device
+        if 'gaussian' in self.direction_getter.key:
+            # all_outputs = (means, sigmas)
+            new_batch = ([m.to(device=device) for m in new_batch[0]],
+                         [s.to(device=device) for s in new_batch[1]])
+        else:
+            new_batch = [a.to(device) for a in new_batch]
+
+        # 2. Concat
+        if all_outputs is None:
+            return new_batch
+        else:
+            if 'gaussian' in self.direction_getter.key:
+                # all_outputs = (means, sigmas)
+                all_outputs[0].extend(new_batch[0])
+                all_outputs[1].extend(new_batch[1])
+            elif 'fisher' in self.direction_getter.key:
+                raise NotImplementedError
+            else:
+                # all_outputs = a list of tensors per streamline.
+                all_outputs.extend(new_batch)
+            return all_outputs

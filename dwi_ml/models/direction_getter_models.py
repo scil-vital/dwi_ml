@@ -209,6 +209,26 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
     def compute_loss(self, outputs: List[Tensor],
                      target_streamlines: List[Tensor], average_results=True):
+        """
+        Parameters
+        ----------
+        outputs: List[Tensor]
+            Your model's outputs
+        target_streamlines: List[Tensor]
+            The streamlines. Directions will be computed and formatted based
+            on child class requirements.
+        average_results: bool
+            If true, returns the average over all values.
+
+        Returns
+        -------
+        If compress_loss or average_results:
+            Tuple(tensor, n)
+                The average loss and the n points averaged.
+        Else:
+            List[Tensor]
+                The loss for each point in each streamline.
+        """
         if self.compress_loss and not average_results:
             raise ValueError("Current implementation of compress_loss does not "
                              "allow returning non-averaged loss.")

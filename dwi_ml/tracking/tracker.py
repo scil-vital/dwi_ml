@@ -102,7 +102,6 @@ class DWIMLAbstractTracker:
         self.dataset = dataset
         self.subj_idx = subj_idx
         self.model = model
-        self.model.set_context('tracking')
         self.append_last_point = append_last_point
         self.eos_stopping_thresh = eos_stopping_thresh
 
@@ -178,6 +177,7 @@ class DWIMLAbstractTracker:
         # Uses torch's module eval(), which "turns off" the training mode.
         self.model.eval()
         self.grad_context = torch.no_grad()
+        self.model.set_context('tracking')
 
         # Nb points
         if self.min_nbr_pts <= 0:

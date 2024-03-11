@@ -208,6 +208,16 @@ class MultisubjectSubset(Dataset):
 
         Contrary to get_volume_verify_cache, this does not send data to
         cache for later use.
+
+        Parameters
+        ----------
+        subj_idx: int
+            The subject id.
+        group_idx: int
+            The volume group idx.
+        load_it: bool
+            If data is lazy, get the volume as a LazyMRIData (False) or load it
+            as non-lazy (if True).
         """
         if self.subjs_data_list.is_lazy:
             if load_it:
@@ -484,6 +494,7 @@ class MultiSubjectDataset:
                 self.streamline_groups = poss_strea_groups
                 self.streamlines_contain_connectivity = contains_connectivity
 
+            self.streamline_groups = list(self.streamline_groups)
             group_info = (self.volume_groups, self.nb_features,
                           self.streamline_groups,
                           self.streamlines_contain_connectivity)

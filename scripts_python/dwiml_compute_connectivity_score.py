@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
+import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,7 +16,8 @@ def _build_arg_parser():
                    help="Matrix file (reference). .npy")
     p.add_argument('scored_matrix',
                    help="Matrix being scored. .npy")
-
+    p.add_argument('--show_now', action='store_true',
+                   help="If set, shows the matrix with matplotlib.")
     add_overwrite_arg(p)
 
     return p
@@ -89,7 +91,11 @@ def main():
     axs[2].imshow((ref.astype(int) - m.astype(int))**2)
     plt.suptitle("Binary")
 
-    plt.show()
+    if args.show_now:
+        plt.show()
+    else:
+        logging.warning("Saving of figure not implemented yet! Use --show_now "
+                        "to see the figure.")
 
 
 if __name__ == '__main__':

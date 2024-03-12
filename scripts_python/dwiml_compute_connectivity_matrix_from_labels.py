@@ -17,8 +17,9 @@ from dipy.io.streamline import save_tractogram
 from dipy.io.utils import is_header_compatible
 from scilpy.image.labels import get_data_as_labels
 
+from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, \
-    load_tractogram_with_reference, add_verbose_arg, add_overwrite_arg
+    add_verbose_arg, add_overwrite_arg
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     find_streamlines_with_chosen_connectivity, \

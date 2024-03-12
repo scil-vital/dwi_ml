@@ -6,12 +6,13 @@
 #    Scilpy and comet_ml both require requests. In comet: >=2.18.*,
 #    which installs a version >2.28. Adding request version explicitely.
 #
-#    Changed many times the scilpy version. Tried to have a fixed version, but
-#    currently, working on beluga only when installing manually. Reverting to
-#    master branch for now, easier to manage for me (Emmanuelle)
+#    Changed many times the scilpy version. Tried to have latest fixed version,
+#    but currently, working on beluga only when installing manually. But using
+#    the master is not good; changes too fast for us. Using a fixed commit for
+#    now.
 # -------
 requests==2.28.*
--e git+https://github.com/scilus/scilpy.git#egg=scilpy
+-e git+https://github.com/scilus/scilpy.git@44912280e301e00a33278a7dc19c810590e32f63#egg=scilpy
 
 # -------
 # Other important dependencies

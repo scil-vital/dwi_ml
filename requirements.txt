@@ -10,9 +10,11 @@
 #    but currently, working on beluga only when installing manually. But using
 #    the master is not good; changes too fast for us. Using a fixed commit for
 #    now.
+#    To using a commit preceding all recent changes in scilpy's test data
+#    management: d20d3d4917d40f698aa975f64a575dda34e0c89c
 # -------
 requests==2.28.*
--e git+https://github.com/scilus/scilpy.git@44912280e301e00a33278a7dc19c810590e32f63#egg=scilpy
+-e git+https://github.com/scilus/scilpy.git@d20d3d4917d40f698aa975f64a575dda34e0c89c#egg=scilpy
 
 # -------
 # Other important dependencies

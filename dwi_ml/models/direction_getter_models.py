@@ -1176,9 +1176,7 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         Returns: list[Tensors], the directions.
         """
         # Need to normalize before adding EOS labels (dir = 0,0,0)
-        if self.normalize_targets is not None:
-            target_dirs = normalize_directions(target_dirs,
-                                               new_norm=self.normalize_targets)
+        target_dirs = normalize_directions(target_dirs)
         return add_label_as_last_dim(target_dirs, add_sos=False,
                                      add_eos=self.add_eos)
 
@@ -1209,7 +1207,7 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
     def stack_batch(outputs, target_dirs):
         target_dirs = torch.vstack(target_dirs)
         mu = torch.vstack(outputs[0])
-        kappa = torch.vstack(outputs[1])
+        kappa = torch.hstack(outputs[1])  # Not vstack: they are vectors
         return (mu, kappa), target_dirs
 
     def _compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
@@ -1227,12 +1225,15 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
             mu = mu[:, 0:3]
 
         # 1. Main loss
-        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs)
+        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs[:, 0:3])
         nll_loss = -log_prob
 
         n = 1
         if average_results:
             nll_loss, n = _mean_and_weight(nll_loss)
+
+        #logging.warning("Batch Prob: {}. Log: {}. NLL: {}"
+        #                .format(torch.mean(torch.exp(log_prob)), torch.mean(log_prob), nll_loss))
 
         # 2. EOS loss:
         if self.add_eos:

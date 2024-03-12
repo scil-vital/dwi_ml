@@ -22,8 +22,7 @@ def fisher_von_mises_log_prob(mus, kappa, targets, eps=1e-5):
 
     eps = torch.as_tensor(eps, device=kappa.device, dtype=torch.float32)
 
-    # Add an epsilon in case kappa is too small (i.e. a uniform
-    # distribution)
+    # Add an epsilon in case kappa is too small (i.e. a uniform distribution)
     log_diff_exp_kappa = torch.log(
         torch.maximum(eps, torch.exp(kappa) - torch.exp(-kappa)))
 

@@ -368,6 +368,7 @@ class DWIMLAbstractTrainer:
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
+                 'hdf5 file': self.batch_loader.dataset.hdf5_file,
                  'Trainer params': self.params_for_checkpoint,
                  'Sampler params': self.batch_sampler.params_for_checkpoint,
                  'Loader params': self.batch_loader.params_for_checkpoint,

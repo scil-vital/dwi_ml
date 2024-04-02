@@ -1233,7 +1233,8 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
             nll_loss, n = _mean_and_weight(nll_loss)
 
         #logging.warning("Batch Prob: {}. Log: {}. NLL: {}"
-        #                .format(torch.mean(torch.exp(log_prob)), torch.mean(log_prob), nll_loss))
+        #                .format(torch.mean(torch.exp(log_prob)),
+        #                        torch.mean(log_prob), nll_loss))
 
         # 2. EOS loss:
         if self.add_eos:

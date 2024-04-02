@@ -762,7 +762,6 @@ class DWIMLAbstractTrainer:
         # Any other steps. Ex: clip gradients. Not implemented here.
         # See Learn2track's Trainer for an example.
         unclipped_grad_norm = self.fix_parameters()
-        # logging.warning("   Unclipped grad norm: {}".format(unclipped_grad_norm))
 
         # Supervizing the gradient's norm.
         grad_norm = compute_gradient_norm(self.model.parameters())

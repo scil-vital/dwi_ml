@@ -78,7 +78,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
                   -----------------------
     """
     def __init__(self, input_size: int, key: str,
-                 supports_compressed_streamlines: bool,  dropout: float = None,
+                 supports_compressed_streamlines: bool, dropout: float = None,
                  compress_loss: bool = False, compress_eps: float = 1e-3,
                  weight_loss_with_angle: bool = False,
                  loss_description: str = '', add_eos: bool = False,
@@ -208,8 +208,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     def compute_loss(self, outputs: List[Tensor],
                      target_streamlines: List[Tensor], average_results=True):
         if self.compress_loss and not average_results:
-            raise ValueError("Current implementation of compress_loss does not "
-                             "allow returning non-averaged loss.")
+            raise ValueError("Current implementation of compress_loss does "
+                             "not allow returning non-averaged loss.")
 
         # Compute directions
         target_dirs = compute_directions(target_streamlines)
@@ -270,8 +270,9 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         outputs = torch.vstack(outputs)
         return outputs, target_dirs
 
-    def _compute_loss(self, outputs: Tensor, target_dirs: Tensor,
-                      average_results=True) -> Union[Tuple[Tensor, int], Tensor]:
+    def _compute_loss(
+            self, outputs: Tensor, target_dirs: Tensor,
+            average_results=True) -> Union[Tuple[Tensor, int], Tensor]:
         """
         Expecting a single tensor.
 
@@ -760,7 +761,7 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
         # buggy: reduction is supposed to be a str but if I send 'none', it
         # says that it expects an int.)
         # Gives the same result as above, but averaged instead of summed.
-        # The real definition is integral (i.e. sum). Typically for our
+        # The real definition is integral (i.e. sum). Typically, for our
         # data (724 classes), that's a big difference: from values ~7 to values
         # around 0.04. Nicer for visu with sum.
         # So, avoiding torch's 'mean' reduction; reducing ourselves.
@@ -773,7 +774,8 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
 
         # Integral over classes per point.
         kl_loss = KLDivLoss(reduction='none', log_target=False)
-        nll_losses = torch.sum(kl_loss(logits_per_class, targets_probs), dim=-1)
+        nll_losses = torch.sum(kl_loss(logits_per_class, targets_probs),
+                               dim=-1)
 
         if average_results:
             return _mean_and_weight(nll_losses)
@@ -891,6 +893,7 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         """
         # 1. Main loss
         means, sigmas = learned_gaussian_params
+        learned_eos = None
         if self.add_eos:
             learned_eos = means[:, -1]
             means = means[:, 0:3]
@@ -1191,12 +1194,22 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
             The kappa concentration parameter.
         """
         mu = self.loop_on_layers(inputs, self.layers_mean)
+        kappas = self.loop_on_layers(inputs, self.layers_kappa)
+
         # mean should be a unit vector for Fisher Von-Mises distribution
+        # (Using [0:3] only; EOS value does not need to be normalized).
+        # Simple code line raises an error: inplace operation
+        # mu[0:3] = torch.nn.functional.normalize(mu[0:3], dim=-1)
+        learned_eos = None
+        if self.add_eos:
+            learned_eos = mu[:, 3][:, None]
+            mu = mu[:, 0:3]
         mu = torch.nn.functional.normalize(mu, dim=-1)
+        if self.add_eos:
+            mu = torch.hstack((mu, learned_eos))
 
         # Need to restrict kappa to a certain range, e.g. [0, 20]
-        unbound_kappa = self.loop_on_layers(inputs, self.layers_kappa)
-        kappas = torch.sigmoid(unbound_kappa) * 20
+        kappas = torch.sigmoid(kappas) * 20
 
         # Squeeze the trailing dim, the kappa parameter is a scalar
         kappas = kappas.squeeze(dim=-1)
@@ -1220,21 +1233,19 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         """
         # mu.shape : [all_point, 4]. 3 first values are x, y, z. Last is EOS.
         mu, kappa = learned_fisher_params
+        learned_eos = None
         if self.add_eos:
-            learned_eos = mu[:, -1]
+            learned_eos = mu[:, 3]
             mu = mu[:, 0:3]
 
         # 1. Main loss
+        # Note. Mu was already normalized through the forward method.
         log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs[:, 0:3])
         nll_loss = -log_prob
 
         n = 1
         if average_results:
             nll_loss, n = _mean_and_weight(nll_loss)
-
-        #logging.warning("Batch Prob: {}. Log: {}. NLL: {}"
-        #                .format(torch.mean(torch.exp(log_prob)),
-        #                        torch.mean(log_prob), nll_loss))
 
         # 2. EOS loss:
         if self.add_eos:

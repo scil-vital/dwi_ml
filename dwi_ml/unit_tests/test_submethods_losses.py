@@ -6,7 +6,7 @@ import numpy as np
 from dipy.data import get_sphere
 from scipy.spatial.distance import (cosine, euclidean, mahalanobis)
 import torch
-from torch import logsumexp
+from torch import logsumexp, Tensor
 from torch.nn.utils.rnn import PackedSequence
 from torch.nn.functional import softmax
 
@@ -79,10 +79,10 @@ def _prepare_packedsequence(a):
         return a
 
 
-def format_model_outputs(one_fake_model_output):
-
-    # Make sure that the fake model output is an (unpacked) list of one tensor.
-
+def format_model_outputs(one_fake_model_output) -> list[torch.Tensor]:
+    """
+    Make sure that the fake model output is an (unpacked) list of one tensor.
+    """
     # 1. Converting to tensor.
     if (isinstance(one_fake_model_output, np.ndarray) or
             isinstance(one_fake_model_output, list)):
@@ -101,7 +101,8 @@ def format_model_outputs(one_fake_model_output):
 
 
 def _verify_loss(streamline: Union[torch.Tensor, list],
-                 fake_model_outputs: Union[list, Tuple[list]],
+                 fake_model_outputs: Union[list[Tensor],
+                                           Tuple[list[Tensor], list[Tensor]]],
                  expected_loss: Union[torch.Tensor, np.ndarray, float],
                  model: AbstractDirectionGetterModel,
                  expected_eos_loss=torch.as_tensor(0.)):
@@ -315,12 +316,12 @@ def test_fisher_von_mises():
 
     logging.debug("      - x = mu")
     out_mean = _get_random_vector(3)
+    out_mean /= np.linalg.norm(out_mean)  # Needs to be normalized.
     streamline = [[0., 0, 0], out_mean]
 
     out_mean = torch.as_tensor(out_mean, dtype=torch.float32)
     out_kappa = torch.as_tensor(np.exp(_get_random_vector(1)),
                                 dtype=torch.float32)
-
     expected = -fisher_von_mises_log_prob_vector(out_mean, out_kappa, out_mean)
 
     out_means = format_model_outputs(out_mean)
@@ -329,14 +330,16 @@ def test_fisher_von_mises():
 
     logging.debug("      - Special case: Kappa very small")
     out_kappa = torch.as_tensor([1e-8], dtype=torch.float32)
-    out_kappas = format_model_outputs(out_kappa)
     expected = -fisher_von_mises_log_prob_vector(out_mean, out_kappa, out_mean)
+
+    out_kappas = format_model_outputs(out_kappa)
     _verify_loss(streamline, (out_means, out_kappas), expected, model)
 
     logging.debug("      - Random")
-    b = _get_random_vector(3)
-    streamline = [[0., 0, 0], b]
+    target = _get_random_vector(3)
+    streamline = [[0., 0, 0], target]  # Not normalizing streamline, model will
+    target /= np.linalg.norm(target)  # Needs to be normalized for sub-method
+    target = torch.as_tensor(target, dtype=torch.float32)
+    expected = -fisher_von_mises_log_prob_vector(out_mean, out_kappa, target)
 
-    b = torch.as_tensor(b, dtype=torch.float32)
-    expected = -fisher_von_mises_log_prob_vector(out_mean, out_kappa, b)
     _verify_loss(streamline, (out_means, out_kappas), expected, model)

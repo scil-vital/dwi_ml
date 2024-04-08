@@ -41,9 +41,7 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
 
 
 def binary_cross_entropy_eos(learned_eos, target_eos, average_results=True):
-    reduction = 'none'
-    if average_results:
-        reduction = 'mean'
+    reduction = 'mean' if average_results else 'none'
 
     learned_eos = torch.sigmoid(learned_eos)
     losses_eos = torch.nn.functional.binary_cross_entropy(
@@ -80,7 +78,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
                   -----------------------
     """
     def __init__(self, input_size: int, key: str,
-                 supports_compressed_streamlines: bool,  dropout: float = None,
+                 supports_compressed_streamlines: bool, dropout: float = None,
                  compress_loss: bool = False, compress_eps: float = 1e-3,
                  weight_loss_with_angle: bool = False,
                  loss_description: str = '', add_eos: bool = False,
@@ -210,8 +208,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     def compute_loss(self, outputs: List[Tensor],
                      target_streamlines: List[Tensor], average_results=True):
         if self.compress_loss and not average_results:
-            raise ValueError("Current implementation of compress_loss does not "
-                             "allow returning non-averaged loss.")
+            raise ValueError("Current implementation of compress_loss does "
+                             "not allow returning non-averaged loss.")
 
         # Compute directions
         target_dirs = compute_directions(target_streamlines)
@@ -272,8 +270,9 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         outputs = torch.vstack(outputs)
         return outputs, target_dirs
 
-    def _compute_loss(self, outputs: Tensor, target_dirs: Tensor,
-                      average_results=True) -> Union[Tuple[Tensor, int], Tensor]:
+    def _compute_loss(
+            self, outputs: Tensor, target_dirs: Tensor,
+            average_results=True) -> Union[Tuple[Tensor, int], Tensor]:
         """
         Expecting a single tensor.
 
@@ -762,7 +761,7 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
         # buggy: reduction is supposed to be a str but if I send 'none', it
         # says that it expects an int.)
         # Gives the same result as above, but averaged instead of summed.
-        # The real definition is integral (i.e. sum). Typically for our
+        # The real definition is integral (i.e. sum). Typically, for our
         # data (724 classes), that's a big difference: from values ~7 to values
         # around 0.04. Nicer for visu with sum.
         # So, avoiding torch's 'mean' reduction; reducing ourselves.
@@ -775,7 +774,8 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
 
         # Integral over classes per point.
         kl_loss = KLDivLoss(reduction='none', log_target=False)
-        nll_losses = torch.sum(kl_loss(logits_per_class, targets_probs), dim=-1)
+        nll_losses = torch.sum(kl_loss(logits_per_class, targets_probs),
+                               dim=-1)
 
         if average_results:
             return _mean_and_weight(nll_losses)
@@ -893,8 +893,10 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         """
         # 1. Main loss
         means, sigmas = learned_gaussian_params
-        learned_eos = means[:, -1]
-        means = means[:, 0:3]
+        learned_eos = None
+        if self.add_eos:
+            learned_eos = means[:, -1]
+            means = means[:, 0:3]
 
         # Create an official function-probability distribution from the means
         # and variances
@@ -905,7 +907,8 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         if self.entropy_weight > 0:
             # Trying to ensure that sigma values are not too small.
             # Entropy values range between 0 and log(K). 0 = high probability.
-            # We want a high entropy / low certainty = we will minimize -entropy.
+            # We want a high entropy / low certainty = we will minimize
+            # -entropy.
             entropy = distribution.entropy()
             logging.info("Computing batch loss with sigma {}, entropy: {}"
                          .format(torch.mean(sigmas), torch.mean(entropy)))
@@ -918,11 +921,11 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         # 2. EOS loss:
         if self.add_eos:
             # Binary cross-entropy
-            loss_eos = binary_cross_entropy_eos(learned_eos, target_dirs[:, -1],
+            loss_eos = binary_cross_entropy_eos(learned_eos,
+                                                target_dirs[:, -1],
                                                 average_results)
             return nll_loss + self.eos_weight * loss_eos, n
         else:
-            n = 1
             return nll_loss, n
 
     def _sample_tracking_direction_prob(
@@ -956,6 +959,7 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         Get the predicted class with highest logits (=probabilities).
         """
         # Returns the direction of the max of the Gaussian = the mean.
+        # Not using sigma
         means, sigmas = learned_gaussian_params
         dirs = means[:, 0:3]
 
@@ -1156,43 +1160,68 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
                          loss_description='negative log-likelihood',
                          **kwargs)
 
-        if self.add_eos:
-            raise NotImplementedError
-        self.layers_mean = init_2layer_fully_connected(self.input_size, 3)
+        # Layers
+        # 3 values as mean, 1 value as kappa
+        # If EOS: Adding it to the mean layer. Could be separated.
+        oneifeos = 1 if self.add_eos else 0
+        self.layers_mean = init_2layer_fully_connected(self.input_size,
+                                                       3 + oneifeos)
         self.layers_kappa = init_2layer_fully_connected(self.input_size, 1)
 
         self.output_size = 4
         # Loss will be defined in _compute_loss, using torch distribution
+
+    def _prepare_dirs_for_loss(self, target_dirs: List[Tensor]):
+        """
+        Should be called before _compute_loss, before concatenating your
+        streamlines.
+
+        Returns: list[Tensors], the directions.
+        """
+        # Need to normalize before adding EOS labels (dir = 0,0,0)
+        target_dirs = normalize_directions(target_dirs)
+        return add_label_as_last_dim(target_dirs, add_sos=False,
+                                     add_eos=self.add_eos)
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         """Run the inputs through the fully-connected layer.
 
         Returns
         -------
-        means : torch.Tensor with shape [batch_size x 3]
-            ?
+        mus : torch.Tensor with shape [batch_size x 3]
+            The 3D coordinate of the mean.
         kappas : torch.Tensor with shape [batch_size x 1]
-            ?
+            The kappa concentration parameter.
         """
-        means = self.loop_on_layers(inputs, self.layers_mean)
+        mu = self.loop_on_layers(inputs, self.layers_mean)
+        kappas = self.loop_on_layers(inputs, self.layers_kappa)
+
         # mean should be a unit vector for Fisher Von-Mises distribution
-        means = torch.nn.functional.normalize(means, dim=-1)
+        # (Using [0:3] only; EOS value does not need to be normalized).
+        # Simple code line raises an error: inplace operation
+        # mu[0:3] = torch.nn.functional.normalize(mu[0:3], dim=-1)
+        learned_eos = None
+        if self.add_eos:
+            learned_eos = mu[:, 3][:, None]
+            mu = mu[:, 0:3]
+        mu = torch.nn.functional.normalize(mu, dim=-1)
+        if self.add_eos:
+            mu = torch.hstack((mu, learned_eos))
 
         # Need to restrict kappa to a certain range, e.g. [0, 20]
-        unbound_kappa = self.loop_on_layers(inputs, self.layers_kappa)
-        kappas = torch.sigmoid(unbound_kappa) * 20
+        kappas = torch.sigmoid(kappas) * 20
 
         # Squeeze the trailing dim, the kappa parameter is a scalar
         kappas = kappas.squeeze(dim=-1)
 
-        return means, kappas
+        return mu, kappas
 
     @staticmethod
     def stack_batch(outputs, target_dirs):
         target_dirs = torch.vstack(target_dirs)
-        mus = torch.vstack(outputs[0])
-        kappas = torch.vstack(outputs[1])
-        return (mus, kappas), target_dirs
+        mu = torch.vstack(outputs[0])
+        kappa = torch.hstack(outputs[1])  # Not vstack: they are vectors
+        return (mu, kappa), target_dirs
 
     def _compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
                       target_dirs, average_results=True):
@@ -1202,16 +1231,31 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         See the doc for explanation on the formulas:
         https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
-        # mu.shape : [flattened_sequences, 3]
+        # mu.shape : [all_point, 4]. 3 first values are x, y, z. Last is EOS.
         mu, kappa = learned_fisher_params
+        learned_eos = None
+        if self.add_eos:
+            learned_eos = mu[:, 3]
+            mu = mu[:, 0:3]
 
-        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs)
-        nll_losses = -log_prob
+        # 1. Main loss
+        # Note. Mu was already normalized through the forward method.
+        log_prob = fisher_von_mises_log_prob(mu, kappa, target_dirs[:, 0:3])
+        nll_loss = -log_prob
 
+        n = 1
         if average_results:
-            return _mean_and_weight(nll_losses)
+            nll_loss, n = _mean_and_weight(nll_loss)
+
+        # 2. EOS loss:
+        if self.add_eos:
+            # Binary cross-entropy
+            loss_eos = binary_cross_entropy_eos(learned_eos,
+                                                target_dirs[:, -1],
+                                                average_results)
+            return nll_loss + self.eos_weight * loss_eos, n
         else:
-            return nll_losses
+            return nll_loss, n
 
     def _sample_tracking_direction_prob(
             self, learned_fisher_params: Tuple[Tensor, Tensor],
@@ -1247,7 +1291,20 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
 
     def _get_tracking_direction_det(self, learned_fisher_params: Tensor,
                                     eos_stopping_thresh):
-        raise NotImplementedError
+        """
+        Get the predicted class with highest logits (=probabilities).
+        """
+        # Returns the direction of the max of the Gaussian = the mean.
+        # Not using sigma
+        mus, kappas = learned_fisher_params
+        dirs = mus[:, 0:3]
+
+        if self.add_eos:
+            eos_prob = torch.sigmoid(mus[:, -1])
+            eos_prob = torch.gt(eos_prob, eos_stopping_thresh)
+            return torch.masked_fill(dirs, eos_prob[:, None], torch.nan)
+        else:
+            return dirs
 
     @staticmethod
     def _sample_weight(kappa):

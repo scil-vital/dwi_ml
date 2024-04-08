@@ -6,7 +6,7 @@ import numpy as np
 from dipy.data import get_sphere
 from scipy.spatial.distance import (cosine, euclidean, mahalanobis)
 import torch
-from torch import logsumexp
+from torch import logsumexp, Tensor
 from torch.nn.utils.rnn import PackedSequence
 from torch.nn.functional import softmax
 
@@ -33,11 +33,11 @@ Included utils are:
         - comparison with (manual + scipy)
     test_mixture_loss()
         - comparison with (manual + scipy)
+    test_fisher_von_mises()
+        - x = my
+        - comparison with non-batched computation.
 """
-# toDo
-#  test fisher von mises
-
-# Using float32, we have come accross differences of the order 1e-3 for
+# Using float32, we have come across differences of the order 1e-3 for
 # Fisher-von-Mises, depending on the random values.
 tol = 1e-3
 d = 3
@@ -79,10 +79,10 @@ def _prepare_packedsequence(a):
         return a
 
 
-def format_model_outputs(one_fake_model_output):
-
-    # Make sure that the fake model output is an (unpacked) list of one tensor.
-
+def format_model_outputs(one_fake_model_output) -> list[torch.Tensor]:
+    """
+    Make sure that the fake model output is an (unpacked) list of one tensor.
+    """
     # 1. Converting to tensor.
     if (isinstance(one_fake_model_output, np.ndarray) or
             isinstance(one_fake_model_output, list)):
@@ -101,14 +101,16 @@ def format_model_outputs(one_fake_model_output):
 
 
 def _verify_loss(streamline: Union[torch.Tensor, list],
-                 fake_model_outputs: Union[list, Tuple[list]],
+                 fake_model_outputs: Union[list[Tensor],
+                                           Tuple[list[Tensor], list[Tensor]]],
                  expected_loss: Union[torch.Tensor, np.ndarray, float],
                  model: AbstractDirectionGetterModel,
                  expected_eos_loss=torch.as_tensor(0.)):
 
     # Make sure that our single streamline is a tensor.
     if not isinstance(streamline, torch.Tensor):
-        streamline = torch.as_tensor(np.asarray(streamline), dtype=torch.float32)
+        streamline = torch.as_tensor(np.asarray(streamline),
+                                     dtype=torch.float32)
     target_streamlines = [streamline]
 
     # Make sure that expected loss is a single (stacked) tensor.
@@ -117,7 +119,8 @@ def _verify_loss(streamline: Union[torch.Tensor, list],
         expected_loss = torch.as_tensor(expected_loss, dtype=torch.float32)
 
     # Compute loss and verify
-    computed_loss, _ = model.compute_loss(fake_model_outputs, target_streamlines)
+    computed_loss, _ = model.compute_loss(fake_model_outputs,
+                                          target_streamlines)
 
     assert np.allclose(computed_loss, expected_loss, atol=tol), \
         "Expected loss {} but got {}.\n" \
@@ -262,7 +265,8 @@ def test_gaussian_loss():
 
         # Manual logpdf computation
         b = torch.as_tensor(b, dtype=torch.float32)
-        logpdf = _independent_gaussian_log_prob_vector(b, out_means, out_sigmas)
+        logpdf = _independent_gaussian_log_prob_vector(b, out_means,
+                                                       out_sigmas)
         expected_loss = -logpdf
 
         out_means = format_model_outputs(out_means)
@@ -285,14 +289,16 @@ def test_mixture_loss():
         out_means = torch.as_tensor(_get_random_vector(3 * 3).reshape((3, 3)),
                                     dtype=torch.float32)
         out_sigmas = torch.as_tensor(
-            np.exp(_get_random_vector(3 * 3)).reshape((3, 3)), dtype=torch.float32)
+            np.exp(_get_random_vector(3 * 3)).reshape((3, 3)),
+            dtype=torch.float32)
         b = _get_random_vector(3)
         streamline = [[0., 0, 0], b]
 
         # Manual logpdf computation
         mixture_params = softmax(out_mixture_logits, dim=-1)
         logpdfs = torch.as_tensor([
-            _independent_gaussian_log_prob_vector(b, out_means[i], out_sigmas[i])
+            _independent_gaussian_log_prob_vector(b, out_means[i],
+                                                  out_sigmas[i])
             for i in range(3)])
         expected = -logsumexp(torch.log(mixture_params) + logpdfs, dim=-1)
 
@@ -308,16 +314,14 @@ def test_fisher_von_mises():
 
     model = FisherVonMisesDG(input_size=1)
 
-    logging.debug("  - Expecting log prob.")
-
     logging.debug("      - x = mu")
     out_mean = _get_random_vector(3)
+    out_mean /= np.linalg.norm(out_mean)  # Needs to be normalized.
     streamline = [[0., 0, 0], out_mean]
 
     out_mean = torch.as_tensor(out_mean, dtype=torch.float32)
     out_kappa = torch.as_tensor(np.exp(_get_random_vector(1)),
                                 dtype=torch.float32)
-
     expected = -fisher_von_mises_log_prob_vector(out_mean, out_kappa, out_mean)
 
     out_means = format_model_outputs(out_mean)
@@ -326,23 +330,16 @@ def test_fisher_von_mises():
 
     logging.debug("      - Special case: Kappa very small")
     out_kappa = torch.as_tensor([1e-8], dtype=torch.float32)
-    out_kappas = format_model_outputs(out_kappa)
     expected = -fisher_von_mises_log_prob_vector(out_mean, out_kappa, out_mean)
+
+    out_kappas = format_model_outputs(out_kappa)
     _verify_loss(streamline, (out_means, out_kappas), expected, model)
 
     logging.debug("      - Random")
-    b = _get_random_vector(3)
-    streamline = [[0., 0, 0], b]
+    target = _get_random_vector(3)
+    streamline = [[0., 0, 0], target]  # Not normalizing streamline, model will
+    target /= np.linalg.norm(target)  # Needs to be normalized for sub-method
+    target = torch.as_tensor(target, dtype=torch.float32)
+    expected = -fisher_von_mises_log_prob_vector(out_mean, out_kappa, target)
 
-    b = torch.as_tensor(b, dtype=torch.float32)
-    expected = -fisher_von_mises_log_prob_vector(out_mean, out_kappa, b)
     _verify_loss(streamline, (out_means, out_kappas), expected, model)
-
-
-if __name__ == '__main__':
-    test_cosine_regression_loss()
-    test_l2regression_loss()
-    test_sphere_classification_loss()
-    test_gaussian_loss()
-    test_mixture_loss()
-    test_fisher_von_mises()

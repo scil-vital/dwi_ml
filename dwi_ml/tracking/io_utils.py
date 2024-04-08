@@ -64,13 +64,10 @@ def add_tracking_options(p):
                         help="Tracking mask's volume group in the hdf5.")
     stop_g.add_argument('--theta', metavar='t', type=float,
                         default=90,
-                        help="The tracking direction at each step being "
-                             "defined by the model, \ntheta arg can't define "
-                             "allowed directions in the tracking field.\n"
-                             "Rather, this new equivalent angle, is used as "
-                             "\na stopping criterion during propagation: "
+                        help="Stopping criterion during propagation: "
                              "tracking \nis stopped when a direction is more "
-                             "than an angle t from preceding direction")
+                             "than an angle t from \npreceding direction."
+                             "[%(default)s]")
     stop_g.add_argument('--eos_stop', metavar='prob',
                         help="Stopping criterion if a EOS value was learned "
                              "during training. \nCan either be a probability "
@@ -80,9 +77,9 @@ def add_tracking_options(p):
                              "probability, no mather its value.")
     stop_g.add_argument(
         '--discard_last_point', action='store_true',
-        help="If set, discard the last point (once out of the tracking mask) \n"
-             "of the streamline. Default: append them. This is the default in \n"
-             "Dipy too. Note that points obtained after an invalid direction \n"
+        help="If set, discard the last point (once out of the tracking mask)\n"
+             "of the streamline. Default: append them. This is the default in\n"
+             "Dipy too. Note that points obtained after an invalid direction\n"
              "(based on the propagator's definition of invalid; ex when \n"
              "angle is too sharp of sh_threshold not reached) are never added.")
 

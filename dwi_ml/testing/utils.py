@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+from typing import List
+
+from dwi_ml.data.dataset.multi_subject_containers import (MultiSubjectDataset,
+                                                          MultisubjectSubset)
 
 
 def add_args_testing_subj_hdf5(p, ask_input_group=False,
@@ -17,18 +20,20 @@ def add_args_testing_subj_hdf5(p, ask_input_group=False,
     p.add_argument('--subset', default='testing',
                    choices=['training', 'validation', 'testing'],
                    help="Subject id should probably come come the "
-                        "'testing' set but you can\n modify this to "
+                        "'testing' set but you can \nmodify this to "
                         "'training' or 'validation'.")
 
 
-def prepare_dataset_one_subj(hdf5_file, subj_id, lazy=False, cache_size=1,
-                             subset_name='testing', volume_groups=None,
-                             streamline_groups=None):
-    # Right now, we con only track on one subject at the time. We could
-    # instantiate a LazySubjectData directly, but we want to use the cache
-    # manager (suited better for multiprocessing)
-    dataset = MultiSubjectDataset(hdf5_file, lazy=lazy,
-                                  cache_size=cache_size)
+def prepare_dataset_one_subj(
+        hdf5_file: str, subj_id: str, lazy: bool = False, cache_size: int = 1,
+        subset_name: str = 'testing', volume_groups: List[str] = None,
+        streamline_groups: List[str] = None,
+        log_level=None) -> MultisubjectSubset:
+    """
+    Loading a MultiSubjectDataset with only one subject.
+    """
+    dataset = MultiSubjectDataset(hdf5_file, lazy=lazy, cache_size=cache_size,
+                                  log_level=log_level)
 
     possible_subsets = ['training', 'validation', 'testing']
     if subset_name not in possible_subsets:
@@ -51,16 +56,4 @@ def prepare_dataset_one_subj(hdf5_file, subj_id, lazy=False, cache_size=1,
         raise ValueError("Subset must be one of 'training', 'validation' "
                          "or 'testing.")
 
-    if subj_id not in subset.subjects:
-        raise ValueError("Subject {} does not belong in hdf5's {} set.\n"
-                         "Existing subjects are: \n"
-                         "Training set: {}\n"
-                         "Validation set: {}\n"
-                         "Testing set: {}."
-                         .format(subj_id, subset.set_name,
-                                 dataset.training_set.subjects,
-                                 dataset.validation_set.subjects,
-                                 dataset.testing_set.subjects))
-    subj_idx = subset.subjects.index(subj_id)  # Should be 0.
-
-    return subset, subj_idx
+    return subset

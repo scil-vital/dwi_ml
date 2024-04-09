@@ -24,8 +24,7 @@ from scilpy.tracking.utils import (add_seeding_options,
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
-from dwi_ml.models.projects.transformer_models import \
-    OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
+from dwi_ml.models.projects.transformer_models import find_transformer_class
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 from dwi_ml.tracking.projects.transformer_tracker import \
     TransformerTracker
@@ -81,26 +80,19 @@ def prepare_tracker(parser, args):
             tracking_mask = TrackingMask(dim)
 
         logging.info("Loading subject's data.")
-        subset, subj_idx = prepare_dataset_one_subj(
+        subset = prepare_dataset_one_subj(
             args.hdf5_file, args.subj_id, lazy=False,
-            cache_size=args.cache_size,
-            subset_name=args.subset, volume_groups=[args.input_group],
-            streamline_groups=[])
+            cache_size=args.cache_size, subset_name=args.subset,
+            volume_groups=[args.input_group], streamline_groups=[])
 
         logging.info("Loading model.")
-        model_dir = os.path.join(args.experiment_path, 'best_model')
+        if args.use_latest_epoch:
+            model_dir = os.path.join(args.experiment_path, 'best_model')
+        else:
+            model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
         model_type = verify_which_model_in_path(model_dir)
         print("Model's class: {}".format(model_type))
-        if model_type == 'OriginalTransformerModel':
-            cls = OriginalTransformerModel
-        elif model_type == 'TransformerSrcAndTgtModel':
-            cls = TransformerSrcAndTgtModel
-        elif model_type == 'TransformerSrcOnlyModel':
-            cls = TransformerSrcOnlyModel
-        else:
-            raise ValueError("Model type not a recognized transformer Transformer"
-                             "({})".format(model_type))
-
+        cls = find_transformer_class(model_type)
         model = cls.load_model_from_params_and_state(model_dir, sub_logger_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
@@ -110,7 +102,7 @@ def prepare_tracker(parser, args):
         append_last_point = not args.discard_last_point
         tracker = TransformerTracker(
             input_volume_group=args.input_group,
-            dataset=subset, subj_idx=subj_idx, model=model, mask=tracking_mask,
+            dataset=subset, subj_idx=0, model=model, mask=tracking_mask,
             seed_generator=seed_generator, nbr_seeds=nbr_seeds,
             min_len_mm=args.min_length, max_len_mm=args.max_length,
             compression_th=args.compress, nbr_processes=args.nbr_processes,

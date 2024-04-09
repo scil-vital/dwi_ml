@@ -189,6 +189,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.instantiate_direction_getter(self.rnn_model.output_size)
 
     def set_context(self, context):
+        # Training, validation: Used by trainer. Nothing special.
+        # Tracking: Used by tracker. Returns only the last point.
+        #     Preparing_backward: Used by tracker. Nothing special, but does
+        #     not return only the last point.
+        # Visu: Nothing special. Used by tester.
         assert context in ['training', 'validation', 'tracking', 'visu',
                            'preparing_backward']
         self._context = context
@@ -253,7 +258,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         """
         # Reminder.
         # Correct interpolation and management of points should be done before.
-        if self._context is None:
+        if self.context is None:
             raise ValueError("Please set context before usage.")
 
         # Right now input is always flattened (interpolation is implemented
@@ -268,7 +273,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.
         unsorted_indices = None
-        if not self._context == 'tracking':
+        if not self.context == 'tracking':
             # Ordering streamlines per length.
             lengths = torch.as_tensor([len(s) for s in x])
             _, sorted_indices = torch.sort(lengths, descending=True)
@@ -351,7 +356,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             x = x + copy_prev_dir
 
         # Unpacking.
-        if not self._context == 'tracking':
+        if not self.context == 'tracking':
             # (during tracking: keeping as one single tensor.)
             if 'gaussian' in self.dg_key or 'fisher' in self.dg_key:
                 # Separating mean, sigmas (gaussian) or mean, kappa (fisher)
@@ -370,7 +375,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         if return_hidden:
             # Return the hidden states too. Necessary for the generative
             # (tracking) part, done step by step.
-            if not self._context == 'tracking':
+            if not self.context == 'tracking':
                 # (ex: when preparing backward tracking.
                 #  Must also re-sort hidden states.)
                 if self.rnn_model.rnn_torch_key == 'lstm':
@@ -402,7 +407,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             # Converting the input directions into classes the same way as
             # during loss, but convert to one-hot.
             # The first previous dir (0) converts to index 0.
-            if self._context == 'tracking':
+            if self.context == 'tracking':
                 if dirs[0].shape[0] == 0:
                     copy_prev_dir = torch.zeros(
                         len(dirs),

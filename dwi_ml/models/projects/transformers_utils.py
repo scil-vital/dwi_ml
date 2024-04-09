@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 from dwi_ml.models.positional_encoding import (
     keys_to_positional_encodings)
-from dwi_ml.models.projects.transformer_models import (
-    AbstractTransformerModel)
+from dwi_ml.models.projects.transformer_models import AbstractTransformerModel
 
 sphere_choices = ['symmetric362', 'symmetric642', 'symmetric724',
                   'repulsion724', 'repulsion100', 'repulsion200']
@@ -25,8 +24,8 @@ def add_transformers_model_args(p):
 
     gx = p.add_argument_group(
         "Embedding of the input (X)",
-        "Input embedding size defines the d_model. The d_model must be divisible "
-        "by the number of heads.\n"
+        "Input embedding size defines the d_model. The d_model must be "
+        "divisible by the number of heads.\n"
         "Note that for TTST, total d_model will rather be "
         "input_embedded_size + target_embedded_size.\n")
     AbstractTransformerModel.add_args_input_embedding(
@@ -55,7 +54,8 @@ def add_transformers_model_args(p):
     gt.add_argument(
         '--target_embedded_size', type=int, metavar='n',
         help="Embedding size for targets (for TTST only). \n"
-             "Total d_model will be input_embedded_size + target_embedded_size.")
+             "Total d_model will be input_embedded_size + "
+             "target_embedded_size.")
 
     gtt = p.add_argument_group(title='Transformer: main layers')
     gtt.add_argument(

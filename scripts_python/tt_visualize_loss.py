@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 import argparse
 import logging
-import os
+import os.path
 
 import torch
-from scilpy.io.utils import add_reference_arg
 
-from dwi_ml.io_utils import add_arg_existing_experiment_path
-from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from scilpy.io.utils import assert_inputs_exist
+
+from dwi_ml.io_utils import (add_arg_existing_experiment_path,
+                             verify_which_model_in_path)
+from dwi_ml.models.projects.transformer_models import find_transformer_class
 from dwi_ml.testing.testers import TesterOneInput
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 from dwi_ml.testing.visu_loss import run_all_visu_loss
@@ -33,6 +35,7 @@ def main():
         args.out_dir = os.path.join(args.experiment_path, 'visu_loss')
     if not os.path.isdir(args.experiment_path):
         p.error("Experiment {} not found.".format(args.experiment_path))
+    assert_inputs_exist(p, args.hdf5_file, args.streamlines_file)
 
     # Checks on visu options
     names = visu_checks(args, p)
@@ -47,14 +50,15 @@ def main():
     device = (torch.device('cuda') if torch.cuda.is_available() and
               args.use_gpu else None)
 
-    # 1. Load model
+    # 1. Find which model and load
     logging.debug("Loading model.")
     if args.use_latest_epoch:
         model_dir = os.path.join(args.experiment_path, 'best_model')
     else:
         model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
-    model = Learn2TrackModel.load_model_from_params_and_state(
-        model_dir, log_level=sub_logger_level)
+    model_type = verify_which_model_in_path(model_dir)
+    cls = find_transformer_class(model_type)
+    model = cls.load_model_from_params_and_state(model_dir, sub_logger_level)
     model.set_context('visu')
 
     # 2. Load data through the tester

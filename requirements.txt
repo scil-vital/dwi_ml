@@ -14,6 +14,7 @@
 #    management: d20d3d4917d40f698aa975f64a575dda34e0c89c
 # -------
 requests==2.28.*
+dipy==1.8.0
 -e git+https://github.com/scilus/scilpy.git@d20d3d4917d40f698aa975f64a575dda34e0c89c#egg=scilpy
 
 # -------

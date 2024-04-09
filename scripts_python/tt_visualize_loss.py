@@ -4,18 +4,16 @@ import argparse
 import logging
 import os.path
 
-from matplotlib import pyplot as plt
-import numpy as np
 import torch
+
 from scilpy.io.utils import assert_inputs_exist
 
 from dwi_ml.io_utils import (add_arg_existing_experiment_path,
                              verify_which_model_in_path)
 from dwi_ml.models.projects.transformer_models import find_transformer_class
-from dwi_ml.testing.testers import TesterOneInput, load_sft_from_hdf5
+from dwi_ml.testing.testers import TesterOneInput
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
-from dwi_ml.testing.visu_loss import (run_visu_save_colored_displacement,
-                                      run_visu_save_colored_sft, plot_histogram, run_all_visu_loss)
+from dwi_ml.testing.visu_loss import run_all_visu_loss
 from dwi_ml.testing.visu_loss_utils import prepare_args_visu_loss, visu_checks
 
 

@@ -14,7 +14,8 @@ from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
 
 data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
-MAX_LEN = 400  # During tracking, if we allow 200mm * 0.5 step size = 400 points.
+# During tracking, if we allow 200mm * 0.5 step size = 400 points.
+MAX_LEN = 400
 
 
 def test_help_option(script_runner):
@@ -84,9 +85,9 @@ def test_execution(script_runner, experiments_path):
                                 '--max_batches_per_epoch_validation', '1',
                                 '--nheads', '2', '--max_len', str(MAX_LEN),
                                 '--input_embedding_key', 'nn_embedding',
-                                '--input_embedded_size', '6', '--n_layers_e', '1',
-                                '--ffnn_hidden_size', '3', '--logging', 'INFO',
-                                '--use_gpu')
+                                '--input_embedded_size', '6',
+                                '--n_layers_e', '1', '--ffnn_hidden_size', '3',
+                                '--logging', 'INFO', '--use_gpu')
         assert ret.success
 
     logging.info("************ TESTING TRACKING FROM MODEL ************")

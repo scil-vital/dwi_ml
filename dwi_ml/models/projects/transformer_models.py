@@ -205,8 +205,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         self.dropout_rate = dropout_rate
         self.activation = activation
         self.norm_first = norm_first
-        self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size is not None \
-            else self.d_model // 2
+        self.ffnn_hidden_size = ffnn_hidden_size if ffnn_hidden_size is not \
+            None else self.d_model // 2
 
         # ----------- Checks
         if self.d_model // self.nheads != float(self.d_model) / self.nheads:
@@ -233,7 +233,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
 
         # 2. positional encoding layer
         cls_p = keys_to_positional_encodings[self.positional_encoding_key]
-        self.position_encoding_layer = cls_p(self.d_model, dropout_rate, max_len)
+        self.position_encoding_layer = cls_p(self.d_model, dropout_rate,
+                                             max_len)
 
         # 3. target embedding layer: See child class with Target
 
@@ -869,7 +870,8 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
     def _run_embeddings(self, data, use_padding, batch_max_len):
         # input, targets = data
         inputs = self._run_input_embedding(data[0], use_padding, batch_max_len)
-        targets = self._run_target_embedding(data[1], use_padding, batch_max_len)
+        targets = self._run_target_embedding(data[1], use_padding,
+                                             batch_max_len)
         return inputs, targets
 
     def _run_position_encoding(self, data):
@@ -963,7 +965,8 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
     def _run_embeddings(self, data, use_padding, batch_max_len):
         # inputs, targets = data
         inputs = self._run_input_embedding(data[0], use_padding, batch_max_len)
-        targets = self._run_target_embedding(data[1], use_padding, batch_max_len)
+        targets = self._run_target_embedding(data[1], use_padding,
+                                             batch_max_len)
         inputs = torch.cat((inputs, targets), dim=-1)
 
         return inputs

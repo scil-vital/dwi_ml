@@ -54,7 +54,6 @@ def load_data_run_model(parser, args, model: AbstractTransformerModel,
     else:
         streamline_ids = 0
 
-    streamline_ids = 3544 #    ---------------------------------------------------------------- A EFFACER
     # Bug in dipy. If accessing only one streamline, then sft.streamlines is
     # not a list of streamlines anymore, but the streamline itself. Thus,
     # len(sft) = nb_points instead of 1.
@@ -132,9 +131,9 @@ def reformat_attention(attention, this_seq_len, resample_attention: int):
         # (nb_heads = 1 if average_heads).
 
         # Normalizing weight. Without it, we rapidly see nothing!
-        # Easier to see when we normalize on the x axis.
+        # Easier to see when we normalize on the x-axis.
 
-        # Version 1) L_p pnormalization ==> V = V / norm(v)
+        # Version 1) L_p normalization ==> V = V / norm(v)
         # attention[ll] = torch.nn.functional.normalize(attention[ll], dim=2)
         # attention[ll] = torch.nn.functional.normalize(attention[ll], dim=3)
 
@@ -148,7 +147,6 @@ def reformat_attention(attention, this_seq_len, resample_attention: int):
         print("Normalizing attention at each point to range [0, 1]")
         max_ = np.max(att, axis=3)
         att = att / max_[:, :, :, None]
-
 
         if resample_attention < this_seq_len:
             print("RESAMPLING ATTENTION TO A SEQUENCE OF LENGTH {}\n"
@@ -167,9 +165,10 @@ def reformat_attention(attention, this_seq_len, resample_attention: int):
             att = np.pad(att, ((0, 0), (0, 0), (0, missing), (0, missing)),
                          mode='edge')
 
+            # 1000: to see if bug. There should never be padding.
             att = block_reduce(
                 att, block_size=(1, 1, nb_together, nb_together),
-                func=np.max, cval=1000.0)  # 1000: to see if bug.
+                func=np.max, cval=1000.0)
 
         else:
             ind = None

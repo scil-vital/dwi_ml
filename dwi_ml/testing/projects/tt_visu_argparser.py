@@ -94,7 +94,7 @@ def build_argparser_transformer_visu():
                    help="See description above.")
     g.add_argument('--color_x_y_summary', action='store_true',
                    help="See description above.")
-    gg =g.add_mutually_exclusive_group()
+    gg = g.add_mutually_exclusive_group()
     gg.add_argument('--bertviz', action='store_true',
                     help="See description above.")
     gg.add_argument('--bertviz_locally', action='store_true',

@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 from typing import List
 
-from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset, MultisubjectSubset
+from dwi_ml.data.dataset.multi_subject_containers import (MultiSubjectDataset,
+                                                          MultisubjectSubset)
 
 
 def add_args_testing_subj_hdf5(p, ask_input_group=False,

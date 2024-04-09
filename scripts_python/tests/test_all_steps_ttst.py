@@ -12,10 +12,11 @@ from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
 
 data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
-MAX_LEN = 400  # During tracking, if we allow 200mm * 0.5 step size = 400 points.
+# During tracking, if we allow 200mm * 0.5 step size = 400 points.
+MAX_LEN = 400
 
 
-def test_help_option(script_runner):
+def test_help_option():
     # All help tests already tested in test_all_steps_tto.
     pass
 
@@ -32,8 +33,8 @@ def test_execution(script_runner, experiments_path):
     input_group_name = TEST_EXPECTED_VOLUME_GROUPS[0]
     streamline_group_name = TEST_EXPECTED_STREAMLINE_GROUPS[0]
 
-    # Here, testing default values only. See dwi_ml.unit_tests.test_trainer for more
-    # various testing.
+    # Here, testing default values only. See dwi_ml.unit_tests.test_trainer for
+    # more various testing.
     # Max length in current testing dataset is 108. Setting max length to 115
     # for faster testing. Also decreasing other default values.
     logging.info("************ TESTING TRAINING ************")

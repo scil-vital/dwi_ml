@@ -6,7 +6,7 @@ from scilpy.io.utils import (add_overwrite_arg,
                              assert_inputs_exist, assert_outputs_exist,
                              add_reference_arg)
 
-from dwi_ml.io_utils import add_memory_args, add_logging_arg
+from dwi_ml.io_utils import add_memory_args, add_verbose_arg
 
 
 def prepare_args_visu_loss(p: ArgumentParser):
@@ -80,7 +80,7 @@ def prepare_args_visu_loss(p: ArgumentParser):
                         "(base on loss).")
 
     add_overwrite_arg(p)
-    add_logging_arg(p)
+    add_verbose_arg(p)
     add_reference_arg(p)
 
 

@@ -23,9 +23,10 @@ from scilpy.tracking.utils import (add_seeding_options,
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
+from dwi_ml.io_utils import add_verbose_arg, verify_which_model_in_path
 from dwi_ml.models.projects.transformer_models import find_transformer_class
-from dwi_ml.testing.utils import prepare_dataset_one_subj
+from dwi_ml.testing.utils import prepare_dataset_one_subj, \
+    find_hdf5_associated_to_experiment
 from dwi_ml.tracking.projects.transformer_tracker import \
     TransformerTracker
 from dwi_ml.tracking.tracking_mask import TrackingMask
@@ -47,18 +48,17 @@ def build_argparser():
     add_seeding_options(p)
     add_out_options(p)
 
-    add_logging_arg(p)
+    add_verbose_arg(p)
 
     return p
 
 
 def prepare_tracker(parser, args):
-    hdf_handle = h5py.File(args.hdf5_file, 'r')
+    hdf5_file = args.hdf5_file or find_hdf5_associated_to_experiment(
+        args.experiment_path)
+    hdf_handle = h5py.File(hdf5_file, 'r')
 
-    sub_logger_level = args.logging.upper()
-    if sub_logger_level == 'DEBUG':
-        # make them info max
-        sub_logger_level = 'INFO'
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
 
     with Timer("\nLoading data and preparing tracker...",
                newline=True, color='green'):
@@ -93,7 +93,8 @@ def prepare_tracker(parser, args):
         model_type = verify_which_model_in_path(model_dir)
         print("Model's class: {}".format(model_type))
         cls = find_transformer_class(model_type)
-        model = cls.load_model_from_params_and_state(model_dir, sub_logger_level)
+        model = cls.load_model_from_params_and_state(model_dir,
+                                                     sub_loggers_level)
         logging.info("* Formatted model: " +
                      format_dict_to_str(model.params_for_checkpoint))
 
@@ -112,7 +113,7 @@ def prepare_tracker(parser, args):
             use_gpu=args.use_gpu, eos_stopping_thresh=args.eos_stop,
             simultaneous_tracking=args.simultaneous_tracking,
             append_last_point=append_last_point,
-            log_level=args.logging)
+            log_level=args.verbose)
 
     return tracker, ref
 
@@ -123,7 +124,7 @@ def main():
 
     # Setting root logger to high level to max info, not debug, prints way too
     # much stuff. (but we can set our tracker's logger to debug)
-    root_level = args.logging
+    root_level = args.verbose
     if root_level == 'DEBUG':
         root_level = 'INFO'
     logging.getLogger().setLevel(level=root_level)

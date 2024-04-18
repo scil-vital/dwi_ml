@@ -54,7 +54,7 @@ import argparse
 from scilpy.io.utils import (add_overwrite_arg, add_reference_arg)
 
 from dwi_ml.io_utils import (add_arg_existing_experiment_path,
-                             add_logging_arg, add_memory_args)
+                             add_verbose_arg, add_memory_args)
 from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 
 
@@ -172,7 +172,7 @@ def build_argparser_transformer_visu():
                    help="Batch size in number of streamlines. If not set, "
                         "uses all streamlines \nin one batch.")
     add_reference_arg(p)
-    add_logging_arg(p)
+    add_verbose_arg(p)
     add_overwrite_arg(p)
 
     return p

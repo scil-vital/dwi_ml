@@ -19,7 +19,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_memory_args, add_logging_arg
+from dwi_ml.io_utils import add_memory_args, add_verbose_arg
 from dwi_ml.models.projects.transformer_models import \
     OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
 from dwi_ml.models.projects.transformers_utils import (
@@ -40,7 +40,7 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_mandatory_args_experiment_and_hdf5_path(p)
-    add_logging_arg(p)
+    add_verbose_arg(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     add_training_args(p, add_a_tracking_validation_phase=True)
@@ -63,7 +63,8 @@ def init_from_args(args, sub_loggers_level):
         cls = TransformerSrcAndTgtModel
         if args.target_embedded_size is None and \
                 args.target_embedding_key != 'no_embedding':
-            raise ValueError("target_embedded_size must be given for this model.")
+            raise ValueError("target_embedded_size must be given for this "
+                             "model.")
         specific_args['target_embedded_size'] = args.target_embedded_size
     else:
         # Model TTO:  input_embedding = target_embedding = d_model
@@ -150,7 +151,7 @@ def init_from_args(args, sub_loggers_level):
             tracking_phase_mask_group=args.tracking_mask,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
-            log_level=args.logging)
+            log_level=args.verbose)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
 
@@ -163,12 +164,8 @@ def main():
 
     # Setting log level to INFO maximum for sub-loggers, else it becomes ugly,
     # but we will set trainer to user-defined level.
-    sub_loggers_level = args.logging
-    if args.logging == 'DEBUG':
-        sub_loggers_level = 'INFO'
-
-    # General logging (ex, scilpy: Warning)
     logging.getLogger().setLevel(level=logging.WARNING)
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])

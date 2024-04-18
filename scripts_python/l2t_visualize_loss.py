@@ -38,10 +38,8 @@ def main():
     names = visu_checks(args, p)
 
     # Loggers
-    sub_logger_level = args.logging.upper()
-    if sub_logger_level == 'DEBUG':
-        sub_logger_level = 'INFO'
-    logging.getLogger().setLevel(level=args.logging)
+    logging.getLogger().setLevel(level=args.verbose)
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
 
     # Device
     device = (torch.device('cuda') if torch.cuda.is_available() and
@@ -54,7 +52,7 @@ def main():
     else:
         model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
     model = Learn2TrackModel.load_model_from_params_and_state(
-        model_dir, log_level=sub_logger_level)
+        model_dir, log_level=sub_loggers_level)
     model.set_context('visu')
 
     # 2. Load data through the tester

@@ -11,7 +11,7 @@ import comet_ml
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg, verify_which_model_in_path
+from dwi_ml.io_utils import add_verbose_arg, verify_which_model_in_path
 from dwi_ml.models.projects.transformer_models import find_transformer_class
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
@@ -25,7 +25,7 @@ def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_args_resuming_experiment(p)
-    add_logging_arg(p)
+    add_verbose_arg(p)
 
     return p
 
@@ -48,9 +48,7 @@ def init_from_checkpoint(args, checkpoint_path):
     dataset = prepare_multisubjectdataset(argparse.Namespace(**args_data))
 
     # Setting log level to INFO maximum for sub-loggers, else it become ugly
-    sub_loggers_level = args.logging
-    if args.logging == 'DEBUG':
-        sub_loggers_level = 'INFO'
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
 
     # Prepare model
     model_dir = os.path.join(checkpoint_path, 'model')
@@ -74,7 +72,7 @@ def init_from_checkpoint(args, checkpoint_path):
             model, args.experiments_path, args.experiment_name,
             batch_sampler,  batch_loader,
             checkpoint_state, args.new_patience, args.new_max_epochs,
-            args.logging)
+            args.verbose)
     return trainer
 
 

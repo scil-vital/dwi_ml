@@ -34,7 +34,7 @@ from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
 from dwi_ml.data.hdf5.utils import (
     add_hdf5_creation_args, add_streamline_processing_args)
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg
+from dwi_ml.io_utils import add_verbose_arg
 
 
 def _initialize_intermediate_subdir(hdf5_file, save_intermediate):
@@ -102,7 +102,7 @@ def _parse_args():
     add_hdf5_creation_args(p)
     add_streamline_processing_args(p)
     add_overwrite_arg(p)
-    add_logging_arg(p)
+    add_verbose_arg(p)
 
     return p
 
@@ -113,7 +113,7 @@ def main():
     args = p.parse_args()
 
     # Initialize logger
-    logging.getLogger().setLevel(level=args.logging)
+    logging.getLogger().setLevel(level=args.verbose)
 
     # Silencing SFT's logger if our logging is in DEBUG mode, because it
     # typically produces a lot of outputs!

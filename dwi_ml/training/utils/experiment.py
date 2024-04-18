@@ -4,7 +4,7 @@
 def add_mandatory_args_experiment_and_hdf5_path(p):
     p.add_argument(
         'experiments_path',
-        help='Path where to save your experiment. \nComplete path will be '
+        help='Path where to save your experiment. Complete path will be \n'
              'experiments_path/experiment_name.')
     p.add_argument(
         'experiment_name',

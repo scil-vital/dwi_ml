@@ -59,9 +59,8 @@ def find_hdf5_associated_to_experiment(experiment_path):
                 'Checkpoint was not found! ({}). Could not find the hdf5 '
                 'associated to your experiment. Please specify it yourself.'
                 .format(checkpoint_path))
-        else:
-            checkpoint_state = torch.load(checkpoint_path)
-            hdf5_file = checkpoint_state['dataset_params']['hdf5_file']
+        checkpoint_state = torch.load(checkpoint_path)
+        hdf5_file = checkpoint_state['dataset_params']['hdf5_file']
 
     return hdf5_file
 

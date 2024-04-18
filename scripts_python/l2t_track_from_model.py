@@ -79,7 +79,7 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading subject's data.")
         subset = prepare_dataset_one_subj(
-            args.hdf5_file, args.subj_id, lazy=False,
+            hdf5_file, args.subj_id, lazy=False,
             cache_size=args.cache_size, subset_name=args.subset,
             volume_groups=[args.input_group], streamline_groups=[])
 
@@ -108,7 +108,7 @@ def prepare_tracker(parser, args):
             use_gpu=args.use_gpu, eos_stopping_thresh=args.eos_stop,
             simultaneous_tracking=args.simultaneous_tracking,
             append_last_point=append_last_point,
-            log_level=args.verbose())
+            log_level=args.verbose)
 
     return tracker, ref
 
@@ -119,17 +119,14 @@ def main():
 
     # Setting root logger to high level to max info, not debug, prints way too
     # much stuff. (but we can set our tracker's logger to debug)
-    root_level = args.verbose()
-    if root_level == 'DEBUG':
-        root_level = 'INFO'
-    logging.getLogger().setLevel(level=root_level)
+    logging.getLogger().setLevel(level=args.verbose)
 
     # ----- Checks
     if not nib.streamlines.is_supported(args.out_tractogram):
         parser.error('Invalid output streamline file format (must be trk or '
                      'tck): {0}'.format(args.out_tractogram))
 
-    assert_inputs_exist(parser, args.hdf5_file)
+    assert_inputs_exist(parser, [], args.hdf5_file)
     assert_outputs_exist(parser, args, args.out_tractogram)
 
     verify_streamline_length_options(parser, args)

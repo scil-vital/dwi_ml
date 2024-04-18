@@ -81,7 +81,7 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading subject's data.")
         subset = prepare_dataset_one_subj(
-            args.hdf5_file, args.subj_id, lazy=False,
+            hdf5_file, args.subj_id, lazy=False,
             cache_size=args.cache_size, subset_name=args.subset,
             volume_groups=[args.input_group], streamline_groups=[])
 
@@ -134,7 +134,7 @@ def main():
         parser.error('Invalid output streamline file format (must be trk or '
                      'tck): {0}'.format(args.out_tractogram))
 
-    assert_inputs_exist(parser, args.hdf5_file)
+    assert_inputs_exist(parser, [], args.hdf5_file)
     assert_outputs_exist(parser, args, args.out_tractogram)
 
     verify_streamline_length_options(parser, args)

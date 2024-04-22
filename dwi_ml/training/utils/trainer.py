@@ -14,35 +14,34 @@ def add_training_args(p: argparse.ArgumentParser,
     training_group.add_argument(
         '--learning_rate', metavar='r', nargs='+',
         help="Learning rate. Can be set as a single float, or as a list of "
-             "[lr*step]. \n"
-             "Ex: '--learning_rate 0.001*3 0.0001' would set the lr to 0.001 "
-             "for the first \n3 epochs, and 0.0001 for the remaining epochs.\n"
+             "[lr*step]. For instance, \n"
+             "--learning_rate 0.001*3 0.0001 would set the lr to 0.001 "
+             "for the 3 first epochs, \nand 0.0001 for the remaining epochs."
              "(torch's default = 0.001)")
     training_group.add_argument(
         '--weight_decay', type=float, default=0.01, metavar='v',
-        help="Add a weight decay penalty on the parameters (regularization "
-             "parameter)\n[0.01] (torch's default).")
+        help="Add a weight decay penalty on the parameters (regularization ) "
+             "(torch's default: \n0.01).")
     training_group.add_argument(
         '--optimizer', choices=['Adam', 'RAdam', 'SGD'], default='Adam',
-        help="Choice of torch optimizer amongst ['Adam', 'RAdam', 'SGD'].\n"
+        help="Choice of torch optimizer amongst ['Adam', 'RAdam', 'SGD']. "
              "Default: Adam.")
     training_group.add_argument(
         '--max_epochs', type=int, default=100, metavar='n',
         help="Maximum number of epochs. [100]")
     training_group.add_argument(
-        '--patience', type=int, default=20, metavar='n',
-        help="Use early stopping. Defines the number of epochs after which \n"
-             "the model should stop if the loss hasn't improved. \n"
-             "Default: same as max_epochs.")
+        '--patience', type=int, metavar='n',
+        help="If set, uses early stopping. Defines the number of epochs after "
+             "which the model \nshould stop if the loss hasn't improved.")
     training_group.add_argument(
         '--patience_delta', type=float, default=1e-6, metavar='eps',
         help="Limit difference between two validation losses to consider that "
-             "\nthe model improved between the two epochs.")
+             "the model has \nimproved between two epochs. [1e-6]")
     training_group.add_argument(
         '--max_batches_per_epoch_training', type=int, default=1000,
         metavar='n',
-        help="Maximum number of batches per epoch. This will help avoid long\n"
-             "epochs, to ensure that we save checkpoints regularly. [1000]")
+        help="Maximum number of batches per epoch. This will help avoid long "
+             "epochs, to ensure \nthat we save checkpoints regularly. [1000]")
     training_group.add_argument(
         '--max_batches_per_epoch_validation', type=int, default=1000,
         metavar='n',
@@ -50,28 +49,33 @@ def add_training_args(p: argparse.ArgumentParser,
 
     if add_a_tracking_validation_phase:
         training_group.add_argument(
-            '--add_a_tracking_validation_phase', action='store_true')
+            '--add_a_tracking_validation_phase', action='store_true',
+            help="If set, a generation validation phase (GV) will be added.")
         training_group.add_argument(
-            '--tracking_phase_frequency', type=int, default=5)
+            '--tracking_phase_frequency', type=int, default=1, metavar='N',
+            help="The GV phase can be computed at every epoch (default), or "
+                 "once every N epochs.")
         training_group.add_argument(
             '--tracking_mask',
             help="Volume group to use as tracking mask during the generation "
                  "phase.")
         training_group.add_argument(
-            '--tracking_phase_nb_segments_init', type=int, default=5,
-            help="Number of segments copied from the 'real' streamlines "
-                 "before starting propagation during generation phases.")
+            '--tracking_phase_nb_segments_init', type=int, default=1,
+            metavar='N',
+            help="Number of segments copied from the 'real' validation "
+                 "streamlines before starting \npropagation during GV phases "
+                 "[1].")
 
     comet_g = p.add_argument_group("Comet")
     comet_g.add_argument(
         '--comet_workspace', metavar='w',
-        help='Your comet workspace. If not set, comet.ml will not be used.\n'
-             'See our docs/Getting Started for more information on comet \n'
-             'and its API key.')
+        help='Your comet workspace. If not set, comet.ml will not be used. '
+             'See our doc for more \ninformation on comet and its API key: \n'
+             'https://dwi-ml.readthedocs.io/en/latest/getting_started.html')
     comet_g.add_argument(
         '--comet_project', metavar='p',
-        help='Send your experiment to a specific comet.ml project. If not \n'
-             'set, it will be sent to Uncategorized Experiments.')
+        help='Send your experiment to a specific comet.ml project. If not '
+             'set, it will be sent \nto Uncategorized Experiments.')
     return training_group
 
 

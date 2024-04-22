@@ -51,7 +51,7 @@ def test_training(script_runner, experiments_path):
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
-                            '--logging', 'INFO', '--step_size', '0.5',
+                            '-v', 'INFO', '--step_size', '0.5',
                             '--nb_previous_dirs', '1')
     assert ret.success
 
@@ -69,7 +69,7 @@ def test_training(script_runner, experiments_path):
                                 '--max_batches_per_epoch_training', '2',
                                 '--max_batches_per_epoch_validation', '1',
                                 '--dg_key', 'cosine-regression', '--add_eos',
-                                '--logging', 'INFO', '--use_gpu')
+                                '-v', 'INFO', '--use_gpu')
         assert ret.success
 
 
@@ -93,8 +93,9 @@ def test_tracking(script_runner, experiments_path):
     # Testing HDF5 data does not contain a testing set to keep it light. Using
     # subjectX from training set.
     ret = script_runner.run(
-        'l2t_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+        'l2t_track_from_model.py', whole_experiment_path, subj_id,
         input_group_name, out_tractogram, seeding_mask_group,
+        '--hdf5_file', hdf5_file,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0', '--min_length', '0',
         '--subset', 'training', '--tracking_mask_group', tracking_mask_group)
 
@@ -105,7 +106,7 @@ def test_tracking(script_runner, experiments_path):
         logging.info("********** TESTING GPU TRACKING FROM MODEL ************")
         out_tractogram = os.path.join(experiments_path, 'test_tractogram2.trk')
         ret = script_runner.run(
-            'l2t_track_from_model.py', whole_experiment_path, hdf5_file,
+            'l2t_track_from_model.py', whole_experiment_path,
             subj_id, input_group_name, out_tractogram, seeding_mask_group,
             '--algo', 'det', '--nt', '20', '--rng_seed', '0',
             '--min_length', '0', '--subset', 'training',
@@ -155,7 +156,7 @@ def future_test_training_with_generation_validation(script_runner, experiments_p
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
-                            '--logging', 'INFO', '--step_size', '0.5',
+                            '-v', 'INFO', '--step_size', '0.5',
                             '--add_a_tracking_validation_phase',
                             '--tracking_phase_frequency', '1', option)
     assert ret.success

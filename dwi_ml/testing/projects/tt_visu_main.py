@@ -75,7 +75,7 @@ def tt_visualize_weights_main(args, parser):
                 os.remove(f)
 
     sub_logger_level = 'WARNING'
-    logging.getLogger().setLevel(level=args.logging)
+    logging.getLogger().setLevel(level=args.verbose)
 
     if args.use_gpu:
         if torch.cuda.is_available():

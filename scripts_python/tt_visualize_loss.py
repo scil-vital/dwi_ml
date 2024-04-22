@@ -41,10 +41,8 @@ def main():
     names = visu_checks(args, p)
 
     # Loggers
-    sub_logger_level = args.logging.upper()
-    if sub_logger_level == 'DEBUG':
-        sub_logger_level = 'INFO'
-    logging.getLogger().setLevel(level=args.logging)
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
+    logging.getLogger().setLevel(level=args.verbose)
 
     # Device
     device = (torch.device('cuda') if torch.cuda.is_available() and
@@ -58,7 +56,7 @@ def main():
         model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
     model_type = verify_which_model_in_path(model_dir)
     cls = find_transformer_class(model_type)
-    model = cls.load_model_from_params_and_state(model_dir, sub_logger_level)
+    model = cls.load_model_from_params_and_state(model_dir, sub_loggers_level)
     model.set_context('visu')
 
     # 2. Load data through the tester

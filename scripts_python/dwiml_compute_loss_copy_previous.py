@@ -48,7 +48,7 @@ def prepare_arg_parser():
 def main():
     p = prepare_arg_parser()
     args = p.parse_args()
-    logging.getLogger().setLevel(level=args.logging)
+    logging.getLogger().setLevel(level=args.verbose)
 
     # Checks
     if args.out_dir is None:

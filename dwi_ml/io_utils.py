@@ -5,13 +5,13 @@ from argparse import ArgumentParser
 from scilpy.io.utils import add_processes_arg
 
 
-def add_logging_arg(p):
-    p.add_argument(
-        '--logging', default='WARNING', metavar='level',
-        choices=['ERROR', 'WARNING', 'INFO', 'DEBUG'],
-        help="Logging level. Note that, for readability, not all debug logs \n"
-             "are printed in DEBUG mode, only the main ones. \n"
-             "Default: WARNING.")
+def add_verbose_arg(p):
+    # Can eventually become scilpy.io.utils.add_verbose_arg
+    p.add_argument('-v', default="WARNING", const='INFO', nargs='?',
+                   choices=['DEBUG', 'INFO', 'WARNING'], dest='verbose',
+                   help='Produces verbose output depending on '
+                        'the provided level. \nDefault level is warning, '
+                        'default when using -v is info.')
 
 
 def add_resample_or_compress_arg(p: ArgumentParser):
@@ -28,8 +28,8 @@ def add_resample_or_compress_arg(p: ArgumentParser):
 
 def add_arg_existing_experiment_path(p: ArgumentParser):
     p.add_argument('experiment_path',
-                   help='Path to the directory containing the experiment.\n'
-                        '(Should contain a model subdir with a file \n'
+                   help='Path to the directory containing the experiment. '
+                        '(Should contain a model subdir \nwith a file '
                         'parameters.json and a file best_model_state.pkl.)')
     p.add_argument('--use_latest_epoch', action='store_true',
                    help="If true, use model at latest epoch rather than "
@@ -44,11 +44,15 @@ def add_memory_args(p: ArgumentParser, add_lazy_options=False,
     if add_multiprocessing_option:
         ram_options = g.add_mutually_exclusive_group()
         # Parallel processing or GPU processing
-        add_processes_arg(ram_options)
+        ram_options.add_argument(
+            '--processes', dest='nbr_processes', metavar='nb', type=int,
+            default=1,
+            help='Number of sub-processes to start for parallel processing. '
+                 'Default: [%(default)s]')
         ram_options.add_argument(
             '--use_gpu', action='store_true',
             help="If set, use GPU for processing. Cannot be used together "
-                 "with \noption --processes.")
+                 "with option --processes.")
     else:
         p.add_argument('--use_gpu', action='store_true',
                        help="If set, use GPU for processing.")
@@ -63,14 +67,14 @@ def add_memory_args(p: ArgumentParser, add_lazy_options=False,
         g.add_argument(
             '--cache_size', type=int, metavar='s', default=1,
             help="Relevant only if lazy data is used. Size of the cache in "
-                 "terms\n of length of the queue (i.e. number of volumes). \n"
-                 "NOTE: Real cache size will actually be larger depending on "
-                 "use;\nthe training, validation and testing sets each have "
-                 "their cache. [1]")
+                 "terms of length of the \nqueue (i.e. number of volumes). "
+                 "NOTE: Real cache size will actually be larger \ndepending "
+                 "on usage; the training, validation and testing sets each "
+                 "have their \ncache. [1]")
         g.add_argument(
             '--lazy', action='store_true',
             help="If set, do not load all the dataset in memory at once. "
-                 "Load \nonly what is needed for a batch.")
+                 "Load only what is needed \nfor a batch.")
 
     return g
 

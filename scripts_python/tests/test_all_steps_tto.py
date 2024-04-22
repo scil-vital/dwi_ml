@@ -62,7 +62,7 @@ def test_execution(script_runner, experiments_path):
                             '--input_embedding_key', 'nn_embedding',
                             '--input_embedded_size', '6', '--n_layers_e', '1',
                             '--ffnn_hidden_size', '3', '--step_size', '1',
-                            '--logging', 'INFO')
+                            '-v', 'INFO')
     assert ret.success
 
     logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
@@ -87,7 +87,7 @@ def test_execution(script_runner, experiments_path):
                                 '--input_embedding_key', 'nn_embedding',
                                 '--input_embedded_size', '6',
                                 '--n_layers_e', '1', '--ffnn_hidden_size', '3',
-                                '--logging', 'INFO', '--use_gpu')
+                                '-v', 'INFO', '--use_gpu')
         assert ret.success
 
     logging.info("************ TESTING TRACKING FROM MODEL ************")
@@ -100,10 +100,11 @@ def test_execution(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     ret = script_runner.run(
-        'tt_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+        'tt_track_from_model.py', whole_experiment_path, subj_id,
         input_group, out_tractogram, seeding_mask_group,
+        '--hdf5_file', hdf5_file,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0',
-        '--min_length', '0', '--subset', 'training', '--logging', 'DEBUG',
+        '--min_length', '0', '--subset', 'training', '-v', 'DEBUG',
         '--max_length', str(MAX_LEN * 0.5), '--step', '0.5',
         '--tracking_mask_group', tracking_mask_group)
 
@@ -133,7 +134,7 @@ def test_execution(script_runner, experiments_path):
         input_group, in_sft, '--out_prefix', prefix,
         '--as_matrices', '--color_multi_length', '--color_x_y_summary',
         '--bertviz_locally',
-        '--subset', 'training', '--logging', 'INFO',
+        '--subset', 'training', '-v', 'INFO',
         '--resample_plots', '15', '--rescale_non_lin')
     assert ret.success
 

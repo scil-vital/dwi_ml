@@ -497,7 +497,14 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
 
         # Splitting back. During tracking: only one point per streamline.
         if self.context != 'tracking':
-            outputs = list(torch.split(outputs, list(input_lengths)))
+            if 'gaussian' in self.dg_key or 'fisher' in self.dg_key:
+                # Separating mean, sigmas (gaussian) or mean, kappa (fisher)
+                x, x2 = outputs
+                x = list(torch.split(x, list(input_lengths)))
+                x2 = list(torch.split(x2, list(input_lengths)))
+                outputs = (x, x2)
+            else:
+                outputs = list(torch.split(outputs, list(input_lengths)))
 
         if return_weights:
             # Padding weights to max length, else we won't be able to stack

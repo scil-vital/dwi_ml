@@ -50,6 +50,10 @@ def _build_arg_parser():
                         "one, \nthey are shown superposed.")
     p.add_argument("--save_to_csv", metavar='my_file.csv',
                    help="If set, convert the resulting logs as a csv file.")
+    p.add_argument('--save_figures', metavar='folder/prefix', default='./',
+                   help="If set, saves the resulting figures in chosen "
+                        "folder. Default: ./out_\n"
+                        "Figure names are: fig1, fig2, etc.")
     p.add_argument('--allow_missing', action='store_true',
                    help="If true, ignore experiments with missing logs.")
 
@@ -262,6 +266,14 @@ def main():
     assert_outputs_exist(parser, args, [], args.save_to_csv)
     parsed_graphs, graphs_ylims, graphs_operation = \
         _parse_graphs_arg(parser, args)
+    if args.save_figures is not None:
+        if os.path.isdir(args.save_figures):
+            args.save_figures = os.path.join(args.save_figures, 'out_')
+        else:
+            # Maybe a prefix was added?
+            fig_path, prefix = os.path.split(args.save_figures)
+            if not os.path.isdir(fig_path):
+                parser.error("Output dir for figures does not exist.")
 
     # Loop on all experiments
     loaded_logs = {}  # dict of dicts
@@ -309,11 +321,13 @@ def main():
             visualize_logs(loaded_logs, parsed_graphs, graphs_ylims,
                            args.nb_plots_per_fig, writer=writer,
                            xlim=args.xlim,
-                           remove_outliers=args.remove_outliers)
+                           remove_outliers=args.remove_outliers,
+                           save_figs=args.save_figures)
     else:
         visualize_logs(loaded_logs, parsed_graphs, graphs_ylims,
                        args.nb_plots_per_fig,
-                       xlim=args.xlim, remove_outliers=args.remove_outliers)
+                       xlim=args.xlim, remove_outliers=args.remove_outliers,
+                       save_figs=args.save_figures)
 
     plt.tight_layout()
     plt.show()

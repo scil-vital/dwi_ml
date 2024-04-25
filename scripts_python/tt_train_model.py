@@ -101,7 +101,7 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = cls(
             experiment_name=args.experiment_name,
-            step_size=args.step_size, compress_lines=args.compress,
+            step_size=args.step_size, compress_lines=args.compress_th,
             # Concerning inputs:
             max_len=args.max_len, nb_features=args.nb_features,
             positional_encoding_key=args.position_encoding,

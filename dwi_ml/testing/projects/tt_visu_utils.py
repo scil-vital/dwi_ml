@@ -7,7 +7,7 @@ import numpy as np
 from scipy.ndimage import zoom
 from tqdm import tqdm
 
-from scilpy.io.fetcher import get_home as get_scilpy_folder
+from scilpy import get_home as get_scilpy_folder
 
 
 THRESH_IMPORTANT = {

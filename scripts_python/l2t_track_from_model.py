@@ -101,7 +101,7 @@ def prepare_tracker(parser, args):
             dataset=subset, subj_idx=0, model=model, mask=tracking_mask,
             seed_generator=seed_generator, nbr_seeds=nbr_seeds,
             min_len_mm=args.min_length, max_len_mm=args.max_length,
-            compression_th=args.compress, nbr_processes=args.nbr_processes,
+            compression_th=args.compress_th, nbr_processes=args.nbr_processes,
             save_seeds=args.save_seeds, rng_seed=args.rng_seed,
             track_forward_only=args.track_forward_only,
             step_size_mm=args.step_size, algo=args.algo, theta=theta,
@@ -130,7 +130,7 @@ def main():
     assert_outputs_exist(parser, args, args.out_tractogram)
 
     verify_streamline_length_options(parser, args)
-    verify_compression_th(args.compress)
+    verify_compression_th(args.compress_th)
     verify_seed_options(parser, args)
 
     tracker, ref = prepare_tracker(parser, args)

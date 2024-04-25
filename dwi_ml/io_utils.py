@@ -21,6 +21,7 @@ def add_resample_or_compress_arg(p: ArgumentParser):
         help="Step size to resample the data (in mm). Default: None")
     g.add_argument(
         '--compress', type=float, metavar='r', const=0.01, nargs='?',
+        dest='compress_th',
         help="Compression ratio. Default: None. Default if set: 0.01.\n"
              "If neither step_size nor compress are chosen, streamlines "
              "will be kept \nas they are.")

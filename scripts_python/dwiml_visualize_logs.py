@@ -50,12 +50,15 @@ def _build_arg_parser():
                         "one, \nthey are shown superposed.")
     p.add_argument("--save_to_csv", metavar='my_file.csv',
                    help="If set, convert the resulting logs as a csv file.")
-    p.add_argument('--save_figures', metavar='folder/prefix', default='./',
+    p.add_argument('--save_figures', metavar='folder/prefix', const='./',
+                   nargs='?',
                    help="If set, saves the resulting figures in chosen "
-                        "folder. Default: ./out_\n"
+                        "folder. Default if set: ./out_\n"
                         "Figure names are: fig1, fig2, etc.")
     p.add_argument('--allow_missing', action='store_true',
                    help="If true, ignore experiments with missing logs.")
+    p.add_argument('--show_now', action='store_true',
+                   help="If set, show figures now.")
 
     g = p.add_argument_group("Figure options")
     g.add_argument("--graph", action='append', nargs='+', dest='graphs',
@@ -266,6 +269,9 @@ def main():
     assert_outputs_exist(parser, args, [], args.save_to_csv)
     parsed_graphs, graphs_ylims, graphs_operation = \
         _parse_graphs_arg(parser, args)
+    if not args.save_figures or args.show_now:
+        parser.error("This script will plot nothing. Choose either --show_now "
+                     "or --save_figures.")
     if args.save_figures is not None:
         if os.path.isdir(args.save_figures):
             args.save_figures = os.path.join(args.save_figures, 'out_')
@@ -329,8 +335,8 @@ def main():
                        xlim=args.xlim, remove_outliers=args.remove_outliers,
                        save_figs=args.save_figures)
 
-    plt.tight_layout()
-    plt.show()
+    if args.show_now:
+        plt.show()
 
 
 if __name__ == '__main__':

@@ -14,7 +14,7 @@ scilpy==2.0
 # Other important dependencies
 # -------
 bertviz==1.4.0  # For transformer's visu
-torch==1.13.*
+torch==2.2.0
 tqdm==4.64.*
 comet-ml>=3.22.0
 contextlib2==21.6.0

@@ -68,7 +68,7 @@ def main():
     subj_sft_data = subj_data.sft_data_list[streamline_group_idx]
     sft = subj_sft_data.as_sft()
 
-    sft = resample_or_compress(sft, args.step_size, args.compress)
+    sft = resample_or_compress(sft, args.step_size, args.compress_th)
     sft.to_vox()
     sft.to_corner()
 

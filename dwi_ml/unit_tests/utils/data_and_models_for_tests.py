@@ -5,7 +5,8 @@ from typing import List
 
 import torch
 
-from scilpy.io.fetcher import fetch_data, get_home
+from scilpy import get_home
+from scilpy.io.fetcher import fetch_data
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions

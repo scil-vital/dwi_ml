@@ -63,7 +63,7 @@ def main():
     # 1. Prepare fake model
     dg_args = check_args_direction_getter(args)
     model = CopyPrevDirModel(args.dg_key, dg_args, args.skip_first_point,
-                             args.step_size, args.compress)
+                             args.step_size, args.compress_th)
     model.set_context('visu')
 
     # 2. Load data through the tester

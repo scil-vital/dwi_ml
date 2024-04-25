@@ -7,7 +7,7 @@ import numpy as np
 from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
 
-from scilpy.viz.utils import get_colormap
+from scilpy.viz.color import get_lookup_table
 
 from dwi_ml.testing.projects.tt_visu_utils import (
     get_visu_params_from_options,
@@ -234,7 +234,7 @@ def color_sft_x_y_projections(
 
 def _color_sft_from_dpp(sft, key, cmap='viridis', vmin=None, vmax=None,
                         prepare_fig: bool = False, title=None, **kw):
-    cmap = get_colormap(cmap)
+    cmap = get_lookup_table(cmap)
     tmp = [np.squeeze(sft.data_per_point[key][s]) for s in range(len(sft))]
     data = np.hstack(tmp)
 

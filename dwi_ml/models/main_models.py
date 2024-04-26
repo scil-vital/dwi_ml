@@ -242,7 +242,9 @@ class ModelWithNeighborhood(MainModelAbstract):
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
         neighborhood_radius: int
+            Required if neighborhood type is not None.
         neighborhood_resolution: float
+            Required if neighborhood type is not None.
         """
         # Important. Neighborhood values must be set before super, to be
         # reused by ModelOneInputWithEmbedding no matter the order of execution

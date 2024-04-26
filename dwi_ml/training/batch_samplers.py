@@ -157,9 +157,12 @@ class DWIMLBatchIDSampler(Sampler):
 
     @classmethod
     def init_from_checkpoint(cls, dataset, checkpoint_state: dict,
-                             new_log_level):
-        batch_sampler = cls(dataset=dataset, log_level=new_log_level,
-                            **checkpoint_state)
+                             new_log_level=None):
+        if new_log_level is not None:
+            batch_sampler = cls(dataset=dataset, log_level=new_log_level,
+                                **checkpoint_state)
+        else:
+            batch_sampler = cls(dataset=dataset, **checkpoint_state)
 
         logging.info("Batch sampler's user-defined parameters: " +
                      format_dict_to_str(batch_sampler.params_for_checkpoint))

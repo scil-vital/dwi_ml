@@ -9,21 +9,21 @@ default, all logs are shown in a separate graph, up to 3 graphs per figure.
 The number of graphs per figure can be modified with --nb_plots_per_fig.
 
 You may also specify the logs you want to plot. Use the option --graph, with
-the name(s) of the logs to add to one graph. This option can be used many
-times. Ex:
->> --graph train_loss_monitor_per_epoch
->> --graph log1 --graph log2 log3
+the graph's title and the name(s) of the logs to add to one graph. This option
+can be used many times. Ex:
+>> --graph "Training loss" train_loss_monitor_per_epoch
+>> --graph "Some plot" log1 --graph "Two plots" log2 log3
 
 Optionally, you can add the 2-valued ylims for each graph. These value will
 supersede the given --ylim, if any.
->> --graph log1 0 100
+>> --graph "Some plot" log1 0 100
 
 Finally, you can also supply operations to apply to your logs, amongst:
 ['diff', 'sum']. Ex:
->> --graph diff(log1, log2) 0 100
+>> --graph "Training minus validation" diff(log1, log2) 0 100
 ** Note that we only accept one operation per graph. The following is not
 supported:
->> --graph diff(log1, log2) log 3 0 100
+>> --graph "Training minus validation" diff(log1, log2) log 3 0 100
 
 ------------------------------
 """
@@ -70,6 +70,9 @@ def _build_arg_parser():
     g.add_argument('--ylims', type=float, nargs=2, metavar='ymin ymax',
                    help="All graph's ylim. (Makes little sense with more "
                         "than one graph.)")
+    g.add_argument("--fig_size", metavar='x y', nargs=2, default=[10, 15],
+                   type=int,
+                   help="Figure size (x, y). Default: 10x15.")
 
     g = p.add_argument_group("Processing options")
     g.add_argument('--remove_outliers', action='store_true',
@@ -87,32 +90,37 @@ def _parse_graphs_arg(parser, args):
     if args.graphs is None:
         return None, None, None
     else:
-        graphs = []
+        graphs_logs = []
+        graphs_titles = []
         graphs_ylims = []
         graph_operations = []
-        for graph in args.graphs:
+        for graph_options in args.graphs:
             # Verify if gave the ylims.
-            if len(graph) > 1:
+            if len(graph_options) > 2:
                 try:
-                    min_y = float(graph[-2])
-                    max_y = float(graph[-1])
-                    _logs = graph[:-2]
+                    min_y = float(graph_options[-2])
+                    max_y = float(graph_options[-1])
+                    _title = graph_options[0]
+                    _logs = graph_options[1:-2]
                     _ylims = [min_y, max_y]
                 except ValueError:
                     try:
-                        _ = float(graph[-1])
+                        _ = float(graph_options[-1])
                         parser.error("For option --graph {}: you seem to have "
                                      "added a single float value at the end. "
-                                     "Ylim requires two values.".format(graph))
+                                     "Ylim requires two values."
+                                     .format(graph_options))
                     except ValueError:
                         # There does not seem to be a ylim.
-                        _logs = graph
+                        _title = graph_options[0]
+                        _logs = graph_options[1:]
                         _ylims = None
             else:
-                _logs = graph
+                _title = graph_options[0]
+                _logs = graph_options[1:]
                 _ylims = None
 
-            # Verify in gave an operation
+            # Verify if user gave an operation (diff or sum)
             _logs, operation = __parse_log_operations(parser, _logs)
 
             # Remove .npy to log names if added by user.
@@ -125,11 +133,12 @@ def _parse_graphs_arg(parser, args):
                 _logs[i] = f
 
             # All ok
-            graphs.append(_logs)
+            graphs_titles.append(_title)
+            graphs_logs.append(_logs)
             graphs_ylims.append(_ylims)
             graph_operations.append(operation)
 
-        return graphs, graphs_ylims, graph_operations
+        return graphs_titles, graphs_logs, graphs_ylims, graph_operations
 
 
 def __parse_log_operations(parser, graph):
@@ -266,20 +275,20 @@ def main():
     pil_logger.setLevel('WARNING')
 
     # Verifications
-    assert_outputs_exist(parser, args, [], args.save_to_csv)
-    parsed_graphs, graphs_ylims, graphs_operation = \
-        _parse_graphs_arg(parser, args)
     if not args.save_figures or args.show_now:
         parser.error("This script will plot nothing. Choose either --show_now "
                      "or --save_figures.")
+    assert_outputs_exist(parser, args, [], args.save_to_csv)
+    graphs_titles, graphs_logs, graphs_ylims, graphs_operation = \
+        _parse_graphs_arg(parser, args)
+
     if args.save_figures is not None:
         if os.path.isdir(args.save_figures):
+            # No prefix given.
             args.save_figures = os.path.join(args.save_figures, 'out_')
-        else:
-            # Maybe a prefix was added?
-            fig_path, prefix = os.path.split(args.save_figures)
-            if not os.path.isdir(fig_path):
-                parser.error("Output dir for figures does not exist.")
+        elif not os.path.isdir(os.path.split(args.save_figures)[0]):
+            # Prefix given, but directory does not exist.
+            parser.error("Output dir for figures does not exist.")
 
     # Loop on all experiments
     loaded_logs = {}  # dict of dicts
@@ -297,43 +306,42 @@ def main():
         # Loading
         logging.info("Loading logs from experiment {}.".format(exp_name))
         if args.graphs is None:
-            parsed_graphs, this_exp_dict = _load_all_logs(
-                parser, args, logs_path, parsed_graphs)
-
+            graphs_logs, this_exp_dict = _load_all_logs(
+                parser, args, logs_path, graphs_logs)
         else:
             this_exp_dict = _load_chosen_logs(parser, args, logs_path,
-                                              parsed_graphs, graphs_operation)
+                                              graphs_logs, graphs_operation)
         loaded_logs[exp_name] = this_exp_dict
 
     # Formatting the final graphs choice.
     if args.graphs is None:
-        parsed_graphs = [[log] for log in parsed_graphs]
-        graphs_ylims = [None for _ in parsed_graphs]
+        graph_titles = graphs_logs
+        graphs_logs = [[log] for log in graphs_logs]
+        graphs_ylims = [None for _ in graphs_logs]
         # graphs_operation = [None for _ in parsed_graphs]
     else:
-        parsed_graphs = [g if op is None else
-                         [_format_name_after_operation(*g, op)]
-                         for g, op in zip(parsed_graphs, graphs_operation)]
+        graphs_logs = [g if op is None else
+                       [_format_name_after_operation(*g, op)]
+                       for g, op in zip(graphs_logs, graphs_operation)]
 
-    # Final formatting of ylims, for graphs that did have another choice.
+    # Final formatting of ylims, for graphs that did not have another choice.
     if args.ylims:
         graphs_ylims = [args.ylims if ylim is None else ylim
                         for ylim in graphs_ylims]
 
+    _args = (loaded_logs, graphs_titles, graphs_logs, graphs_ylims,
+             args.nb_plots_per_fig)
+    kwargs = {'xlim': args.xlim,
+              'remove_outliers': args.remove_outliers,
+              'save_figs': args.save_figures,
+              'fig_size': args.fig_size}
     if args.save_to_csv:
         logging.info("Will save results in file {}".format(args.save_to_csv))
         with open(args.save_to_csv, 'w', newline='') as file:
             writer = csv.writer(file)
-            visualize_logs(loaded_logs, parsed_graphs, graphs_ylims,
-                           args.nb_plots_per_fig, writer=writer,
-                           xlim=args.xlim,
-                           remove_outliers=args.remove_outliers,
-                           save_figs=args.save_figures)
+            visualize_logs(*_args, writer=writer, **kwargs)
     else:
-        visualize_logs(loaded_logs, parsed_graphs, graphs_ylims,
-                       args.nb_plots_per_fig,
-                       xlim=args.xlim, remove_outliers=args.remove_outliers,
-                       save_figs=args.save_figures)
+        visualize_logs(*_args, **kwargs)
 
     if args.show_now:
         plt.show()

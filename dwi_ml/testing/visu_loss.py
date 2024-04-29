@@ -54,7 +54,8 @@ def run_all_visu_loss(tester, model: ModelWithDirectionGetter, args, names):
 
     # 5. Show histogram.
     if args.compute_histogram:
-        plot_histogram(losses, mean_loss_per_line, histogram_name)
+        plot_histogram(losses, mean_loss_per_line, histogram_name,
+                       args.fig_size)
 
     # 6. Colored SFT
     if args.save_colored_tractogram or args.save_colored_best_and_worst:
@@ -220,10 +221,13 @@ def combine_displacement_with_ref(out_dirs, sft, model):
     return sft
 
 
-def plot_histogram(losses, mean_per_line, histogram_name):
+def plot_histogram(losses, mean_per_line, histogram_name, fig_size=None):
     logging.info("Preparing histogram!")
     tmp = np.hstack(losses)
     fig, axs = plt.subplots(3, 1)
+    if fig_size is not None:
+        fig.set_figheight(fig_size[0])
+        fig.set_figwidth(fig_size[1])
     axs[0].hist(tmp, bins='auto')
     axs[0].set_title("Histogram of the losses per point")
     axs[1].hist(tmp, bins='auto', log=True)
@@ -237,7 +241,7 @@ def plot_histogram(losses, mean_per_line, histogram_name):
 def run_visu_save_colored_sft(
         losses: List[torch.Tensor], mean_losses: np.ndarray,
         sft: StatefulTractogram, save_whole_tractogram, colored_sft_name: str,
-        save_separate_best_and_worst: int, best_sft_name, worst_sft_name,
+        save_separate_best_and_worst: float, best_sft_name, worst_sft_name,
         colorbar_name: str, colormap: str = None, min_range: float = None,
         max_range: float = None):
     """

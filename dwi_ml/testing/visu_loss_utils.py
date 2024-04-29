@@ -37,6 +37,10 @@ def prepare_args_visu_loss(p: ArgumentParser):
     p.add_argument('--show_now', action='store_true',
                    help="If set, shows the matplotlib figures now (colorbar/"
                         "histogram). \nElse, only saves them.")
+    g.add_argument("--fig_size", metavar='x y', nargs=2, default=[10, 15],
+                   type=int,
+                   help="Figure size (x, y) for the histogram. "
+                        "Default: 10x15.")
 
     # Options
     g = add_memory_args(p)
@@ -51,7 +55,7 @@ def prepare_args_visu_loss(p: ArgumentParser):
     g.add_argument('--save_colored_tractogram', action='store_true',
                    help="If set, saves the tractogram with the loss per point "
                         "as \ndata_per_point (color).")
-    g.add_argument('--save_colored_best_and_worst', type=int, nargs='?',
+    g.add_argument('--save_colored_best_and_worst', type=float, nargs='?',
                    const='10', metavar='percentage',
                    help="If set, saves separately the worst x%% and best x%% "
                         "streamlines. \nOptional int to give is a number "

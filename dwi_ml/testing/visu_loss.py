@@ -252,7 +252,7 @@ def run_visu_save_colored_sft(
     logging.info("Adding losses as data per point:")
     sft, colorbar_fig = prepare_colors_from_loss(
         losses, sft, colormap, min_range, max_range)
-    print("Saving colorbar as {}".format(colorbar_name))
+    print("\n---> Saving colorbar as {}".format(colorbar_name))
     colorbar_fig.savefig(colorbar_name)
 
     if save_whole_tractogram:

@@ -908,7 +908,7 @@ class DWIMLAbstractTrainer:
         Returns the loss to be used for backpropagation.
         """
         # Encapsulated for easier management of child classes.
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n, _ = self.run_one_batch(data)
         self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
@@ -916,7 +916,7 @@ class DWIMLAbstractTrainer:
         """
         Computes the loss(es) for the current batch and updates monitors.
         """
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n, _ = self.run_one_batch(data)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 
@@ -999,6 +999,11 @@ class DWIMLAbstractTrainer:
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines)
+        n: int
+            The number of points in this batch
+        X: Any
+            Any other data returned when computing loss. Not used in the
+            trainer, but could be useful anywhere else.
         """
         raise NotImplementedError
 
@@ -1092,10 +1097,12 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         Returns
         -------
-        mean_loss : float
+        mean_loss : Tensor of shape (1,) ; float.
             The mean loss of the provided batch.
         n: int
             Total number of points for this batch.
+        eos_loss: Tensor
+            The EOS part of the loss at each point, stacked.
         """
         # Data interpolation has not been done yet. GPU computations are done
         # here in the main thread.

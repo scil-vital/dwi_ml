@@ -220,12 +220,14 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         Returns
         -------
-        If compress_loss or average_results:
-            Tuple(tensor, n)
-                The average loss and the n points averaged.
-        Else:
-            List[Tensor]
-                The loss for each point in each streamline.
+        loss: Tensor or List[Tensor]
+            If compress_loss or average_results: The average loss. Tensor
+            Else: The loss for each point in each streamline. List[Tensor]
+        n: int
+            The number of points in the batch.
+        eos_loss: Tensor
+            The EOS part of the loss at each point, stacked. (If compress_loss,
+            returns None; not implemented).
         """
         if self.compress_loss and not average_results:
             raise ValueError("Current implementation of compress_loss does "
@@ -249,26 +251,29 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         # Stack and compute loss based on child model's loss definition.
         outputs, target_dirs = self.stack_batch(outputs, target_dirs)
-        loss, n = self._compute_loss(outputs, target_dirs, tmp_average_results)
+        loss, n, eos_loss = self._compute_loss(
+            outputs, target_dirs, tmp_average_results)
 
         # Finalize
         if self.weight_loss_with_angle:
             loss = list(torch.split(loss, lengths))
             if self.add_eos:
-                eos_loss = [line_loss[-1] for line_loss in loss]
+                # No angle at last point = not weighting
+                last_point_loss = [line_loss[-1] for line_loss in loss]
+
+                # Weight other points
                 loss = [line_loss[:-1] for line_loss in loss]
                 loss = weight_value_with_angle(
                     values=loss, streamlines=None, dirs=target_dirs_copy)
+
+                # Combine back
                 for i in range(len(loss)):
-                    loss[i] = torch.hstack((loss[i], eos_loss[i]))
+                    loss[i] = torch.hstack((loss[i], last_point_loss[i]))
             else:
                 loss = weight_value_with_angle(
                     values=loss, streamlines=None, dirs=target_dirs_copy)
-            if not self.compress_loss:
-                if average_results:
-                    loss = torch.hstack(loss)
-                    return torch.mean(loss), len(loss)
-                return loss
+            # Stack back. Possibly, will resplit. But easier to read.
+            loss = torch.hstack(loss)
 
         if self.compress_loss:
             loss = list(torch.split(loss, lengths))
@@ -277,12 +282,12 @@ class AbstractDirectionGetterModel(torch.nn.Module):
                 compress_eps=self.compress_eps)
             logging.info("Converted {} data points into {} compressed data "
                          "points".format(sum(lengths), final_n))
-            return final_loss, final_n
+            return final_loss, final_n, None
         elif average_results:
-            return loss, n
+            return loss, n, eos_loss
         else:
             loss = list(torch.split(loss, lengths))
-            return loss
+            return loss, n, eos_loss
 
     @staticmethod
     def stack_batch(outputs, target_dirs):
@@ -449,9 +454,9 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
             loss_eos = binary_cross_entropy_eos(learned_eos, target_eos,
                                                 average_results)
 
-            return loss_dirs + self.eos_weight * loss_eos, n
+            return loss_dirs + self.eos_weight * loss_eos, n, loss_eos
         else:
-            return loss_dirs, n
+            return loss_dirs, n, None
 
     def _sample_tracking_direction_prob(self, *arg, **kwargs):
         raise ValueError("Regression models do not support probabilistic "
@@ -722,11 +727,16 @@ class SphereClassificationDG(AbstractSphereClassificationDG):
         # Gets values on the first dimension (one target per point).
         nll_losses = -learned_distribution.log_prob(targets_idx)
 
+        eos_loss = None
+        if self.add_eos:
+            eos_loss = -learned_distribution.log_prob(
+                torch.ones_like(targets_idx) * self.eos_class_idx)
+
         if average_results:
-            return _mean_and_weight(nll_losses)
+            return *_mean_and_weight(nll_losses), eos_loss
         else:
             n = 1
-            return nll_losses, n
+            return nll_losses, n, eos_loss
 
 
 class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
@@ -797,10 +807,15 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
         nll_losses = torch.sum(kl_loss(logits_per_class, targets_probs),
                                dim=-1)
 
+        eos_loss = None
+        if self.add_eos:
+            eos_loss = logits_per_class[:, -1]
+
         if average_results:
-            return _mean_and_weight(nll_losses)
+            return *_mean_and_weight(nll_losses), eos_loss
         else:
-            return nll_losses
+            n = 1
+            return nll_losses, n, eos_loss
 
 
 class SingleGaussianDG(AbstractDirectionGetterModel):
@@ -944,9 +959,9 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
             loss_eos = binary_cross_entropy_eos(learned_eos,
                                                 target_dirs[:, -1],
                                                 average_results)
-            return nll_loss + self.eos_weight * loss_eos, n
+            return nll_loss + self.eos_weight * loss_eos, n, loss_eos
         else:
-            return nll_loss, n
+            return nll_loss, n, None
 
     def _sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor],
@@ -1071,6 +1086,9 @@ class GaussianMixtureDG(AbstractDirectionGetterModel):
         See the doc for explanation on the formulas:
         https://dwi-ml.readthedocs.io/en/latest/formulas.html
         """
+        if self.add_eos:
+            raise NotImplementedError
+
         # Shape : [batch_size*seq_len, n_gaussians, 3] or
         #         [batch_size, n_gaussians, 3]
         mixture_logits, means, sigmas = \
@@ -1086,9 +1104,10 @@ class GaussianMixtureDG(AbstractDirectionGetterModel):
                                       dim=-1)
 
         if average_results:
-            return _mean_and_weight(nll_losses)
+            return *_mean_and_weight(nll_losses), None
         else:
-            return nll_losses
+            n = 1
+            return nll_losses, 1, None
 
     def _sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
@@ -1273,9 +1292,9 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
             loss_eos = binary_cross_entropy_eos(learned_eos,
                                                 target_dirs[:, -1],
                                                 average_results)
-            return nll_loss + self.eos_weight * loss_eos, n
+            return nll_loss + self.eos_weight * loss_eos, n, loss_eos
         else:
-            return nll_loss, n
+            return nll_loss, n, None
 
     def _sample_tracking_direction_prob(
             self, learned_fisher_params: Tuple[Tensor, Tensor],

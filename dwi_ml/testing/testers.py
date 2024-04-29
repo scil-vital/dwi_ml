@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
-from dwi_ml.models.main_models import (MainModelOneInput, MainModelAbstract,
+from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithDirectionGetter)
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
@@ -33,7 +33,7 @@ def load_sft_from_hdf5(subj_id: str, hdf5_file: str, subset_name: str,
     return sft
 
 
-class Tester:
+class TesterWithDirectionGetter:
     """
     Similar to the trainer, it loads the data, runs the model and gets the
     loss.
@@ -42,13 +42,13 @@ class Tester:
     from the hdf5. This choice allows to test the loss on various bundles for
     a better interpretation of the models' performances.
     """
-    def __init__(self, model: MainModelAbstract,
+    def __init__(self, model: ModelWithDirectionGetter,
                  subj_id, hdf5_file, subset_name,
                  batch_size: int = None, device: torch.device = None):
         """
         Parameters
         ----------
-        model: MainModelAbstract
+        model: ModelWithDirectionGetter
         subj_id: str
         hdf5_file: str
         subset_name: str
@@ -144,12 +144,8 @@ class Tester:
                 # 3. Compute loss: not averaged = one tensor of losses per
                 # streamline.
                 if compute_loss:
-                    if isinstance(self.model, ModelWithDirectionGetter):
-                        tmp_losses = self.model.compute_loss(
-                            batch_out, streamlines, average_results=False)
-                    else:
-                        tmp_losses = self.model.compute_loss(
-                            batch_out, streamlines)
+                    tmp_losses, n, eos_loss = self.model.compute_loss(
+                        batch_out, streamlines, average_results=False)
                     losses.extend([loss.cpu().numpy() for loss in tmp_losses])
 
                 # log_gpu_memory_usage()
@@ -180,7 +176,7 @@ class Tester:
         return None
 
 
-class TesterOneInput(Tester):
+class TesterOneInput(TesterWithDirectionGetter):
     model: MainModelOneInput
 
     def __init__(self, volume_group, *args, **kw):

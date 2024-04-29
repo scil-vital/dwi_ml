@@ -13,6 +13,9 @@ from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram, load_tractogram
 from matplotlib import pyplot as plt
 
+# toDo in scilpy2.0: use
+# from scilpy.tractograms.dps_and_dpp_management import add_data_as_color_dpp
+
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.testing.testers import load_sft_from_hdf5
 
@@ -84,12 +87,14 @@ def run_all_visu_loss(tester, model: ModelWithDirectionGetter, args, names):
 
 
 def prepare_colors_from_loss(
-        losses: List[torch.Tensor], sft: StatefulTractogram, colormap: str,
+        losses: List[np.ndarray], sft: StatefulTractogram, colormap: str,
         min_range: float = None, max_range: float = None):
+
     losses = np.concatenate(losses)
+
     # normalize between 0 and 1
-    # Keeping as tensor because the split method below is easier to use
-    # with torch.
+    # todo in scilpy 2.0:
+    #  sft, min_val, max_val = add_data_as_color_dpp()
     min_val = np.min(losses) if min_range is None else min_range
     max_val = np.max(losses) if max_range is None else max_range
     logging.info("Range of the colormap is considered to be: {:.2f} - {:.2f}"
@@ -239,7 +244,7 @@ def plot_histogram(losses, mean_per_line, histogram_name, fig_size=None):
 
 
 def run_visu_save_colored_sft(
-        losses: List[torch.Tensor], mean_losses: np.ndarray,
+        losses: List[np.ndarray], mean_losses: np.ndarray,
         sft: StatefulTractogram, save_whole_tractogram, colored_sft_name: str,
         save_separate_best_and_worst: float, best_sft_name, worst_sft_name,
         colorbar_name: str, colormap: str = None, min_range: float = None,
@@ -250,8 +255,13 @@ def run_visu_save_colored_sft(
     assert save_whole_tractogram or save_separate_best_and_worst
 
     logging.info("Adding losses as data per point:")
+    sft.data_per_point['losses'] = [s[:, None] for s in losses]
+
     sft, colorbar_fig = prepare_colors_from_loss(
         losses, sft, colormap, min_range, max_range)
+    print("Colored tractogram will have dpp keys: {}"
+          .format(list(sft.data_per_point.keys())))
+
     print("\n---> Saving colorbar as {}".format(colorbar_name))
     colorbar_fig.savefig(colorbar_name)
 
@@ -263,15 +273,11 @@ def run_visu_save_colored_sft(
         nb = int(save_separate_best_and_worst / 100 * len(sft))
         best_idx, worst_idx = pick_best_and_worst(nb, mean_losses)
 
-        best_streamlines = [sft.streamlines[i] for i in best_idx]
-        worst_streamlines = [sft.streamlines[i] for i in worst_idx]
-        best_sft = sft.from_sft(best_streamlines, sft)
-        worst_sft = sft.from_sft(worst_streamlines, sft)
         print("\n---> Saving best and worst colored streamlines as {} \nand {}"
               .format(best_sft_name, worst_sft_name))
 
-        save_tractogram(best_sft, best_sft_name)
-        save_tractogram(worst_sft, worst_sft_name)
+        save_tractogram(sft[best_idx], best_sft_name)
+        save_tractogram(sft[worst_idx], worst_sft_name)
 
 
 def run_visu_save_colored_displacement(

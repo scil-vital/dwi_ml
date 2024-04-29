@@ -96,7 +96,7 @@ class Tester:
             to_vox, to_corner, possibly resampled or compressed.
         outputs: Any
             Your model output.
-        losses: List[Tensor]
+        losses: List[np.ndarray]
         mean_per_line: np.ndarray
         """
         sft = resample_or_compress(sft, self.model.step_size,

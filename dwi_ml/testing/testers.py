@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
+from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithDirectionGetter)
 from dwi_ml.testing.utils import prepare_dataset_one_subj
@@ -97,7 +98,11 @@ class TesterWithDirectionGetter:
         outputs: Any
             Your model output.
         losses: List[np.ndarray]
+            The loss per point, per streamline.
         mean_per_line: np.ndarray
+            The mean loss per streamline.
+        eos_losses: List[np.ndarray]
+            The eos part of the loss, per point per streamline.
         """
         sft = resample_or_compress(sft, self.model.step_size,
                                    self.model.compress_lines)
@@ -115,7 +120,9 @@ class TesterWithDirectionGetter:
         # Prepare output formats.
         outputs = None
         losses = []
+        eos_losses = []
         mean_per_line = None
+        mean_per_line_eos = None
 
         # Run all batches
         batch_start = 0
@@ -144,11 +151,15 @@ class TesterWithDirectionGetter:
                 # 3. Compute loss: not averaged = one tensor of losses per
                 # streamline.
                 if compute_loss:
-                    tmp_losses, n, eos_loss = self.model.compute_loss(
+                    tmp_losses, n, tmp_eos_losses = self.model.compute_loss(
                         batch_out, streamlines, average_results=False)
                     losses.extend([loss.cpu().numpy() for loss in tmp_losses])
+                    if tmp_eos_losses is not None:
+                        eos_losses.extend([eos_loss.cpu().numpy()
+                                           for eos_loss in tmp_eos_losses])
 
-                # log_gpu_memory_usage()
+                if logging.getLogger().level == logging.DEBUG:
+                    log_gpu_memory_usage()
 
                 # Prepare next batch
                 batch_start = batch_end
@@ -170,7 +181,27 @@ class TesterWithDirectionGetter:
                   .format(len(tmp), np.mean(tmp), np.std(tmp),
                           np.min(tmp), np.max(tmp)))
 
-        return sft, outputs, losses, mean_per_line
+            if self.model.direction_getter.add_eos:
+                mean_per_line_eos = np.asarray([np.mean(loss)
+                                                for loss in eos_losses])
+
+                print("-------------\n"
+                      "EOS part of the loss:")
+                print(u"    Average per streamline for the {} streamlines is: "
+                      u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
+                      .format(len(sft), np.mean(mean_per_line_eos),
+                              np.std(mean_per_line_eos),
+                              np.min(mean_per_line_eos),
+                              np.max(mean_per_line_eos)))
+
+                tmp = np.hstack(eos_losses)
+                print(u"    Mean, averaged over all {} points, is: "
+                      u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
+                      .format(len(tmp), np.mean(tmp), np.std(tmp),
+                              np.min(tmp), np.max(tmp)))
+
+        return (sft, outputs, losses, mean_per_line,
+                eos_losses, mean_per_line_eos)
 
     def _prepare_inputs(self, streamlines):
         return None

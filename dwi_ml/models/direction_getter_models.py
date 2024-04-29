@@ -42,8 +42,6 @@ def init_2layer_fully_connected(input_size: int, output_size: int):
 
 def binary_cross_entropy_eos(learned_eos, target_eos, average_results=True):
     reduction = 'mean' if average_results else 'none'
-
-    learned_eos = torch.sigmoid(learned_eos)
     losses_eos = torch.nn.functional.binary_cross_entropy(
         learned_eos, target_eos, reduction=reduction)
     return losses_eos
@@ -225,8 +223,9 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             Else: The loss for each point in each streamline. List[Tensor]
         n: int
             The number of points in the batch.
-        eos_loss: Tensor
-            The EOS part of the loss at each point, stacked. (If compress_loss,
+        eos_error: Tensor
+            The absolute difference between expected EOS probability and
+            resulting EOS probability at each point. (If compress_loss,
             returns None; not implemented).
         """
         if self.compress_loss and not average_results:
@@ -251,10 +250,18 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         # Stack and compute loss based on child model's loss definition.
         outputs, target_dirs = self.stack_batch(outputs, target_dirs)
-        loss, n, eos_loss = self._compute_loss(
+        loss, n, eos_prob = self._compute_loss(
             outputs, target_dirs, tmp_average_results)
 
-        # Finalize
+        # Finalize eos_prob:
+        eos_error = None
+        if eos_prob is not None:
+            eos_prob = list(torch.split(eos_prob, lengths))
+            # Expecting prob 0 everywhere and prob 1 at last position
+            eos_error = [torch.abs(s - torch.as_tensor([0]*(len(s)-1) + [1]))
+                         for s in eos_prob]
+
+        # Possibly weight with angle
         if self.weight_loss_with_angle:
             loss = list(torch.split(loss, lengths))
             if self.add_eos:
@@ -275,6 +282,7 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             # Stack back. Possibly, will resplit. But easier to read.
             loss = torch.hstack(loss)
 
+        # Possibly compress or average.
         if self.compress_loss:
             loss = list(torch.split(loss, lengths))
             final_loss, final_n = compress_streamline_values(
@@ -284,10 +292,12 @@ class AbstractDirectionGetterModel(torch.nn.Module):
                          "points".format(sum(lengths), final_n))
             return final_loss, final_n, None
         elif average_results:
-            return loss, n, eos_loss
+            # Loss: already averaged, often through torch's methods.
+            eos_error = [torch.mean(s) for s in eos_error]
+            return loss, n, eos_error
         else:
             loss = list(torch.split(loss, lengths))
-            return loss, n, eos_loss
+            return loss, n, eos_error
 
     @staticmethod
     def stack_batch(outputs, target_dirs):
@@ -446,15 +456,17 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
 
         # 2. EOS loss:
         if self.add_eos:
-            # Using last dim as EOS
-            learned_eos = learned_directions[:, 3]
-            target_eos = target_dirs[:, 3]
+            target_eos = target_dirs[:, 3]  # 0 or 1 label
+
+            # Using last dim as EOS; setting as prob 0 to 1.
+            eos_prob = learned_directions[:, 3]
+            eos_prob = torch.sigmoid(eos_prob)
 
             # Binary cross-entropy
-            loss_eos = binary_cross_entropy_eos(learned_eos, target_eos,
+            loss_eos = binary_cross_entropy_eos(eos_prob, target_eos,
                                                 average_results)
 
-            return loss_dirs + self.eos_weight * loss_eos, n, loss_eos
+            return loss_dirs + self.eos_weight * loss_eos, n, eos_prob
         else:
             return loss_dirs, n, None
 
@@ -713,30 +725,44 @@ class SphereClassificationDG(AbstractSphereClassificationDG):
         Compute the negative log-likelihood for the targets using the
         model's logits.
 
+        Parameters
+        ----------
         logits_per_class: Tensor of shape [nb_points, nb_class]
+            The log values. If the learned probabilitilies go from 0-1, then
+            the log values range in [-inf, 0].
         targets_idx: Tensor of shape[nb_points], the target class indices.
         """
         # Create an official probability distribution from the logits
         # (i.e. applies a log-softmax).
         # By default, done on the last dim (the classes, for each point).
+        # Note: logit is ln(p / (1-p)). Its shape is not at all the same as
+        # log-prob. We create the distribution from logits, but we get the loss
+        # from log of the probability.
         learned_distribution = Categorical(logits=logits_per_class)
 
-        # Target is an index for each point.
-
-        # Get the logit at target's index,
+        # Get the logit at target's index, its real class.
         # Gets values on the first dimension (one target per point).
+        # If the probability is high at the correct class, the NLL will be 0.
+        # If the probability is high at the correct class, the NLL will be inf.
         nll_losses = -learned_distribution.log_prob(targets_idx)
 
-        eos_loss = None
+        eos_prob = None
         if self.add_eos:
-            eos_loss = -learned_distribution.log_prob(
-                torch.ones_like(targets_idx) * self.eos_class_idx)
+            # Trying to find which value we can get to investigate what the
+            # model learns about EOS. If we get the negative log-likelihood of
+            # the last class, should be 0 at the end of streamlines and
+            # high else-where. We will use the prob; not the log-prob. This way
+            # we know it should be 1 in the middle of the streamline.
+            eos_prob = learned_distribution.probs[:, self.eos_class_idx]
+            # Note. Same as
+            # torch.exp(learned_distribution.log_prob(
+            #    torch.ones_like(targets_idx) * self.eos_class_idx))
 
         if average_results:
-            return *_mean_and_weight(nll_losses), eos_loss
+            return *_mean_and_weight(nll_losses), eos_prob
         else:
             n = 1
-            return nll_losses, n, eos_loss
+            return nll_losses, n, eos_prob
 
 
 class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
@@ -807,15 +833,17 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
         nll_losses = torch.sum(kl_loss(logits_per_class, targets_probs),
                                dim=-1)
 
-        eos_loss = None
+        eos_prob = None
         if self.add_eos:
-            eos_loss = logits_per_class[:, -1]
+            # Use torch to convert to probs.
+            dist = Categorical(logits=logits_per_class)
+            eos_prob = dist.probs[:, -1]
 
         if average_results:
-            return *_mean_and_weight(nll_losses), eos_loss
+            return *_mean_and_weight(nll_losses), eos_prob
         else:
             n = 1
-            return nll_losses, n, eos_loss
+            return nll_losses, n, eos_prob
 
 
 class SingleGaussianDG(AbstractDirectionGetterModel):
@@ -928,9 +956,9 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         """
         # 1. Main loss
         means, sigmas = learned_gaussian_params
-        learned_eos = None
+        eos_prob = None
         if self.add_eos:
-            learned_eos = means[:, -1]
+            eos_prob = means[:, -1]
             means = means[:, 0:3]
 
         # Create an official function-probability distribution from the means
@@ -955,11 +983,15 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
 
         # 2. EOS loss:
         if self.add_eos:
+            target_eos = target_dirs[:, 3]  # 0 or 1 label
+
+            # Using last dim as EOS; setting as prob 0 to 1.
+            eos_prob = torch.sigmoid(eos_prob)
+
             # Binary cross-entropy
-            loss_eos = binary_cross_entropy_eos(learned_eos,
-                                                target_dirs[:, -1],
+            loss_eos = binary_cross_entropy_eos(eos_prob, target_eos,
                                                 average_results)
-            return nll_loss + self.eos_weight * loss_eos, n, loss_eos
+            return nll_loss + self.eos_weight * loss_eos, n, eos_prob
         else:
             return nll_loss, n, None
 
@@ -1272,9 +1304,9 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         """
         # mu.shape : [all_point, 4]. 3 first values are x, y, z. Last is EOS.
         mu, kappa = learned_fisher_params
-        learned_eos = None
+        eos_prob = None
         if self.add_eos:
-            learned_eos = mu[:, 3]
+            eos_prob = mu[:, 3]
             mu = mu[:, 0:3]
 
         # 1. Main loss
@@ -1288,11 +1320,15 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
 
         # 2. EOS loss:
         if self.add_eos:
+            target_eos = target_dirs[:, 3]  # 0 or 1 label
+
+            # Using last dim as EOS; setting as prob 0 to 1.
+            eos_prob = torch.sigmoid(eos_prob)
+
             # Binary cross-entropy
-            loss_eos = binary_cross_entropy_eos(learned_eos,
-                                                target_dirs[:, -1],
+            loss_eos = binary_cross_entropy_eos(eos_prob, target_eos,
                                                 average_results)
-            return nll_loss + self.eos_weight * loss_eos, n, loss_eos
+            return nll_loss + self.eos_weight * loss_eos, n, eos_prob
         else:
             return nll_loss, n, None
 

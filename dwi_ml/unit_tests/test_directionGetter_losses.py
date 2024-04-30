@@ -120,7 +120,8 @@ def _verify_loss(streamline: Union[torch.Tensor, list],
 
     # Compute loss and verify
     computed_loss, _, _ = model.compute_loss(fake_model_outputs,
-                                             target_streamlines)
+                                             target_streamlines,
+                                             return_eos_probs=True)
 
     assert np.allclose(computed_loss, expected_loss, atol=tol), \
         "Expected loss {} but got {}.\n" \

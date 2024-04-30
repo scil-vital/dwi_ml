@@ -20,14 +20,15 @@ def prepare_args_visu_loss(p: ArgumentParser):
         '--streamlines_file',
         help="Optionally, instead of using streamlines in the hdf5, you may\n"
              "provide your own streamlines to use.\n"
-             "Use with care: they must correspond with the hdf5's input data.\n"
+             "Use with care: they must correspond with the hdf5's input "
+             "data.\n"
              "Offered for easier visualisation of sub-divisions of your test\n"
              "tractogram.")
     p.add_argument(
         '--out_prefix', metavar='name',
         help="Prefix for the outputs. Do not include a path. Suffixes will "
              "be:\n"
-             "--show_histogram: _histogram.png\n"
+             "--show_histogram: _histogram.png / _histogram_eos_errors.png\n"
              "--save_colored_tractogram: _colored.trk\n"
              "  (or _colored_clippedm-M.trk with range options)\n"
              "--save_colored_from_eos: _colored_eos.trk\n"
@@ -56,7 +57,9 @@ def prepare_args_visu_loss(p: ArgumentParser):
     # --------
     g = p.add_argument_group("Options to save the histogram")
     g.add_argument('--compute_histogram', action='store_true',
-                   help="If set, plots the histogram of losses (per point).")
+                   help="If set, plots the histogram of losses (per point).\n"
+                        "If model uses EOS, a histogram of the EOS errors "
+                        "will also be saved.")
 
     # --------
     g = p.add_argument_group("Options to save loss as a colored SFT")
@@ -79,15 +82,27 @@ def prepare_args_visu_loss(p: ArgumentParser):
                    help='Superior range.')
 
     # --------
-    g = p.add_argument_group("Options to save the EOS part of the loss as a "
+    g = p.add_argument_group("Options to save the EOS probability as a "
                              "colored SFT")
-    g.add_argument('--save_colored_eos', action='store_true',
-                   help="If set, saves the tractogram with the eos part of "
-                        "the loss per point as \ndata_per_point (color).")
-    g.add_argument('--min_range_eos', type=float, metavar='m',
+    g.add_argument('--save_colored_eos_probs', action='store_true',
+                   help="If set, saves the tractogram with the EOS "
+                        "probability as \ndata_per_point (color).")
+    g.add_argument('--min_range_eos_probs', type=float, metavar='m',
                    help="Inferior range of the colormap. If any loss is lower"
                         "than that \nvalue, they will be clipped.")
-    g.add_argument('--max_range_eos', type=float, metavar='M',
+    g.add_argument('--max_range_eos_probs', type=float, metavar='M',
+                   help='Superior range.')
+
+    # --------
+    g = p.add_argument_group("Options to save the EOS probability as a "
+                             "colored SFT")
+    g.add_argument('--save_colored_eos_errors', action='store_true',
+                   help="If set, saves the tractogram with the EOS "
+                        "probability as \ndata_per_point (color).")
+    g.add_argument('--min_range_eos_errors', type=float, metavar='m',
+                   help="Inferior range of the colormap. If any loss is lower"
+                        "than that \nvalue, they will be clipped.")
+    g.add_argument('--max_range_eos_errors', type=float, metavar='M',
                    help='Superior range.')
 
     # --------
@@ -103,6 +118,18 @@ def prepare_args_visu_loss(p: ArgumentParser):
     add_overwrite_arg(p)
     add_verbose_arg(p)
     add_reference_arg(p)
+
+
+def _get_suffix_clipped(min_range, max_range):
+    if min_range is not None and max_range is not None:
+        suffix = "_clipped{}-{}".format(min_range, max_range)
+    elif min_range is not None:
+        suffix = "_clipped{}".format(min_range)
+    elif max_range is not None:
+        suffix = "_clipped{}".format(max_range)
+    else:
+        suffix = ''
+    return suffix
 
 
 def visu_checks(args, parser):
@@ -129,7 +156,8 @@ def visu_checks(args, parser):
     out_files = []
     histogram_name, histogram_name_eos = (None, None)
     colored_sft_name, colorbar_name = (None, None)
-    colored_eos_name, colorbar_eos_name = (None, None)
+    colored_eos_probs_name, colorbar_eos_probs_name = (None, None)
+    colored_eos_errors_name, colorbar_eos_errors_name = (None, None)
     colored_best_name, colored_worst_name = (None, None)
     displacement_sft_name = None
 
@@ -143,14 +171,7 @@ def visu_checks(args, parser):
         out_files += [histogram_name, histogram_name_eos]
 
     if args.save_colored_tractogram or args.save_colored_best_and_worst:
-        if args.min_range is not None and args.max_range is not None:
-            suffix = "_clipped{}-{}".format(args.min_range, args.max_range)
-        elif args.min_range is not None:
-            suffix = "_clipped{}".format(args.min_range)
-        elif args.max_range is not None:
-            suffix = "_clipped{}".format(args.max_range)
-        else:
-            suffix = ''
+        suffix = _get_suffix_clipped(args.min_range, args.max_range)
 
         if args.save_colored_tractogram:
             colored_sft_name = prefix + '_colored' + suffix + '.trk'
@@ -166,19 +187,21 @@ def visu_checks(args, parser):
         colorbar_name = prefix + '_colorbar' + suffix + '.png'
         out_files += [colorbar_name]
 
-    if args.save_colored_eos:
-        if args.min_range_eos is not None and args.max_range_eos is not None:
-            suffix = "_clipped{}-{}".format(args.min_range_eos,
-                                            args.max_range_eos)
-        elif args.min_range is not None:
-            suffix = "_clipped{}".format(args.min_range_eos)
-        elif args.max_range is not None:
-            suffix = "_clipped{}".format(args.max_range_eos)
-        else:
-            suffix = ''
-        colored_eos_name = prefix + '_colored_eos' + suffix + '.trk'
-        colorbar_eos_name = prefix + '_colorbar_eos' + suffix + '.png'
-        out_files += [colored_eos_name, colorbar_eos_name]
+    if args.save_colored_eos_probs:
+        suffix = _get_suffix_clipped(args.min_range_eos_probs,
+                                     args.max_range_eos_probs)
+
+        colored_eos_probs_name = prefix + '_colored_eos_probs' + suffix + '.trk'
+        colorbar_eos_probs_name = prefix + '_colorbar_eos_probs' + suffix + '.png'
+        out_files += [colored_eos_probs_name, colorbar_eos_probs_name]
+
+    if args.save_colored_eos_errors:
+        suffix = _get_suffix_clipped(args.min_range_eos_errors,
+                                     args.max_range_eos_errors)
+
+        colored_eos_errors_name = prefix + '_colored_eos_errors' + suffix + '.trk'
+        colorbar_eos_errors_name = prefix + '_colorbar_eos_errors' + suffix + '.png'
+        out_files += [colored_eos_errors_name, colorbar_eos_errors_name]
 
     if args.save_displacement:
         displacement_sft_name = prefix + '_displacement.trk'
@@ -196,5 +219,6 @@ def visu_checks(args, parser):
 
     return (histogram_name, histogram_name_eos, colored_sft_name,
             colorbar_name, colored_best_name, colored_worst_name,
-            colored_eos_name, colorbar_eos_name,
+            colored_eos_probs_name, colorbar_eos_probs_name,
+            colored_eos_errors_name, colorbar_eos_errors_name,
             displacement_sft_name)

@@ -101,8 +101,12 @@ class TesterWithDirectionGetter:
             The loss per point, per streamline.
         mean_per_line: np.ndarray
             The mean loss per streamline.
-        eos_losses: List[np.ndarray]
-            The eos part of the loss, per point per streamline.
+        eos_probs: List[np.ndarray]
+            The probability per point.
+        eos_errors: List[np.ndarray]
+            The absolute difference between EOS probability and real EOS value.
+        mean_per_line_eos: np.ndarray
+            The mean eos error per line.
         """
         sft = resample_or_compress(sft, self.model.step_size,
                                    self.model.compress_lines)
@@ -120,9 +124,9 @@ class TesterWithDirectionGetter:
         # Prepare output formats.
         outputs = None
         losses = []
-        eos_losses = []
+        eos_probs = []
         mean_per_line = None
-        mean_per_line_eos = None
+        eos_errors, mean_per_line_eos = (None, None)
 
         # Run all batches
         batch_start = 0
@@ -151,12 +155,13 @@ class TesterWithDirectionGetter:
                 # 3. Compute loss: not averaged = one tensor of losses per
                 # streamline.
                 if compute_loss:
-                    tmp_losses, n, tmp_eos_losses = self.model.compute_loss(
-                        batch_out, streamlines, average_results=False)
+                    tmp_losses, n, tmp_eos_probs = self.model.compute_loss(
+                        batch_out, streamlines, average_results=False,
+                        return_eos_probs=True)
                     losses.extend([loss.cpu().numpy() for loss in tmp_losses])
-                    if tmp_eos_losses is not None:
-                        eos_losses.extend([eos_loss.cpu().numpy()
-                                           for eos_loss in tmp_eos_losses])
+                    if tmp_eos_probs is not None:
+                        eos_probs.extend([eos_loss.cpu().numpy()
+                                          for eos_loss in tmp_eos_probs])
 
                 if logging.getLogger().level == logging.DEBUG:
                     log_gpu_memory_usage()
@@ -182,26 +187,32 @@ class TesterWithDirectionGetter:
                           np.min(tmp), np.max(tmp)))
 
             if self.model.direction_getter.add_eos:
+                # Expecting prob 0 everywhere and prob 1 at last position
+                eos_errors = [
+                    np.abs(s - np.asarray([0] * (len(s) - 1) + [1]))
+                    for s in eos_probs]
+
                 mean_per_line_eos = np.asarray([np.mean(loss)
-                                                for loss in eos_losses])
+                                                for loss in eos_errors])
 
                 print("-------------\n"
-                      "EOS part of the loss:")
-                print(u"    Average per streamline for the {} streamlines is: "
-                      u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
+                      "EOS error:")
+                print(u"    Average EOS error per streamline for the {} "
+                      u"streamlines is: {:.4f} \u00B1 {:.4f}. "
+                      u"Range: [{:.4f} - {:.4f}]"
                       .format(len(sft), np.mean(mean_per_line_eos),
                               np.std(mean_per_line_eos),
                               np.min(mean_per_line_eos),
                               np.max(mean_per_line_eos)))
 
-                tmp = np.hstack(eos_losses)
-                print(u"    Mean, averaged over all {} points, is: "
+                tmp = np.hstack(eos_errors)
+                print(u"    Mean, EOS error averaged over all {} points, is: "
                       u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
                       .format(len(tmp), np.mean(tmp), np.std(tmp),
                               np.min(tmp), np.max(tmp)))
 
         return (sft, outputs, losses, mean_per_line,
-                eos_losses, mean_per_line_eos)
+                eos_probs, eos_errors, mean_per_line_eos)
 
     def _prepare_inputs(self, streamlines):
         return None

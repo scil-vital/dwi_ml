@@ -908,7 +908,9 @@ class DWIMLAbstractTrainer:
         Returns the loss to be used for backpropagation.
         """
         # Encapsulated for easier management of child classes.
-        mean_local_loss, n, _ = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(data)
+
+        # mean loss is a Tensor of a single value. item() converts to float
         self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
@@ -1101,8 +1103,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
             The mean loss of the provided batch.
         n: int
             Total number of points for this batch.
-        eos_loss: Tensor
-            The EOS part of the loss at each point, stacked.
         """
         # Data interpolation has not been done yet. GPU computations are done
         # here in the main thread.
@@ -1142,11 +1142,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # (batch loader will do it depending on training / valid)
         targets = self.batch_loader.add_noise_streamlines_loss(targets,
                                                                self.device)
-        results = self.model.compute_loss(model_outputs, targets,
-                                          average_results=True)
+        mean_loss, n = self.model.compute_loss(model_outputs, targets,
+                                               average_results=True)
 
         if self.use_gpu:
             log_gpu_memory_usage(logger)
 
-        # The mean tensor is a single value. Converting to float using item().
-        return results
+        return mean_loss, n

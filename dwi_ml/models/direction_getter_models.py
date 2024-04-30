@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from math import ceil
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Optional
 
 import dipy.data
 import numpy as np
@@ -204,7 +204,8 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         return target_dirs
 
     def compute_loss(self, outputs: List[Tensor],
-                     target_streamlines: List[Tensor], average_results=True):
+                     target_streamlines: List[Tensor], average_results=True,
+                     return_eos_probs=False):
         """
         Parameters
         ----------
@@ -214,7 +215,10 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             The streamlines. Directions will be computed and formatted based
             on child class requirements.
         average_results: bool
-            If true, returns the average over all values.
+            If true, returns the average over all values instead of the value
+            per point.
+        return_eos_probs: bool
+            If True, returns the EOS probability at each point.
 
         Returns
         -------
@@ -223,10 +227,10 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             Else: The loss for each point in each streamline. List[Tensor]
         n: int
             The number of points in the batch.
-        eos_error: Tensor
-            The absolute difference between expected EOS probability and
-            resulting EOS probability at each point. (If compress_loss,
-            returns None; not implemented).
+        eos_probs: Tensor or List[Tensor]
+            The computed EOS probability at each point (or the average).
+            (If self.compress_loss, returns None; not implemented).
+            (Only returned if return_eos_probs).
         """
         if self.compress_loss and not average_results:
             raise ValueError("Current implementation of compress_loss does "
@@ -250,18 +254,10 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
         # Stack and compute loss based on child model's loss definition.
         outputs, target_dirs = self.stack_batch(outputs, target_dirs)
-        loss, n, eos_prob = self._compute_loss(
-            outputs, target_dirs, tmp_average_results)
+        loss, n, eos_probs = self._compute_loss(
+            outputs, target_dirs, tmp_average_results, return_eos_probs)
 
-        # Finalize eos_prob:
-        eos_error = None
-        if eos_prob is not None:
-            eos_prob = list(torch.split(eos_prob, lengths))
-            # Expecting prob 0 everywhere and prob 1 at last position
-            eos_error = [torch.abs(s - torch.as_tensor([0]*(len(s)-1) + [1]))
-                         for s in eos_prob]
-
-        # Possibly weight with angle
+        # Possibly weight loss with angle
         if self.weight_loss_with_angle:
             loss = list(torch.split(loss, lengths))
             if self.add_eos:
@@ -285,19 +281,25 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Possibly compress or average.
         if self.compress_loss:
             loss = list(torch.split(loss, lengths))
-            final_loss, final_n = compress_streamline_values(
+            loss, n = compress_streamline_values(
                 streamlines=None, dirs=target_dirs_copy, values=loss,
                 compress_eps=self.compress_eps)
             logging.info("Converted {} data points into {} compressed data "
-                         "points".format(sum(lengths), final_n))
-            return final_loss, final_n, None
+                         "points".format(sum(lengths), n))
+            eos_probs = None
         elif average_results:
             # Loss: already averaged, often through torch's methods.
-            eos_error = [torch.mean(s) for s in eos_error]
-            return loss, n, eos_error
+            if return_eos_probs and eos_probs is not None:
+                eos_probs = torch.mean(eos_probs)
         else:
             loss = list(torch.split(loss, lengths))
-            return loss, n, eos_error
+            if return_eos_probs and eos_probs is not None:
+                eos_probs = list(torch.split(eos_probs, lengths))
+
+        if return_eos_probs:
+            return loss, n, eos_probs
+        else:
+            return loss, n
 
     @staticmethod
     def stack_batch(outputs, target_dirs):
@@ -307,19 +309,22 @@ class AbstractDirectionGetterModel(torch.nn.Module):
 
     def _compute_loss(
             self, outputs: Tensor, target_dirs: Tensor,
-            average_results=True) -> Union[Tuple[Tensor, int], Tensor]:
+            average_results=True, return_eos_probs=False
+    ) -> Tuple[Tensor, int, Optional[Tensor]]:
         """
         Expecting a single tensor.
 
         Returns
         -------
-        if average_results: Tuple
-            mean_loss: Tensor
-                Our direction getters' forward models output a single tensor,
-                from concatenated streamlines.
-            n: int, Total number of data points in this batch.
-        else:
-            losses: Tensor of shape (n, )
+        loss: Tensor
+            If average_results: Tensor of shape (1, ); equivalent of a float.
+            Else: Tensor of shape (nb_points, ): loss per point.
+        n: int
+            Total number of data points in this batch.
+        eos_probs:
+            If not self.add_eos: None
+            If not return_eos_probs: None
+            Else: Tensor of shape(nb_points, ): EOS probability per point
         """
         raise NotImplementedError
 
@@ -444,7 +449,7 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
                                      add_eos=self.add_eos)
 
     def _compute_loss(self, learned_directions: Tensor, target_dirs: Tensor,
-                      average_results=True):
+                      average_results=True, return_eos_probs=False):
 
         # 1. Main loss:
         loss_dirs = self._compute_loss_dir(learned_directions[:, 0:3],
@@ -466,7 +471,11 @@ class AbstractRegressionDG(AbstractDirectionGetterModel):
             loss_eos = binary_cross_entropy_eos(eos_prob, target_eos,
                                                 average_results)
 
-            return loss_dirs + self.eos_weight * loss_eos, n, eos_prob
+            loss_dirs = loss_dirs + self.eos_weight * loss_eos
+            if return_eos_probs:
+                return loss_dirs, n, eos_prob
+            else:
+                return loss_dirs, n, None
         else:
             return loss_dirs, n, None
 
@@ -720,7 +729,7 @@ class SphereClassificationDG(AbstractSphereClassificationDG):
         return outputs, target_dirs
 
     def _compute_loss(self, logits_per_class: Tensor, targets_idx: Tensor,
-                      average_results=True):
+                      average_results=True, return_eos_probs=False):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
@@ -747,7 +756,7 @@ class SphereClassificationDG(AbstractSphereClassificationDG):
         nll_losses = -learned_distribution.log_prob(targets_idx)
 
         eos_prob = None
-        if self.add_eos:
+        if self.add_eos and return_eos_probs:
             # Trying to find which value we can get to investigate what the
             # model learns about EOS. If we get the negative log-likelihood of
             # the last class, should be 0 at the end of streamlines and
@@ -793,7 +802,7 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
         return target_idx
 
     def _compute_loss(self, logits_per_class: Tensor, targets_probs: Tensor,
-                      average_results=True):
+                      average_results=True, return_eos_probs=False):
         """
         Compute the negative log-likelihood for the targets using the
         model's logits.
@@ -834,7 +843,7 @@ class SmoothSphereClassificationDG(AbstractSphereClassificationDG):
                                dim=-1)
 
         eos_prob = None
-        if self.add_eos:
+        if self.add_eos and return_eos_probs:
             # Use torch to convert to probs.
             dist = Categorical(logits=logits_per_class)
             eos_prob = dist.probs[:, -1]
@@ -946,7 +955,8 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
         return (means, sigmas), target_dirs
 
     def _compute_loss(self, learned_gaussian_params: Tuple[Tensor, Tensor],
-                      target_dirs: Tensor, average_results=True):
+                      target_dirs: Tensor, average_results=True,
+                      return_eos_probs=False):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
@@ -991,7 +1001,12 @@ class SingleGaussianDG(AbstractDirectionGetterModel):
             # Binary cross-entropy
             loss_eos = binary_cross_entropy_eos(eos_prob, target_eos,
                                                 average_results)
-            return nll_loss + self.eos_weight * loss_eos, n, eos_prob
+            nll_loss = nll_loss + self.eos_weight * loss_eos
+
+            if return_eos_probs:
+                return nll_loss, n, eos_prob
+            else:
+                return nll_loss, n, None
         else:
             return nll_loss, n, None
 
@@ -1110,7 +1125,7 @@ class GaussianMixtureDG(AbstractDirectionGetterModel):
 
     def _compute_loss(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
-            target_dirs, average_results=True):
+            target_dirs, average_results=True, return_eos_probs=False):
         """
         Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
@@ -1139,7 +1154,7 @@ class GaussianMixtureDG(AbstractDirectionGetterModel):
             return *_mean_and_weight(nll_losses), None
         else:
             n = 1
-            return nll_losses, 1, None
+            return nll_losses, n, None
 
     def _sample_tracking_direction_prob(
             self, learned_gaussian_params: Tuple[Tensor, Tensor, Tensor],
@@ -1295,7 +1310,8 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
         return (mu, kappa), target_dirs
 
     def _compute_loss(self, learned_fisher_params: Tuple[Tensor, Tensor],
-                      target_dirs, average_results=True):
+                      target_dirs, average_results=True,
+                      return_eos_probs=False):
         """Compute the negative log-likelihood for the targets using the
         model's mixture of gaussians.
 
@@ -1328,7 +1344,12 @@ class FisherVonMisesDG(AbstractDirectionGetterModel):
             # Binary cross-entropy
             loss_eos = binary_cross_entropy_eos(eos_prob, target_eos,
                                                 average_results)
-            return nll_loss + self.eos_weight * loss_eos, n, eos_prob
+            nll_loss = nll_loss + self.eos_weight * loss_eos
+
+            if return_eos_probs:
+                return nll_loss, n, eos_prob
+            else:
+                return nll_loss, n, None
         else:
             return nll_loss, n, None
 
@@ -1435,7 +1456,8 @@ class FisherVonMisesMixtureDG(AbstractDirectionGetterModel):
         raise NotImplementedError
 
     def _compute_loss(self, outputs: Tuple[Tensor, Tensor],
-                      target_dirs: Tensor, average_results=True):
+                      target_dirs: Tensor, average_results=True,
+                      return_eos_probs=False):
         raise NotImplementedError
 
     def _sample_tracking_direction_prob(self, outputs: Tuple[Tensor, Tensor],

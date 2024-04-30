@@ -67,8 +67,8 @@ def main():
     model.set_context('visu')
 
     # 2. Load data through the tester
-    tester = TesterWithDirectionGetter(model, args.subj_id, args.hdf5_file, args.subset,
-                                       args.batch_size, device)
+    tester = TesterWithDirectionGetter(model, args.subj_id, args.hdf5_file,
+                                       args.subset, args.batch_size, device)
 
     run_all_visu_loss(tester, model, args, names)
 

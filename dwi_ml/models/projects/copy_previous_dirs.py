@@ -4,7 +4,8 @@ from typing import List
 import torch
 from torch.distributions import Categorical
 
-from dwi_ml.data.processing.streamlines.post_processing import compute_directions
+from dwi_ml.data.processing.streamlines.post_processing import \
+    compute_directions
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     convert_dirs_to_class
 from dwi_ml.models.main_models import ModelWithDirectionGetter
@@ -13,7 +14,12 @@ from dwi_ml.models.main_models import ModelWithDirectionGetter
 class CopyPrevDirModel(ModelWithDirectionGetter):
     def __init__(self, dg_key: str = 'cosine-regression', dg_args: dict = None,
                  skip_first_point=False, step_size=None, compress_lines=None):
-        super().__init__(dg_key=dg_key, dg_args=dg_args, experiment_name='TEST',
+        """
+        Fake model, not very useful. Used to test value of a loss when copying
+        the previous direction.
+        """
+        super().__init__(dg_key=dg_key, dg_args=dg_args,
+                         experiment_name='TEST',
                          step_size=step_size, compress_lines=compress_lines)
 
         # Fake input size, we won't use the forward method.
@@ -48,9 +54,10 @@ class CopyPrevDirModel(ModelWithDirectionGetter):
 
     def compute_loss(self, model_outputs: List[torch.Tensor],
                      target_streamlines: List[torch.Tensor],
-                     average_results=True, **kw):
+                     average_results=True, return_eos_probs=False):
         if self.skip_first_point:
             target_streamlines = [t[1:] for t in target_streamlines]
 
         return self.direction_getter.compute_loss(
-            model_outputs, target_streamlines, average_results)
+            model_outputs, target_streamlines, average_results,
+            return_eos_probs)

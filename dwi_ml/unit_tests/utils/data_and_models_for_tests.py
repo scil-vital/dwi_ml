@@ -80,11 +80,10 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
                      average_results=True):
         mean = self.fake_parameter
         n = 30
-        X = None
         if average_results:
-            return mean, n, X
+            return mean, n
         else:
-            return torch.zeros(n, device=self.device), 1, X
+            return torch.zeros(n, device=self.device), 1
 
     def forward(self, inputs: list, streamlines):
         # Not using streamlines. Pretending to use inputs.

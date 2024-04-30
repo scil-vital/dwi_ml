@@ -147,7 +147,8 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
     # 5. Run the transformer.
     logging.debug("Running the model to get the weights...")
     model.set_context('visu_weights')
-    sft, outputs, _, _ = tester.run_model_on_sft(sft, compute_loss=False)
+    sft, outputs, _, _, _, _, _ = tester.run_model_on_sft(
+        sft, compute_loss=False)
 
     # Resulting weights is a tuple of one list per attention type.
     # Each list is: one tensor per layer.

@@ -131,10 +131,8 @@ def test_visu(script_runner, experiments_path):
                             '--compute_histogram',
                             '--save_colored_tractogram',
                             '--save_colored_best_and_worst', '10',
-                            '--save_displacement', '--batch_size', '100',
-                            '--min_range', '-1', '--max_range', '1',
-                            '--displacement_on_nb', '1',
-                            '--displacement_on_best_and_worst')
+                            '--save_displacement', '1', '--batch_size', '100',
+                            '--min_range', '-1', '--max_range', '1')
     assert ret.success
 
 

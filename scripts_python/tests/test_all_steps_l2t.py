@@ -51,7 +51,7 @@ def test_training(script_runner, experiments_path):
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
-                            '-v', 'INFO', '--step_size', '0.5',
+                            '-v', 'INFO', '--step_size', '0.5', '--add_eos',
                             '--nb_previous_dirs', '1')
     assert ret.success
 
@@ -130,7 +130,9 @@ def test_visu(script_runner, experiments_path):
                             '--subset', 'training',
                             '--compute_histogram',
                             '--save_colored_tractogram',
-                            '--save_colored_best_and_worst', '10',
+                            '--save_colored_best_and_worst', '1',
+                            '--save_colored_eos_probs',
+                            '--save_colored_eos_errors',
                             '--save_displacement', '1', '--batch_size', '100',
                             '--min_range', '-1', '--max_range', '1')
     assert ret.success

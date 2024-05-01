@@ -83,7 +83,7 @@ def prepare_args_visu_loss(p: ArgumentParser):
 
     # --------
     g = p.add_argument_group("Options to save the EOS probability as a "
-                             "colored SFT")
+                             "colored SFT (colormap: viridis)")
     g.add_argument('--save_colored_eos_probs', action='store_true',
                    help="If set, saves the tractogram with the EOS "
                         "probability as \ndata_per_point (color).")
@@ -154,7 +154,8 @@ def visu_checks(args, parser):
 
     # Verify output names
     out_files = []
-    histogram_name, histogram_name_eos = (None, None)
+    histogram_name, histogram_name_eos_error = (None, None)
+    histogram_name_eos_probs_third = None
     colored_sft_name, colorbar_name = (None, None)
     colored_eos_probs_name, colorbar_eos_probs_name = (None, None)
     colored_eos_errors_name, colorbar_eos_errors_name = (None, None)
@@ -167,14 +168,16 @@ def visu_checks(args, parser):
     prefix = os.path.join(args.out_dir, args.out_prefix)
     if args.compute_histogram:
         histogram_name = prefix + '_histogram.png'
-        histogram_name_eos = prefix + '_histogram_eos.png'
-        out_files += [histogram_name, histogram_name_eos]
+        histogram_name_eos_error = prefix + '_histogram_eos_error.png'
+        histogram_name_eos_probs_third = prefix + '_histogram_eos_probs_per_third.png'
+        out_files += [histogram_name, histogram_name_eos_error,
+                      histogram_name_eos_probs_third]
 
     if args.save_colored_tractogram or args.save_colored_best_and_worst:
         suffix = _get_suffix_clipped(args.min_range, args.max_range)
 
         if args.save_colored_tractogram:
-            colored_sft_name = prefix + '_colored' + suffix + '.trk'
+            colored_sft_name = prefix + '_colored_loss' + suffix + '.trk'
             out_files += [colored_sft_name]
 
         if args.save_colored_best_and_worst:
@@ -184,7 +187,7 @@ def visu_checks(args, parser):
             colored_worst_name = prefix + '_worst' + total_suffix
             out_files += [colored_best_name, colored_worst_name]
 
-        colorbar_name = prefix + '_colorbar' + suffix + '.png'
+        colorbar_name = prefix + '_colorbar_loss' + suffix + '.png'
         out_files += [colorbar_name]
 
     if args.save_colored_eos_probs:
@@ -217,8 +220,10 @@ def visu_checks(args, parser):
         logging.warning("The following files, with same prefix, will NOT be "
                         "modified:\n{}".format("\n".join(untouched_files)))
 
-    return (histogram_name, histogram_name_eos, colored_sft_name,
-            colorbar_name, colored_best_name, colored_worst_name,
+    return (histogram_name, histogram_name, histogram_name_eos_error,
+            histogram_name_eos_probs_third,
+            colored_sft_name, colorbar_name,
+            colored_best_name, colored_worst_name,
             colored_eos_probs_name, colorbar_eos_probs_name,
             colored_eos_errors_name, colorbar_eos_errors_name,
             displacement_sft_name)

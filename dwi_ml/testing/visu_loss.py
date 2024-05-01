@@ -29,10 +29,11 @@ def run_all_visu_loss(tester: TesterWithDirectionGetter,
     Runs all steps of loss visualisation:
     1. Load SFT.
     2. Run model (through the tester, loops on all batches)
-    3. Show histogram.
+    3. Show histogram(s).
     4. Prepare and save colored SFT (loss per point)
     5. Prepare and save displacement SFT
-    6. Prepare and save colored SFT (eos part of the loss per point)
+    6. Prepare and save colored SFT (eos_probs per point)
+    7. Prepare and save colored SFT (eos_errors per point)
 
     Parameters
     ----------
@@ -45,8 +46,10 @@ def run_all_visu_loss(tester: TesterWithDirectionGetter,
     names: Tuple[str]
         Results from visu_checks, to be called in the main of each script.
     """
-    (histogram_name, histogram_name_eos,
-     colored_sft_name, colorbar_name, colored_best_name, colored_worst_name,
+    (histogram_name, histogram_name, histogram_name_eos_error,
+     histogram_name_eos_probs_third,
+     colored_sft_name, colorbar_name,
+     colored_best_name, colored_worst_name,
      colored_eos_probs_name, colorbar_eos_probs_name,
      colored_eos_errors_name, colorbar_eos_errors_name,
      displacement_sft_name) = names
@@ -76,7 +79,7 @@ def run_all_visu_loss(tester: TesterWithDirectionGetter,
     logging.info("Running model on {} streamlines to compute loss."
                  .format(len(sft)))
     (sft, outputs, losses, mean_loss_per_line,
-     eos_probs, eos_errors, mean_eos_per_line) = tester.run_model_on_sft(
+     eos_probs, eos_errors, mean_eos_error_per_line) = tester.run_model_on_sft(
         sft, compute_loss=True)
 
     if not model.direction_getter.add_eos:
@@ -91,8 +94,9 @@ def run_all_visu_loss(tester: TesterWithDirectionGetter,
     if args.compute_histogram:
         logging.info("Preparing histogram")
         plot_histogram(losses, mean_loss_per_line,
-                       eos_errors, mean_eos_per_line,
-                       histogram_name, histogram_name_eos,
+                       eos_probs, eos_errors, mean_eos_error_per_line,
+                       histogram_name, histogram_name_eos_error,
+                       histogram_name_eos_probs_third,
                        args.fig_size)
 
     # 4. Prepare and save colored SFT (loss per point)
@@ -100,13 +104,16 @@ def run_all_visu_loss(tester: TesterWithDirectionGetter,
         logging.info("Preparing colored tractogram, and/or best and worst "
                      "streamlines, colored with loss.")
         run_visu_save_colored_sft(
-            losses, sft, colorbar_name, args.colormap,
-            args.min_range, args.max_range,
+            losses, sft, 'losses',
+            colorbar_name, args.colormap, args.min_range, args.max_range,
             save_whole_tractogram=args.save_colored_tractogram,
             colored_sft_name=colored_sft_name,
             save_separate_best_and_worst=args.save_colored_best_and_worst,
             best_sft_name=colored_best_name, worst_sft_name=colored_worst_name,
             mean_losses=mean_loss_per_line)
+        # Remove dpp before continuing.
+        del sft.data_per_point['losses']
+        del sft.data_per_point['color']
 
     # 5. Prepare and save displacement SFT
     if args.save_displacement:
@@ -119,10 +126,14 @@ def run_all_visu_loss(tester: TesterWithDirectionGetter,
     if args.save_colored_eos_probs:
         if model.direction_getter.add_eos:
             run_visu_save_colored_sft(
-                eos_probs, sft, colorbar_eos_probs_name, args.colormap,
+                eos_probs, sft, 'eos_probs',
+                colorbar_eos_probs_name, 'viridis',
                 args.min_range_eos_probs, args.max_range_eos_probs,
                 save_whole_tractogram=args.save_colored_eos_probs,
                 colored_sft_name=colored_eos_probs_name)
+            # Remove dpp before continuing.
+            del sft.data_per_point['eos_probs']
+            del sft.data_per_point['color']
         else:
             logging.warning("No EOS used in this model. Ignoring option "
                             "--save_colored_eos_probs.")
@@ -132,7 +143,8 @@ def run_all_visu_loss(tester: TesterWithDirectionGetter,
     if args.save_colored_eos_errors:
         if model.direction_getter.add_eos:
             run_visu_save_colored_sft(
-                eos_errors, sft, colorbar_eos_errors_name, args.colormap,
+                eos_errors, sft, 'eos_errors',
+                colorbar_eos_errors_name, 'viridis',
                 args.min_range_eos_errors, args.max_range_eos_errors,
                 save_whole_tractogram=args.save_colored_eos_errors,
                 colored_sft_name=colored_eos_errors_name)
@@ -144,7 +156,7 @@ def run_all_visu_loss(tester: TesterWithDirectionGetter,
         plt.show()
 
 
-def _prepare_colors_from_loss(
+def _prepare_colors_from_values(
         losses: List[np.ndarray], sft: StatefulTractogram, colormap: str,
         min_range: float = None, max_range: float = None):
     """
@@ -285,49 +297,81 @@ def _create_colored_displacement(out_dirs, sft, model):
     return sft
 
 
-def plot_histogram(losses, mean_per_line,
-                   eos_losses, mean_per_line_eos,
-                   histogram_name, histogram_name_eos,
-                   fig_size=None):
-    logging.info("Preparing histogram!")
-
-    tmp = np.hstack(losses)
+def _plot_whole_hist(fig_size, values, mean_per_line, value_name, nb_bins,
+                     histogram_name):
     fig, axs = plt.subplots(3, 1)
     if fig_size is not None:
         fig.set_figheight(fig_size[0])
         fig.set_figwidth(fig_size[1])
-    axs[0].hist(tmp, bins=100)
-    axs[0].set_title("Histogram of the losses per point")
-    axs[1].hist(tmp, bins=100, log=True)
-    axs[1].set_title("Histogram of the losses per point (log norm)")
-    axs[2].hist(mean_per_line, bins=100)
-    axs[2].set_title("Histogram of the losses per streamline")
+
+    tmp = np.hstack(values)
+    axs[0].hist(tmp, bins=nb_bins)
+    axs[0].set_title("Histogram of the {} per point".format(value_name))
+    axs[1].hist(tmp, bins=nb_bins, log=True)
+    axs[1].set_title("Histogram of the {} per point (log norm)"
+                     .format(value_name))
+    axs[2].hist(mean_per_line, bins=nb_bins)
+    axs[2].set_title("Histogram of the {} per streamline".format(value_name))
+    logging.info("Saving histogram of the {} as {}"
+                 .format(value_name, histogram_name))
+    plt.savefig(histogram_name)
+
+
+def _plot_log_hist_per_third(fig_size, values, value_name, nb_bins,
+                             histogram_name):
+    fig, axs = plt.subplots(4, 1)
+    if fig_size is not None:
+        fig.set_figheight(fig_size[0])
+        fig.set_figwidth(fig_size[1])
+
+    tmp1 = np.hstack([s[0:len(s) // 3] for s in values])
+    axs[0].hist(tmp1, bins=nb_bins, log=True)
+    axs[0].set_title("First third")
+    axs[0].set_xlim([0, 1])
+
+    tmp2 = np.hstack([s[len(s) // 3:2 * len(s) // 3] for s in values])
+    axs[1].hist(tmp2, bins=nb_bins, log=True)
+    axs[1].set_title("Second third")
+    axs[1].set_xlim([0, 1])
+
+    tmp3 = np.hstack([s[2 * len(s) // 3:-2] for s in values])
+    axs[2].hist(tmp3, bins=nb_bins, log=True)
+    axs[2].set_title("Last third")
+    axs[2].set_xlim([0, 1])
+
+    tmp4 = np.hstack([s[-1] for s in values])
+    axs[3].hist(tmp4, bins=nb_bins, log=True)
+    axs[3].set_title("Last point")
+    axs[3].set_xlim([0, 1])
+
+    plt.suptitle("Histogram of the {} per point in each third of the "
+                 "streamlines (log norm).".format(value_name))
     logging.info("Saving histogram of the loss as {}".format(histogram_name))
     plt.savefig(histogram_name)
 
-    if mean_per_line_eos is not None:
-        tmp = np.hstack(eos_losses)
-        fig, axs = plt.subplots(3, 1)
-        if fig_size is not None:
-            fig.set_figheight(fig_size[0])
-            fig.set_figwidth(fig_size[1])
-        # bins=auto fails?? Out of memory. Values are between 0 and 1.
-        # Setting bins=20; every 0.05.
-        axs[0].hist(tmp, bins=20)
-        axs[0].set_title("Histogram of the eos part of the loss per point")
-        axs[1].hist(tmp, bins=20, log=True)
-        axs[1].set_title("Histogram of the eos_part of the loss per point "
-                         "(log norm)")
-        axs[2].hist(mean_per_line_eos, bins=20)
-        axs[2].set_title("Histogram of the eos part of the loss per "
-                         "streamline")
-        logging.info("Saving histogram of EOS error as {}"
-                     .format(histogram_name_eos))
-        plt.savefig(histogram_name_eos)
+
+def plot_histogram(losses, mean_per_line,
+                   eos_probs, eos_errors, mean_per_line_eos_errors,
+                   histogram_name, histogram_name_eos_errors,
+                   histogram_name_eos_probs_third,
+                   fig_size=None):
+    logging.info("Preparing histogram!")
+    # bins=auto fails?? Out of memory. Setting bins.
+    nb_bins_loss = 200
+    nb_bins_eos = 40
+    _plot_whole_hist(fig_size, losses, mean_per_line, 'loss', nb_bins_loss,
+                     histogram_name)
+
+    if mean_per_line_eos_errors is not None:
+        _plot_whole_hist(fig_size, eos_errors, mean_per_line_eos_errors,
+                         'EOS error', nb_bins_eos, histogram_name_eos_errors)
+
+        _plot_log_hist_per_third(fig_size, eos_probs, 'EOS probs',
+                                 nb_bins_eos, histogram_name_eos_probs_third)
 
 
 def run_visu_save_colored_sft(
-        losses: List[np.ndarray], sft: StatefulTractogram,
+        values: List[np.ndarray], sft: StatefulTractogram, dpp_key: str,
         colorbar_name: str, colormap: str,
         min_range: float = None, max_range: float = None,
         # Whole tractogram options
@@ -341,10 +385,10 @@ def run_visu_save_colored_sft(
     assert save_whole_tractogram or save_separate_best_and_worst
 
     logging.info("Adding losses as data per point:")
-    sft.data_per_point['losses'] = [s[:, None] for s in losses]
+    sft.data_per_point[dpp_key] = [s[:, None] for s in values]
 
-    sft, colorbar_fig = _prepare_colors_from_loss(
-        losses, sft, colormap, min_range, max_range)
+    sft, colorbar_fig = _prepare_colors_from_values(
+        values, sft, colormap, min_range, max_range)
 
     logging.info("Saving colorbar as {}".format(colorbar_name))
     colorbar_fig.savefig(colorbar_name)

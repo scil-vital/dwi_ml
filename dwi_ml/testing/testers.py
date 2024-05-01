@@ -133,6 +133,9 @@ class TesterWithDirectionGetter:
         batch_end = batch_size
         with torch.no_grad():
             for _ in tqdm(range(nb_batches), desc="Batches", total=nb_batches):
+                # Seems to help.... We need to discover why
+                # log_gpu_memory_usage()
+                torch.cuda.empty_cache()
 
                 # 1. Prepare batch. Same process as in trainer, but no option
                 # to add noise.

@@ -119,10 +119,8 @@ def test_execution(script_runner, experiments_path):
                             '--subset', 'training', '--batch_size', '100',
                             '--save_colored_tractogram',
                             '--save_colored_best_and_worst',
-                            '--save_displacement',
-                            '--min_range', '-1', '--max_range', '1',
-                            '--displacement_on_nb', '1',
-                            '--displacement_on_best_and_worst')
+                            '--save_displacement', '1',
+                            '--min_range', '-1', '--max_range', '1')
     assert ret.success
 
     # Test visu weights

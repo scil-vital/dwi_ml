@@ -909,6 +909,8 @@ class DWIMLAbstractTrainer:
         """
         # Encapsulated for easier management of child classes.
         mean_local_loss, n = self.run_one_batch(data)
+
+        # mean loss is a Tensor of a single value. item() converts to float
         self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
@@ -916,7 +918,7 @@ class DWIMLAbstractTrainer:
         """
         Computes the loss(es) for the current batch and updates monitors.
         """
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n, _ = self.run_one_batch(data)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 
@@ -999,6 +1001,11 @@ class DWIMLAbstractTrainer:
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines)
+        n: int
+            The number of points in this batch
+        X: Any
+            Any other data returned when computing loss. Not used in the
+            trainer, but could be useful anywhere else.
         """
         raise NotImplementedError
 
@@ -1092,7 +1099,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         Returns
         -------
-        mean_loss : float
+        mean_loss : Tensor of shape (1,) ; float.
             The mean loss of the provided batch.
         n: int
             Total number of points for this batch.
@@ -1135,11 +1142,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # (batch loader will do it depending on training / valid)
         targets = self.batch_loader.add_noise_streamlines_loss(targets,
                                                                self.device)
-        results = self.model.compute_loss(model_outputs, targets,
-                                          average_results=True)
+        mean_loss, n = self.model.compute_loss(model_outputs, targets,
+                                               average_results=True)
 
         if self.use_gpu:
             log_gpu_memory_usage(logger)
 
-        # The mean tensor is a single value. Converting to float using item().
-        return results
+        return mean_loss, n

@@ -160,9 +160,13 @@ class DWIMLAbstractBatchLoader:
 
     @classmethod
     def init_from_checkpoint(cls, dataset, model, checkpoint_state,
-                             new_log_level):
-        batch_loader = cls(dataset=dataset, model=model,
-                           log_level=new_log_level, **checkpoint_state)
+                             new_log_level=None):
+        if new_log_level is not None:
+            batch_loader = cls(dataset=dataset, model=model,
+                               log_level=new_log_level, **checkpoint_state)
+        else:
+            batch_loader = cls(dataset=dataset, model=model,
+                               **checkpoint_state)
         return batch_loader
 
     def set_context(self, context: str):
@@ -334,7 +338,13 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         self.use_neighborhood = isinstance(self.model, ModelWithNeighborhood)
 
         # Find group index in the data_source
-        idx = self.dataset.volume_groups.index(input_group_name)
+        try:
+            idx = self.dataset.volume_groups.index(input_group_name)
+        except ValueError:
+            raise ValueError("Required input group {} is not in list of "
+                             "volume groups: {}"
+                             .format(input_group_name,
+                                     self.dataset.volume_groups))
         self.input_group_idx = idx
 
     @property

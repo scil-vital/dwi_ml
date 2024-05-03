@@ -83,7 +83,7 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
         if average_results:
             return mean, n
         else:
-            return torch.zeros(n, device=self.device)
+            return torch.zeros(n, device=self.device), 1
 
     def forward(self, inputs: list, streamlines):
         # Not using streamlines. Pretending to use inputs.

@@ -45,8 +45,8 @@ from dwi_ml.viz.logs_plots import visualize_logs
 def _build_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("experiments", type=str, nargs='+',
-                   help="Path to the experiment folder (s). If more than "
+    p.add_argument("experiments", nargs='+',
+                   help="Path to the experiment folder(s). If more than "
                         "one, \nthey are shown superposed.")
     p.add_argument("--save_to_csv", metavar='my_file.csv',
                    help="If set, convert the resulting logs as a csv file.")
@@ -275,7 +275,7 @@ def main():
     pil_logger.setLevel('WARNING')
 
     # Verifications
-    if not args.save_figures or args.show_now:
+    if not (args.save_figures or args.show_now):
         parser.error("This script will plot nothing. Choose either --show_now "
                      "or --save_figures.")
     assert_outputs_exist(parser, args, [], args.save_to_csv)

@@ -126,6 +126,7 @@ def visualize_logs(logs_data: Dict[str, Dict[str, np.ndarray]],
     i = -1
     while nb_plots_left > 0:
         # Prepare figure and axes
+        fig_title = ""
         next_nb_plots = min(nb_plots_left, nb_rows)
         fig, axs = plt.subplots(nrows=next_nb_plots)
         if fig_size is not None:
@@ -138,13 +139,17 @@ def visualize_logs(logs_data: Dict[str, Dict[str, np.ndarray]],
         # For each subplot in this figure
         for ax in range(next_nb_plots):
             i += 1
+            fig_title += "_{}".format(
+                graphs_titles[i].replace(" ", "").replace("'", ""))
             logging.debug("Next graph: {}".format(graphs_logs[i]))
             _plot_one_graph(axs[ax], logs_data, exp_names, graphs_logs[i],
                             scalar_map, writer, remove_outliers,
                             graphs_titles[i], xlim, graphs_ylim[i])
 
         plt.tight_layout()
-        if save_figs:
-            plt.savefig(save_figs + '_plot{}'.format(current_fig))
+        if save_figs is not None:
+            fig_name = save_figs + fig_title + '.png'
+            logging.info("Saving figure: {}".format(fig_name))
+            plt.savefig(fig_name)
 
         nb_plots_left -= next_nb_plots

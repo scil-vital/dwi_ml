@@ -31,6 +31,9 @@ def test_help_option(script_runner):
     ret = script_runner.run('l2t_visualize_loss.py', '--help')
     assert ret.success
 
+    ret = script_runner.run('l2t_update_deprecated_exp.py', '--help')
+    assert ret.success
+
 
 @pytest.fixture(scope="session")
 def experiments_path(tmp_path_factory):

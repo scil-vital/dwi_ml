@@ -152,7 +152,7 @@ def __parse_log_operations(parser, graph):
                 parser.error("Can't understand option --graph graph. The diff "
                              "operation requires two logs, separated by a "
                              "comma.")
-            logs = [l.replace(' ', '') for l in logs]
+            logs = [_log.replace(' ', '') for _log in logs]
             return logs, 'diff'
         elif _graph[0:4] == 'sum(':
             assert _graph[-1] == ')'
@@ -162,7 +162,7 @@ def __parse_log_operations(parser, graph):
                 parser.error("Can't understand option --graph graph. The sum "
                              "operation requires two logs, separated by a "
                              "comma.")
-            logs = [l.replace(' ', '') for l in logs]
+            logs = [_log.replace(' ', '') for _log in logs]
             return logs, 'sum'
 
     op = None

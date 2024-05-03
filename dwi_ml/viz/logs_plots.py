@@ -148,4 +148,3 @@ def visualize_logs(logs_data: Dict[str, Dict[str, np.ndarray]],
             plt.savefig(save_figs + '_plot{}'.format(current_fig))
 
         nb_plots_left -= next_nb_plots
-

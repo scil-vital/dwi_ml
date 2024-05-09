@@ -42,11 +42,27 @@ class TrackingMask:
             torch.any(torch.less(xyz, self.lower_bound), dim=-1),
             torch.any(torch.greater_equal(xyz, self.higher_bound), dim=-1))
 
-    def get_value_at_vox_corner_coordinate(self, xyz, interpolation):
+    def get_value_at_vox_corner_coordinate(
+        self, xyz, interpolation, clear_cache=True
+    ):
+        """ Get the value at the voxel corner coordinate.
+
+        Parameters
+        ----------
+        xyz : torch.Tensor
+            Coordinates in voxel space, corner origin. Of shape [n, 3].
+        interpolation : str
+            Either 'nearest' or 'trilinear'.
+        clear_cache : bool
+            Whether to clear the cache after computing the interpolation.
+            Can be useful to save memory but will slow down the function.
+            Only used if interpolation is 'trilinear'.
+        """
+
         if interpolation == 'nearest':
             return torch_nearest_neighbor_interpolation(self.data, xyz)
         else:
-            return torch_trilinear_interpolation(self.data, xyz)
+            return torch_trilinear_interpolation(self.data, xyz, clear_cache)
 
     def is_vox_corner_in_mask(self, xyz):
         # Clipping to bound.

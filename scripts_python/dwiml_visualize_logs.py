@@ -45,8 +45,8 @@ from dwi_ml.viz.logs_plots import visualize_logs
 def _build_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("experiments", type=str, nargs='+',
-                   help="Path to the experiment folder (s). If more than "
+    p.add_argument("experiments", nargs='+',
+                   help="Path to the experiment folder(s). If more than "
                         "one, \nthey are shown superposed.")
     p.add_argument("--save_to_csv", metavar='my_file.csv',
                    help="If set, convert the resulting logs as a csv file.")
@@ -88,7 +88,7 @@ def _build_arg_parser():
 def _parse_graphs_arg(parser, args):
     """Parse args.graphs"""
     if args.graphs is None:
-        return None, None, None
+        return None, None, None, None
     else:
         graphs_logs = []
         graphs_titles = []
@@ -176,6 +176,7 @@ def _load_all_logs(parser, args, logs_path, previous_graphs):
     logging.debug("Loading all logs for that experiment.")
     files_to_load = list(logs_path.glob('*.npy'))
     _graphs = [f.stem for f in files_to_load]
+    _graphs = np.sort(_graphs)
 
     if previous_graphs is None:
         # Using the first experiment to set the list of expected logs.
@@ -275,7 +276,7 @@ def main():
     pil_logger.setLevel('WARNING')
 
     # Verifications
-    if not args.save_figures or args.show_now:
+    if not (args.save_figures or args.show_now):
         parser.error("This script will plot nothing. Choose either --show_now "
                      "or --save_figures.")
     assert_outputs_exist(parser, args, [], args.save_to_csv)
@@ -315,7 +316,7 @@ def main():
 
     # Formatting the final graphs choice.
     if args.graphs is None:
-        graph_titles = graphs_logs
+        graphs_titles = graphs_logs
         graphs_logs = [[log] for log in graphs_logs]
         graphs_ylims = [None for _ in graphs_logs]
         # graphs_operation = [None for _ in parsed_graphs]

@@ -46,6 +46,10 @@ def add_training_args(p: argparse.ArgumentParser,
         '--max_batches_per_epoch_validation', type=int, default=1000,
         metavar='n',
         help="Maximum number of batches per epoch during validation.")
+    training_group.add_argument(
+        '--clip_grad', type=float, default=None,
+        help="Value to which the gradient norms to avoid exploding gradients."
+             "\nDefault = None (not clipping).")
 
     if add_a_tracking_validation_phase:
         training_group.add_argument(

@@ -20,13 +20,15 @@ class TransformerTrainer(DWIMLTrainerForTrackingOneInput):
         """
         super().__init__(**kwargs)
 
-    def propagate_multiple_lines(self, lines: List[torch.Tensor], ids_per_subj):
+    def propagate_multiple_lines(self, lines: List[torch.Tensor],
+                                 ids_per_subj):
         assert self.model.step_size is not None, \
             "We can't propagate compressed streamlines."
 
         # Getting the first inputs
         tmp_lines = [line[:-1, :] for line in lines]
-        batch_inputs = self.batch_loader.load_batch_inputs(tmp_lines, ids_per_subj)
+        batch_inputs = self.batch_loader.load_batch_inputs(tmp_lines,
+                                                           ids_per_subj)
         del tmp_lines
 
         def update_memory_after_removing_lines(can_continue: np.ndarray, __):
@@ -53,7 +55,8 @@ class TransformerTrainer(DWIMLTrainerForTrackingOneInput):
         final_lines = []
         for subj_idx, line_idx in ids_per_subj.items():
 
-            with h5py.File(self.batch_loader.dataset.hdf5_file, 'r') as hdf_handle:
+            with h5py.File(self.batch_loader.dataset.hdf5_file, 'r'
+                           ) as hdf_handle:
                 subj_id = self.batch_loader.context_subset.subjects[subj_idx]
                 logging.debug("Loading subj {} ({})'s tracking mask."
                               .format(subj_idx, subj_id))
@@ -65,7 +68,8 @@ class TransformerTrainer(DWIMLTrainerForTrackingOneInput):
             final_lines.extend(propagate_multiple_lines(
                 lines[line_idx], update_memory_after_removing_lines,
                 get_dirs_at_last_pos, theta=theta,
-                step_size=self.model.step_size, verify_opposite_direction=False,
+                step_size=self.model.step_size,
+                verify_opposite_direction=False,
                 mask=tracking_mask, max_nbr_pts=max_nbr_pts,
                 append_last_point=False, normalize_directions=True))
 

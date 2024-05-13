@@ -88,7 +88,7 @@ def _build_arg_parser():
 def _parse_graphs_arg(parser, args):
     """Parse args.graphs"""
     if args.graphs is None:
-        return None, None, None
+        return None, None, None, None
     else:
         graphs_logs = []
         graphs_titles = []
@@ -315,7 +315,7 @@ def main():
 
     # Formatting the final graphs choice.
     if args.graphs is None:
-        graph_titles = graphs_logs
+        graphs_titles = graphs_logs
         graphs_logs = [[log] for log in graphs_logs]
         graphs_ylims = [None for _ in graphs_logs]
         # graphs_operation = [None for _ in parsed_graphs]

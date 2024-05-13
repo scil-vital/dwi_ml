@@ -120,6 +120,12 @@ def visualize_logs(logs_data: Dict[str, Dict[str, np.ndarray]],
     c_norm = colors.Normalize(vmin=0, vmax=len(exp_names))
     scalar_map = cmx.ScalarMappable(norm=c_norm, cmap=jet)
 
+    logging.info("Figures will be plotted for epochs 0 - {}.\n"
+                 "Experiments' number of epochs:".format(xlim))
+    any_graph = graphs_logs[0][0]
+    for i, n in enumerate(exp_names):
+        logging.info("- {}: {}".format(n, len(logs_data[n][any_graph])))
+
     # Separating graphs in figures:
     nb_plots_left = len(graphs_logs)
     current_fig = -1
@@ -128,6 +134,8 @@ def visualize_logs(logs_data: Dict[str, Dict[str, np.ndarray]],
         # Prepare figure and axes
         fig_title = ""
         next_nb_plots = min(nb_plots_left, nb_rows)
+
+        logging.info("New figure:")
         fig, axs = plt.subplots(nrows=next_nb_plots)
         if fig_size is not None:
             fig.set_figheight(fig_size[0])
@@ -138,6 +146,7 @@ def visualize_logs(logs_data: Dict[str, Dict[str, np.ndarray]],
 
         # For each subplot in this figure
         for ax in range(next_nb_plots):
+            logging.info("  - New plot: {}".format(graphs_titles[i]))
             i += 1
             fig_title += "_{}".format(
                 graphs_titles[i].replace(" ", "").replace("'", ""))

@@ -176,6 +176,7 @@ def _load_all_logs(parser, args, logs_path, previous_graphs):
     logging.debug("Loading all logs for that experiment.")
     files_to_load = list(logs_path.glob('*.npy'))
     _graphs = [f.stem for f in files_to_load]
+    _graphs = np.sort(_graphs)
 
     if previous_graphs is None:
         # Using the first experiment to set the list of expected logs.

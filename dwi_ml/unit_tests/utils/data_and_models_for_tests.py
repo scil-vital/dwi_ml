@@ -179,10 +179,10 @@ def create_test_batch_sampler(
     test_default_cycles = 1
     test_default_rng = 1234
 
-    logging.debug('    Initializing batch sampler...')
+    logging.debug('Initializing batch sampler...')
     batch_sampler = DWIMLBatchIDSampler(
         subset, TEST_EXPECTED_STREAMLINE_GROUPS[0],
-        batch_size_training=batch_size, batch_size_validation=0,
+        batch_size_training=batch_size, batch_size_validation=batch_size,
         batch_size_units=batch_size_units,
         nb_streamlines_per_chunk=chunk_size,
         rng=test_default_rng,
@@ -195,7 +195,7 @@ def create_test_batch_sampler(
 def create_batch_loader(
         subset, model, noise_size=0., split_ratio=0., reverse_ratio=0.,
         log_level=logging.DEBUG):
-    logging.debug('    Initializing batch loader...')
+    logging.debug('Initializing batch loader...')
     batch_loader = DWIMLBatchLoaderOneInput(
         dataset=subset, input_group_name=TEST_EXPECTED_VOLUME_GROUPS[0],
         streamline_group_name=TEST_EXPECTED_STREAMLINE_GROUPS[0], rng=1234,

@@ -24,12 +24,16 @@ def experiments_path(tmp_path_factory):
 
 
 def test_trainer_and_models(experiments_path):
-    data_dir = fetch_testing_data()
 
+    # This unit test uses the test data.
+    data_dir = fetch_testing_data()
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
     # Initializing dataset
+    logging.info("Initializing dataset")
     dataset = MultiSubjectDataset(hdf5_filename, lazy=False)
+
+    logging.info("Loading data (non-lazy)")
     dataset.load_data()
 
     # Initializing model 1 + associated batch sampler.
@@ -57,7 +61,6 @@ def test_trainer_and_models(experiments_path):
 def _create_sampler_and_loader(dataset, model):
 
     # Initialize batch sampler
-    logging.debug('\nInitializing sampler...')
     batch_sampler = create_test_batch_sampler(
         dataset, batch_size=batch_size,
         batch_size_units='nb_streamlines', log_level=logging.WARNING)
@@ -77,7 +80,7 @@ def _create_trainer(batch_sampler, batch_loader, model, experiments_path,
         model=model, experiments_path=str(experiments_path),
         experiment_name=experiment_name, log_level='DEBUG',
         max_batches_per_epoch_training=2,
-        max_batches_per_epoch_validation=None, max_epochs=2, patience=None,
+        max_batches_per_epoch_validation=2, max_epochs=2, patience=None,
         use_gpu=False)
     # Note. toDo Test fails with nb_cpu_processes=1. Why??
 
@@ -86,5 +89,5 @@ def _create_trainer(batch_sampler, batch_loader, model, experiments_path,
 
 if __name__ == '__main__':
     tmp_dir = tempfile.TemporaryDirectory()
-    logging.getLogger().setLevel('INFO')
+    logging.getLogger().setLevel('DEBUG')
     test_trainer_and_models(tmp_dir.name)

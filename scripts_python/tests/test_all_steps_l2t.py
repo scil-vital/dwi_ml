@@ -160,5 +160,6 @@ def test_training_with_generation_validation(script_runner, experiments_path):
                             '--max_batches_per_epoch_validation', '1',
                             '-v', 'INFO', '--step_size', '0.5',
                             '--add_a_tracking_validation_phase',
+                            '--tracking_mask', 'wm_mask',
                             '--tracking_phase_frequency', '1', option)
     assert ret.success

@@ -18,10 +18,9 @@ from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_verbose_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
-from dwi_ml.training.with_generation.batch_loader import \
-    DWIMLBatchLoaderWithConnectivity
 
 
 def prepare_arg_parser():
@@ -217,7 +216,7 @@ def fix_checkpoint(args, model):
     # Init stuff will succeed if ok.
     batch_sampler = DWIMLBatchIDSampler.init_from_checkpoint(
         dataset, checkpoint_state['batch_sampler_params'])
-    batch_loader = DWIMLBatchLoaderWithConnectivity.init_from_checkpoint(
+    batch_loader = DWIMLBatchLoaderOneInput.init_from_checkpoint(
             dataset, model, checkpoint_state['batch_loader_params'])
     experiments_path, experiment_name = os.path.split(args.out_experiment)
     trainer = Learn2TrackTrainer.init_from_checkpoint(

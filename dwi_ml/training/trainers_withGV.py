@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Adds a tracking step to verify the generation process. Metrics on the
-streamlines are:
+Adds a generation-validation phase: a tracking step. Metrics on the streamlines
+are:
 
 - Very good / acceptable / very far IS threshold:
     Percentage of streamlines ending inside a radius of 15 / 25 / 40 voxels of
@@ -47,10 +47,9 @@ from dwi_ml.data.processing.streamlines.post_processing import \
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.io_utils import prepare_tracking_mask
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.monitoring import BatchHistoryMonitor
-from dwi_ml.training.with_generation.batch_loader import \
-    DWIMLBatchLoaderWithConnectivity
 
 logger = logging.getLogger('train_logger')
 
@@ -65,7 +64,7 @@ VERY_FAR_THRESHOLD = 40.0
 
 class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
     model: ModelWithDirectionGetter
-    batch_loader: DWIMLBatchLoaderWithConnectivity
+    batch_loader: DWIMLBatchLoaderOneInput
 
     def __init__(self, add_a_tracking_validation_phase: bool = False,
                  tracking_phase_frequency: int = 1,
@@ -104,6 +103,12 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         self.tracking_mask_group = tracking_phase_mask_group
 
         self.compute_connectivity = self.batch_loader.data_contains_connectivity
+
+        # -------- Checks
+        if add_a_tracking_validation_phase and \
+                tracking_phase_mask_group is None:
+            raise NotImplementedError("Not ready to run without a tracking "
+                                      "mask.")
 
         # -------- Monitors
         # At training time: only the one metric used for training.
@@ -177,8 +182,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 (gen_n, mean_final_dist, mean_clipped_final_dist,
                  percent_IS_very_good, percent_IS_acceptable,
                  percent_IS_very_far, diverging_pnt, connectivity) = \
-                    self.validation_generation_one_batch(
-                        data, compute_all_scores=True)
+                    self.gv_phase_one_batch(data, compute_all_scores=True)
 
                 self.tracking_very_good_IS_monitor.update(
                     percent_IS_very_good, weight=gen_n)
@@ -194,8 +198,9 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 self.tracking_valid_diverg_monitor.update(
                     diverging_pnt, weight=gen_n)
 
-                self.tracking_connectivity_score_monitor.update(
-                    connectivity, weight=gen_n)
+                if self.compute_connectivity:
+                    self.tracking_connectivity_score_monitor.update(
+                        connectivity, weight=gen_n)
             elif len(self.tracking_mean_final_distance_monitor.average_per_epoch) == 0:
                 logger.info("Skipping tracking-like generation validation "
                             "from batch. No values yet: adding fake initial "
@@ -216,7 +221,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 self.tracking_clipped_final_distance_monitor.update(
                     ACCEPTABLE_THRESHOLD)
 
-                self.tracking_connectivity_score_monitor.update(1)
+                if self.compute_connectivity:
+                    self.tracking_connectivity_score_monitor.update(1)
             else:
                 logger.info("Skipping tracking-like generation validation "
                             "from batch. Copying previous epoch's values.")
@@ -230,7 +236,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                                 self.tracking_connectivity_score_monitor]:
                     monitor.update(monitor.average_per_epoch[-1])
 
-    def validation_generation_one_batch(self, data, compute_all_scores=False):
+    def gv_phase_one_batch(self, data, compute_all_scores=False):
         """
         Use tractography to generate streamlines starting from the "true"
         seeds and first few segments. Expected results are the batch's
@@ -304,12 +310,12 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                     total_point += abs(100 - div_point)
             diverging_point = total_point / len(lines)
 
-            invalid_ratio_severe = invalid_ratio_severe.cpu().numpy().astype(np.float32)
-            invalid_ratio_acceptable = invalid_ratio_acceptable.cpu().numpy().astype(np.float32)
-            invalid_ratio_loose = invalid_ratio_loose.cpu().numpy().astype(np.float32)
-            final_dist = final_dist.cpu().numpy().astype(np.float32)
-            final_dist_clipped = final_dist_clipped.cpu().numpy().astype(np.float32)
-            diverging_point = np.asarray(diverging_point, dtype=np.float32)
+            invalid_ratio_severe = invalid_ratio_severe.item()
+            invalid_ratio_acceptable = invalid_ratio_acceptable.item()
+            invalid_ratio_loose = invalid_ratio_loose.item()
+            final_dist = final_dist.item()
+            final_dist_clipped = final_dist_clipped.item()
+
             return (len(lines), final_dist, final_dist_clipped,
                     invalid_ratio_severe, invalid_ratio_acceptable,
                     invalid_ratio_loose, diverging_point,

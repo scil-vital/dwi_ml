@@ -13,12 +13,11 @@ from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_verbose_arg, verify_which_model_in_path
 from dwi_ml.models.projects.transformer_models import find_transformer_class
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.projects.transformer_trainer import TransformerTrainer
 from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
-from dwi_ml.training.with_generation.batch_loader import \
-    DWIMLBatchLoaderWithConnectivity
 
 
 def prepare_arg_parser():
@@ -62,7 +61,7 @@ def init_from_checkpoint(args, checkpoint_path):
         dataset, checkpoint_state['batch_sampler_params'], sub_loggers_level)
 
     # Prepare batch loader
-    batch_loader = DWIMLBatchLoaderWithConnectivity.init_from_checkpoint(
+    batch_loader = DWIMLBatchLoaderOneInput.init_from_checkpoint(
         dataset, model, checkpoint_state['batch_loader_params'],
         sub_loggers_level)
 

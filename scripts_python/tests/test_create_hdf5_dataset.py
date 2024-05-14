@@ -20,7 +20,7 @@ def test_execution_bst(script_runner):
 
     dwi_ml_folder = os.path.join(data_dir, 'dwi_ml_ready')
     config_file = os.path.join(data_dir, 'code_creation/config_file.json')
-    training_subjs = os.path.join(data_dir, 'code_creation/training_subjs.txt')
+    training_subjs = os.path.join(data_dir, 'code_creation/subjs_list.txt')
     validation_subjs = os.path.join(data_dir,
                                     'code_creation/empty_subjs_list.txt')
     testing_subjs = validation_subjs

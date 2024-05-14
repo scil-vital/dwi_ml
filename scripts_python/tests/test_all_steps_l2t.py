@@ -141,8 +141,7 @@ def test_visu(script_runner, experiments_path):
     assert ret.success
 
 
-def future_test_training_with_generation_validation(script_runner, experiments_path):
-    # toDo NOT DOING ANYTHING NOW BECAUSE HDF5 DOES NOT CONTAIN A VALIDATION SUBJ!
+def test_training_with_generation_validation(script_runner, experiments_path):
 
     if torch.cuda.is_available():
         option = '--use_gpu'

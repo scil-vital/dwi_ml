@@ -918,7 +918,7 @@ class DWIMLAbstractTrainer:
         """
         Computes the loss(es) for the current batch and updates monitors.
         """
-        mean_local_loss, n, _ = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(data)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 

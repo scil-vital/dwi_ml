@@ -17,8 +17,8 @@ logger = logging.getLogger('trainer_logger')
 
 class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
     """
-    Trainer for Learn2Track. Nearly the same as in dwi_ml, but we add the
-    clip_grad parameter to avoid exploding gradients, typical in RNN.
+    Trainer for Learn2Track. Nearly the same as in parent class, but the
+    generation-validation phase (tracking) uses the hidden states.
     """
     model: Learn2TrackModel
 

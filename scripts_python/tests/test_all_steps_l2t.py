@@ -143,11 +143,6 @@ def test_visu(script_runner, experiments_path):
 
 def test_training_with_generation_validation(script_runner, experiments_path):
 
-    if torch.cuda.is_available():
-        option = '--use_gpu'
-    else:
-        option = ''
-
     logging.info("************ TESTING TRAINING WITH GENERATION ************")
     experiment_name = 'test2'
     ret = script_runner.run('l2t_train_model.py',
@@ -161,5 +156,5 @@ def test_training_with_generation_validation(script_runner, experiments_path):
                             '-v', 'INFO', '--step_size', '0.5',
                             '--add_a_tracking_validation_phase',
                             '--tracking_mask', 'wm_mask',
-                            '--tracking_phase_frequency', '1', option)
+                            '--tracking_phase_frequency', '1')
     assert ret.success

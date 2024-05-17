@@ -43,7 +43,7 @@ class DWIMLBatchIDSampler(Sampler):
                  batch_size_validation: Union[int, None],
                  batch_size_units: str, nb_streamlines_per_chunk: int = None,
                  rng: int = None, nb_subjects_per_batch: int = None,
-                 cycles: int = None, log_level=logging.root.level):
+                 cycles: int = None, log_level=logger.root.level):
         """
         Parameters
         ----------
@@ -56,7 +56,8 @@ class DWIMLBatchIDSampler(Sampler):
             Batch size. Can be defined in number of streamlines or in total
             length_mm (specified through batch_size_units).
         batch_size_validation: Union[int, None]
-            Idem
+            Idem. If None, it is expected that there will not be a validation
+            set.
         batch_size_units: str
             'nb_streamlines' or 'length_mm' (which should hopefully be
             correlated to the number of input data points).
@@ -80,9 +81,14 @@ class DWIMLBatchIDSampler(Sampler):
         """
         super().__init__(None)  # This does nothing but python likes it.
 
+        # Batch sampler's logging level can be changed separately from main
+        # scripts.
+        logger.setLevel(log_level)
+        self.logger = logger
+
         # Checking that batch_size is correct
         for batch_size in [batch_size_training, batch_size_validation]:
-            if batch_size and batch_size <= 0:
+            if batch_size is not None and batch_size <= 0:
                 raise ValueError("batch_size (i.e. number of total timesteps "
                                  "in the batch) should be a positive int "
                                  "value, but got batch_size={}"
@@ -90,20 +96,21 @@ class DWIMLBatchIDSampler(Sampler):
 
         if batch_size_units == 'nb_streamlines':
             if nb_streamlines_per_chunk is not None:
-                logging.warning("With a max_batch_size computed in terms of "
-                                "number of streamlines, the chunk size is not "
-                                "used. Ignored")
+                logger.warning("With a max_batch_size computed in terms of "
+                               "number of streamlines, the chunk size is not "
+                               "used. Ignored.")
+                nb_streamlines_per_chunk = None
         elif batch_size_units == 'length_mm':
             if nb_streamlines_per_chunk is None:
-                logging.debug("Chunk size was not set. Using default {}"
-                              .format(DEFAULT_CHUNK_SIZE))
+                logger.debug("Chunk size was not set. Using default {}"
+                             .format(DEFAULT_CHUNK_SIZE))
         else:
             raise ValueError("batch_size_unit should either be "
                              "'nb_streamlines' or 'length_mm', got {}"
                              .format(batch_size_units))
 
         # Checking that n_volumes was given if cycles was given
-        if cycles and not nb_subjects_per_batch:
+        if cycles and nb_subjects_per_batch is None:
             raise ValueError("If `cycles` is defined, "
                              "`nb_subjects_per_batch` should be defined. Got: "
                              "nb_subjects_per_batch={}, cycles={}"
@@ -126,11 +133,6 @@ class DWIMLBatchIDSampler(Sampler):
         # Set random numbers
         self.rng = rng
         self.np_rng = np.random.RandomState(self.rng)
-
-        # Batch sampler's logging level can be changed separately from main
-        # scripts.
-        self.logger = logger
-        self.logger.setLevel(log_level)
 
         # For later use, context
         self.context = None
@@ -157,12 +159,15 @@ class DWIMLBatchIDSampler(Sampler):
 
     @classmethod
     def init_from_checkpoint(cls, dataset, checkpoint_state: dict,
-                             new_log_level):
-        batch_sampler = cls(dataset=dataset, log_level=new_log_level,
-                            **checkpoint_state)
+                             new_log_level=None):
+        if new_log_level is not None:
+            batch_sampler = cls(dataset=dataset, log_level=new_log_level,
+                                **checkpoint_state)
+        else:
+            batch_sampler = cls(dataset=dataset, **checkpoint_state)
 
-        logging.info("Batch sampler's user-defined parameters: " +
-                     format_dict_to_str(batch_sampler.params_for_checkpoint))
+        logger.info("Batch sampler's user-defined parameters: " +
+                    format_dict_to_str(batch_sampler.params_for_checkpoint))
 
         return batch_sampler
 
@@ -218,9 +223,11 @@ class DWIMLBatchIDSampler(Sampler):
 
         # This is the list of all possible streamline ids
         global_streamlines_ids = np.arange(
-            self.context_subset.total_nb_streamlines[self.streamline_group_idx])
+            self.context_subset.total_nb_streamlines[
+                self.streamline_group_idx])
         ids_per_subjs = \
-            self.context_subset.streamline_ids_per_subj[self.streamline_group_idx]
+            self.context_subset.streamline_ids_per_subj[
+                self.streamline_group_idx]
 
         # This contains one bool per streamline:
         #   1 = this streamline has not been used yet.
@@ -276,7 +283,8 @@ class DWIMLBatchIDSampler(Sampler):
 
             # Final subject's batch size could be smaller if no streamlines are
             # left for this subject.
-            max_batch_size_per_subj = int(self.context_batch_size / nb_subjects)
+            max_batch_size_per_subj = int(
+                self.context_batch_size / nb_subjects)
             if self.batch_size_units == 'nb_streamlines':
                 chunk_size = max_batch_size_per_subj
             else:

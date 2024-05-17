@@ -79,7 +79,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     """
 
     def __init__(self, experiment_name,
-                 step_size: Union[float, None], compress_lines: Union[float, None],
+                 step_size: Union[float, None],
+                 compress_lines: Union[float, None],
                  nb_features: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
@@ -87,7 +88,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  prev_dirs_embedding_key: Union[str, None],
                  normalize_prev_dirs: bool,
                  # INPUTS
-                 input_embedding_key: str, input_embedded_size: Union[int, None],
+                 input_embedding_key: str,
+                 input_embedded_size: Union[int, None],
                  nb_cnn_filters: Optional[List[int]],
                  kernel_size: Optional[List[int]],
                  # RNN

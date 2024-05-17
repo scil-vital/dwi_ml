@@ -40,16 +40,9 @@ def prepare_arg_parser():
     add_mandatory_args_experiment_and_hdf5_path(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
-    training_group = add_training_args(p, add_a_tracking_validation_phase=True)
+    add_training_args(p, add_a_tracking_validation_phase=True)
     add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_verbose_arg(p)
-
-    # Additional arg for projects
-    training_group.add_argument(
-        '--clip_grad', type=float, default=None,
-        help="Value to which the gradient norms to avoid exploding gradients."
-             "\nDefault = None (not clipping).")
-
     add_model_args(p)
 
     return p

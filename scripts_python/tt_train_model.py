@@ -143,7 +143,7 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, patience_delta=args.patience_delta,
-            from_checkpoint=False,
+            from_checkpoint=False, clip_grad=args.clip_grad,
             # (generation validation:)
             add_a_tracking_validation_phase=args.add_a_tracking_validation_phase,
             tracking_phase_frequency=args.tracking_phase_frequency,

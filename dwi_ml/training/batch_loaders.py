@@ -119,6 +119,9 @@ class DWIMLAbstractBatchLoader:
         # Find idx of streamline group
         self.streamline_group_idx = self.dataset.streamline_groups.index(
             self.streamline_group_name)
+        self.data_contains_connectivity = \
+            self.dataset.streamlines_contain_connectivity[
+                self.streamline_group_idx]
 
         # Set random numbers
         self.rng = rng
@@ -160,9 +163,13 @@ class DWIMLAbstractBatchLoader:
 
     @classmethod
     def init_from_checkpoint(cls, dataset, model, checkpoint_state,
-                             new_log_level):
-        batch_loader = cls(dataset=dataset, model=model,
-                           log_level=new_log_level, **checkpoint_state)
+                             new_log_level=None):
+        if new_log_level is not None:
+            batch_loader = cls(dataset=dataset, model=model,
+                               log_level=new_log_level, **checkpoint_state)
+        else:
+            batch_loader = cls(dataset=dataset, model=model,
+                               **checkpoint_state)
         return batch_loader
 
     def set_context(self, context: str):
@@ -310,6 +317,38 @@ class DWIMLAbstractBatchLoader:
 
         return batch_streamlines, final_s_ids_per_subj
 
+    def load_batch_connectivity_matrices(
+            self, streamline_ids_per_subj: Dict[int, slice]):
+        if not self.data_contains_connectivity:
+            raise ValueError("No connectivity matrix in this dataset.")
+
+        # The batch's streamline ids will change throughout processing because
+        # of data augmentation, so we need to do it subject by subject to
+        # keep track of the streamline ids. These final ids will correspond to
+        # the loaded, processed streamlines, not to the ids in the hdf5 file.
+        subjs = list(streamline_ids_per_subj.keys())
+        nb_subjs = len(subjs)
+        matrices = [None] * nb_subjs
+        volume_sizes = [None] * nb_subjs
+        connectivity_nb_blocs = [None] * nb_subjs
+        connectivity_labels = [None] * nb_subjs
+        for i, subj in enumerate(subjs):
+            # No cache for the sft data. Accessing it directly.
+            # Note: If this is used through the dataloader, multiprocessing
+            # is used. Each process will open a handle.
+            subj_data = \
+                self.context_subset.subjs_data_list.get_subj_with_handle(subj)
+            subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
+
+            # We could access it only at required index, maybe. Loading the
+            # whole matrix here.
+            (matrices[i], volume_sizes[i],
+             connectivity_nb_blocs[i], connectivity_labels[i]) = \
+                subj_sft_data.get_connectivity_matrix_and_info()
+
+        return (matrices, volume_sizes,
+                connectivity_nb_blocs, connectivity_labels)
+
 
 class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
     """
@@ -334,7 +373,13 @@ class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
         self.use_neighborhood = isinstance(self.model, ModelWithNeighborhood)
 
         # Find group index in the data_source
-        idx = self.dataset.volume_groups.index(input_group_name)
+        try:
+            idx = self.dataset.volume_groups.index(input_group_name)
+        except ValueError:
+            raise ValueError("Required input group {} is not in list of "
+                             "volume groups: {}"
+                             .format(input_group_name,
+                                     self.dataset.volume_groups))
         self.input_group_idx = idx
 
     @property

@@ -36,8 +36,7 @@ def test_running(script_runner, experiments_path):
                             '--subset', 'training',
                             '--save_colored_tractogram',
                             '--save_colored_best_and_worst',
-                            '--save_displacement', '--batch_size', '100',
-                            '--min_range', '-1', '--max_range', '1',
-                            '--displacement_on_nb', '1',
-                            '--displacement_on_best_and_worst')
+                            '--save_displacement', '1',
+                            '--batch_size', '100',
+                            '--min_range', '-1', '--max_range', '1')
     assert ret.success

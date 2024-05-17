@@ -178,27 +178,6 @@ class DWIMLAbstractTrainer:
         self.batch_loader = batch_loader
         self.model = model
 
-        # Create DataLoaders from the BatchSamplers
-        #   * Before usage, context must be set for the batch sampler and the
-        #     batch loader, to use appropriate parameters.
-        #   * Pin memory if interpolation is done by workers; this means that
-        #     dataloader output is on GPU, ready to be fed to the model.
-        #     Otherwise, dataloader output is kept on CPU, and the main thread
-        #     sends volumes and coords on GPU for interpolation.
-        logger.debug("- Instantiating dataloaders...")
-        self.train_dataloader = DataLoader(
-            dataset=self.batch_sampler.dataset.training_set,
-            batch_sampler=self.batch_sampler,
-            num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch_streamlines,
-            pin_memory=self.use_gpu)
-        self.valid_dataloader = DataLoader(
-            dataset=self.batch_sampler.dataset.validation_set,
-            batch_sampler=self.batch_sampler,
-            num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch_streamlines,
-            pin_memory=self.use_gpu)
-
         # ----------------------
         # Checks
         # ----------------------
@@ -233,10 +212,37 @@ class DWIMLAbstractTrainer:
                 "Best practice is to have a validation set.")
         else:
             self.use_validation = True
+            if max_batches_per_epoch_validation is None:
+                self.max_batches_per_epoch_validation = 1000
 
         if optimizer not in ['SGD', 'Adam', 'RAdam']:
             raise ValueError("Optimizer choice {} not recognized."
                              .format(optimizer))
+
+        # ----------------
+        # Create DataLoaders from the BatchSamplers
+        # ----------------
+        #   * Before usage, context must be set for the batch sampler and the
+        #     batch loader, to use appropriate parameters.
+        #   * Pin memory if interpolation is done by workers; this means that
+        #     dataloader output is on GPU, ready to be fed to the model.
+        #     Otherwise, dataloader output is kept on CPU, and the main thread
+        #     sends volumes and coords on GPU for interpolation.
+        logger.debug("- Instantiating dataloaders...")
+        self.train_dataloader = DataLoader(
+            dataset=self.batch_sampler.dataset.training_set,
+            batch_sampler=self.batch_sampler,
+            num_workers=self.nb_cpu_processes,
+            collate_fn=self.batch_loader.load_batch_streamlines,
+            pin_memory=self.use_gpu)
+        self.valid_dataloader = None
+        if self.use_validation:
+            self.valid_dataloader = DataLoader(
+                dataset=self.batch_sampler.dataset.validation_set,
+                batch_sampler=self.batch_sampler,
+                num_workers=self.nb_cpu_processes,
+                collate_fn=self.batch_loader.load_batch_streamlines,
+                pin_memory=self.use_gpu)
 
         # ----------------------
         # Evolving values. They will need to be updated if initialized from
@@ -909,6 +915,8 @@ class DWIMLAbstractTrainer:
         """
         # Encapsulated for easier management of child classes.
         mean_local_loss, n = self.run_one_batch(data)
+
+        # mean loss is a Tensor of a single value. item() converts to float
         self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
@@ -999,6 +1007,11 @@ class DWIMLAbstractTrainer:
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines)
+        n: int
+            The number of points in this batch
+        X: Any
+            Any other data returned when computing loss. Not used in the
+            trainer, but could be useful anywhere else.
         """
         raise NotImplementedError
 
@@ -1092,7 +1105,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         Returns
         -------
-        mean_loss : float
+        mean_loss : Tensor of shape (1,) ; float.
             The mean loss of the provided batch.
         n: int
             Total number of points for this batch.
@@ -1135,11 +1148,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # (batch loader will do it depending on training / valid)
         targets = self.batch_loader.add_noise_streamlines_loss(targets,
                                                                self.device)
-        results = self.model.compute_loss(model_outputs, targets,
-                                          average_results=True)
+        mean_loss, n = self.model.compute_loss(model_outputs, targets,
+                                               average_results=True)
 
         if self.use_gpu:
             log_gpu_memory_usage(logger)
 
-        # The mean tensor is a single value. Converting to float using item().
-        return results
+        return mean_loss, n

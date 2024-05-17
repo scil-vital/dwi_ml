@@ -110,7 +110,8 @@ class SubjectData(SubjectDataAbstract):
             subject_mri_data_list.append(subject_mri_group_data)
 
         for group in streamline_groups:
-            logger.debug("        Loading subject's streamlines")
+            logger.debug("        Loading streamlines group '{}'"
+                         .format(group))
             sft_data = SFTData.init_sft_data_from_hdf_info(
                 hdf_file[subject_id][group])
             subject_sft_data_list.append(sft_data)

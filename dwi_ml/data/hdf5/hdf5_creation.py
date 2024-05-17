@@ -59,8 +59,8 @@ def format_filelist(filenames, enforce_presence, folder=None) -> List[str]:
     return new_files
 
 
-def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
-                          group_affine, group_res):
+def _load_and_verify_file(filename: str, group_name: str, group_affine,
+                          group_res):
     """
     Loads a 3D or 4D nifti file. If it is a 3D dataset, adds a dimension to
     make it 4D. Then checks that it is compatible with a given group based on
@@ -70,8 +70,6 @@ def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
     ------
     filename: str
         File's name. Must be .nii or .nii.gz.
-    subj_input_path: Path
-        Path where to load the nifti file from.
     group_name: str
         Name of the group with which 'filename' file must be compatible.
     group_affine: np.array
@@ -79,9 +77,7 @@ def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
     group_res: np.array
         The loaded file's resolution must be equal (or very close) to this res.
     """
-    data_file = subj_input_path.joinpath(filename)
-
-    if not data_file.is_file():
+    if not os.path.isfile(filename):
         logging.debug("      Skipping file {} because it was not "
                       "found in this subject's folder".format(filename))
         # Note: if args.enforce_files_presence was set to true, this
@@ -89,7 +85,7 @@ def _load_and_verify_file(filename: str, subj_input_path, group_name: str,
         # create_hdf5_dataset.py.
         return None
 
-    data, affine, res, _ = load_file_to4d(data_file)
+    data, affine, res, _ = load_file_to4d(filename)
 
     if not np.allclose(affine, group_affine, atol=1e-5):
         # Note. When keeping default options on tolerance, we have run
@@ -483,6 +479,7 @@ class HDF5Creator:
                     else:
                         std_mask = np.logical_or(sub_mask_data, std_mask)
 
+        # Get the files and add the subject_dir as prefix.
         file_list = self.groups_config[group]['files']
         file_list = format_filelist(file_list, self.enforce_files_presence,
                                     folder=subj_input_dir)
@@ -505,8 +502,8 @@ class HDF5Creator:
             for file_name in file_list[1:]:
                 logging.info("       - Processing file {}"
                              .format(os.path.basename(file_name)))
-                data = _load_and_verify_file(file_name, subj_input_dir, group,
-                                             group_affine, group_res)
+                data = _load_and_verify_file(file_name, group, group_affine,
+                                             group_res)
 
                 if std_option == 'per_file':
                     logging.info('          - Standardizing')

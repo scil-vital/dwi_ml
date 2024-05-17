@@ -99,7 +99,7 @@ class MainModelAbstract(torch.nn.Module):
         add_resample_or_compress_arg(p)
 
     def set_context(self, context):
-        assert context in ['training', 'tracking']
+        assert context in ['training',  'validation']
         self._context = context
 
     @property
@@ -730,7 +730,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
                              .format(self.positional_encoding_key))
 
     def set_context(self, context):
-        assert context in ['training', 'tracking', 'visu']
+        assert context in ['training', 'validation', 'tracking', 'visu']
         self._context = context
 
     def instantiate_direction_getter(self, dg_input_size):

@@ -141,13 +141,7 @@ def test_visu(script_runner, experiments_path):
     assert ret.success
 
 
-def future_test_training_with_generation_validation(script_runner, experiments_path):
-    # toDo NOT DOING ANYTHING NOW BECAUSE HDF5 DOES NOT CONTAIN A VALIDATION SUBJ!
-
-    if torch.cuda.is_available():
-        option = '--use_gpu'
-    else:
-        option = ''
+def test_training_with_generation_validation(script_runner, experiments_path):
 
     logging.info("************ TESTING TRAINING WITH GENERATION ************")
     experiment_name = 'test2'
@@ -161,5 +155,6 @@ def future_test_training_with_generation_validation(script_runner, experiments_p
                             '--max_batches_per_epoch_validation', '1',
                             '-v', 'INFO', '--step_size', '0.5',
                             '--add_a_tracking_validation_phase',
-                            '--tracking_phase_frequency', '1', option)
+                            '--tracking_mask', 'wm_mask',
+                            '--tracking_phase_frequency', '1')
     assert ret.success

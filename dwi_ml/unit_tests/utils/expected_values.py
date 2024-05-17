@@ -7,7 +7,7 @@ Organization of the testing data:
 │    ├── code.sh
 │    ├── config_file.json
 │    ├── empty_subjs_list.txt
-│    └── training_subjs.txt
+│    └── subjs_list.txt
 ├── dwi_ml_ready
 │    └── subjX
 │        ├── anat

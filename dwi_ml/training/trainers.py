@@ -178,27 +178,6 @@ class DWIMLAbstractTrainer:
         self.batch_loader = batch_loader
         self.model = model
 
-        # Create DataLoaders from the BatchSamplers
-        #   * Before usage, context must be set for the batch sampler and the
-        #     batch loader, to use appropriate parameters.
-        #   * Pin memory if interpolation is done by workers; this means that
-        #     dataloader output is on GPU, ready to be fed to the model.
-        #     Otherwise, dataloader output is kept on CPU, and the main thread
-        #     sends volumes and coords on GPU for interpolation.
-        logger.debug("- Instantiating dataloaders...")
-        self.train_dataloader = DataLoader(
-            dataset=self.batch_sampler.dataset.training_set,
-            batch_sampler=self.batch_sampler,
-            num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch_streamlines,
-            pin_memory=self.use_gpu)
-        self.valid_dataloader = DataLoader(
-            dataset=self.batch_sampler.dataset.validation_set,
-            batch_sampler=self.batch_sampler,
-            num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch_streamlines,
-            pin_memory=self.use_gpu)
-
         # ----------------------
         # Checks
         # ----------------------
@@ -233,10 +212,37 @@ class DWIMLAbstractTrainer:
                 "Best practice is to have a validation set.")
         else:
             self.use_validation = True
+            if max_batches_per_epoch_validation is None:
+                self.max_batches_per_epoch_validation = 1000
 
         if optimizer not in ['SGD', 'Adam', 'RAdam']:
             raise ValueError("Optimizer choice {} not recognized."
                              .format(optimizer))
+
+        # ----------------
+        # Create DataLoaders from the BatchSamplers
+        # ----------------
+        #   * Before usage, context must be set for the batch sampler and the
+        #     batch loader, to use appropriate parameters.
+        #   * Pin memory if interpolation is done by workers; this means that
+        #     dataloader output is on GPU, ready to be fed to the model.
+        #     Otherwise, dataloader output is kept on CPU, and the main thread
+        #     sends volumes and coords on GPU for interpolation.
+        logger.debug("- Instantiating dataloaders...")
+        self.train_dataloader = DataLoader(
+            dataset=self.batch_sampler.dataset.training_set,
+            batch_sampler=self.batch_sampler,
+            num_workers=self.nb_cpu_processes,
+            collate_fn=self.batch_loader.load_batch_streamlines,
+            pin_memory=self.use_gpu)
+        self.valid_dataloader = None
+        if self.use_validation:
+            self.valid_dataloader = DataLoader(
+                dataset=self.batch_sampler.dataset.validation_set,
+                batch_sampler=self.batch_sampler,
+                num_workers=self.nb_cpu_processes,
+                collate_fn=self.batch_loader.load_batch_streamlines,
+                pin_memory=self.use_gpu)
 
         # ----------------------
         # Evolving values. They will need to be updated if initialized from
@@ -918,7 +924,7 @@ class DWIMLAbstractTrainer:
         """
         Computes the loss(es) for the current batch and updates monitors.
         """
-        mean_local_loss, n, _ = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(data)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 

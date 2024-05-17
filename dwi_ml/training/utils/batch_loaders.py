@@ -4,8 +4,7 @@ import logging
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.training.with_generation.batch_loader import \
-    DWIMLBatchLoaderWithConnectivity
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 
 
 def add_args_batch_loader(p: argparse.ArgumentParser):
@@ -44,7 +43,7 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
 def prepare_batch_loader(dataset, model, args, sub_loggers_level):
     # Preparing the batch loader.
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
-        batch_loader = DWIMLBatchLoaderWithConnectivity(
+        batch_loader = DWIMLBatchLoaderOneInput(
             dataset=dataset, model=model,
             input_group_name=args.input_group_name,
             streamline_group_name=args.streamline_group_name,

@@ -53,7 +53,7 @@ def test_execution(script_runner, experiments_path):
     ret = script_runner.run('tt_train_model.py',
                             experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
-                            '--model', 'TTO',
+                            '--model', 'TTO', '--dg_key', 'gaussian',
                             '--max_epochs', '1', '--batch_size_training', '5',
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',

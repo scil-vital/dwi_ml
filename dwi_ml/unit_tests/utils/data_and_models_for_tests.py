@@ -5,7 +5,8 @@ from typing import List
 
 import torch
 
-from scilpy.io.fetcher import fetch_data, get_home
+from scilpy import get_home
+from scilpy.io.fetcher import fetch_data
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions
@@ -30,9 +31,7 @@ def fetch_testing_data():
         # Access to the file dwi_ml.zip:
         # https://drive.google.com/uc?id=1beRWAorhaINCncttgwqVAP2rNOfx842Q
         name_as_dict = {
-            'data_for_tests_dwi_ml.zip':
-                ['1beRWAorhaINCncttgwqVAP2rNOfx842Q',
-                 'da6c94fbef7ac13029acdb8b94325096']}
+            'data_for_tests_dwi_ml.zip': "da6c94fbef7ac13029acdb8b94325096"}
         fetch_data(name_as_dict)
 
     return testing_data_dir

@@ -5,23 +5,16 @@
 # Main dependency: scilpy
 #    Scilpy and comet_ml both require requests. In comet: >=2.18.*,
 #    which installs a version >2.28. Adding request version explicitely.
-#
-#    Changed many times the scilpy version. Tried to have latest fixed version,
-#    but currently, working on beluga only when installing manually. But using
-#    the master is not good; changes too fast for us. Using a fixed commit for
-#    now.
-#    To using a commit preceding all recent changes in scilpy's test data
-#    management: d20d3d4917d40f698aa975f64a575dda34e0c89c
 # -------
 requests==2.28.*
-dipy==1.8.0
--e git+https://github.com/scilus/scilpy.git@d20d3d4917d40f698aa975f64a575dda34e0c89c#egg=scilpy
+dipy==1.9.*
+scilpy==2.0.2
 
 # -------
 # Other important dependencies
 # -------
 bertviz==1.4.0  # For transformer's visu
-torch==1.13.*
+torch==2.2.0
 tqdm==4.64.*
 comet-ml>=3.22.0
 contextlib2==21.6.0
@@ -30,10 +23,9 @@ jupyter>=1.0.0
 IProgress>=0.4     # For jupyter with tdqm
 nested_lookup==0.2.25  # For lists management
 pynvml>=11.5.0
-scikit-image
 
 # -------
-# Necessary but should be installed with scilpy (Last check: 01/2024):
+# Necessary but should be installed with scilpy (Last check: 04/2024):
 # -------
 future==0.18.*
 h5py==3.7.*   # h5py must absolutely be >2.4: that's when it became thread-safe
@@ -41,6 +33,7 @@ matplotlib==3.6.*   # Hint: If matplotlib fails, you may try to install pyQt5.
 nibabel==5.2.*
 numpy==1.23.*
 scipy==1.9.*
+scikit-image==0.22.*
 
 
 # --------------- Notes to developers

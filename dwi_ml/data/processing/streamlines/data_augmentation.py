@@ -9,8 +9,7 @@ from nibabel.streamlines.tractogram import (PerArrayDict, PerArraySequenceDict)
 import numpy as np
 
 from scilpy.tractograms.streamline_operations import \
-    resample_streamlines_step_size
-from scilpy.utils.streamlines import compress_sft
+    resample_streamlines_step_size, compress_sft
 
 
 def resample_or_compress(sft, step_size_mm: float = None,

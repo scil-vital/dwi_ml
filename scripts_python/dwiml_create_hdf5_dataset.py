@@ -25,8 +25,8 @@ import os
 import shutil
 from pathlib import Path
 
-from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
-                             assert_outputs_exist)
+from scilpy.io.utils import (add_overwrite_arg, add_verbose_arg,
+                             assert_inputs_exist, assert_outputs_exist)
 
 from dipy.io.stateful_tractogram import set_sft_logger_level
 
@@ -34,7 +34,6 @@ from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
 from dwi_ml.data.hdf5.utils import (
     add_hdf5_creation_args, add_streamline_processing_args)
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_verbose_arg
 
 
 def _initialize_intermediate_subdir(hdf5_file, save_intermediate):

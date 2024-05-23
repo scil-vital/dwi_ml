@@ -13,9 +13,7 @@ import matplotlib.cm as cmx
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scilpy.io.utils import add_overwrite_arg
-
-from dwi_ml.io_utils import add_verbose_arg
+from scilpy.io.utils import add_overwrite_arg, add_verbose_arg
 
 
 def _build_arg_parser():

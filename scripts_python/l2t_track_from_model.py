@@ -12,9 +12,8 @@ import dipy.core.geometry as gm
 from dipy.io.utils import is_header_compatible
 import h5py
 import nibabel as nib
-import torch
 
-from scilpy.io.utils import (add_sphere_arg,
+from scilpy.io.utils import (add_sphere_arg, add_verbose_arg,
                              assert_inputs_exist, assert_outputs_exist,
                              verify_compression_th)
 from scilpy.tracking.utils import (add_seeding_options,
@@ -23,7 +22,6 @@ from scilpy.tracking.utils import (add_seeding_options,
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_verbose_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.testing.utils import prepare_dataset_one_subj, \
     find_hdf5_associated_to_experiment

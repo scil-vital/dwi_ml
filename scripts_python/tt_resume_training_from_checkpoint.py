@@ -9,9 +9,11 @@ import os
 # Importing now to solve issues later.
 import comet_ml
 
+from scilpy.io.utils import add_verbose_arg
+
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_verbose_arg, verify_which_model_in_path
+from dwi_ml.io_utils import verify_which_model_in_path
 from dwi_ml.models.projects.transformer_models import find_transformer_class
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler

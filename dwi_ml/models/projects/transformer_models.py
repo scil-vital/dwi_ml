@@ -574,8 +574,17 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
             self.d_model, self.nheads, dim_feedforward=self.ffnn_hidden_size,
             dropout=self.dropout_rate, activation=self.activation,
             batch_first=True, norm_first=self.norm_first)
+
+        # Receiving weird warning: enable_nested_tensor is True,
+        # but self.use_nested_tensor is False because encoder_layer.norm_first
+        # was True.
+        enable_nested = False if self.norm_first else True
+
+        # Note about norm: this is a final normalization step. Not linked to
+        # the normalization decided with self.norm_first.
         self.modified_torch_transformer = ModifiedTransformerEncoder(
-            main_layer_encoder, self.n_layers_e, norm=None)
+            main_layer_encoder, self.n_layers_e, norm=None,
+            enable_nested_tensor=enable_nested)
 
     @property
     def d_model(self):
@@ -613,7 +622,7 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
         # mask_future, mask_padding = masks
         outputs, sa_weights = self.modified_torch_transformer(
             src=inputs, mask=masks[0], src_key_padding_mask=masks[1],
-            return_weights=return_weights)
+            is_causal=True, return_weights=return_weights)
 
         return outputs, (sa_weights,)
 
@@ -844,8 +853,17 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
             dim_feedforward=self.ffnn_hidden_size, dropout=self.dropout_rate,
             activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
-        encoder = ModifiedTransformerEncoder(encoder_layer, self.n_layers_e,
-                                             norm=None)
+
+        # Receiving weird warning: enable_nested_tensor is True,
+        # but self.use_nested_tensor is False because encoder_layer.norm_first
+        # was True.
+        enable_nested = False if self.norm_first else True
+
+        # Note about norm: this is a final normalization step. Not linked to
+        # the normalization decided with self.norm_first.
+        encoder = ModifiedTransformerEncoder(
+            encoder_layer, self.n_layers_e, norm=None,
+            enable_nested_tensor=enable_nested)
 
         # Decoder
         decoder_layer = ModifiedTransformerDecoderLayer(
@@ -908,7 +926,8 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
                 src=data[0], tgt=data[1],
                 src_mask=masks[0], tgt_mask=masks[0], memory_mask=masks[0],
                 src_key_padding_mask=masks[1], tgt_key_padding_mask=masks[1],
-                memory_key_padding_mask=masks[1],
+                memory_key_padding_mask=masks[1], src_is_causal=True,
+                tgt_is_causal=True, memory_is_causal=True,
                 return_weights=return_weights)
         return outputs, (sa_weights_encoder, sa_weights_decoder, mha_weights)
 
@@ -989,7 +1008,7 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
         # mask_future, mask_padding = masks
         outputs, sa_weights = self.modified_torch_transformer(
             src=concat_s_t, mask=masks[0], src_key_padding_mask=masks[1],
-            return_weights=return_weights)
+            is_causal=True, return_weights=return_weights)
 
         return outputs, (sa_weights,)
 

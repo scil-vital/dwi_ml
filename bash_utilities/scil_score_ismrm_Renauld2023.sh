@@ -31,7 +31,7 @@ fi
 
 
 echo '------------- SEGMENTATION ------------'
-scil_score_tractogram.py $tractogram $config_file_segmentation $out_dir --no_empty \
+scil_tractogram_segment_and_score.py $tractogram $config_file_segmentation $out_dir --no_empty \
     --gt_dir $scoring_data --reference $ref --json_prefix tmp_ --no_bbox_check;
 
 echo '------------- Merging CC sub-bundles ------------'

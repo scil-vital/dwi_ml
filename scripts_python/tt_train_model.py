@@ -14,14 +14,16 @@ import os
 import comet_ml
 import torch
 
-from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
+from scilpy.io.utils import (add_verbose_arg, assert_inputs_exist,
+                             assert_outputs_exist)
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_memory_args, add_verbose_arg
-from dwi_ml.models.projects.transformer_models import \
-    OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
+from dwi_ml.io_utils import add_memory_args
+from dwi_ml.models.projects.transformer_models import (
+    OriginalTransformerModel, TransformerSrcAndTgtModel,
+    TransformerSrcOnlyModel)
 from dwi_ml.models.projects.transformers_utils import (
     add_transformers_model_args)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
@@ -32,8 +34,8 @@ from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
                                                  prepare_batch_loader)
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
-from dwi_ml.training.utils.trainer import add_training_args, run_experiment, \
-    format_lr
+from dwi_ml.training.utils.trainer import (add_training_args, run_experiment,
+                                           format_lr)
 
 
 def prepare_arg_parser():

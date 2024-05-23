@@ -14,7 +14,7 @@ from dipy.io.utils import is_header_compatible
 import h5py
 import nibabel as nib
 
-from scilpy.io.utils import (add_sphere_arg,
+from scilpy.io.utils import (add_sphere_arg, add_verbose_arg,
                              assert_inputs_exist, assert_outputs_exist,
                              verify_compression_th)
 from scilpy.tracking.utils import (add_seeding_options,
@@ -23,7 +23,7 @@ from scilpy.tracking.utils import (add_seeding_options,
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_verbose_arg, verify_which_model_in_path
+from dwi_ml.io_utils import verify_which_model_in_path
 from dwi_ml.models.projects.transformer_models import find_transformer_class
 from dwi_ml.testing.utils import prepare_dataset_one_subj, \
     find_hdf5_associated_to_experiment

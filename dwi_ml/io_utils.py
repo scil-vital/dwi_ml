@@ -5,15 +5,6 @@ from argparse import ArgumentParser
 from scilpy.io.utils import add_processes_arg
 
 
-def add_verbose_arg(p):
-    # Can eventually become scilpy.io.utils.add_verbose_arg
-    p.add_argument('-v', default="WARNING", const='INFO', nargs='?',
-                   choices=['DEBUG', 'INFO', 'WARNING'], dest='verbose',
-                   help='Produces verbose output depending on '
-                        'the provided level. \nDefault level is warning, '
-                        'default when using -v is info.')
-
-
 def add_resample_or_compress_arg(p: ArgumentParser):
     g = p.add_mutually_exclusive_group()
     g.add_argument(

@@ -36,9 +36,9 @@ import pathlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scilpy.io.utils import assert_outputs_exist, add_overwrite_arg
+from scilpy.io.utils import (add_overwrite_arg, add_verbose_arg,
+                             assert_outputs_exist)
 
-from dwi_ml.io_utils import add_verbose_arg
 from dwi_ml.viz.logs_plots import visualize_logs
 
 

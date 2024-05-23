@@ -34,10 +34,3 @@ nibabel==5.2.*
 numpy==1.23.*
 scipy==1.9.*
 scikit-image==0.22.*
-
-
-# --------------- Notes to developers
-# If we upgrade torch, verify if code copied in
-#     models.projects.transformers_from_torch has changed.
-# (current code copied from torch 1.13.1)
-# ----------

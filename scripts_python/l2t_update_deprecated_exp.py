@@ -12,11 +12,10 @@ import shutil
 
 import numpy as np
 import torch
-from scilpy.io.utils import add_overwrite_arg
+from scilpy.io.utils import add_overwrite_arg, add_verbose_arg
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
-from dwi_ml.io_utils import add_verbose_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler

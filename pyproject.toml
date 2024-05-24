@@ -24,6 +24,7 @@ classifiers = [
 ]
 dependencies = [
 "requests==2.28.*",
+"dearpygui==1.11.1",
 "dipy==1.10.*",
 "scilpy==2.1.0",
 "bertviz==1.4.1",  # For transformer's visu

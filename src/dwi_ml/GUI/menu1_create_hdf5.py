@@ -92,6 +92,9 @@ def open_menu_create_hdf5():
 
 
 def __create_hdf5_script_callback(_, __, user_data):
+    """
+    user_data: the Argparser_for_GUI
+    """
     logging.debug("GUI.menu1_create_hdf5.__create_hdf5_script_callback(): "
                   "Preparing script...")
 
@@ -102,15 +105,14 @@ def __create_hdf5_script_callback(_, __, user_data):
                                       "created bash script.")
         return
     elif out_path[-3:] != '.sh':
-        show_infobox("Wrong filename", "Your output filename should be .sh or "
-                                       ".txt. Got '{}'".format(out_path))
+        show_infobox("Wrong filename", "Your output filename should be .sh, "
+                                       "got '{}'".format(out_path))
         return
 
     logging.info("Will save the command line in {}.".format(out_path))
 
     # 2. Get values. Verify that no warning message popped-up (if so, returns
     # None)
-    # Note. User_data = the ArgparserForGUI
     all_values = get_all_values_as_str(user_data)
     if all_values is None:
         # Showed a message box. Leaving now.

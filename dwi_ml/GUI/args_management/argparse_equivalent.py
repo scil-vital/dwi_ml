@@ -6,11 +6,8 @@ store_options = ['store_true', 'store_false']
 
 def format_arg(argname, help, metavar=None, type=str, default=None,
                action=None, const=None, nargs=None, dest=None, choices=None):
-    if action == 'store_true':
-        type = bool
-        default = False
-        choices = [True, False]
-    elif action is not None:
+
+    if action is not None and action != 'store_true':
         raise NotImplementedError("NOT READY")
 
     # Format metavar

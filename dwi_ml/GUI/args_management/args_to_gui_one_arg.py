@@ -87,7 +87,10 @@ def add_one_arg_and_help_to_gui(
 
             # 2) Help explanation
             with dpg.table_row():
-                help_txt = dpg.add_text(params['help'], **STYLE_ARGPARSE_HELP)
+                _help = params['help']
+                if params['choices'] is not None:
+                    _help += "\nChoices: {}".format(params['choices'])
+                help_txt = dpg.add_text(_help, **STYLE_ARGPARSE_HELP)
 
         MY_FONTS = get_my_fonts_dictionary()
         dpg.bind_item_font(help_txt, MY_FONTS['code'])
@@ -316,16 +319,13 @@ def __callback_option_checkbox(_, app_data, user_data):
         # Clicking!
 
         # Remove the "Default = X" text; will replace by input receiver
-        logging.debug("- Hiding 'default=' text")
         dpg.hide_item(argname + OPTION_DEFAULT_TEXTBOX)
 
         if not dpg.does_item_exist(argname + NARGS_GROUP):
             # If it's the first call, prepare buttons
-            logging.debug("- Preparing nargs buttons")
             check_nargs_add_input(argname, params)
         else:
             # Else, show group back + nargs buttons
-            logging.debug("- Showing back nargs buttons")
             dpg.show_item(argname + NARGS_GROUP)
             if dpg.does_item_exist(argname + ADD_NARGS_BUTTON):
                 dpg.show_item(argname + ADD_NARGS_BUTTON)
@@ -334,17 +334,16 @@ def __callback_option_checkbox(_, app_data, user_data):
         # Verifying that other values in the exclusive groups are not also
         # modified. If so, unselect them.
         if exclusive_list is not None:
-            logging.debug("- Hiding other exlusive args")
             for excl_arg in exclusive_list:
                 if excl_arg != argname:
-                    logging.debug("-> Hiding arg {}".format(excl_arg))
-
                     dpg.set_value(excl_arg + OPTION_CHECKBOX, False)
                     if dpg.does_item_exist(excl_arg + NARGS_GROUP):
                         dpg.hide_item(excl_arg + NARGS_GROUP)
 
                     # Showing the default text, which is "not selected"
                     dpg.show_item(excl_arg + OPTION_DEFAULT_TEXTBOX)
+                    dpg.set_item_label(excl_arg + OPTION_CHECKBOX,
+                                       "Unclick to set")
 
         # Change checkbox text
         dpg.set_item_label(argname + OPTION_CHECKBOX, "Unclick to unset")
@@ -354,11 +353,9 @@ def __callback_option_checkbox(_, app_data, user_data):
 
         # Show back text with "default = "
         if dpg.does_item_exist(argname + OPTION_DEFAULT_TEXTBOX):
-            logging.debug("- Showing back 'default=' text.")
             dpg.show_item(argname + OPTION_DEFAULT_TEXTBOX)
 
         # Remove nargs, and possibly buttons
-        logging.debug("- Hiding nargs buttons")
         dpg.hide_item(argname + NARGS_GROUP)
         if dpg.does_item_exist(argname + ADD_NARGS_BUTTON):
             dpg.hide_item(argname + ADD_NARGS_BUTTON)

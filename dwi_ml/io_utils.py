@@ -9,7 +9,8 @@ def add_resample_or_compress_arg(p: ArgumentParser):
     g = p.add_mutually_exclusive_group()
     g.add_argument(
         '--step_size', type=float, metavar='s',
-        help="Step size to resample the data (in mm). Default: None")
+        help="Step size to resample the streamlines (in mm). Default: No "
+             "resampling.")
     g.add_argument(
         '--compress', type=float, metavar='r', const=0.01, nargs='?',
         dest='compress_th',

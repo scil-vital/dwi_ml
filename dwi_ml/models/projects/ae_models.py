@@ -108,7 +108,7 @@ class ModelAE(MainModelAbstract):
         will be used to re-create the model when starting an experiment from
         checkpoint. You should be able to re-create an instance of your
         model with those params."""
-        #p = super().params_for_checkpoint()
+        # p = super().params_for_checkpoint()
         p = {'kernel_size': self.kernel_size,
              'latent_space_dims': self.latent_space_dims,
              'experiment_name': self.experiment_name}
@@ -120,7 +120,6 @@ class ModelAE(MainModelAbstract):
         p['kernel_size'] = 3
         p['latent_space_dims'] = 32
         return p
-        
 
     def forward(self,
                 input_streamlines: List[torch.tensor],
@@ -140,7 +139,6 @@ class ModelAE(MainModelAbstract):
             Output data, ready to be passed to either `compute_loss()` or
             `get_tracking_directions()`.
         """
-
 
         x = self.decode(self.encode(input_streamlines))
         return x

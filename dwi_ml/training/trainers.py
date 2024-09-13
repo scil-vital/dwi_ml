@@ -1034,31 +1034,24 @@ class DWIMLAbstractTrainer:
 
         # Possibly add noise to inputs here.
         logger.debug('*** Computing forward propagation')
-        if self.model.forward_uses_streamlines:
-            # Now possibly add noise to streamlines (training / valid)
-            streamlines_f = self.batch_loader.add_noise_streamlines_forward(
-                streamlines_f, self.device)
 
-            # Possibly computing directions twice (during forward and loss)
-            # but ok, shouldn't be too heavy. Easier to deal with multiple
-            # projects' requirements by sending whole streamlines rather
-            # than only directions.
-            model_outputs = self.model(streamlines_f)
-            del streamlines_f
-        else:
-            del streamlines_f
-            model_outputs = self.model()
+        # Now possibly add noise to streamlines (training / valid)
+        streamlines_f = self.batch_loader.add_noise_streamlines_forward(
+            streamlines_f, self.device)
+
+        # Possibly computing directions twice (during forward and loss)
+        # but ok, shouldn't be too heavy. Easier to deal with multiple
+        # projects' requirements by sending whole streamlines rather
+        # than only directions.
+        model_outputs = self.model(streamlines_f)
+        del streamlines_f
 
         logger.debug('*** Computing loss')
-        if self.model.loss_uses_streamlines:
-            targets = self.batch_loader.add_noise_streamlines_loss(
-                targets, self.device)
+        targets = self.batch_loader.add_noise_streamlines_loss(
+            targets, self.device)
 
-            results = self.model.compute_loss(model_outputs, targets,
-                                              average_results=True)
-        else:
-            results = self.model.compute_loss(model_outputs,
-                                              average_results=True)
+        results = self.model.compute_loss(model_outputs, targets,
+                                          average_results=True)
 
         if self.use_gpu:
             log_gpu_memory_usage(logger)

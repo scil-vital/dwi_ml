@@ -25,7 +25,7 @@ from dwi_ml.training.trainers import DWIMLAbstractTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader)
-from dwi_ml.training.batch_loaders import DWIMLAbstractBatchLoader
+from dwi_ml.training.batch_loaders import DWIMLStreamlinesBatchLoader
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
 from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
@@ -82,7 +82,7 @@ def init_from_args(args, sub_loggers_level):
     batch_sampler = prepare_batch_sampler(dataset, args, sub_loggers_level)
     # Preparing the batch loader.
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
-        batch_loader = DWIMLAbstractBatchLoader(
+        batch_loader = DWIMLStreamlinesBatchLoader(
             dataset=dataset, model=model,
             streamline_group_name=args.streamline_group_name,
             # OTHER

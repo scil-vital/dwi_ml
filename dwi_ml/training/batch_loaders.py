@@ -58,7 +58,7 @@ from dwi_ml.models.main_models import MainModelOneInput, \
 logger = logging.getLogger('batch_loader_logger')
 
 
-class DWIMLAbstractBatchLoader:
+class DWIMLStreamlinesBatchLoader:
     def __init__(self, dataset: MultiSubjectDataset, model: MainModelAbstract,
                  streamline_group_name: str, rng: int,
                  split_ratio: float = 0.,
@@ -355,7 +355,7 @@ class DWIMLAbstractBatchLoader:
                 connectivity_nb_blocs, connectivity_labels)
 
 
-class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
+class DWIMLStreamlinesBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
     """
     Loads:
         input = one volume group

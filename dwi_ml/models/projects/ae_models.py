@@ -98,9 +98,6 @@ class ModelAE(MainModelAbstract):
             torch.nn.Conv1d(32, 3, self.kernel_size, stride=1, padding=0)
         )
 
-        self.forward_uses_streamlines = True
-        self.loss_uses_streamlines = True
-
     @property
     def params_for_checkpoint(self):
         """All parameters necessary to create again the same model. Will be

@@ -9,16 +9,16 @@ import os
 # Importing now to solve issues later.
 import comet_ml
 
+from scilpy.io.utils import add_verbose_arg
+
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
 from dwi_ml.training.utils.experiment import add_args_resuming_experiment
 from dwi_ml.training.utils.trainer import run_experiment
-from dwi_ml.training.with_generation.batch_loader import \
-    DWIMLBatchLoaderWithConnectivity
 
 
 def prepare_arg_parser():
@@ -26,7 +26,7 @@ def prepare_arg_parser():
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_args_resuming_experiment(p)
 
-    add_logging_arg(p)
+    add_verbose_arg(p)
 
     return p
 
@@ -49,9 +49,7 @@ def init_from_checkpoint(args, checkpoint_path):
     dataset = prepare_multisubjectdataset(argparse.Namespace(**args_data))
 
     # Setting log level to INFO maximum for sub-loggers, else it become ugly
-    sub_loggers_level = args.logging
-    if args.logging == 'DEBUG':
-        sub_loggers_level = 'INFO'
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
 
     # Load model from checkpoint directory
     model = Learn2TrackModel.load_model_from_params_and_state(
@@ -62,7 +60,7 @@ def init_from_checkpoint(args, checkpoint_path):
         dataset, checkpoint_state['batch_sampler_params'], sub_loggers_level)
 
     # Prepare batch loader
-    batch_loader = DWIMLBatchLoaderWithConnectivity.init_from_checkpoint(
+    batch_loader = DWIMLBatchLoaderOneInput.init_from_checkpoint(
         dataset, model, checkpoint_state['batch_loader_params'],
         sub_loggers_level)
 
@@ -72,7 +70,7 @@ def init_from_checkpoint(args, checkpoint_path):
             model, args.experiments_path, args.experiment_name,
             batch_sampler, batch_loader,
             checkpoint_state, args.new_patience, args.new_max_epochs,
-            args.logging)
+            args.verbose)
     return trainer
 
 
@@ -80,9 +78,8 @@ def main():
     p = prepare_arg_parser()
     args = p.parse_args()
 
-    # Setting root logger with high level, but we will set trainer to
-    # user-defined level.
-    logging.getLogger().setLevel(level=logging.INFO)
+    # General logging (ex, scilpy: Warning)
+    logging.getLogger().setLevel(level=logging.WARNING)
 
     # Verify if a checkpoint has been saved.
     checkpoint_path = os.path.join(

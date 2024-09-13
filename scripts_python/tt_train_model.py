@@ -14,14 +14,16 @@ import os
 import comet_ml
 import torch
 
-from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
+from scilpy.io.utils import (add_verbose_arg, assert_inputs_exist,
+                             assert_outputs_exist)
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_memory_args, add_logging_arg
-from dwi_ml.models.projects.transformer_models import \
-    OriginalTransformerModel, TransformerSrcAndTgtModel, TransformerSrcOnlyModel
+from dwi_ml.io_utils import add_memory_args
+from dwi_ml.models.projects.transformer_models import (
+    OriginalTransformerModel, TransformerSrcAndTgtModel,
+    TransformerSrcOnlyModel)
 from dwi_ml.models.projects.transformers_utils import (
     add_transformers_model_args)
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
@@ -32,15 +34,15 @@ from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
                                                  prepare_batch_loader)
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
-from dwi_ml.training.utils.trainer import add_training_args, run_experiment, \
-    format_lr
+from dwi_ml.training.utils.trainer import (add_training_args, run_experiment,
+                                           format_lr)
 
 
 def prepare_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawTextHelpFormatter)
     add_mandatory_args_experiment_and_hdf5_path(p)
-    add_logging_arg(p)
+    add_verbose_arg(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     add_training_args(p, add_a_tracking_validation_phase=True)
@@ -63,7 +65,8 @@ def init_from_args(args, sub_loggers_level):
         cls = TransformerSrcAndTgtModel
         if args.target_embedded_size is None and \
                 args.target_embedding_key != 'no_embedding':
-            raise ValueError("target_embedded_size must be given for this model.")
+            raise ValueError("target_embedded_size must be given for this "
+                             "model.")
         specific_args['target_embedded_size'] = args.target_embedded_size
     else:
         # Model TTO:  input_embedding = target_embedding = d_model
@@ -100,7 +103,7 @@ def init_from_args(args, sub_loggers_level):
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         model = cls(
             experiment_name=args.experiment_name,
-            step_size=args.step_size, compress_lines=args.compress,
+            step_size=args.step_size, compress_lines=args.compress_th,
             # Concerning inputs:
             max_len=args.max_len, nb_features=args.nb_features,
             positional_encoding_key=args.position_encoding,
@@ -142,7 +145,7 @@ def init_from_args(args, sub_loggers_level):
             max_batches_per_epoch_training=args.max_batches_per_epoch_training,
             max_batches_per_epoch_validation=args.max_batches_per_epoch_validation,
             patience=args.patience, patience_delta=args.patience_delta,
-            from_checkpoint=False,
+            from_checkpoint=False, clip_grad=args.clip_grad,
             # (generation validation:)
             add_a_tracking_validation_phase=args.add_a_tracking_validation_phase,
             tracking_phase_frequency=args.tracking_phase_frequency,
@@ -150,7 +153,7 @@ def init_from_args(args, sub_loggers_level):
             tracking_phase_mask_group=args.tracking_mask,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
-            log_level=args.logging)
+            log_level=args.verbose)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
 
@@ -163,10 +166,8 @@ def main():
 
     # Setting log level to INFO maximum for sub-loggers, else it becomes ugly,
     # but we will set trainer to user-defined level.
-    sub_loggers_level = args.logging
-    if args.logging == 'DEBUG':
-        sub_loggers_level = 'INFO'
-    logging.getLogger().setLevel(level=args.logging)
+    logging.getLogger().setLevel(level=logging.WARNING)
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])

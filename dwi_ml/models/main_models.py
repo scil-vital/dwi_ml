@@ -13,11 +13,13 @@ from torch import Tensor
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
-from dwi_ml.data.processing.space.neighborhood import prepare_neighborhood_vectors
+from dwi_ml.data.processing.space.neighborhood import \
+    prepare_neighborhood_vectors
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
 from dwi_ml.models.direction_getter_models import keys_to_direction_getters
-from dwi_ml.models.embeddings import keys_to_embeddings, NNEmbedding, NoEmbedding
+from dwi_ml.models.embeddings import (keys_to_embeddings, NNEmbedding,
+                                      NoEmbedding)
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
 
 logger = logging.getLogger('model_logger')
@@ -30,6 +32,7 @@ class MainModelAbstract(torch.nn.Module):
 
     It should also define a forward() method.
     """
+
     def __init__(self, experiment_name: str,
                  # Target preprocessing params for the batch loader + tracker
                  step_size: float = None,
@@ -95,7 +98,7 @@ class MainModelAbstract(torch.nn.Module):
         add_resample_or_compress_arg(p)
 
     def set_context(self, context):
-        assert context in ['training', 'tracking']
+        assert context in ['training',  'validation']
         self._context = context
 
     @property
@@ -206,11 +209,28 @@ class MainModelAbstract(torch.nn.Module):
     def compute_loss(self, model_outputs, target_streamlines):
         raise NotImplementedError
 
+    def merge_batches_outputs(self, all_outputs, new_batch):
+        """
+        To be used at testing time. At training or validation time, outputs are
+        discarded after each batch; only the loss is measured. At testing time,
+        it may be necessary to merge batches. The way to do it will depend on
+        your model's format.
+
+        Parameters
+        ----------
+        all_outputs: Any or None
+            All previous outputs from previous batches, already combined.
+        new_batch:
+            The batch to merge
+        """
+        raise NotImplementedError
+
 
 class ModelWithNeighborhood(MainModelAbstract):
     """
     Adds tools to work with neighborhoods.
     """
+
     def __init__(self, neighborhood_type: str = None,
                  neighborhood_radius: int = None,
                  neighborhood_resolution: float = None, **kw):
@@ -225,7 +245,9 @@ class ModelWithNeighborhood(MainModelAbstract):
             For usage explanation, see prepare_neighborhood_information.
             Default: None.
         neighborhood_radius: int
+            Required if neighborhood type is not None.
         neighborhood_resolution: float
+            Required if neighborhood type is not None.
         """
         # Important. Neighborhood values must be set before super, to be
         # reused by ModelOneInputWithEmbedding no matter the order of execution
@@ -297,6 +319,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
     Adds tools to work with previous directions. Prepares a layer for previous
     directions embedding, and a tool method for direction formatting.
     """
+
     def __init__(self, nb_previous_dirs: int = 0,
                  prev_dirs_embedded_size: int = None,
                  prev_dirs_embedding_key: str = None,
@@ -330,9 +353,10 @@ class ModelWithPreviousDirections(MainModelAbstract):
                 if prev_dirs_embedded_size is None:
                     prev_dirs_embedded_size = 3 * nb_previous_dirs
                 elif prev_dirs_embedded_size != 3 * nb_previous_dirs:
-                    raise ValueError("To use identity embedding, the output size "
-                                     "must be the same as the input size!"
-                                     "Expecting {}".format(3 * nb_previous_dirs))
+                    raise ValueError(
+                        "To use identity embedding, the output size must be "
+                        "the same as the input size! Expecting {}"
+                        .format(3 * nb_previous_dirs))
 
         self.nb_previous_dirs = nb_previous_dirs
         self.prev_dirs_embedding_key = prev_dirs_embedding_key
@@ -344,7 +368,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
             if prev_dirs_embedded_size is None:
                 raise ValueError(
-                    "To use an embedding class, you must provide its output size")
+                    "To use an embedding class, you must provide its output "
+                    "size")
             if self.prev_dirs_embedding_key not in keys_to_embeddings.keys():
                 raise ValueError("Embedding choice for previous dirs not "
                                  "understood: {}. It should be one of {}"
@@ -658,14 +683,15 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         em.add_argument(
             '--nb_cnn_filters', type=int, metavar='f', nargs='+',
             help="For CNN: embedding size will depend on the CNN parameters "
-                 "(number of filters, kernel size, but \nalso stride, padding, "
-                 "etc.). CNN output will be flattened.\n"
+                 "(number of filters, kernel size, but \nalso stride, padding,"
+                 " etc.). CNN output will be flattened.\n"
                  "With more than one values, there will be more than one CNN "
                  "layer. --kernel_size must have the same number of values.")
         p.add_argument(
             '--kernel_size', type=int, metavar='k', nargs='+',
             help='In the case of CNN embedding, size of the 3D filter matrix '
-                 '(kernel). Will be of shape kxkxk. See also --nb_cnn_filters.')
+                 '(kernel). Will be of shape kxkxk. See also '
+                 '--nb_cnn_filters.')
 
 
 class ModelWithDirectionGetter(MainModelAbstract):
@@ -675,6 +701,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
     - Added option to save the estimated outputs after a batch to compare
       with targets (in the case of regression).
     """
+
     def __init__(self, dg_key: str = 'cosine-regression',
                  dg_args: dict = None, **kw):
         """
@@ -702,7 +729,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
                              .format(self.positional_encoding_key))
 
     def set_context(self, context):
-        assert context in ['training', 'tracking', 'visu']
+        assert context in ['training', 'validation', 'tracking', 'visu']
         self._context = context
 
     def instantiate_direction_getter(self, dg_input_size):
@@ -744,10 +771,35 @@ class ModelWithDirectionGetter(MainModelAbstract):
         return dirs
 
     def compute_loss(self, model_outputs: List[Tensor], target_streamlines,
-                     average_results=True, **kw):
+                     average_results=True, return_eos_probs=False):
         return self.direction_getter.compute_loss(
-            model_outputs, target_streamlines, average_results)
+            model_outputs, target_streamlines,
+            average_results, return_eos_probs)
 
     def move_to(self, device):
         super().move_to(device)
         self.direction_getter.move_to(device)
+
+    def merge_batches_outputs(self, all_outputs, new_batch, device=None):
+        # 1. Send new batch to device
+        if 'gaussian' in self.direction_getter.key:
+            # all_outputs = (means, sigmas)
+            new_batch = ([m.to(device=device) for m in new_batch[0]],
+                         [s.to(device=device) for s in new_batch[1]])
+        else:
+            new_batch = [a.to(device) for a in new_batch]
+
+        # 2. Concat
+        if all_outputs is None:
+            return new_batch
+        else:
+            if 'gaussian' in self.direction_getter.key:
+                # all_outputs = (means, sigmas)
+                all_outputs[0].extend(new_batch[0])
+                all_outputs[1].extend(new_batch[1])
+            elif 'fisher' in self.direction_getter.key:
+                raise NotImplementedError
+            else:
+                # all_outputs = a list of tensors per streamline.
+                all_outputs.extend(new_batch)
+            return all_outputs

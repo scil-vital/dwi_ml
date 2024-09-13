@@ -14,7 +14,8 @@ from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
 
 data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
-MAX_LEN = 400  # During tracking, if we allow 200mm * 0.5 step size = 400 points.
+# During tracking, if we allow 200mm * 0.5 step size = 400 points.
+MAX_LEN = 400
 
 
 def test_help_option(script_runner):
@@ -28,7 +29,7 @@ def test_help_option(script_runner):
     ret = script_runner.run('tt_track_from_model.py', '--help')
     assert ret.success
 
-    ret = script_runner.run('tto_visualize_loss.py', '--help')
+    ret = script_runner.run('tt_visualize_loss.py', '--help')
     assert ret.success
 
 
@@ -52,7 +53,7 @@ def test_execution(script_runner, experiments_path):
     ret = script_runner.run('tt_train_model.py',
                             experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
-                            '--model', 'TTO',
+                            '--model', 'TTO', '--dg_key', 'gaussian',
                             '--max_epochs', '1', '--batch_size_training', '5',
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
@@ -61,7 +62,7 @@ def test_execution(script_runner, experiments_path):
                             '--input_embedding_key', 'nn_embedding',
                             '--input_embedded_size', '6', '--n_layers_e', '1',
                             '--ffnn_hidden_size', '3', '--step_size', '1',
-                            '--logging', 'INFO')
+                            '-v', 'INFO')
     assert ret.success
 
     logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
@@ -84,9 +85,9 @@ def test_execution(script_runner, experiments_path):
                                 '--max_batches_per_epoch_validation', '1',
                                 '--nheads', '2', '--max_len', str(MAX_LEN),
                                 '--input_embedding_key', 'nn_embedding',
-                                '--input_embedded_size', '6', '--n_layers_e', '1',
-                                '--ffnn_hidden_size', '3', '--logging', 'INFO',
-                                '--use_gpu')
+                                '--input_embedded_size', '6',
+                                '--n_layers_e', '1', '--ffnn_hidden_size', '3',
+                                '-v', 'INFO', '--use_gpu')
         assert ret.success
 
     logging.info("************ TESTING TRACKING FROM MODEL ************")
@@ -99,30 +100,39 @@ def test_execution(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     ret = script_runner.run(
-        'tt_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+        'tt_track_from_model.py', whole_experiment_path, subj_id,
         input_group, out_tractogram, seeding_mask_group,
+        '--hdf5_file', hdf5_file,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0',
-        '--min_length', '0', '--subset', 'training', '--logging', 'DEBUG',
+        '--min_length', '0', '--subset', 'training', '-v', 'DEBUG',
         '--max_length', str(MAX_LEN * 0.5), '--step', '0.5',
         '--tracking_mask_group', tracking_mask_group)
 
     assert ret.success
 
     # Test visu loss
-    out_tractogram = os.path.join(experiments_path, 'colored_tractogram.trk')
-    out_displacement = os.path.join(experiments_path, 'displacement.trk')
-    ret = script_runner.run('tto_visualize_loss.py', whole_experiment_path,
-                            hdf5_file, subj_id, '--subset', 'training',
-                            '--save_colored_tractogram', out_tractogram,
-                            '--save_displacement', out_displacement,
-                            '--min_range', '-1', '--max_range', '1',
-                            '--pick_at_random')
+    prefix = 'fornix_'
+    ret = script_runner.run('tt_visualize_loss.py', whole_experiment_path,
+                            hdf5_file, subj_id, input_group_name,
+                            '--streamlines_group', streamline_group_name,
+                            '--out_prefix', prefix,
+                            '--subset', 'training', '--batch_size', '100',
+                            '--save_colored_tractogram',
+                            '--save_colored_best_and_worst',
+                            '--save_displacement', '1',
+                            '--min_range', '-1', '--max_range', '1')
     assert ret.success
 
-    logging.info("************ TESTING VISUALIZE WEIGHTS ************")
-    in_sft = os.path.join(data_dir, 'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
+    # Test visu weights
+    in_sft = os.path.join(data_dir,
+                          'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
+    prefix = 'fornix_'
     ret = script_runner.run(
-        'tto_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
-        input_group, in_sft, '--step_size', '0.5',
-        '--subset', 'training', '--logging', 'INFO', '--run_locally')
+        'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
+        input_group, in_sft, '--out_prefix', prefix,
+        '--as_matrices', '--color_multi_length', '--color_x_y_summary',
+        '--bertviz_locally',
+        '--subset', 'training', '-v', 'INFO',
+        '--resample_plots', '15', '--rescale_non_lin')
     assert ret.success
+

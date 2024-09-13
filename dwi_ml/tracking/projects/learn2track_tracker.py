@@ -89,5 +89,5 @@ class RecurrentTracker(DWIMLTrackerOneInput):
             Indexes of lines that are kept.
         """
         # Hidden states: list[states] (One value per layer).
-        self.hidden_recurrent_states = self.model.remove_lines_in_hidden_state(
+        self.hidden_recurrent_states = self.model.take_lines_in_hidden_state(
             self.hidden_recurrent_states, can_continue)

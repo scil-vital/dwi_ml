@@ -208,6 +208,16 @@ class MultisubjectSubset(Dataset):
 
         Contrary to get_volume_verify_cache, this does not send data to
         cache for later use.
+
+        Parameters
+        ----------
+        subj_idx: int
+            The subject id.
+        group_idx: int
+            The volume group idx.
+        load_it: bool
+            If data is lazy, get the volume as a LazyMRIData (False) or load it
+            as non-lazy (if True).
         """
         if self.subjs_data_list.is_lazy:
             if load_it:
@@ -271,7 +281,6 @@ class MultisubjectSubset(Dataset):
                     hdf_handle, subj_id, ref_group_info)
 
                 # Add subject to the list
-                logger.debug("     Adding it to the list of subjects.")
                 subj_idx = self.subjs_data_list.add_subject(subj_data)
 
                 # Arrange streamlines
@@ -280,7 +289,6 @@ class MultisubjectSubset(Dataset):
                 if subj_data.is_lazy:
                     subj_data.add_handle(hdf_handle)
 
-                logger.debug("     Counting streamlines")
                 for group in range(len(self.streamline_groups)):
                     subj_sft_data = subj_data.sft_data_list[group]
                     n_streamlines = len(subj_sft_data)
@@ -292,6 +300,7 @@ class MultisubjectSubset(Dataset):
                 subj_data.hdf_handle = None
 
             # Arrange final data properties: Concatenate all subjects
+            logging.debug("All subjects added. Final verifications.")
             self.streamline_lengths_mm = \
                 [np.concatenate(lengths_mm[group], axis=0)
                  for group in range(len(self.streamline_groups))]
@@ -484,6 +493,7 @@ class MultiSubjectDataset:
                 self.streamline_groups = poss_strea_groups
                 self.streamlines_contain_connectivity = contains_connectivity
 
+            self.streamline_groups = list(self.streamline_groups)
             group_info = (self.volume_groups, self.nb_features,
                           self.streamline_groups,
                           self.streamlines_contain_connectivity)

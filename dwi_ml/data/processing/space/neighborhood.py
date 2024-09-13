@@ -19,15 +19,17 @@ def prepare_neighborhood_vectors(
     neighborhood_type: str
         Either the 'axes' option or the 'grid' option. See each method for a
         description.
-    neighborhood_radius: Optional[int]
-        The radius. For the axes option: a radius of 1 = 7 neighbhors, a
-        radius of 2 = 13 . For the grid option: a radius of 1 = 27 neighbors,
-        a radius of 2 = 125.
-    neighborhood_resolution: Optional[float]
-        Resolution between each layer of neighborhood, in voxel space as compared
-        to the MRI data. Ex: 0.5 one neighborhood every half voxel.
-        Hint: Neighborhood's space will depend on this value. To convert from
-        mm to voxel world, you may use
+    neighborhood_radius: int
+        Required if neighborhood type is not None.
+        - axes: a radius of 1 = 7 neighbhors, a radius of 2 = 13, on two
+         concentric spheres.
+        - grid option: a radius of 1 = 27 neighbors, a radius of 2 = 125, on
+         two concentric cubes.
+    neighborhood_resolution: float
+        Required if neighborhood type is not None.
+        - 'axes': spacing between each concentric sphere.
+        - 'grid': resolution of the final grid-like neighborhood.
+        Hint: To convert from mm to voxel world, you may use
         dwi_ml.data.processing.space.world_to_vox.convert_world_to_vox(
             radius_mm, affine_mm_to_vox)
 
@@ -68,9 +70,11 @@ def prepare_neighborhood_vectors(
 
 def get_neighborhood_vectors_axes(radius: int, resolution: float):
     """
-    This neighborhood definition lies on a sphere. Returns a list of 7
-    positions (current, up, down, left, right, behind, in front) at exactly
-    `resolution` (mm or voxels) from origin (i.e. current postion).
+    This neighborhood definition lies on a sphere.
+
+    For radius = 1, returns a list of 7 positions (current, up, down, left,
+    right, behind, in front) at exactly `resolution` (mm or voxels) from origin
+    (i.e. current postion).
     If radius is > 1, returns a multi-radius neighborhood (lying on
     concentring spheres).
 

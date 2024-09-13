@@ -79,7 +79,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     """
 
     def __init__(self, experiment_name,
-                 step_size: Union[float, None], compress_lines: Union[float, None],
+                 step_size: Union[float, None],
+                 compress_lines: Union[float, None],
                  nb_features: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
@@ -87,7 +88,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  prev_dirs_embedding_key: Union[str, None],
                  normalize_prev_dirs: bool,
                  # INPUTS
-                 input_embedding_key: str, input_embedded_size: Union[int, None],
+                 input_embedding_key: str,
+                 input_embedded_size: Union[int, None],
                  nb_cnn_filters: Optional[List[int]],
                  kernel_size: Optional[List[int]],
                  # RNN
@@ -189,6 +191,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.instantiate_direction_getter(self.rnn_model.output_size)
 
     def set_context(self, context):
+        # Training, validation: Used by trainer. Nothing special.
+        # Tracking: Used by tracker. Returns only the last point.
+        #     Preparing_backward: Used by tracker. Nothing special, but does
+        #     not return only the last point.
+        # Visu: Nothing special. Used by tester.
         assert context in ['training', 'validation', 'tracking', 'visu',
                            'preparing_backward']
         self._context = context
@@ -218,7 +225,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
     def forward(self, x: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
-                hidden_recurrent_states: tuple = None, return_hidden=False,
+                hidden_recurrent_states: List = None, return_hidden=False,
                 point_idx: int = None):
         """Run the model on a batch of sequences.
 
@@ -234,7 +241,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             Batch of streamlines. Only used if previous directions are added to
             the model. Used to compute directions; its last point will not be
             used.
-        hidden_recurrent_states : tuple
+        hidden_recurrent_states : list[states]
             The current hidden states of the (stacked) RNN model.
         return_hidden: bool
         point_idx: int
@@ -253,7 +260,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         """
         # Reminder.
         # Correct interpolation and management of points should be done before.
-        if self._context is None:
+        if self.context is None:
             raise ValueError("Please set context before usage.")
 
         # Right now input is always flattened (interpolation is implemented
@@ -268,7 +275,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.
         unsorted_indices = None
-        if not self._context == 'tracking':
+        if not self.context == 'tracking':
             # Ordering streamlines per length.
             lengths = torch.as_tensor([len(s) for s in x])
             _, sorted_indices = torch.sort(lengths, descending=True)
@@ -351,7 +358,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             x = x + copy_prev_dir
 
         # Unpacking.
-        if not self._context == 'tracking':
+        if not self.context == 'tracking':
             # (during tracking: keeping as one single tensor.)
             if 'gaussian' in self.dg_key or 'fisher' in self.dg_key:
                 # Separating mean, sigmas (gaussian) or mean, kappa (fisher)
@@ -370,7 +377,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         if return_hidden:
             # Return the hidden states too. Necessary for the generative
             # (tracking) part, done step by step.
-            if not self._context == 'tracking':
+            if not self.context == 'tracking':
                 # (ex: when preparing backward tracking.
                 #  Must also re-sort hidden states.)
                 if self.rnn_model.rnn_torch_key == 'lstm':
@@ -402,7 +409,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             # Converting the input directions into classes the same way as
             # during loss, but convert to one-hot.
             # The first previous dir (0) converts to index 0.
-            if self._context == 'tracking':
+            if self.context == 'tracking':
                 if dirs[0].shape[0] == 0:
                     copy_prev_dir = torch.zeros(
                         len(dirs),
@@ -442,8 +449,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         return copy_prev_dir
 
-    def remove_lines_in_hidden_state(
-            self, hidden_recurrent_states, lines_to_keep):
+    def take_lines_in_hidden_state(self, hidden_states, lines_to_keep):
         """
         Utilitary method to remove a few streamlines from the hidden
         state.
@@ -451,14 +457,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         if self.rnn_model.rnn_torch_key == 'lstm':
             # LSTM: For each layer, states are tuples; (h_t, C_t)
             # Size of tensors are each [1, nb_streamlines, nb_neurons]
-            hidden_recurrent_states = [
-                (layer_states[0][:, lines_to_keep, :],
-                 layer_states[1][:, lines_to_keep, :]) for
-                layer_states in hidden_recurrent_states]
+            hidden_states = [(layer_states[0][:, lines_to_keep, :],
+                              layer_states[1][:, lines_to_keep, :]) for
+                             layer_states in hidden_states]
         else:
             # GRU: For each layer, states are tensors; h_t.
             # Size of tensors are [1, nb_streamlines, nb_neurons].
-            hidden_recurrent_states = [
-                layer_states[:, lines_to_keep, :] for
-                layer_states in hidden_recurrent_states]
-        return hidden_recurrent_states
+            hidden_states = [layer_states[:, lines_to_keep, :] for
+                             layer_states in hidden_states]
+        return hidden_states

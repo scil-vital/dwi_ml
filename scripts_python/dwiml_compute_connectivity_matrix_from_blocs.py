@@ -10,20 +10,22 @@ import nibabel as nib
 from dipy.io.streamline import save_tractogram
 from dipy.io.utils import is_header_compatible
 
+from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, \
-    load_tractogram_with_reference, add_verbose_arg, add_overwrite_arg
+    add_verbose_arg, add_overwrite_arg
 
 from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs, find_streamlines_with_chosen_connectivity
+    compute_triu_connectivity_from_blocs, \
+    find_streamlines_with_chosen_connectivity, prepare_figure_connectivity
 
 
 def _build_arg_parser():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument('in_volume',
-                   help='Input nifti volume. Only used to get the shape of the '
-                        'volume.')
+                   help='Input nifti volume. Only used to get the shape of '
+                        'the volume.')
     p.add_argument('streamlines',
                    help='Tractogram (trk or tck).')
     p.add_argument('out_file',
@@ -84,12 +86,21 @@ def main():
     matrix, start_blocs, end_blocs = compute_triu_connectivity_from_blocs(
         in_sft.streamlines, in_img.shape, args.connectivity_nb_blocs)
 
+    prepare_figure_connectivity(matrix)
+
+    if args.binary:
+        matrix = matrix > 0
+
+    # Save results.
+    np.save(args.out_file, matrix)
+    plt.savefig(out_fig)
+
     # Options to try to investigate the connectivity matrix:
     if args.save_biggest is not None:
         i, j = np.unravel_index(np.argmax(matrix, axis=None), matrix.shape)
         print("Saving biggest bundle: {} streamlines.".format(matrix[i, j]))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft.streamlines, start_blocs, end_blocs, i, j)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_biggest)
 
@@ -98,24 +109,9 @@ def main():
         i, j = np.unravel_index(tmp_matrix.argmin(axis=None), matrix.shape)
         print("Saving smallest bundle: {} streamlines.".format(matrix[i, j]))
         biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, i, j, start_blocs, end_blocs)
+            in_sft.streamlines, start_blocs, end_blocs, i, j)
         sft = in_sft.from_sft(biggest, in_sft)
         save_tractogram(sft, args.save_smallest)
-
-    plt.imshow(matrix)
-    plt.colorbar()
-
-    plt.figure()
-    plt.imshow(matrix > 0)
-    plt.title('Binary')
-
-    if args.binary:
-        matrix = matrix > 0
-
-    # Save results.
-    np.save(args.out_file, matrix)
-
-    plt.savefig(out_fig)
 
     if args.show_now:
         plt.show()
@@ -123,6 +119,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-

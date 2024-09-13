@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
+import logging
 from typing import List
 
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
+from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from scilpy.tractanalysis.tools import \
     extract_longest_segments_from_profile as segmenting_func
-from scilpy.tractanalysis.uncompress import uncompress
+from scilpy.tractograms.uncompress import uncompress
 
 # We could try using nan instead of zeros for non-existing previous dirs...
 DEFAULT_UNEXISTING_VAL = torch.zeros((1, 3), dtype=torch.float32)
@@ -298,7 +302,6 @@ def _compute_origin_finish_blocs(streamlines, volume_size, nb_blocs):
 
 
 def compute_triu_connectivity_from_labels(streamlines, data_labels,
-                                          binary: bool = False,
                                           use_scilpy=False):
     """
     Compute a connectivity matrix.
@@ -309,8 +312,6 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
         Streamlines, in vox space, corner origin.
     data_labels: np.ndarray
         The loaded nifti image.
-    binary: bool
-        If True, return a binary matrix.
     use_scilpy: bool
         If True, uses scilpy's method:
           'Strategy is to keep the longest streamline segment
@@ -320,13 +321,32 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
            compressed streamlines.'
         Else, uses simple computation from endpoints. Faster. Also, works with
         incomplete parcellation.
-    """
-    real_labels = np.unique(data_labels)[1:]
-    nb_labels = len(real_labels)
-    matrix = np.zeros((nb_labels + 1, nb_labels + 1), dtype=int)
 
-    start_blocs = []
-    end_blocs = []
+    Returns
+    -------
+    matrix: np.ndarray
+        With use_scilpy: shape (nb_labels + 1, nb_labels + 1)
+        (last label is "Not Found")
+        Else, shape (nb_labels, nb_labels)
+    labels: List
+        The list of labels
+    start_labels: List
+        For each streamline, the label at starting point.
+    end_labels: List
+        For each streamline, the label at ending point.
+    """
+    real_labels = list(np.sort(np.unique(data_labels)))
+    nb_labels = len(real_labels)
+    logging.debug("Computing connectivity matrix for {} labels."
+                  .format(nb_labels))
+
+    if use_scilpy:
+        matrix = np.zeros((nb_labels + 1, nb_labels + 1), dtype=int)
+    else:
+        matrix = np.zeros((nb_labels, nb_labels), dtype=int)
+
+    start_labels = []
+    end_labels = []
 
     if use_scilpy:
         indices, points_to_idx = uncompress(streamlines, return_mapping=True)
@@ -334,29 +354,34 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
         for strl_vox_indices in indices:
             segments_info = segmenting_func(strl_vox_indices, data_labels)
             if len(segments_info) > 0:
-                start = segments_info[0]['start_label']
-                end = segments_info[0]['end_label']
-                start_blocs.append(start)
-                end_blocs.append(end)
-
-                matrix[start, end] += 1
-                if start != end:
-                    matrix[end, start] += 1
-
+                start = real_labels.index(segments_info[0]['start_label'])
+                end = real_labels.index(segments_info[0]['end_label'])
             else:
-                # Putting it in 0,0, we will remember that this means 'other'
-                matrix[0, 0] += 1
-                start_blocs.append(0)
-                end_blocs.append(0)
+                start = nb_labels
+                end = nb_labels
+
+            start_labels.append(start)
+            end_labels.append(end)
+
+            matrix[start, end] += 1
+            if start != end:
+                matrix[end, start] += 1
+
+        real_labels = real_labels + [np.NaN]
+
     else:
         for s in streamlines:
             # Vox space, corner origin
             # = we can get the nearest neighbor easily.
             # Coord 0 = voxel 0. Coord 0.9 = voxel 0. Coord 1 = voxel 1.
-            start = data_labels[tuple(np.floor(s[0, :]).astype(int))]
-            end = data_labels[tuple(np.floor(s[-1, :]).astype(int))]
-            start_blocs.append(start)
-            end_blocs.append(end)
+            start = real_labels.index(
+                data_labels[tuple(np.floor(s[0, :]).astype(int))])
+            end = real_labels.index(
+                data_labels[tuple(np.floor(s[-1, :]).astype(int))])
+
+            start_labels.append(start)
+            end_labels.append(end)
+
             matrix[start, end] += 1
             if start != end:
                 matrix[end, start] += 1
@@ -364,14 +389,10 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
     matrix = np.triu(matrix)
     assert matrix.sum() == len(streamlines)
 
-    if binary:
-        matrix = matrix.astype(bool)
-
-    return matrix, start_blocs, end_blocs
+    return matrix, real_labels, start_labels, end_labels
 
 
-def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
-                                         binary: bool = False):
+def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs):
     """
     Compute a connectivity matrix.
 
@@ -387,8 +408,6 @@ def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
         In 3D, with 20x20x20, this is an 8000 x 8000 matrix (triangular). It
         probably contains a lot of zeros with the background being included.
         Can be saved as sparse.
-    binary: bool
-        If true, return a binary matrix.
     """
     nb_blocs = np.asarray(nb_blocs)
     start_block, end_block = _compute_origin_finish_blocs(
@@ -407,14 +426,41 @@ def compute_triu_connectivity_from_blocs(streamlines, volume_size, nb_blocs,
     matrix = np.triu(matrix)
     assert matrix.sum() == len(streamlines)
 
-    if binary:
-        matrix = matrix.astype(bool)
-
     return matrix, start_block, end_block
 
 
+def prepare_figure_connectivity(matrix):
+    matrix = np.copy(matrix)
+
+    fig, axs = plt.subplots(2, 2)
+    im = axs[0, 0].imshow(matrix)
+    divider = make_axes_locatable(axs[0, 0])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[0, 0].set_title("Raw streamline count")
+
+    im = axs[0, 1].imshow(matrix + np.min(matrix[matrix > 0]), norm=LogNorm())
+    divider = make_axes_locatable(axs[0, 1])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[0, 1].set_title("Raw streamline count (log view)")
+
+    matrix = matrix / matrix.sum() * 100
+    im = axs[1, 0].imshow(matrix)
+    divider = make_axes_locatable(axs[1, 0])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[1, 0].set_title("Percentage")
+
+    matrix = matrix > 0
+    axs[1, 1].imshow(matrix)
+    axs[1, 1].set_title("Binary")
+
+    plt.suptitle("All versions of the connectivity matrix.")
+
+
 def find_streamlines_with_chosen_connectivity(
-        streamlines, label1, label2, start_labels, end_labels):
+        streamlines, start_labels, end_labels, label1, label2=None):
     """
     Returns streamlines corresponding to a (label1, label2) or (label2, label1)
     connection.
@@ -423,19 +469,32 @@ def find_streamlines_with_chosen_connectivity(
     ----------
     streamlines: list of np arrays or list of tensors.
         Streamlines, in vox space, corner origin.
-    label1: int
-        The bloc of interest, either as starting or finishing point.
-    label2: int
-        The bloc of interest, either as starting or finishing point.
     start_labels: list[int]
         The starting bloc for each streamline.
     end_labels: list[int]
         The ending bloc for each streamline.
+    label1: int
+        The bloc of interest, either as starting or finishing point.
+    label2: int, optional
+        The bloc of interest, either as starting or finishing point.
+        If label2 is None, then all connections (label1, Y) and (X, label1)
+        are found.
     """
+    start_labels = np.asarray(start_labels)
+    end_labels = np.asarray(end_labels)
 
-    str_ind1 = np.logical_and(start_labels == label1,
-                              end_labels == label2)
-    str_ind2 = np.logical_and(start_labels == label2,
-                              end_labels == label1)
-    str_ind = np.logical_or(str_ind1, str_ind2)
-    return [s for i, s in enumerate(streamlines) if str_ind[i]]
+    if label2 is None:
+        labels2 = np.unique(np.concatenate((start_labels[:], end_labels[:])))
+    else:
+        labels2 = [label2]
+
+    found = np.zeros(len(streamlines))
+    for label2 in labels2:
+        str_ind1 = np.logical_and(start_labels == label1,
+                                  end_labels == label2)
+        str_ind2 = np.logical_and(start_labels == label2,
+                                  end_labels == label1)
+        str_ind = np.logical_or(str_ind1, str_ind2)
+        found = np.logical_or(found, str_ind)
+
+    return [s for i, s in enumerate(streamlines) if found[i]]

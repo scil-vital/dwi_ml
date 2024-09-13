@@ -1,195 +1,351 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Plot your logs.
+
+All given experiments are shown together, with one color per experiment. By
+default, all logs are shown in a separate graph, up to 3 graphs per figure.
+
+The number of graphs per figure can be modified with --nb_plots_per_fig.
+
+You may also specify the logs you want to plot. Use the option --graph, with
+the graph's title and the name(s) of the logs to add to one graph. This option
+can be used many times. Ex:
+>> --graph "Training loss" train_loss_monitor_per_epoch
+>> --graph "Some plot" log1 --graph "Two plots" log2 log3
+
+Optionally, you can add the 2-valued ylims for each graph. These value will
+supersede the given --ylim, if any.
+>> --graph "Some plot" log1 0 100
+
+Finally, you can also supply operations to apply to your logs, amongst:
+['diff', 'sum']. Ex:
+>> --graph "Training minus validation" diff(log1, log2) 0 100
+** Note that we only accept one operation per graph. The following is not
+supported:
+>> --graph "Training minus validation" diff(log1, log2) log 3 0 100
+
+------------------------------
+"""
 import argparse
-from argparse import RawTextHelpFormatter
 import csv
-import itertools
 import logging
 import os
 import pathlib
-from typing import Dict
 
 import matplotlib.pyplot as plt
-from matplotlib import colors
-import matplotlib.cm as cmx
 import numpy as np
 
-from scilpy.io.utils import assert_outputs_exist, add_overwrite_arg
+from scilpy.io.utils import (add_overwrite_arg, add_verbose_arg,
+                             assert_outputs_exist)
 
-log_styles = ['-', '--', '_.', ':']
-nb_styles = 4
+from dwi_ml.viz.logs_plots import visualize_logs
 
 
 def _build_arg_parser():
     p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=RawTextHelpFormatter)
-    p.add_argument("paths", type=str, nargs='+',
-                   help="Path to the experiment folder (s). If more than "
-                        "one, they are shown superposed.")
-    p.add_argument("--graph", action='append', nargs='+',
-                   help="Name of the logs to add to one graph. Can be "
-                        "used many times. \n"
-                        "Ex: --graph log1 --graph log2 log3\n"
-                        "If not set, all logs are shown separately.")
-    p.add_argument("--nb_plots_per_fig", type=int, default=3,
-                   help="Number of (rows) of plot per figure.")
+                                formatter_class=argparse.RawTextHelpFormatter)
+    p.add_argument("experiments", nargs='+',
+                   help="Path to the experiment folder(s). If more than "
+                        "one, \nthey are shown superposed.")
     p.add_argument("--save_to_csv", metavar='my_file.csv',
-                   help="If set, save the resulting logs as a csv file \n"
-                        "(chosen --graph only, if any).")
-    p.add_argument('--xlim', type=int, metavar='epoch_max',
+                   help="If set, convert the resulting logs as a csv file.")
+    p.add_argument('--save_figures', metavar='folder/prefix', const='./',
+                   nargs='?',
+                   help="If set, saves the resulting figures in chosen "
+                        "folder. Default if set: ./out_\n"
+                        "Figure names are: fig1, fig2, etc.")
+    p.add_argument('--allow_missing', action='store_true',
+                   help="If true, ignore experiments with missing logs.")
+    p.add_argument('--show_now', action='store_true',
+                   help="If set, show figures now.")
+
+    g = p.add_argument_group("Figure options")
+    g.add_argument("--graph", action='append', nargs='+', dest='graphs',
+                   help="See description above for usage.")
+    g.add_argument("--nb_plots_per_fig", type=int, default=3, metavar='n',
+                   help="Number of (rows) of plot per figure. Default: 3.")
+    g.add_argument('--xlim', type=int, metavar='epoch_max',
                    help="All graphs' xlim.")
-    p.add_argument('--ylims', type=float, nargs=2, metavar='ymin ymax',
+    g.add_argument('--ylims', type=float, nargs=2, metavar='ymin ymax',
                    help="All graph's ylim. (Makes little sense with more "
                         "than one graph.)")
-    p.add_argument('--remove_outliers', action='store_true',
+    g.add_argument("--fig_size", metavar='x y', nargs=2, default=[10, 15],
+                   type=int,
+                   help="Figure size (x, y). Default: 10x15.")
+
+    g = p.add_argument_group("Processing options")
+    g.add_argument('--remove_outliers', action='store_true',
                    help="If set, remove outliers (3 std) from plot line and "
-                        "adds a star sign instead.\n"
-                        "Outliers are not removed in the CSV file, if any.")
+                        "adds a star \nsign instead. Outliers are not removed "
+                        "in the CSV file, if any.")
 
     add_overwrite_arg(p)
+    add_verbose_arg(p)
     return p
 
 
-def plot_one_line(ax, data, color, style, exp_name, legend, remove_outliers):
-    epochs = np.arange(0, len(data))
-    if remove_outliers:
-        std3 = 3 * np.std(data)
-        mean = np.mean(data)
-        outlier_idx = np.logical_or(data < mean - std3, data > mean + std3)
+def _parse_graphs_arg(parser, args):
+    """Parse args.graphs"""
+    if args.graphs is None:
+        return None, None, None, None
+    else:
+        graphs_logs = []
+        graphs_titles = []
+        graphs_ylims = []
+        graph_operations = []
+        for graph_options in args.graphs:
+            # Verify if gave the ylims.
+            if len(graph_options) > 2:
+                try:
+                    min_y = float(graph_options[-2])
+                    max_y = float(graph_options[-1])
+                    _title = graph_options[0]
+                    _logs = graph_options[1:-2]
+                    _ylims = [min_y, max_y]
+                except ValueError:
+                    try:
+                        _ = float(graph_options[-1])
+                        parser.error("For option --graph {}: you seem to have "
+                                     "added a single float value at the end. "
+                                     "Ylim requires two values."
+                                     .format(graph_options))
+                    except ValueError:
+                        # There does not seem to be a ylim.
+                        _title = graph_options[0]
+                        _logs = graph_options[1:]
+                        _ylims = None
+            else:
+                _title = graph_options[0]
+                _logs = graph_options[1:]
+                _ylims = None
 
-        print("{}: Found {} outliers out of [{}, {}]."
-              .format(exp_name, outlier_idx.sum(),
-                      mean - std3, mean + std3))
-        ax.scatter(epochs[outlier_idx], data[outlier_idx],
-                   marker='*', color=color)
-        epochs = epochs[~outlier_idx]
-        data = data[~outlier_idx]
+            # Verify if user gave an operation (diff or sum)
+            _logs, operation = __parse_log_operations(parser, _logs)
 
-    ax.plot(epochs, data, linestyle=style, label=legend, color=color)
+            # Remove .npy to log names if added by user.
+            for i, log in enumerate(_logs):
+                f, ext = os.path.splitext(log)
+                if ext not in ['.npy', '']:
+                    parser.error("The values to the --graph option "
+                                 "should be log names, but got {} (try "
+                                 "removing the extension).".format(log))
+                _logs[i] = f
+
+            # All ok
+            graphs_titles.append(_title)
+            graphs_logs.append(_logs)
+            graphs_ylims.append(_ylims)
+            graph_operations.append(operation)
+
+        return graphs_titles, graphs_logs, graphs_ylims, graph_operations
 
 
-def visualize_logs(logs: Dict[str, Dict[str, np.ndarray]], graphs, nb_rows,
-                   writer=None, xlim=None, ylims=None, remove_outliers=False):
-    exp_names = list(logs.keys())
-    if writer is not None:
-        writer.writerow(['Experiment name', "Log name", "Epochs..."])
+def __parse_log_operations(parser, graph):
+    if len(graph) == 1:
+        _graph = graph[0]
+        if _graph[0:5] == 'diff(':
+            assert _graph[-1] == ')'
+            _graph = _graph[5:-1]
+            logs = _graph.split(',')
+            if len(logs) != 2:
+                parser.error("Can't understand option --graph graph. The diff "
+                             "operation requires two logs, separated by a "
+                             "comma.")
+            logs = [_log.replace(' ', '') for _log in logs]
+            return logs, 'diff'
+        elif _graph[0:4] == 'sum(':
+            assert _graph[-1] == ')'
+            _graph = _graph[4:-1]
+            logs = _graph.split(',')
+            if len(logs) != 2:
+                parser.error("Can't understand option --graph graph. The sum "
+                             "operation requires two logs, separated by a "
+                             "comma.")
+            logs = [_log.replace(' ', '') for _log in logs]
+            return logs, 'sum'
 
-    jet = plt.get_cmap('jet')
-    c_norm = colors.Normalize(vmin=0, vmax=len(exp_names))
-    scalar_map = cmx.ScalarMappable(norm=c_norm, cmap=jet)
+    op = None
+    return graph, op
 
-    nb_plots_left = len(graphs)
-    current_graph = -1
-    while nb_plots_left > 0:
-        next_nb_plots = min(nb_plots_left, nb_rows)
-        fig, axs = plt.subplots(nrows=next_nb_plots)
-        if next_nb_plots == 1:
-            axs = [axs]
 
-        # For each subplot in this figure
-        for i in range(next_nb_plots):
-            current_graph += 1
-            keys = graphs[current_graph]
-            print("Next graph: ", keys)
+def _load_all_logs(parser, args, logs_path, previous_graphs):
+    """
+    Load all logs in an experiment's dir (no option --graph was supplied)
+    """
+    logging.debug("Loading all logs for that experiment.")
+    files_to_load = list(logs_path.glob('*.npy'))
+    _graphs = [f.stem for f in files_to_load]
+    _graphs = np.sort(_graphs)
 
-            # For each log to show in that plot
-            for j in range(len(keys)):
-                style = log_styles[j % nb_styles]
-                key = keys[j]
-                axs[i].set_title(key)
+    if previous_graphs is None:
+        # Using the first experiment to set the list of expected logs.
+        previous_graphs = _graphs
+    else:
+        if args.allow_missing:
+            # Combine all log names from all experiments.
+            previous_graphs = list(set(previous_graphs.extend(_graphs)))
+        else:
+            # Compare with first experiment's log
+            if set(previous_graphs) != set(_graphs):
+                parser.error(
+                    "The experiments do not all have the same logs. "
+                    "To allow running, use --allow_missing.")
 
-                # For each experiment to show:
-                for exp, exp_name in enumerate(exp_names):
-                    color_val = scalar_map.to_rgba(exp)
-                    legend = exp_name
-                    if len(keys) > 1:
-                        legend += ', ' + key
-                    if key in logs[exp_name]:
-                        data = logs[exp_name][key]
-                        plot_one_line(axs[i], data, color_val, style, exp_name,
-                                      legend, remove_outliers)
+    # Load
+    this_exp_dict = {}
+    for file in files_to_load:
+        this_exp_dict[file.stem] = np.load(file)
 
-                        if writer is not None:
-                            writer.writerow([exp_name, key] + list(data))
+    return previous_graphs, this_exp_dict
 
-                axs[i].legend()
-                if xlim is not None:
-                    axs[i].set_xlim([0, xlim])
-                if ylims is not None:
-                    axs[i].set_ylim(ylims)
 
-        nb_plots_left -= next_nb_plots
+def _load_chosen_logs(parser, args, logs_path, parsed_graphs,
+                      graph_operations):
+    """
+    Load only logs specified through --graph
+    """
+    logging.debug("Loading only chosen logs for that experiment")
+    this_exp_dict = {}
+    for i, required_logs in enumerate(parsed_graphs):
+        if graph_operations[i] is None:
+            # Simpy add each log.
+            for required_log in required_logs:
+                file = pathlib.Path(logs_path, required_log + '.npy')
+                if os.path.isfile(file):
+                    if file not in this_exp_dict.keys():
+                        this_exp_dict[file.stem] = np.load(file)
+                else:
+                    if not args.allow_missing:
+                        parser.error(
+                            "File {} not found in path {}."
+                            .format(required_log, file))
+                    else:
+                        logging.debug("Exp {} will not show on --graph {}, "
+                                      "because we could not find its logs."
+                                      .format(logs_path, required_logs))
+        else:
+            # Apply operation. All our operations require two values.
+            op = graph_operations[i]
+            file1 = pathlib.Path(logs_path, required_logs[0] + '.npy')
+            file2 = pathlib.Path(logs_path, required_logs[1] + '.npy')
+            if not os.path.isfile(file1) or not os.path.isfile(file2):
+                if not args.allow_missing:
+                    parser.error(
+                        "File {} and/or {} not found in path {}."
+                        .format(required_logs[0], required_logs[1], logs_path))
+                else:
+                    logging.debug("Exp {} will not show on --graph {}({}), "
+                                  "because we could not find its logs."
+                                  .format(logs_path, op, required_logs))
+            else:
+                data1 = np.load(file1)
+                data2 = np.load(file2)
+                if len(data1) != len(data2):
+                    parser.error("Unexpected error. logs {} and {} do not "
+                                 "have the same length!?! Cannot use "
+                                 "operation {}"
+                                 .format(required_logs[0], required_logs[1],
+                                         op))
+                if op == 'diff':
+                    data = data1 - data2
+                else:
+                    data = data1 + data2
+                new_name = _format_name_after_operation(
+                    required_logs[0], required_logs[1], op)
+                this_exp_dict[new_name] = data
+    return this_exp_dict
+
+
+def _format_name_after_operation(name1, name2, operation):
+    if operation == 'diff':
+        name = name1 + '-' + name2
+    else:  # operation == 'sum':
+        name = name1 + '+' + name2
+    return name
 
 
 def main():
     parser = _build_arg_parser()
     args = parser.parse_args()
+    logging.getLogger().setLevel(level=args.verbose)
 
-    logging.getLogger().setLevel(level=logging.INFO)
+    # Do not set DEBUG level for matplotlib
+    plt.set_loglevel('WARNING')
+    pil_logger = logging.getLogger('PIL')
+    pil_logger.setLevel('WARNING')
 
+    # Verifications
+    if not (args.save_figures or args.show_now):
+        parser.error("This script will plot nothing. Choose either --show_now "
+                     "or --save_figures.")
     assert_outputs_exist(parser, args, [], args.save_to_csv)
+    graphs_titles, graphs_logs, graphs_ylims, graphs_operation = \
+        _parse_graphs_arg(parser, args)
 
-    # One element per experiment
-    loaded_logs = {}  # exp: dict of logs
-    user_required_names = set(itertools.chain(*args.graph)
-                              ) if args.graph is not None else None
-    graphs = args.graph or set()
+    if args.save_figures is not None:
+        if os.path.isdir(args.save_figures):
+            # No prefix given.
+            args.save_figures = os.path.join(args.save_figures, 'out_')
+        elif not os.path.isdir(os.path.split(args.save_figures)[0]):
+            # Prefix given, but directory does not exist.
+            parser.error("Output dir for figures does not exist.")
 
-    # Loading all.
-    for path in args.paths:
-        if not pathlib.Path(path).exists():
+    # Loop on all experiments
+    loaded_logs = {}  # dict of dicts
+    for i, exp_path in enumerate(args.experiments):
+        # Verifications for this experiment
+        if not pathlib.Path(exp_path).exists():
             raise ValueError("Experiment folder does not exist: {}"
-                             .format(path))
+                             .format(exp_path))
+        exp_name = os.path.basename(os.path.normpath(exp_path))
+        logs_path = pathlib.Path(exp_path, 'logs')
+        if not logs_path.exists():
+            raise ValueError("Logs folder does not exist for experiment {}!"
+                             .format(exp_path))
 
-        exp_name = os.path.basename(os.path.normpath(path))
-        print("Loading experiment {} from path {}".format(exp_name, path))
-
-        log_path = pathlib.Path(path, 'logs')
-        if not log_path.exists():
-            raise ValueError("No log folder exists for experiment {}!"
-                             .format(path))
-
-        if args.graph is None:
-            # One graph per log.
-            files_to_load = list(log_path.glob('*.npy'))
+        # Loading
+        logging.info("Loading logs from experiment {}.".format(exp_name))
+        if args.graphs is None:
+            graphs_logs, this_exp_dict = _load_all_logs(
+                parser, args, logs_path, graphs_logs)
         else:
-            files_to_load = []
-            for n in user_required_names:
-                nn = pathlib.Path(log_path, n + '.npy')
-                if os.path.isfile(nn):
-                    files_to_load.append(nn)
-                else:
-                    print("File {}.npy not found in path {}. Skipping."
-                          .format(n, log_path))
-        names_to_load = [n.stem for n in files_to_load]
+            this_exp_dict = _load_chosen_logs(parser, args, logs_path,
+                                              graphs_logs, graphs_operation)
+        loaded_logs[exp_name] = this_exp_dict
 
-        exp_logs = {}
-        for i in range(len(files_to_load)):
-            data = np.load(files_to_load[i])
-            exp_logs.update({names_to_load[i]: data})
-        loaded_logs[exp_name] = exp_logs
+    # Formatting the final graphs choice.
+    if args.graphs is None:
+        graphs_titles = graphs_logs
+        graphs_logs = [[log] for log in graphs_logs]
+        graphs_ylims = [None for _ in graphs_logs]
+        # graphs_operation = [None for _ in parsed_graphs]
+    else:
+        graphs_logs = [g if op is None else
+                       [_format_name_after_operation(*g, op)]
+                       for g, op in zip(graphs_logs, graphs_operation)]
 
-        if args.graph is None:
-            graphs |= set(names_to_load)
+    # Final formatting of ylims, for graphs that did not have another choice.
+    if args.ylims:
+        graphs_ylims = [args.ylims if ylim is None else ylim
+                        for ylim in graphs_ylims]
 
-    if args.graph is None:
-        graphs = list(graphs)
-        graphs = [[g] for g in graphs]
-
+    _args = (loaded_logs, graphs_titles, graphs_logs, graphs_ylims,
+             args.nb_plots_per_fig)
+    kwargs = {'xlim': args.xlim,
+              'remove_outliers': args.remove_outliers,
+              'save_figs': args.save_figures,
+              'fig_size': args.fig_size}
     if args.save_to_csv:
-        print("Will save results in file {}".format(args.save_to_csv))
+        logging.info("Will save results in file {}".format(args.save_to_csv))
         with open(args.save_to_csv, 'w', newline='') as file:
             writer = csv.writer(file)
-            visualize_logs(loaded_logs, graphs, args.nb_plots_per_fig,
-                           writer=writer, xlim=args.xlim, ylims=args.ylims,
-                           remove_outliers=args.remove_outliers)
+            visualize_logs(*_args, writer=writer, **kwargs)
     else:
-        visualize_logs(loaded_logs, graphs, args.nb_plots_per_fig,
-                       xlim=args.xlim, ylims=args.ylims,
-                       remove_outliers=args.remove_outliers)
+        visualize_logs(*_args, **kwargs)
 
-    plt.tight_layout()
-    plt.show()
+    if args.show_now:
+        plt.show()
 
 
 if __name__ == '__main__':

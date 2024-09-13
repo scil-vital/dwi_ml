@@ -64,6 +64,7 @@ class BatchHistoryMonitor(object):
 
     def update(self, value, weight=1):
         """
+        Adds a batch value to the epoch.
         Note. Does not save the update if value is inf.
 
         Parameters

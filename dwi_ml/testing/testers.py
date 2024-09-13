@@ -1,20 +1,40 @@
 # -*- coding: utf-8 -*-
-import json
 import logging
-import os
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
-from dwi_ml.models.main_models import ModelWithDirectionGetter, MainModelOneInput
+from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
+from dwi_ml.models.main_models import (MainModelOneInput,
+                                       ModelWithDirectionGetter)
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
 logger = logging.getLogger('tester_logger')
 
 
-class Tester:
+def load_sft_from_hdf5(subj_id: str, hdf5_file: str, subset_name: str,
+                       streamline_group: str):
+    # Load SFT as in dataloader, except we don't loop on many subject,
+    # we don't verify streamline ids (loading all), and we don't split /
+    # reverse streamlines. But we resample / compress.
+    subset = prepare_dataset_one_subj(
+        hdf5_file, subj_id, subset_name=subset_name,
+        streamline_groups=[streamline_group],
+        lazy=False, cache_size=1)
+
+    logging.info("Loading its streamlines as SFT.")
+    streamline_group_idx = subset.streamline_groups.index(streamline_group)
+    subj_data = subset.subjs_data_list.get_subj_with_handle(subject_idx=0)
+    subj_sft_data = subj_data.sft_data_list[streamline_group_idx]
+    sft = subj_sft_data.as_sft()
+
+    return sft
+
+
+class TesterWithDirectionGetter:
     """
     Similar to the trainer, it loads the data, runs the model and gets the
     loss.
@@ -23,229 +43,196 @@ class Tester:
     from the hdf5. This choice allows to test the loss on various bundles for
     a better interpretation of the models' performances.
     """
-    def __init__(self, experiment_path: str, model: ModelWithDirectionGetter,
+    def __init__(self, model: ModelWithDirectionGetter,
+                 subj_id, hdf5_file, subset_name,
                  batch_size: int = None, device: torch.device = None):
         """
         Parameters
         ----------
-        experiment_path: str
         model: ModelWithDirectionGetter
-
+        subj_id: str
+        hdf5_file: str
+        subset_name: str
         batch_size: int
         device: torch.Device
         """
-        self.experiment_path = experiment_path
         self.device = device
         self.model = model
-        self.model.set_context('visu')
         self.model.eval()  # Removes dropout.
         self.model.move_to(device)
         self.batch_size = batch_size
 
-        self.subset = None
-        self.subj_idx = None
         self.experiment_params = None
         self.input_info = None
-        self._params = None
 
-    @property
-    def params(self):
-        if self._params is None:
-            logging.info("Loading information about your experiment.")
-            params_filename = os.path.join(self.experiment_path,
-                                           "parameters_latest.json")
-            with open(params_filename, 'r') as json_file:
-                self._params = json.load(json_file)
-        return self._params
-
-    @property
-    def streamlines_group(self):
-        return self.params["Loader params"]["streamline_group_name"]
-
-    def load_and_format_data(self, subj_id, hdf5_file, subset_name):
-        """
-        Loads the data associated with subj_id in the hdf5 file and formats it
-        as stated by the experiment's batch loader's params.
-
-        Returns: SFT, all streamlines for this subject.
-        """
-        # 1. Load subject
+        # Load subject
         logging.info("Loading subject {} from hdf5.".format(subj_id))
-        self.subset, self.subj_idx = prepare_dataset_one_subj(
+        self.subset = prepare_dataset_one_subj(
             hdf5_file, subj_id, subset_name=subset_name,
-            volume_groups=self._volume_groups,
-            streamline_groups=[self.streamlines_group],
-            lazy=False, cache_size=1)
-
-        # 2. Load SFT as in dataloader, except we don't loop on many subject,
-        # we don't verify streamline ids (loading all), and we don't split /
-        # reverse streamlines. But we resample / compress.
-        logging.info("Loading its streamlines as SFT.")
-        streamline_group_idx, = np.where(self.subset.streamline_groups ==
-                                         self.streamlines_group)
-        streamline_group_idx = streamline_group_idx[0]
-        subj_data = self.subset.subjs_data_list.get_subj_with_handle(self.subj_idx)
-        subj_sft_data = subj_data.sft_data_list[streamline_group_idx]
-        sft = subj_sft_data.as_sft()
-
-        sft = resample_or_compress(sft, self.model.step_size,
-                                   self.model.compress_lines)
-        sft.to_vox()
-        sft.to_corner()
-
-        return sft
+            volume_groups=self._volume_groups, streamline_groups=[],
+            lazy=False, cache_size=1, log_level=logging.WARNING)
+        self.subj_idx = 0
 
     @property
     def _volume_groups(self):
-        raise NotImplementedError
+        return None
 
-    def run_model_on_sft(self, sft, add_zeros_if_no_eos=True,
-                         compute_loss=True, uncompress_loss=False,
-                         force_compress_loss=False,
-                         weight_with_angle=False):
+    def run_model_on_sft(self, sft, compute_loss=False):
         """
         Equivalent of one validation pass.
 
         Parameters
         ----------
         sft: StatefulTractogram
-        add_zeros_if_no_eos: bool
-            If true, the loss with no zeros is also printed.
+            Will be resampled / compress based on model's params.
         compute_loss: bool
-            If False, the method returns the outputs after a forward pass only.
-        uncompress_loss: bool
-            If true, ignores the --compress_loss option of the direction
-            getter.
-        force_compress_loss: bool
-            If true, compresses the loss even if that is not the model's
-            parameter.
-        weight_with_angle: bool
-            If true, modify model's wieght_loss_with_angle param.
+            If True, compute the loss per streamline.
+            (If False, the method returns the outputs after a forward pass
+            only.)
+
+        Returns
+        -------
+        sft: StatefulTractogram
+            The tractogram, formatted as required by your model:
+            to_vox, to_corner, possibly resampled or compressed.
+        outputs: Any
+            Your model output.
+        losses: List[np.ndarray]
+            The loss per point, per streamline.
+        mean_per_line: np.ndarray
+            The mean loss per streamline.
+        eos_probs: List[np.ndarray]
+            The probability per point.
+        eos_errors: List[np.ndarray]
+            The absolute difference between EOS probability and real EOS value.
+        mean_per_line_eos: np.ndarray
+            The mean eos error per line.
         """
-        if uncompress_loss and force_compress_loss:
-            raise ValueError("Can't use both compress and uncompress.")
+        sft = resample_or_compress(sft, self.model.step_size,
+                                   self.model.compress_lines)
+        sft.to_vox()
+        sft.to_corner()
+        nb_streamlines = len(sft)
 
-        save_val = self.model.direction_getter.compress_loss
-        save_val_angle = self.model.direction_getter.weight_loss_with_angle
-        if uncompress_loss:
-            self.model.direction_getter.compress_loss = False
-        elif force_compress_loss:
-            self.model.direction_getter.compress_loss = True
-            self.model.direction_getter.compress_eps = force_compress_loss
+        # Verify the batch size
+        batch_size = self.batch_size or nb_streamlines
+        nb_batches = int(np.ceil(nb_streamlines / batch_size))
+        logging.info("Preparing to run the model on {} streamlines with "
+                     "batches of {} streamlines = {} batches."
+                     .format(nb_streamlines, batch_size, nb_batches))
 
-        if weight_with_angle:
-            self.model.direction_getter.weight_loss_with_angle = True
-        else:
-            self.model.direction_getter.weight_loss_with_angle = False
-
-        batch_size = self.batch_size or len(sft)
-        nb_batches = int(np.ceil(len(sft) / batch_size))
-
-        if 'gaussian' in self.model.direction_getter.key:
-            outputs = ([], [])
-        elif 'fisher' in self.model.direction_getter.key:
-            raise NotImplementedError
-        else:
-            outputs = []
-
+        # Prepare output formats.
+        outputs = None
         losses = []
-        compressed_n = []
+        eos_probs = []
+        mean_per_line = None
+        eos_errors, mean_per_line_eos = (None, None)
+
+        # Run all batches
         batch_start = 0
         batch_end = batch_size
         with torch.no_grad():
-            for batch in range(nb_batches):
-                logging.info("  Batch #{}:  {} - {}"
-                             .format(batch + 1, batch_start, batch_end))
-                # 1. Prepare batch
+            for _ in tqdm(range(nb_batches), desc="Batches", total=nb_batches):
+                # Seems to help.... We need to discover why
+                # log_gpu_memory_usage()
+                torch.cuda.empty_cache()
+
+                # 1. Prepare batch. Same process as in trainer, but no option
+                # to add noise.
                 streamlines = [
                     torch.as_tensor(s, dtype=torch.float32, device=self.device)
                     for s in sft.streamlines[batch_start:batch_end]]
-
                 if not self.model.direction_getter.add_eos:
                     # We don't use the last coord because it does not have an
                     # associated target direction.
                     streamlines_f = [s[:-1, :] for s in streamlines]
                 else:
                     streamlines_f = streamlines
-                inputs = self._prepare_inputs_at_pos(streamlines_f)
+                inputs = self._prepare_inputs(streamlines_f)
 
                 # 2. Run forward
-                tmp_outputs = self.model(inputs, streamlines_f)
-                del streamlines_f
+                batch_out = self.model(inputs, streamlines_f)
+                outputs = self.model.merge_batches_outputs(outputs, batch_out,
+                                                           device='cpu')
 
+                # 3. Compute loss: not averaged = one tensor of losses per
+                # streamline.
                 if compute_loss:
-                    # 3. Compute loss
-                    tmp_losses = self.model.compute_loss(
-                        tmp_outputs, streamlines, average_results=False)
+                    tmp_losses, n, tmp_eos_probs = self.model.compute_loss(
+                        batch_out, streamlines, average_results=False,
+                        return_eos_probs=True)
+                    losses.extend([loss.cpu().numpy() for loss in tmp_losses])
+                    if tmp_eos_probs is not None:
+                        eos_probs.extend([eos_loss.cpu().numpy()
+                                          for eos_loss in tmp_eos_probs])
 
-                    if self.model.direction_getter.compress_loss:
-                        tmp_losses, n = tmp_losses
-                        losses.append(tmp_losses)
-                        compressed_n.append(n)
-                    else:
-                        losses.extend([line_loss.cpu() for line_loss in
-                                       tmp_losses])
+                if logging.getLogger().level == logging.DEBUG:
+                    log_gpu_memory_usage()
 
-                # ToDo. See if we can simplify to fit with all models
-                if 'gaussian' in self.model.direction_getter.key:
-                    tmp_means, tmp_sigmas = tmp_outputs
-                    outputs[0].extend([m.cpu() for m in tmp_means])
-                    outputs[1].extend([s.cpu() for s in tmp_sigmas])
-                elif 'fisher' in self.model.direction_getter.key:
-                    raise NotImplementedError
-                else:
-                    outputs.extend([o.cpu() for o in tmp_outputs])
-
+                # Prepare next batch
                 batch_start = batch_end
                 batch_end = min(batch_start + batch_size, len(sft))
 
-            if self.model.direction_getter.compress_loss:
-                total_n = sum(compressed_n)
-                total_loss = sum([loss * n for loss, n in
-                                  zip(losses, compressed_n)]) / total_n
-            else:
-                total_n = sum([len(line_loss) for line_loss in losses])
-                total_loss = torch.mean(torch.hstack(losses))
+        if compute_loss:
+            mean_per_line = np.asarray([np.mean(loss) for loss in losses])
+            # \u00B1 is the plus or minus sign.
+            print("Losses: ")
+            print(u"    Average per streamline for the {} streamlines is: "
+                  u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
+                  .format(len(sft), np.mean(mean_per_line),
+                          np.std(mean_per_line), np.min(mean_per_line),
+                          np.max(mean_per_line)))
 
-            print("Loss function, averaged over all {} points in the chosen "
-                  "SFT, is: {}.".format(total_n, total_loss))
+            tmp = np.hstack(losses)
+            print(u"    Mean, averaged over all {} points, is: "
+                  u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
+                  .format(len(tmp), np.mean(tmp), np.std(tmp),
+                          np.min(tmp), np.max(tmp)))
 
-            if (not self.model.direction_getter.compress_loss) and \
-                    add_zeros_if_no_eos and \
-                    not self.model.direction_getter.add_eos:
-                zero = torch.zeros(1)
-                losses = [torch.hstack([line, zero]) for line in losses]
-                total_n = sum([len(line_loss) for line_loss in losses])
-                total_loss = torch.mean(torch.hstack(losses))
-                print("When adding a 0 loss at the EOS position, the mean "
-                      "loss for {} points is {}.".format(total_n, total_loss))
+            if self.model.direction_getter.add_eos:
+                # Expecting prob 0 everywhere and prob 1 at last position
+                eos_errors = [
+                    np.abs(s - np.asarray([0] * (len(s) - 1) + [1]))
+                    for s in eos_probs]
 
-        self.model.direction_getter.compress_loss = save_val
-        self.model.direction_getter.weight_loss_with_angle = save_val_angle
+                mean_per_line_eos = np.asarray([np.mean(loss)
+                                                for loss in eos_errors])
 
-        return outputs, losses
+                print("-------------\n"
+                      "EOS error:")
+                print(u"    Average EOS error per streamline for the {} "
+                      u"streamlines is: {:.4f} \u00B1 {:.4f}. "
+                      u"Range: [{:.4f} - {:.4f}]"
+                      .format(len(sft), np.mean(mean_per_line_eos),
+                              np.std(mean_per_line_eos),
+                              np.min(mean_per_line_eos),
+                              np.max(mean_per_line_eos)))
 
-    def _prepare_inputs_at_pos(self, streamlines):
-        raise NotImplementedError
+                tmp = np.hstack(eos_errors)
+                print(u"    Mean, EOS error averaged over all {} points, is: "
+                      u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
+                      .format(len(tmp), np.mean(tmp), np.std(tmp),
+                              np.min(tmp), np.max(tmp)))
+
+        return (sft, outputs, losses, mean_per_line,
+                eos_probs, eos_errors, mean_per_line_eos)
+
+    def _prepare_inputs(self, streamlines):
+        return None
 
 
-class TesterOneInput(Tester):
+class TesterOneInput(TesterWithDirectionGetter):
     model: MainModelOneInput
 
-    def __init__(self, *args, **kw):
+    def __init__(self, volume_group, *args, **kw):
+        self.volume_group = volume_group
         super().__init__(*args, **kw)
-        self.input_group_idx = None
+        self.input_group_idx = self.subset.volume_groups.index(volume_group)
 
     @property
     def _volume_groups(self):
-        return [self.params["Loader params"]["input_group_name"]]
+        return [self.volume_group]
 
-    def load_and_format_data(self, subj_id, hdf5_file, subset_name):
-        sft = super().load_and_format_data(subj_id, hdf5_file, subset_name)
-        self.input_group_idx = self.subset.volume_groups.index(
-            self._volume_groups[0])
-        return sft
-
-    def _prepare_inputs_at_pos(self, streamlines):
+    def _prepare_inputs(self, streamlines):
         return self.model.prepare_batch_one_input(
             streamlines, self.subset, self.subj_idx, self.input_group_idx)

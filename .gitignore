@@ -72,3 +72,4 @@ target/
 
 # dwi_ml stuff
 .ipynb_config/
+.ipynb_checkpoints/

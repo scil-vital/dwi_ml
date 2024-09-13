@@ -31,6 +31,9 @@ def test_help_option(script_runner):
     ret = script_runner.run('l2t_visualize_loss.py', '--help')
     assert ret.success
 
+    ret = script_runner.run('l2t_update_deprecated_exp.py', '--help')
+    assert ret.success
+
 
 @pytest.fixture(scope="session")
 def experiments_path(tmp_path_factory):
@@ -51,7 +54,7 @@ def test_training(script_runner, experiments_path):
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
-                            '--logging', 'INFO', '--step_size', '0.5',
+                            '-v', 'INFO', '--step_size', '0.5', '--add_eos',
                             '--nb_previous_dirs', '1')
     assert ret.success
 
@@ -69,7 +72,7 @@ def test_training(script_runner, experiments_path):
                                 '--max_batches_per_epoch_training', '2',
                                 '--max_batches_per_epoch_validation', '1',
                                 '--dg_key', 'cosine-regression', '--add_eos',
-                                '--logging', 'INFO', '--use_gpu')
+                                '-v', 'INFO', '--use_gpu')
         assert ret.success
 
 
@@ -93,8 +96,9 @@ def test_tracking(script_runner, experiments_path):
     # Testing HDF5 data does not contain a testing set to keep it light. Using
     # subjectX from training set.
     ret = script_runner.run(
-        'l2t_track_from_model.py', whole_experiment_path, hdf5_file, subj_id,
+        'l2t_track_from_model.py', whole_experiment_path, subj_id,
         input_group_name, out_tractogram, seeding_mask_group,
+        '--hdf5_file', hdf5_file,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0', '--min_length', '0',
         '--subset', 'training', '--tracking_mask_group', tracking_mask_group)
 
@@ -105,7 +109,7 @@ def test_tracking(script_runner, experiments_path):
         logging.info("********** TESTING GPU TRACKING FROM MODEL ************")
         out_tractogram = os.path.join(experiments_path, 'test_tractogram2.trk')
         ret = script_runner.run(
-            'l2t_track_from_model.py', whole_experiment_path, hdf5_file,
+            'l2t_track_from_model.py', whole_experiment_path,
             subj_id, input_group_name, out_tractogram, seeding_mask_group,
             '--algo', 'det', '--nt', '20', '--rng_seed', '0',
             '--min_length', '0', '--subset', 'training',
@@ -121,24 +125,23 @@ def test_visu(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     # Test visu loss
-    out_tractogram = os.path.join(experiments_path, 'colored_tractogram.trk')
-    out_displacement = os.path.join(experiments_path, 'displacement.trk')
+    prefix = 'fornix_'
     ret = script_runner.run('l2t_visualize_loss.py', whole_experiment_path,
-                            hdf5_file, subj_id, '--subset', 'training',
-                            '--save_colored_tractogram', out_tractogram,
-                            '--save_displacement', out_displacement,
-                            '--min_range', '-1', '--max_range', '1',
-                            '--pick_at_random')
+                            hdf5_file, subj_id, input_group_name,
+                            '--streamlines_group', streamline_group_name,
+                            '--out_prefix', prefix,
+                            '--subset', 'training',
+                            '--compute_histogram',
+                            '--save_colored_tractogram',
+                            '--save_colored_best_and_worst', '1',
+                            '--save_colored_eos_probs',
+                            '--save_colored_eos_errors',
+                            '--save_displacement', '1', '--batch_size', '100',
+                            '--min_range', '-1', '--max_range', '1')
     assert ret.success
 
 
-def future_test_training_with_generation_validation(script_runner, experiments_path):
-    # NOT DOING ANYTHING NOW BECAUSE HDF5 DOES NOT CONTAIN A VALIDATION SUBJ!
-
-    if torch.cuda.is_available():
-        option = '--use_gpu'
-    else:
-        option = ''
+def test_training_with_generation_validation(script_runner, experiments_path):
 
     logging.info("************ TESTING TRAINING WITH GENERATION ************")
     experiment_name = 'test2'
@@ -150,7 +153,8 @@ def future_test_training_with_generation_validation(script_runner, experiments_p
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
-                            '--logging', 'INFO', '--step_size', '0.5',
+                            '-v', 'INFO', '--step_size', '0.5',
                             '--add_a_tracking_validation_phase',
-                            '--tracking_phase_frequency', '1', option)
+                            '--tracking_mask', 'wm_mask',
+                            '--tracking_phase_frequency', '1')
     assert ret.success

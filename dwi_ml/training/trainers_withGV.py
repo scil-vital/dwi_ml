@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Adds a tracking step to verify the generation process. Metrics on the
-streamlines are:
+Adds a generation-validation phase: a tracking step. Metrics on the streamlines
+are:
 
 - Very good / acceptable / very far IS threshold:
     Percentage of streamlines ending inside a radius of 15 / 25 / 40 voxels of
@@ -25,8 +25,8 @@ streamlines are:
 - Connectivity fit:
     Percentage of streamlines ending in a block of the volume indeed connected
     in the validation subject. Real connectivity matrices must be saved in the
-    hdf5. Right now, volumes are simply split into blocs (the same way as in the
-    hdf5, ex, to 10x10x10 volumes for a total of 1000 blocks), not based on
+    hdf5. Right now, volumes are simply split into blocs (the same way as in
+    the hdf5, ex, to 10x10x10 volumes for a total of 1000 blocks), not based on
     anatomical ROIs. It has the advantage that it does not rely on the quality
     of segmentation. It had the drawback that a generated streamline ending
     very close to the "true" streamline, but in another block, if the
@@ -43,14 +43,13 @@ import torch
 from torch.nn import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs
+    compute_triu_connectivity_from_blocs, compute_triu_connectivity_from_labels
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.io_utils import prepare_tracking_mask
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.monitoring import BatchHistoryMonitor
-from dwi_ml.training.with_generation.batch_loader import \
-    DWIMLBatchLoaderWithConnectivity
 
 logger = logging.getLogger('train_logger')
 
@@ -65,7 +64,7 @@ VERY_FAR_THRESHOLD = 40.0
 
 class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
     model: ModelWithDirectionGetter
-    batch_loader: DWIMLBatchLoaderWithConnectivity
+    batch_loader: DWIMLBatchLoaderOneInput
 
     def __init__(self, add_a_tracking_validation_phase: bool = False,
                  tracking_phase_frequency: int = 1,
@@ -104,6 +103,12 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         self.tracking_mask_group = tracking_phase_mask_group
 
         self.compute_connectivity = self.batch_loader.data_contains_connectivity
+
+        # -------- Checks
+        if add_a_tracking_validation_phase and \
+                tracking_phase_mask_group is None:
+            raise NotImplementedError("Not ready to run without a tracking "
+                                      "mask.")
 
         # -------- Monitors
         # At training time: only the one metric used for training.
@@ -175,9 +180,9 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 logger.debug("Additional tracking-like generation validation "
                              "from batch.")
                 (gen_n, mean_final_dist, mean_clipped_final_dist,
-                 percent_IS_very_good, percent_IS_acceptable, percent_IS_very_far,
-                 diverging_pnt, connectivity) = self.validation_generation_one_batch(
-                    data, compute_all_scores=True)
+                 percent_IS_very_good, percent_IS_acceptable,
+                 percent_IS_very_far, diverging_pnt, connectivity) = \
+                    self.gv_phase_one_batch(data, compute_all_scores=True)
 
                 self.tracking_very_good_IS_monitor.update(
                     percent_IS_very_good, weight=gen_n)
@@ -193,11 +198,13 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 self.tracking_valid_diverg_monitor.update(
                     diverging_pnt, weight=gen_n)
 
-                self.tracking_connectivity_score_monitor.update(
-                    connectivity, weight=gen_n)
+                if self.compute_connectivity:
+                    self.tracking_connectivity_score_monitor.update(
+                        connectivity, weight=gen_n)
             elif len(self.tracking_mean_final_distance_monitor.average_per_epoch) == 0:
-                logger.info("Skipping tracking-like generation validation from "
-                            "batch. No values yet: adding fake initial values.")
+                logger.info("Skipping tracking-like generation validation "
+                            "from batch. No values yet: adding fake initial "
+                            "values.")
                 # Fake values at the beginning
                 # Bad IS = 100%
                 self.tracking_very_good_IS_monitor.update(100.0)
@@ -214,10 +221,11 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 self.tracking_clipped_final_distance_monitor.update(
                     ACCEPTABLE_THRESHOLD)
 
-                self.tracking_connectivity_score_monitor.update(1)
+                if self.compute_connectivity:
+                    self.tracking_connectivity_score_monitor.update(1)
             else:
-                logger.info("Skipping tracking-like generation validation from "
-                            "batch. Copying previous epoch's values.")
+                logger.info("Skipping tracking-like generation validation "
+                            "from batch. Copying previous epoch's values.")
                 # Copy previous value
                 for monitor in [self.tracking_very_good_IS_monitor,
                                 self.tracking_acceptable_IS_monitor,
@@ -228,7 +236,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                                 self.tracking_connectivity_score_monitor]:
                     monitor.update(monitor.average_per_epoch[-1])
 
-    def validation_generation_one_batch(self, data, compute_all_scores=False):
+    def gv_phase_one_batch(self, data, compute_all_scores=False):
         """
         Use tractography to generate streamlines starting from the "true"
         seeds and first few segments. Expected results are the batch's
@@ -238,7 +246,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
 
         # Possibly sending again to GPU even if done in the local loss
         # computation, but easier with current implementation.
-        real_lines = [line.to(self.device, non_blocking=True, dtype=torch.float)
+        real_lines = [line.to(self.device, non_blocking=True,
+                              dtype=torch.float)
                       for line in real_lines]
         last_pos = torch.vstack([line[-1, :] for line in real_lines])
 
@@ -267,7 +276,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             final_dist_clipped = torch.mean(final_dist_clipped)
 
             # 2. Connectivity scores, if available (else None)
-            connectivity_score = self._compare_connectivity(lines, ids_per_subj)
+            connectivity_score = self._compare_connectivity(lines,
+                                                            ids_per_subj)
 
             # 3. "IS ratio", i.e. percentage of streamlines ending inside a
             # predefined radius.
@@ -280,9 +290,9 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             final_dist = torch.mean(final_dist)
 
             # 4. Verify point where streamline starts diverging.
-            # abs(100 - score): 0 = good. 100 = bad (either abs(100) -> diverged
-            # at first point or abs(-100) = diverged after twice the expected
-            # length.
+            # abs(100 - score): 0 = good. 100 = bad (either
+            # abs(100) -> diverged at first point or
+            # abs(-100) = diverged after twice the expected length.
             total_point = 0
             for line, real_line in zip(lines, real_lines):
                 expected_nb = len(real_line)
@@ -300,12 +310,12 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                     total_point += abs(100 - div_point)
             diverging_point = total_point / len(lines)
 
-            invalid_ratio_severe = invalid_ratio_severe.cpu().numpy().astype(np.float32)
-            invalid_ratio_acceptable = invalid_ratio_acceptable.cpu().numpy().astype(np.float32)
-            invalid_ratio_loose = invalid_ratio_loose.cpu().numpy().astype(np.float32)
-            final_dist = final_dist.cpu().numpy().astype(np.float32)
-            final_dist_clipped = final_dist_clipped.cpu().numpy().astype(np.float32)
-            diverging_point = np.asarray(diverging_point, dtype=np.float32)
+            invalid_ratio_severe = invalid_ratio_severe.item()
+            invalid_ratio_acceptable = invalid_ratio_acceptable.item()
+            invalid_ratio_loose = invalid_ratio_loose.item()
+            final_dist = final_dist.item()
+            final_dist_clipped = final_dist_clipped.item()
+
             return (len(lines), final_dist, final_dist_clipped,
                     invalid_ratio_severe, invalid_ratio_acceptable,
                     invalid_ratio_loose, diverging_point,
@@ -317,28 +327,45 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         compares with expected values for the subject.
         """
         if self.compute_connectivity:
-            connectivity_matrices, volume_sizes, connectivity_nb_blocs = \
-                self.batch_loader.load_batch_connectivity_matrices(ids_per_subj)
+            # toDo. See if it's too much to keep them all in memory. Could be
+            #  done in the loop for each subject.
+            (connectivity_matrices, volume_sizes,
+             connectivity_nb_blocs, connectivity_labels) = \
+                self.batch_loader.load_batch_connectivity_matrices(
+                    ids_per_subj)
 
             score = 0.0
             for i, subj in enumerate(ids_per_subj.keys()):
                 real_matrix = connectivity_matrices[i]
                 volume_size = volume_sizes[i]
                 nb_blocs = connectivity_nb_blocs[i]
+                labels = connectivity_labels[i]
                 _lines = lines[ids_per_subj[subj]]
 
-                batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
-                    _lines, volume_size, nb_blocs, binary=False)
+                # Move to cpu, numpy now.
+                _lines = [line.cpu().numpy() for line in _lines]
+
+                # Reference matrices are saved as binary in create_hdf5,
+                # but still. Ensuring.
+                real_matrix = real_matrix > 0
+
+                # But our matrix here won't be!
+                if nb_blocs is not None:
+                    batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
+                        _lines, volume_size, nb_blocs)
+                else:
+                    # Note: scilpy usage not ready! Simple endpoints position
+                    batch_matrix, _, _, _ =\
+                        compute_triu_connectivity_from_labels(
+                            _lines, labels, use_scilpy=False)
 
                 # Where our batch has a 0: not important, maybe it was simply
                 # not in this batch.
                 # Where our batch has a 1, if there was really a one: score
-                # should be 0.   = 1 - 1.
-                # Else, score should be high (1).  = 1 - 0.
+                # should be 0.   = 1 - 1 = 1 - real
+                # Else, score should be high (1).  = 1 - 0 = 1 - real
                 # If two streamlines have the same connection, score is
                 # either 0 or 2 for that voxel.  ==> nb * (1 - real).
-
-                # Reference matrices are saved as binary in create_hdf5.
                 where_one = np.where(batch_matrix > 0)
                 score += np.sum(batch_matrix[where_one] *
                                 (1.0 - real_matrix[where_one]))
@@ -349,7 +376,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             score = None
         return score
 
-    def propagate_multiple_lines(self, lines: List[torch.Tensor], ids_per_subj):
+    def propagate_multiple_lines(self, lines: List[torch.Tensor],
+                                 ids_per_subj):
         """
         Tractography propagation of 'lines'.
         """
@@ -380,7 +408,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         # accept multiple masks or manage it differently.
         final_lines = []
         for subj_idx, line_idx in ids_per_subj.items():
-            with h5py.File(self.batch_loader.dataset.hdf5_file, 'r') as hdf_handle:
+            with h5py.File(self.batch_loader.dataset.hdf5_file, 'r'
+                           ) as hdf_handle:
                 subj_id = self.batch_loader.context_subset.subjects[subj_idx]
                 logging.debug("Loading subj {} ({})'s tracking mask."
                               .format(subj_idx, subj_id))
@@ -392,7 +421,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             final_lines.extend(propagate_multiple_lines(
                 lines[line_idx], update_memory_after_removing_lines,
                 get_dirs_at_last_pos, theta=theta,
-                step_size=self.model.step_size, verify_opposite_direction=False,
+                step_size=self.model.step_size,
+                verify_opposite_direction=False,
                 mask=tracking_mask, max_nbr_pts=max_nbr_pts,
                 append_last_point=False, normalize_directions=True))
 

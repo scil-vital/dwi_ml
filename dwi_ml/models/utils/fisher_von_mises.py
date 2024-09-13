@@ -10,6 +10,19 @@ https://dwi-ml.readthedocs.io/en/latest/formulas.html
 
 
 def fisher_von_mises_log_prob_vector(mus, kappa, targets, eps=1e-5):
+    """
+    Same as below, but for a single vector.
+
+    Parameters
+    ----------
+    mus: torch.Tensor
+        Shape: (3, )
+    kappa: torch.Tensor
+        Shape: (1, )
+    targets: torch.Tensor
+        Directions. Shape (3, )
+    eps: float
+    """
     log_diff_exp_kappa = np.log(
         np.maximum(eps, np.exp(kappa) - np.exp(-kappa)))
     log_c = np.log(kappa) - np.log(2 * np.pi) - log_diff_exp_kappa
@@ -18,12 +31,24 @@ def fisher_von_mises_log_prob_vector(mus, kappa, targets, eps=1e-5):
 
 
 def fisher_von_mises_log_prob(mus, kappa, targets, eps=1e-5):
+    """
+    Fisher von Mises loss for a batch.
+
+    Parameters
+    ----------
+    mus: torch.Tensor
+        Shape: (n, 3)
+    kappa: torch.Tensor
+        Shape: (n, 1)
+    targets: torch.Tensor
+        Directions. Shape (n, 3)
+    eps: float
+    """
     log_2pi = np.log(2 * np.pi).astype(np.float32)
 
     eps = torch.as_tensor(eps, device=kappa.device, dtype=torch.float32)
 
-    # Add an epsilon in case kappa is too small (i.e. a uniform
-    # distribution)
+    # Add an epsilon in case kappa is too small (i.e. a uniform distribution)
     log_diff_exp_kappa = torch.log(
         torch.maximum(eps, torch.exp(kappa) - torch.exp(-kappa)))
 

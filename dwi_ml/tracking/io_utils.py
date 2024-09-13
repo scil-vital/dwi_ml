@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import os
+from argparse import ArgumentParser
 
 from dipy.io.stateful_tractogram import (Space, Origin, set_sft_logger_level,
                                          StatefulTractogram)
@@ -16,32 +17,30 @@ from dwi_ml.testing.utils import add_args_testing_subj_hdf5
 from dwi_ml.tracking.tracking_mask import TrackingMask
 from dwi_ml.tracking.tracker import DWIMLAbstractTracker
 
-
 ALWAYS_VOX_SPACE = Space.VOX
 ALWAYS_CORNER = Origin('corner')
 
 
-def add_tracking_options(p):
-
+def add_tracking_options(p: ArgumentParser):
     add_arg_existing_experiment_path(p)
-    add_args_testing_subj_hdf5(p, ask_input_group=True)
+    add_args_testing_subj_hdf5(p, optional_hdf5=True,
+                               ask_input_group=True)
 
     p.add_argument('out_tractogram',
                    help='Tractogram output file (must be .trk or .tck).')
     p.add_argument('seeding_mask_group',
                    help="Seeding mask's volume group in the hdf5.")
 
-    track_g = p.add_argument_group('  Tracking options')
+    track_g = p.add_argument_group('Tracking options')
     track_g.add_argument('--algo', choices=['det', 'prob'], default='det',
                          help="Tracking algorithm (det or prob). Must be "
-                              "implemented in the chosen model. [det]")
+                              "implemented in the chosen model. \n[det]")
     track_g.add_argument('--step_size', type=float,
                          help='Step size in mm. Default: using the step size '
                               'saved in the model parameters.')
     track_g.add_argument('--track_forward_only', action='store_true',
                          help="If set, tracks in one direction only (forward) "
-                              "given the initial \nseed. The direction is "
-                              "randomly drawn from the ODF.")
+                              "given the initial seed.")
     track_g.add_argument('--mask_interp', default='nearest',
                          choices=['nearest', 'trilinear'],
                          help="Mask interpolation: nearest-neighbor or "
@@ -60,51 +59,51 @@ def add_tracking_options(p):
                         metavar='M',
                         help='Maximum length of a streamline in mm. '
                              '[%(default)s]')
-    stop_g.add_argument('--tracking_mask_group',
+    stop_g.add_argument('--tracking_mask_group', metavar='key',
                         help="Tracking mask's volume group in the hdf5.")
-    stop_g.add_argument('--theta', metavar='t', type=float,
-                        default=90,
-                        help="The tracking direction at each step being "
-                             "defined by the model, \ntheta arg can't define "
-                             "allowed directions in the tracking field.\n"
-                             "Rather, this new equivalent angle, is used as "
-                             "\na stopping criterion during propagation: "
-                             "tracking \nis stopped when a direction is more "
-                             "than an angle t from preceding direction")
+    stop_g.add_argument('--theta', metavar='t', type=float, default=90,
+                        help="Stopping criterion during propagation: "
+                             "tracking is stopped when a direction is \nmore "
+                             "than an angle theta from preceding direction. "
+                             "[%(default)s]")
     stop_g.add_argument('--eos_stop', metavar='prob',
                         help="Stopping criterion if a EOS value was learned "
-                             "during training. \nCan either be a probability "
-                             "(default 0.5) or the string 'max', which will "
-                             "\nstop the propagation if the EOS class's "
-                             "probability is the class with maximal "
-                             "probability, no mather its value.")
+                             "during training. For all models, \ncan be a "
+                             "probability (default 0.5). For classification "
+                             "models, can also be the \nkeyword 'max', which "
+                             "will stop the propagation if the EOS class is "
+                             "the class \nwith maximal probability, no matter "
+                             "its value.")
     stop_g.add_argument(
         '--discard_last_point', action='store_true',
-        help="If set, discard the last point (once out of the tracking mask) \n"
-             "of the streamline. Default: append them. This is the default in \n"
-             "Dipy too. Note that points obtained after an invalid direction \n"
-             "(based on the propagator's definition of invalid; ex when \n"
-             "angle is too sharp of sh_threshold not reached) are never added.")
+        help="If set, discard the last point (once out of the tracking mask) "
+             "of the \nstreamline. Default: do not discard them; append them. "
+             "This is the default in \nDipy too. Note that points obtained "
+             "after an invalid direction (based on the \npropagator's "
+             "definition of invalid; ex when angle is too sharp or "
+             "sh_threshold \nis not reached) are never added.")
 
     r_g = p.add_argument_group('  Random seeding options')
     r_g.add_argument('--rng_seed', type=int,
                      help='Initial value for the random number generator. '
                           '[%(default)s]')
-    r_g.add_argument('--skip', type=int, default=0,
-                     help="Skip the first N random numbers. \n"
-                          "Useful if you want to create new streamlines to "
-                          "add to \na previously created tractogram with a "
-                          "fixed --rng_seed.\nEx: If tractogram_1 was created "
-                          "with -nt 1,000,000, \nyou can create tractogram_2 "
-                          "with \n--skip 1,000,000.")
+    r_g.add_argument(
+        '--skip', type=int, default=0,
+        help="Skip the first N random numbers. Useful if you want to create "
+             "new streamlines to \nadd to a tractogram previously created "
+             "with a fixed --rng_seed. Ex: If \ntractogram_1 was created "
+             "with -nt 1,000,000, you can create tractogram_2 with \n"
+             "--skip 1,000,000.")
 
     # Memory options:
     m_g = add_memory_args(p, add_lazy_options=True,
                           add_multiprocessing_option=True,
                           add_rng=True)
     m_g.add_argument('--simultaneous_tracking', type=int, default=1,
+                     metavar='nb',
                      help='Track n streamlines at the same time. Intended for '
-                          'GPU usage. Default = 1 (no simultaneous tracking).')
+                          'GPU usage. Default = 1 \n(no simultaneous '
+                          'tracking).')
 
     return track_g
 
@@ -129,25 +128,26 @@ def prepare_seed_generator(parser, args, hdf_handle):
     seed_generator = SeedGenerator(seed_data, seed_res, space=ALWAYS_VOX_SPACE,
                                    origin=ALWAYS_CORNER)
 
-    if len(seed_generator.seeds_vox) == 0:
+    if len(seed_generator.seeds_vox_corner) == 0:
         parser.error('Seed mask "{}" does not have any voxel with value > 0.'
                      .format(args.in_seed))
 
     if args.npv:
         # Note. Not really nb seed per voxel, just in average.
-        nbr_seeds = len(seed_generator.seeds_vox) * args.npv
+        nbr_seeds = len(seed_generator.seeds_vox_corner) * args.npv
     elif args.nt:
         nbr_seeds = args.nt
     else:
         # Setting npv = 1.
-        nbr_seeds = len(seed_generator.seeds_vox)
+        nbr_seeds = len(seed_generator.seeds_vox_corner)
 
     seed_header = nib.Nifti1Image(seed_data, affine).header
 
     return seed_generator, nbr_seeds, seed_header, ref
 
 
-def prepare_tracking_mask(hdf_handle, tracking_mask_group, subj_id, mask_interp):
+def prepare_tracking_mask(hdf_handle, tracking_mask_group, subj_id,
+                          mask_interp):
     """
     Prepare the tracking mask as a DataVolume from scilpy's library. Returns
     also some header information to allow verifications.

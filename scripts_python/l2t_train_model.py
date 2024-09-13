@@ -14,12 +14,13 @@ import os
 import comet_ml
 import torch
 
-from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
+from scilpy.io.utils import (add_verbose_arg, assert_inputs_exist,
+                             assert_outputs_exist)
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg, add_memory_args
+from dwi_ml.io_utils import add_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.models.projects.learn2track_utils import add_model_args
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
@@ -40,16 +41,9 @@ def prepare_arg_parser():
     add_mandatory_args_experiment_and_hdf5_path(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
-    training_group = add_training_args(p, add_a_tracking_validation_phase=True)
+    add_training_args(p, add_a_tracking_validation_phase=True)
     add_memory_args(p, add_lazy_options=True, add_rng=True)
-    add_logging_arg(p)
-
-    # Additional arg for projects
-    training_group.add_argument(
-        '--clip_grad', type=float, default=None,
-        help="Value to which the gradient norms to avoid exploding gradients."
-             "\nDefault = None (not clipping).")
-
+    add_verbose_arg(p)
     add_model_args(p)
 
     return p
@@ -73,7 +67,7 @@ def init_from_args(args, sub_loggers_level):
         # INPUTS: verifying args
         model = Learn2TrackModel(
             experiment_name=args.experiment_name,
-            step_size=args.step_size, compress_lines=args.compress,
+            step_size=args.step_size, compress_lines=args.compress_th,
             # PREVIOUS DIRS
             prev_dirs_embedding_key=args.prev_dirs_embedding_key,
             prev_dirs_embedded_size=args.prev_dirs_embedded_size,
@@ -132,7 +126,7 @@ def init_from_args(args, sub_loggers_level):
             tracking_phase_mask_group=args.tracking_mask,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
-            log_level=args.logging)
+            log_level=args.verbose)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
 
@@ -145,11 +139,10 @@ def main():
 
     # Setting log level to INFO maximum for sub-loggers, else it becomes ugly,
     # but we will set trainer to user-defined level.
-    sub_loggers_level = args.logging
-    if args.logging == 'DEBUG':
-        sub_loggers_level = 'INFO'
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
 
-    logging.getLogger().setLevel(level=logging.INFO)
+    # General logging (ex, scilpy: Warning)
+    logging.getLogger().setLevel(level=logging.WARNING)
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])

@@ -14,7 +14,8 @@ from tqdm import tqdm
 
 from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
-from dwi_ml.models.main_models import MainModelAbstract, ModelWithDirectionGetter
+from dwi_ml.models.main_models import (MainModelAbstract,
+                                       ModelWithDirectionGetter)
 from dwi_ml.training.batch_loaders import (
     DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
@@ -177,27 +178,6 @@ class DWIMLAbstractTrainer:
         self.batch_loader = batch_loader
         self.model = model
 
-        # Create DataLoaders from the BatchSamplers
-        #   * Before usage, context must be set for the batch sampler and the
-        #     batch loader, to use appropriate parameters.
-        #   * Pin memory if interpolation is done by workers; this means that
-        #     dataloader output is on GPU, ready to be fed to the model.
-        #     Otherwise, dataloader output is kept on CPU, and the main thread
-        #     sends volumes and coords on GPU for interpolation.
-        logger.debug("- Instantiating dataloaders...")
-        self.train_dataloader = DataLoader(
-            dataset=self.batch_sampler.dataset.training_set,
-            batch_sampler=self.batch_sampler,
-            num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch_streamlines,
-            pin_memory=self.use_gpu)
-        self.valid_dataloader = DataLoader(
-            dataset=self.batch_sampler.dataset.validation_set,
-            batch_sampler=self.batch_sampler,
-            num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch_streamlines,
-            pin_memory=self.use_gpu)
-
         # ----------------------
         # Checks
         # ----------------------
@@ -220,8 +200,10 @@ class DWIMLAbstractTrainer:
                 os.mkdir(self.saving_path)
                 os.mkdir(self.log_dir)
 
-        assert np.all([param == self.batch_loader.dataset.params_for_checkpoint[key] for
-                       key, param in self.batch_sampler.dataset.params_for_checkpoint.items()])
+        assert np.all(
+            [param == self.batch_loader.dataset.params_for_checkpoint[key] for
+             key, param in
+             self.batch_sampler.dataset.params_for_checkpoint.items()])
         if self.batch_sampler.dataset.validation_set.nb_subjects == 0:
             self.use_validation = False
             logger.warning(
@@ -230,10 +212,37 @@ class DWIMLAbstractTrainer:
                 "Best practice is to have a validation set.")
         else:
             self.use_validation = True
+            if max_batches_per_epoch_validation is None:
+                self.max_batches_per_epoch_validation = 1000
 
         if optimizer not in ['SGD', 'Adam', 'RAdam']:
             raise ValueError("Optimizer choice {} not recognized."
                              .format(optimizer))
+
+        # ----------------
+        # Create DataLoaders from the BatchSamplers
+        # ----------------
+        #   * Before usage, context must be set for the batch sampler and the
+        #     batch loader, to use appropriate parameters.
+        #   * Pin memory if interpolation is done by workers; this means that
+        #     dataloader output is on GPU, ready to be fed to the model.
+        #     Otherwise, dataloader output is kept on CPU, and the main thread
+        #     sends volumes and coords on GPU for interpolation.
+        logger.debug("- Instantiating dataloaders...")
+        self.train_dataloader = DataLoader(
+            dataset=self.batch_sampler.dataset.training_set,
+            batch_sampler=self.batch_sampler,
+            num_workers=self.nb_cpu_processes,
+            collate_fn=self.batch_loader.load_batch_streamlines,
+            pin_memory=self.use_gpu)
+        self.valid_dataloader = None
+        if self.use_validation:
+            self.valid_dataloader = DataLoader(
+                dataset=self.batch_sampler.dataset.validation_set,
+                batch_sampler=self.batch_sampler,
+                num_workers=self.nb_cpu_processes,
+                collate_fn=self.batch_loader.load_batch_streamlines,
+                pin_memory=self.use_gpu)
 
         # ----------------------
         # Evolving values. They will need to be updated if initialized from
@@ -324,7 +333,8 @@ class DWIMLAbstractTrainer:
             cls = torch.optim.SGD
 
         # Learning rate will be set at each epoch.
-        self.optimizer = cls(self.model.parameters(), weight_decay=weight_decay)
+        self.optimizer = cls(self.model.parameters(),
+                             weight_decay=weight_decay)
 
     @property
     def params_for_checkpoint(self):
@@ -364,6 +374,7 @@ class DWIMLAbstractTrainer:
         with open(json_filename, 'w') as json_file:
             json_file.write(json.dumps(
                 {'Date': str(datetime.now()),
+                 'hdf5 file': self.batch_loader.dataset.hdf5_file,
                  'Trainer params': self.params_for_checkpoint,
                  'Sampler params': self.batch_sampler.params_for_checkpoint,
                  'Loader params': self.batch_loader.params_for_checkpoint,
@@ -373,7 +384,8 @@ class DWIMLAbstractTrainer:
                  },
                 indent=4, separators=(',', ': ')))
 
-        json_filename2 = os.path.join(self.saving_path, "parameters_latest.json")
+        json_filename2 = os.path.join(self.saving_path,
+                                      "parameters_latest.json")
         shutil.copyfile(json_filename, json_filename2)
 
     def save_checkpoint(self):
@@ -486,7 +498,8 @@ class DWIMLAbstractTrainer:
         return trainer
 
     @staticmethod
-    def load_params_from_checkpoint(experiments_path: str, experiment_name: str):
+    def load_params_from_checkpoint(experiments_path: str,
+                                    experiment_name: str):
         total_path = os.path.join(
             experiments_path, experiment_name, "checkpoint",
             "checkpoint_state.pkl")
@@ -619,7 +632,8 @@ class DWIMLAbstractTrainer:
         - For each epoch
             - uses _train_one_epoch and _validate_one_epoch,
             - saves a checkpoint,
-            - checks for earlyStopping if the loss is bad or patience is reached,
+            - checks for earlyStopping if the loss is bad or patience is
+              reached,
             - saves the model if the loss is good.
         """
         logger.debug("Trainer {}: \nRunning the model {}.\n\n"
@@ -690,7 +704,8 @@ class DWIMLAbstractTrainer:
 
             if self.comet_exp:
                 self.comet_exp.log_metric(
-                    "best_loss", self.best_epoch_monitor.best_value, step=epoch)
+                    "best_loss", self.best_epoch_monitor.best_value,
+                    step=epoch)
 
             # End of epoch, save checkpoint for resuming later
             self.save_checkpoint()
@@ -798,21 +813,31 @@ class DWIMLAbstractTrainer:
 
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
-                # Break if maximum number of batches has been reached
-                if batch_id == self.nb_batches_train:
-                    # Explicitly close tqdm's progress bar to fix possible bugs
-                    # when breaking the loop
-                    pbar.close()
-                    break
 
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
                 with grad_context():
                     mean_loss = self.train_one_batch(data)
 
-                unclipped_grad_norm, grad_norm = self.back_propagation(mean_loss)
+                unclipped_grad_norm, grad_norm = self.back_propagation(
+                    mean_loss)
                 self.unclipped_grad_norm_monitor.update(unclipped_grad_norm)
                 self.grad_norm_monitor.update(grad_norm)
+
+                # Break if maximum number of batches has been reached
+                if batch_id == self.nb_batches_train - 1:
+                    # Explicitly breaking the loop here, else it calls the
+                    # train_dataloader one more time, which samples a new
+                    # batch that is not used (if we have not finished sampling
+                    # all after nb_batches).
+                    # Sending one more step to the tqdm bar, else it finishes
+                    # at nb - 1.
+                    pbar.update(1)
+
+                    # Explicitly close tqdm's progress bar to fix possible bugs
+                    # when breaking the loop
+                    pbar.close()
+                    break
 
             # Explicitly delete iterator to kill threads and free memory before
             # running validation
@@ -854,16 +879,25 @@ class DWIMLAbstractTrainer:
                                    tqdm_class=tqdm) as pbar:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
-                # Break if maximum number of epochs has been reached
-                if batch_id == self.nb_batches_valid:
-                    # Explicitly close tqdm's progress bar to fix possible bugs
-                    # when breaking the loop
-                    pbar.close()
-                    break
 
                 # Validate this batch: forward propagation + loss
                 with torch.no_grad():
                     self.validate_one_batch(data, epoch)
+
+                # Break if maximum number of epochs has been reached
+                if batch_id == self.nb_batches_valid - 1:
+                    # Explicitly breaking the loop here, else it calls the
+                    # train_dataloader one more time, which samples a new
+                    # batch that is not used (if we have not finished sampling
+                    # all after nb_batches).
+                    # Sending one more step to the tqdm bar, else it finishes
+                    # at nb - 1.
+                    pbar.update(1)
+
+                    # Explicitly close tqdm's progress bar to fix possible bugs
+                    # when breaking the loop
+                    pbar.close()
+                    break
 
             # Explicitly delete iterator to kill threads and free memory before
             # running training again
@@ -881,6 +915,8 @@ class DWIMLAbstractTrainer:
         """
         # Encapsulated for easier management of child classes.
         mean_local_loss, n = self.run_one_batch(data)
+
+        # mean loss is a Tensor of a single value. item() converts to float
         self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
@@ -971,6 +1007,11 @@ class DWIMLAbstractTrainer:
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines)
+        n: int
+            The number of points in this batch
+        X: Any
+            Any other data returned when computing loss. Not used in the
+            trainer, but could be useful anywhere else.
         """
         # Data interpolation has not been done yet. GPU computations are done
         # here in the main thread.
@@ -1038,7 +1079,8 @@ class DWIMLAbstractTrainer:
             unclipped_grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.clip_grad)
         else:
-            unclipped_grad_norm = compute_gradient_norm(self.model.parameters())
+            unclipped_grad_norm = compute_gradient_norm(
+                self.model.parameters())
         if torch.isnan(unclipped_grad_norm):
             raise ValueError("Exploding gradients. Experiment failed.")
 
@@ -1114,7 +1156,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
 
         Returns
         -------
-        mean_loss : float
+        mean_loss : Tensor of shape (1,) ; float.
             The mean loss of the provided batch.
         n: int
             Total number of points for this batch.
@@ -1157,11 +1199,10 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # (batch loader will do it depending on training / valid)
         targets = self.batch_loader.add_noise_streamlines_loss(targets,
                                                                self.device)
-        results = self.model.compute_loss(model_outputs, targets,
-                                          average_results=True)
+        mean_loss, n = self.model.compute_loss(model_outputs, targets,
+                                               average_results=True)
 
         if self.use_gpu:
             log_gpu_memory_usage(logger)
 
-        # The mean tensor is a single value. Converting to float using item().
-        return results
+        return mean_loss, n

@@ -53,10 +53,10 @@ def main():
 
     # Create dataset
     logging.info("Loading subject {} from hdf5.".format(args.subj_id))
-    subset, subj_idx = prepare_dataset_one_subj(
+    subset = prepare_dataset_one_subj(
         args.hdf5_file, args.subj_id, subset_name=args.subset,
         volume_groups=[], streamline_groups=[args.streamlines_group],
-        lazy=False, cache_size=None)
+        lazy=False, cache_size=1)
 
     # Load SFT as in dataloader, except we don't loop on many subject,
     # we don't verify streamline ids (loading all), and we don't split /
@@ -64,11 +64,11 @@ def main():
     logging.info("Loading its streamlines as SFT.")
     streamline_group_idx = subset.streamline_groups.index(
         args.streamlines_group)
-    subj_data = subset.subjs_data_list.get_subj_with_handle(subj_idx)
+    subj_data = subset.subjs_data_list.get_subj_with_handle(subject_idx=0)
     subj_sft_data = subj_data.sft_data_list[streamline_group_idx]
     sft = subj_sft_data.as_sft()
 
-    sft = resample_or_compress(sft, args.step_size, args.compress)
+    sft = resample_or_compress(sft, args.step_size, args.compress_th)
     sft.to_vox()
     sft.to_corner()
 

@@ -25,6 +25,7 @@ from dwi_ml.training.trainers import DWIMLAbstractTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader)
+from dwi_ml.training.utils.trainer import add_training_args
 from dwi_ml.training.batch_loaders import DWIMLStreamlinesBatchLoader
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
@@ -39,6 +40,7 @@ def prepare_arg_parser():
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
     #training_group = add_training_args(p)
+    add_training_args(p)
     p.add_argument('streamline_group_name',
                    help="Name of the group in hdf5")
     add_memory_args(p, add_lazy_options=True, add_rng=True)
@@ -110,7 +112,7 @@ def init_from_args(args, sub_loggers_level):
             from_checkpoint=False, clip_grad=args.clip_grad,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
-            log_level=args.logging)
+            log_level=sub_loggers_level)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
 
@@ -123,11 +125,10 @@ def main():
 
     # Setting log level to INFO maximum for sub-loggers, else it becomes ugly,
     # but we will set trainer to user-defined level.
-    sub_loggers_level = args.logging
-    if args.logging == 'DEBUG':
-        sub_loggers_level = 'INFO'
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
 
-    logging.getLogger().setLevel(level=logging.INFO)
+    # General logging (ex, scilpy: Warning)
+    logging.getLogger().setLevel(level=logging.WARNING)
 
     # Check that all files exist
     assert_inputs_exist(p, [args.hdf5_file])

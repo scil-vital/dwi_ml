@@ -355,7 +355,7 @@ class DWIMLStreamlinesBatchLoader:
                 connectivity_nb_blocs, connectivity_labels)
 
 
-class DWIMLStreamlinesBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
+class DWIMLBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
     """
     Loads:
         input = one volume group

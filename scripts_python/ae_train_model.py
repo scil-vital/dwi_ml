@@ -14,12 +14,12 @@ import os
 import comet_ml
 import torch
 
-from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
+from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, add_verbose_arg
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
-from dwi_ml.io_utils import add_logging_arg, add_memory_args
+from dwi_ml.io_utils import add_memory_args
 from dwi_ml.models.projects.ae_models import ModelAE
 from dwi_ml.training.trainers import DWIMLAbstractTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
@@ -38,17 +38,17 @@ def prepare_arg_parser():
     add_mandatory_args_experiment_and_hdf5_path(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
-    training_group = add_training_args(p)
+    #training_group = add_training_args(p)
     p.add_argument('streamline_group_name',
                    help="Name of the group in hdf5")
     add_memory_args(p, add_lazy_options=True, add_rng=True)
-    add_logging_arg(p)
+    add_verbose_arg(p)
 
     # Additional arg for projects
-    training_group.add_argument(
-        '--clip_grad', type=float, default=None,
-        help="Value to which the gradient norms to avoid exploding gradients."
-             "\nDefault = None (not clipping).")
+    #training_group.add_argument(
+    #    '--clip_grad', type=float, default=None,
+    #    help="Value to which the gradient norms to avoid exploding gradients."
+    #         "\nDefault = None (not clipping).")
 
     return p
 

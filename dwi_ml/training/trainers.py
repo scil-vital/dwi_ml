@@ -17,7 +17,7 @@ from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import (MainModelAbstract,
                                        ModelWithDirectionGetter)
 from dwi_ml.training.batch_loaders import (
-    DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
+    DWIMLStreamlinesBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.utils.gradient_norm import compute_gradient_norm
 from dwi_ml.training.utils.monitoring import (
@@ -53,7 +53,7 @@ class DWIMLAbstractTrainer:
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
-                 batch_loader: DWIMLAbstractBatchLoader,
+                 batch_loader: DWIMLStreamlinesBatchLoader,
                  learning_rates: Union[List, float] = None,
                  weight_decay: float = 0.01,
                  optimizer: str = 'Adam', max_epochs: int = 10,
@@ -78,7 +78,7 @@ class DWIMLAbstractTrainer:
         batch_sampler: DWIMLBatchIDSampler
             Instantiated class used for sampling batches.
             Data in batch_sampler.dataset must be already loaded.
-        batch_loader: DWIMLAbstractBatchLoader
+        batch_loader: DWIMLStreamlinesBatchLoader
             Instantiated class with a load_batch method able to load data
             associated to sampled batch ids. Data in batch_sampler.dataset must
             be already loaded.
@@ -461,7 +461,7 @@ class DWIMLAbstractTrainer:
     def init_from_checkpoint(
             cls, model: MainModelAbstract, experiments_path, experiment_name,
             batch_sampler: DWIMLBatchIDSampler,
-            batch_loader: DWIMLAbstractBatchLoader,
+            batch_loader: DWIMLStreamlinesBatchLoader,
             checkpoint_state: dict, new_patience, new_max_epochs, log_level):
         """
         Loads checkpoint information (parameters and states) to instantiate

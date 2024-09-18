@@ -47,11 +47,12 @@ def main():
     p = _build_arg_parser()
     args = p.parse_args()
 
-    # Loggers
-    sub_logger_level = args.logging.upper()
-    if sub_logger_level == 'DEBUG':
-        sub_logger_level = 'INFO'
-    logging.getLogger().setLevel(level=args.logging)
+    # Setting log level to INFO maximum for sub-loggers, else it becomes ugly,
+    # but we will set trainer to user-defined level.
+    sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
+
+    # General logging (ex, scilpy: Warning)
+    logging.getLogger().setLevel(level=logging.WARNING)
 
     # Verify output names
     # Check experiment_path exists and best_model folder exists
@@ -65,7 +66,7 @@ def main():
     # 1. Load model
     logging.debug("Loading model.")
     model = ModelAE.load_model_from_params_and_state(
-        args.experiment_path + '/best_model', log_level=sub_logger_level)
+        args.experiment_path + '/best_model', log_level=sub_loggers_level)
     # model.set_context('training')
     # 2. Compute loss
     # tester = TesterOneInput(args.experiment_path,

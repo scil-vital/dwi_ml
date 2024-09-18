@@ -7,13 +7,12 @@ import torch
 
 from scilpy.io.utils import (add_overwrite_arg,
                              assert_outputs_exist,
-                             add_reference_arg)
+                             add_reference_arg,
+                             add_verbose_arg)
 from scilpy.io.streamlines import load_tractogram_with_reference
 from dipy.io.streamline import save_tractogram
-
-from dwi_ml.io_utils import (add_logging_arg,
-                             add_arg_existing_experiment_path,
-                             add_memory_args)
+from dwi_ml.io_utils import (add_arg_existing_experiment_path,
+                           add_memory_args)
 from dwi_ml.models.projects.ae_models import ModelAE
 
 
@@ -40,7 +39,7 @@ def _build_arg_parser():
     p.add_argument('--pick_at_random', action='store_true')
     add_reference_arg(p)
     add_overwrite_arg(p)
-    add_logging_arg(p)
+    add_verbose_arg(p)
     return p
 
 

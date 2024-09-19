@@ -66,7 +66,7 @@ def main():
     # 1. Load model
     logging.debug("Loading model.")
     model = ModelAE.load_model_from_params_and_state(
-        args.experiment_path + '/best_model', log_level=sub_loggers_level)
+        args.experiment_path + '/best_model', log_level=sub_loggers_level).to(device)
     # model.set_context('training')
     # 2. Compute loss
     # tester = TesterOneInput(args.experiment_path,
@@ -81,7 +81,7 @@ def main():
     sft = load_tractogram_with_reference(p, args, args.in_tractogram)
     sft.to_vox()
     sft.to_corner()
-    bundle = sft.streamlines[0:5000]
+    bundle = sft.streamlines
 
     logging.info("Running model to compute loss")
 

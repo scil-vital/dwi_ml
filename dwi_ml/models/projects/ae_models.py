@@ -1,11 +1,46 @@
 # -*- coding: utf-8 -*-
 import logging
+import math
+
 from typing import List
 
 import torch
+from torch import nn
+from torch import Tensor
 from torch.nn import functional as F
 
 from dwi_ml.models.main_models import MainModelAbstract
+
+
+class PositionalEncoding(nn.Module):
+    """ Modified from
+    https://pytorch.org/tutorials/beginner/transformer_tutorial.htm://pytorch.org/tutorials/beginner/transformer_tutorial.html  # noqa E504
+    """
+
+    def __init__(
+        self, d_model: int, dropout: float = 0.1, max_len: int = 5000
+    ):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2)
+                             * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+        """
+        x = x.permute(1, 0, 2)
+        x = x + self.pe[:x.size(0)]
+        x = self.dropout(x)
+        x = x.permute(1, 0, 2)
+        return x
 
 
 class ModelAE(MainModelAbstract):
@@ -27,23 +62,45 @@ class ModelAE(MainModelAbstract):
                  log_level=logging.root.level):
         super().__init__(experiment_name, step_size, compress_lines, log_level)
 
-        self.kernel_size = kernel_size
-        self.latent_space_dims = latent_space_dims
+        # Embedding size, could be defined by the user ?
+        self.embedding_size = 32
+        # Embedding layer
+        self.embedding = nn.Sequential(
+            *(nn.Linear(3, self.embedding_size),
+              nn.ReLU()))
+
+        # Positional encoding layer
+        self.pos_encoding = PositionalEncoding(
+            self.embedding_size, max_len=(256))
+        # Transformer encoder layer
+        layer = nn.TransformerEncoderLayer(
+            self.embedding_size, 4, batch_first=True)
+
+        # Transformer encoder
+        self.encoder = nn.TransformerEncoder(layer, 4)
+        self.decoder = nn.TransformerEncoder(layer, 4)
+
+        self.reconstruction_loss = torch.nn.MSELoss()
 
         self.pad = torch.nn.ReflectionPad1d(1)
-
-        def pre_pad(m):
-            return torch.nn.Sequential(self.pad, m)
+        self.kernel_size = kernel_size
+        self.latent_space_dims = latent_space_dims
 
         self.fc1 = torch.nn.Linear(8192,
                                    self.latent_space_dims)  # 8192 = 1024*8
         self.fc2 = torch.nn.Linear(self.latent_space_dims, 8192)
 
+        self.fc3 = torch.nn.Linear(self.embedding_size, 3)
+
+        def pre_pad(m):
+            return torch.nn.Sequential(self.pad, m)
+
         """
         Encode convolutions
         """
         self.encod_conv1 = pre_pad(
-            torch.nn.Conv1d(3, 32, self.kernel_size, stride=2, padding=0)
+            torch.nn.Conv1d(self.embedding_size, 32,
+                            self.kernel_size, stride=2, padding=0)
         )
         self.encod_conv2 = pre_pad(
             torch.nn.Conv1d(32, 64, self.kernel_size, stride=2, padding=0)
@@ -95,7 +152,8 @@ class ModelAE(MainModelAbstract):
             scale_factor=2, mode="linear", align_corners=False
         )
         self.decod_conv6 = pre_pad(
-            torch.nn.Conv1d(32, 3, self.kernel_size, stride=1, padding=0)
+            torch.nn.Conv1d(32, 32,
+                            self.kernel_size, stride=1, padding=0)
         )
 
     @property
@@ -143,6 +201,11 @@ class ModelAE(MainModelAbstract):
     def encode(self, x):
         # x: list of tensors
         x = torch.stack(x)
+
+        x = self.embedding(x) * math.sqrt(self.embedding_size)
+        x = self.pos_encoding(x)
+        x = self.encoder(x)
+
         x = torch.swapaxes(x, 1, 2)
 
         h1 = F.relu(self.encod_conv1(x))
@@ -162,6 +225,7 @@ class ModelAE(MainModelAbstract):
         return fc1
 
     def decode(self, z):
+
         fc = self.fc2(z)
         fc_reshape = fc.view(
             -1, self.encoder_out_size[0], self.encoder_out_size[1]
@@ -178,24 +242,17 @@ class ModelAE(MainModelAbstract):
         h10 = self.upsampl5(h9)
         h11 = self.decod_conv6(h10)
 
-        return h11
+        h11 = h11.permute(0, 2, 1)
+
+        h12 = self.decoder(h11)
+
+        x = self.fc3(h12)
+
+        return x.permute(0, 2, 1)
 
     def compute_loss(self, model_outputs, targets, average_results=True):
-        print("COMPARISON\n")
         targets = torch.stack(targets)
         targets = torch.swapaxes(targets, 1, 2)
-        print(targets[0, :, 0:5])
-        print(model_outputs[0, :, 0:5])
-        reconstruction_loss = torch.nn.MSELoss(reduction="sum")
-        mse = reconstruction_loss(model_outputs, targets)
-
-        # loss_function_vae
-        # See Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        # kld = -0.5 * torch.sum(1 + self.logvar - self.mu.pow(2) - self.logvar.exp())
-        # kld_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-        # kld = torch.sum(kld_element).__mul__(-0.5)
+        mse = self.reconstruction_loss(model_outputs, targets)
 
         return mse, 1

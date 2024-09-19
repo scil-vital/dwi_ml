@@ -99,7 +99,7 @@ def main():
 
     # print(streamlines_output[0].shape)
     new_sft = sft.from_sft(streamlines_output, sft)
-    save_tractogram(new_sft, args.out_tractogram)
+    save_tractogram(new_sft, args.out_tractogram, bbox_valid_check=False) 
 
     # latent_output = [s.cpu().numpy() for s in latent]
 

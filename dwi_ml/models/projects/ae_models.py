@@ -31,6 +31,7 @@ class ModelAE(MainModelAbstract):
         self.latent_space_dims = latent_space_dims
 
         self.pad = torch.nn.ReflectionPad1d(1)
+        self.post_encoding_hooks = []
 
         def pre_pad(m):
             return torch.nn.Sequential(self.pad, m)
@@ -137,13 +138,20 @@ class ModelAE(MainModelAbstract):
             `get_tracking_directions()`.
         """
 
-        x = self.decode(self.encode(input_streamlines))
+        encoded = self.encode(input_streamlines)
+
+        for hook in self.post_encoding_hooks:
+            hook(encoded)
+
+        x = self.decode(encoded)
         return x
 
     def encode(self, x):
-        # x: list of tensors
-        x = torch.stack(x)
-        x = torch.swapaxes(x, 1, 2)
+        # X input shape is (batch_size, nb_points, 3)
+        if isinstance(x, list):
+            x = torch.stack(x)
+
+        x = torch.swapaxes(x, 1, 2) # input of the network should be (N, 3, nb_points)
 
         h1 = F.relu(self.encod_conv1(x))
         h2 = F.relu(self.encod_conv2(h1))
@@ -181,21 +189,13 @@ class ModelAE(MainModelAbstract):
         return h11
 
     def compute_loss(self, model_outputs, targets, average_results=True):
-        print("COMPARISON\n")
         targets = torch.stack(targets)
         targets = torch.swapaxes(targets, 1, 2)
-        print(targets[0, :, 0:5])
-        print(model_outputs[0, :, 0:5])
-        reconstruction_loss = torch.nn.MSELoss(reduction="sum")
+        reconstruction_loss = torch.nn.MSELoss()
         mse = reconstruction_loss(model_outputs, targets)
 
-        # loss_function_vae
-        # See Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        # kld = -0.5 * torch.sum(1 + self.logvar - self.mu.pow(2) - self.logvar.exp())
-        # kld_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-        # kld = torch.sum(kld_element).__mul__(-0.5)
-
         return mse, 1
+    
+    def register_hook_post_encoding(self, hook):
+        self.post_encoding_hooks.append(hook)
+        

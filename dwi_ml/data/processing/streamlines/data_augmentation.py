@@ -138,3 +138,28 @@ def reverse_streamlines(sft: StatefulTractogram,
         data_per_streamline=sft.data_per_streamline)
 
     return new_sft
+
+
+def normalize_streamlines(sft: StatefulTractogram):
+    """ Normalize streamlines so that their points are in [0, 1].
+
+    Parameters
+    ----------
+    sft: StatefulTractogram
+        Dipy object containing your streamlines
+
+    Returns
+    -------
+    new_sft: StatefulTractogram
+        Dipy object with reversed streamlines and data_per_point.
+    """
+
+    dims = sft.dimensions
+
+    new_streamlines = [s / dims for s in sft.streamlines]
+
+    new_sft = StatefulTractogram.from_sft(
+        new_streamlines, sft, data_per_point=sft.data_per_point,
+        data_per_streamline=sft.data_per_streamline)
+
+    return new_sft

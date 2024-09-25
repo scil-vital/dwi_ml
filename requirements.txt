@@ -9,6 +9,8 @@
 requests==2.28.*
 dipy==1.9.*
 scilpy==2.0.2
+packaging==23.2.*
+platformdirs<4,>=3.1.1
 
 # -------
 # Other important dependencies

@@ -5,6 +5,8 @@ import logging
 
 import torch
 
+from tqdm import tqdm
+
 from scilpy.io.utils import (add_overwrite_arg,
                              assert_outputs_exist,
                              add_reference_arg,
@@ -12,8 +14,8 @@ from scilpy.io.utils import (add_overwrite_arg,
 from scilpy.io.streamlines import load_tractogram_with_reference
 from dipy.io.streamline import save_tractogram
 from dwi_ml.io_utils import (add_arg_existing_experiment_path,
-                           add_memory_args)
-from dwi_ml.models.projects.ae_models import ModelAE
+                             add_memory_args)
+from dwi_ml.models.projects.ae_next_models import ModelConvNextAE
 
 
 def _build_arg_parser():
@@ -47,6 +49,8 @@ def main():
     p = _build_arg_parser()
     args = p.parse_args()
 
+    normalize = True
+
     # Setting log level to INFO maximum for sub-loggers, else it becomes ugly,
     # but we will set trainer to user-defined level.
     sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
@@ -65,8 +69,9 @@ def main():
 
     # 1. Load model
     logging.debug("Loading model.")
-    model = ModelAE.load_model_from_params_and_state(
-        args.experiment_path + '/best_model', log_level=sub_loggers_level)
+    model = ModelConvNextAE.load_model_from_params_and_state(
+        args.experiment_path + '/best_model', log_level=sub_loggers_level).to(
+            device)
     # model.set_context('training')
     # 2. Compute loss
     # tester = TesterOneInput(args.experiment_path,
@@ -81,25 +86,32 @@ def main():
     sft = load_tractogram_with_reference(p, args, args.in_tractogram)
     sft.to_vox()
     sft.to_corner()
-    bundle = sft.streamlines[0:5000]
+    bundle = sft.streamlines
+
+    if normalize:
+        sft.streamlines /= sft.dimensions
 
     logging.info("Running model to compute loss")
-
-    new_sft = sft.from_sft(bundle, sft)
-    save_tractogram(new_sft, 'orig_5000.trk')
-
-    with torch.no_grad():
-        streamlines = [
-            torch.as_tensor(s, dtype=torch.float32, device=device)
-            for s in bundle]
-        tmp_outputs = model(streamlines)
-        # latent = model.encode(streamlines)
-
-    streamlines_output = [tmp_outputs[i, :, :].transpose(0, 1).cpu().numpy() for i in range(len(bundle))]
+    batch_size = 5000
+    batches = range(0, len(sft.streamlines), batch_size)
+    all_streamlines = []
+    for i, b in enumerate(tqdm(batches)):
+        print(i, b)
+        with torch.no_grad():
+            streamlines = [
+                torch.as_tensor(s, dtype=torch.float32, device=device)
+                for s in bundle[i * batch_size:(i+1) * batch_size]]
+            tmp_outputs = model(streamlines)
+            # latent = model.encode(streamlines)
+            scaling = sft.dimensions if normalize else 1.0
+            streamlines_output = [tmp_outputs[j, :, :].transpose(
+                0, 1).cpu().numpy() * scaling
+                for j in range(tmp_outputs.shape[0])]
+            all_streamlines.extend(streamlines_output)
 
     # print(streamlines_output[0].shape)
-    new_sft = sft.from_sft(streamlines_output, sft)
-    save_tractogram(new_sft, args.out_tractogram)
+    new_sft = sft.from_sft(all_streamlines, sft)
+    save_tractogram(new_sft, args.out_tractogram, bbox_valid_check=False)
 
     # latent_output = [s.cpu().numpy() for s in latent]
 

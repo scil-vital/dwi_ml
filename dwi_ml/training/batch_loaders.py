@@ -50,6 +50,7 @@ import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
 from dwi_ml.data.processing.streamlines.data_augmentation import (
+    normalize_streamlines,
     reverse_streamlines, split_streamlines, resample_or_compress)
 from dwi_ml.data.processing.utils import add_noise_to_tensor
 from dwi_ml.models.main_models import MainModelOneInput, \
@@ -64,7 +65,9 @@ class DWIMLStreamlinesBatchLoader:
                  split_ratio: float = 0.,
                  noise_gaussian_size_forward: float = 0.,
                  noise_gaussian_size_loss: float = 0.,
-                 reverse_ratio: float = 0., log_level=logging.root.level):
+                 reverse_ratio: float = 0.,
+                 normalize: bool = False,
+                 log_level=logging.root.level):
         """
         Parameters
         ----------
@@ -131,6 +134,7 @@ class DWIMLStreamlinesBatchLoader:
         self.noise_gaussian_size_forward = noise_gaussian_size_forward
         self.noise_gaussian_size_loss = noise_gaussian_size_loss
         self.split_ratio = split_ratio
+        self.normalize = normalize
         self.reverse_ratio = reverse_ratio
         if self.split_ratio and not 0 <= self.split_ratio <= 1:
             raise ValueError('Split ratio must be a float between 0 and 1.')
@@ -157,6 +161,7 @@ class DWIMLStreamlinesBatchLoader:
             'noise_gaussian_size_forward': self.noise_gaussian_size_forward,
             'noise_gaussian_size_loss': self.noise_gaussian_size_loss,
             'reverse_ratio': self.reverse_ratio,
+            'normalize': self.normalize,
             'split_ratio': self.split_ratio,
         }
         return params
@@ -224,6 +229,9 @@ class DWIMLStreamlinesBatchLoader:
             self.np_rng.shuffle(ids)
             reverse_ids = ids[:int(len(ids) * self.reverse_ratio)]
             sft = reverse_streamlines(sft, reverse_ids)
+
+        if self.normalize:
+            sft = normalize_streamlines(sft)
 
         return sft
 

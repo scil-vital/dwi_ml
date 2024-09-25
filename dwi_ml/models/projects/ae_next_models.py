@@ -6,41 +6,57 @@ import torch
 
 from dwi_ml.models.main_models import MainModelAbstract
 
+class Permute(torch.nn.Module):
+    """This module returns a view of the tensor input with its dimensions permuted.
+    From https://github.com/pytorch/vision/blob/main/torchvision/ops/misc.py#L308  # noqa E501
+
+    Args:
+        dims (List[int]): The desired ordering of dimensions
+    """
+
+    def __init__(self, dims: List[int]):
+        super().__init__()
+        self.dims = dims
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.permute(x, self.dims)
+
+
+class LayerNorm1d(torch.nn.LayerNorm):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.permute(0, 2, 1)
+        x = torch.nn.functional.layer_norm(
+            x, self.normalized_shape, self.weight, self.bias, self.eps)
+        x = x.permute(0, 2, 1)
+        return x
+
 
 class ResBlock1d(torch.nn.Module):
 
-    def __init__(self, channels, stride=1):
+    def __init__(self, channels, stride=1, norm=LayerNorm1d):
         super(ResBlock1d, self).__init__()
 
         self.block = torch.nn.Sequential(
-            torch.nn.Conv1d(channels, channels, kernel_size=1,
-                            stride=stride, padding=0),
-            torch.nn.BatchNorm1d(channels),
+            torch.nn.Conv1d(channels, channels, kernel_size=7, groups=channels,
+                            stride=stride, padding=3, padding_mode='reflect'),
+            norm(channels),
+            Permute((0, 2, 1)),
+            torch.nn.Linear(
+                in_features=channels, out_features=4 * channels, bias=True),
             torch.nn.GELU(),
-            torch.nn.Conv1d(channels, channels, kernel_size=3,
-                            stride=stride, padding=1, padding_mode='reflect'),
-            torch.nn.BatchNorm1d(channels),
-            torch.nn.GELU(),
-            torch.nn.Conv1d(channels, channels, 1,
-                            1, 0),
-            torch.nn.BatchNorm1d(channels))
+            torch.nn.Linear(
+                in_features=channels * 4, out_features=channels, bias=True),
+            Permute((0, 2, 1)))
 
     def forward(self, x):
         identity = x
-        xp = self.block(x)
+        x = self.block(x)
 
-        return xp + identity
+        return x + identity
 
 
-class ModelAE(MainModelAbstract):
+class ModelConvNextAE(MainModelAbstract):
     """
-    Recurrent tracking model.
-
-    Composed of an embedding for the imaging data's input + for the previous
-    direction's input, an RNN model to process the sequences, and a direction
-    getter model to convert the RNN outputs to the right structure, e.g.
-    deterministic (3D vectors) or probabilistic (based on probability
-    distribution parameters).
     """
 
     def __init__(self, kernel_size, latent_space_dims,
@@ -66,37 +82,37 @@ class ModelAE(MainModelAbstract):
         self.encoder = torch.nn.Sequential(
             torch.nn.Conv1d(3, 32, self.kernel_size, stride=2, padding=1,
                             padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(32),
             ResBlock1d(32),
             ResBlock1d(32),
             torch.nn.Conv1d(32, 64, self.kernel_size, stride=2, padding=1,
                             padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(64),
             ResBlock1d(64),
             ResBlock1d(64),
             torch.nn.Conv1d(64, 128, self.kernel_size, stride=2, padding=1,
                             padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(128),
             ResBlock1d(128),
             ResBlock1d(128),
             torch.nn.Conv1d(128, 256, self.kernel_size, stride=2, padding=1,
                             padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(256),
             ResBlock1d(256),
             ResBlock1d(256),
             torch.nn.Conv1d(256, 512, self.kernel_size, stride=2, padding=1,
                             padding_mode='reflect'),
-            torch.nn.GELU(),
+            ResBlock1d(512),
+            ResBlock1d(512),
+            ResBlock1d(512),
+            ResBlock1d(512),
+            ResBlock1d(512),
+            ResBlock1d(512),
             ResBlock1d(512),
             ResBlock1d(512),
             ResBlock1d(512),
             torch.nn.Conv1d(512, 1024, self.kernel_size, stride=1, padding=1,
                             padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(1024),
             ResBlock1d(1024),
             ResBlock1d(1024),
@@ -109,11 +125,15 @@ class ModelAE(MainModelAbstract):
             ResBlock1d(1024),
             ResBlock1d(1024),
             ResBlock1d(1024),
-            torch.nn.GELU(),
             torch.nn.Conv1d(
                 1024, 512, self.kernel_size, stride=1, padding=1,
                 padding_mode='reflect'),
-            torch.nn.GELU(),
+            ResBlock1d(512),
+            ResBlock1d(512),
+            ResBlock1d(512),
+            ResBlock1d(512),
+            ResBlock1d(512),
+            ResBlock1d(512),
             ResBlock1d(512),
             ResBlock1d(512),
             ResBlock1d(512),
@@ -122,7 +142,6 @@ class ModelAE(MainModelAbstract):
             torch.nn.Conv1d(
                 512, 256, self.kernel_size, stride=1, padding=1,
                 padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(256),
             ResBlock1d(256),
             ResBlock1d(256),
@@ -131,7 +150,6 @@ class ModelAE(MainModelAbstract):
             torch.nn.Conv1d(
                 256, 128, self.kernel_size, stride=1, padding=1,
                 padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(128),
             ResBlock1d(128),
             ResBlock1d(128),
@@ -140,7 +158,6 @@ class ModelAE(MainModelAbstract):
             torch.nn.Conv1d(
                 128, 64, self.kernel_size, stride=1, padding=1,
                 padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(64),
             ResBlock1d(64),
             ResBlock1d(64),
@@ -149,7 +166,6 @@ class ModelAE(MainModelAbstract):
             torch.nn.Conv1d(
                 64, 32, self.kernel_size, stride=1, padding=1,
                 padding_mode='reflect'),
-            torch.nn.GELU(),
             ResBlock1d(32),
             ResBlock1d(32),
             ResBlock1d(32),
@@ -158,7 +174,6 @@ class ModelAE(MainModelAbstract):
             torch.nn.Conv1d(
                 32, 3, self.kernel_size, stride=1, padding=1,
                 padding_mode='reflect'),
-            torch.nn.GELU(),
         )
 
     @property
@@ -205,14 +220,15 @@ class ModelAE(MainModelAbstract):
 
     def encode(self, x):
         # x: list of tensors
-        x = torch.stack(x)
+        if isinstance(x, list):
+            x = torch.stack(x)
         x = torch.swapaxes(x, 1, 2)
 
         x = self.encoder(x)
         self.encoder_out_size = (x.shape[1], x.shape[2])
 
         # Flatten
-        h7 = x.view(-1, self.encoder_out_size[0] * self.encoder_out_size[1])
+        h7 = x.reshape(-1, self.encoder_out_size[0] * self.encoder_out_size[1])
 
         fc1 = self.fc1(h7)
         return fc1

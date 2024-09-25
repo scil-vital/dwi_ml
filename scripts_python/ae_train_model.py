@@ -20,7 +20,7 @@ from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_memory_args
-from dwi_ml.models.projects.ae_models import ModelAE
+from dwi_ml.models.projects.ae_next_models import ModelConvNextAE
 from dwi_ml.training.trainers import DWIMLAbstractTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
@@ -68,7 +68,7 @@ def init_from_args(args, sub_loggers_level):
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         # INPUTS: verifying args
-        model = ModelAE(
+        model = ModelConvNextAE(
             experiment_name=args.experiment_name,
             step_size=None, compress_lines=None,
             kernel_size=3, latent_space_dims=32,
@@ -88,6 +88,7 @@ def init_from_args(args, sub_loggers_level):
             dataset=dataset, model=model,
             streamline_group_name=args.streamline_group_name,
             # OTHER
+            normalize=True,
             rng=args.rng, log_level=sub_loggers_level)
 
         logging.info("Loader user-defined parameters: " +

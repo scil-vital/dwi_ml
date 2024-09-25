@@ -136,6 +136,7 @@ class HDF5Creator:
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
+                 dps_keys: List[str] = [],
                  step_size: float = None,
                  nb_points: int = None,
                  compress: float = None,
@@ -157,6 +158,8 @@ class HDF5Creator:
             List of subject names for each data set.
         groups_config: dict
             Information from json file loaded as a dict.
+        dps_keys: List[str]
+            List of keys to keep in data_per_streamline. Default: None.
         step_size: float
             Step size to resample streamlines. Default: None.
         nb_points: int
@@ -181,6 +184,7 @@ class HDF5Creator:
         self.validation_subjs = validation_subjs
         self.testing_subjs = testing_subjs
         self.groups_config = groups_config
+        self.dps_keys = dps_keys
         self.step_size = step_size
         self.nb_points = nb_points
         self.compress = compress
@@ -609,9 +613,11 @@ class HDF5Creator:
 
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
-            if len(sft.data_per_streamline) > 0:
-                logging.debug('sft contained data_per_streamlines. Data not '
-                              'kept.')
+
+            for dps_key in self.dps_keys:
+                logging.debug("    Include dps \"{}\" in the HDF5.".format(dps_key))
+                streamlines_group.create_dataset('dps_' + dps_key,
+                                                 data=sft.data_per_streamline[dps_key])
 
             # Accessing private Dipy values, but necessary.
             # We need to deconstruct the streamlines into arrays with

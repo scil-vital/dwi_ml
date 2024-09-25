@@ -17,8 +17,7 @@ from dwi_ml.data.processing.space.neighborhood import \
     prepare_neighborhood_vectors
 from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.io_utils import add_resample_or_compress_arg
-from dwi_ml.models.direction_getter_models import keys_to_direction_getters, \
-    AbstractDirectionGetterModel
+from dwi_ml.models.direction_getter_models import keys_to_direction_getters
 from dwi_ml.models.embeddings import (keys_to_embeddings, NNEmbedding,
                                       NoEmbedding)
 from dwi_ml.models.utils.direction_getters import add_direction_getter_args
@@ -37,6 +36,7 @@ class MainModelAbstract(torch.nn.Module):
     def __init__(self, experiment_name: str,
                  # Target preprocessing params for the batch loader + tracker
                  step_size: float = None,
+                 nb_points: int = None,
                  compress_lines: float = False,
                  # Other
                  log_level=logging.root.level):
@@ -74,17 +74,20 @@ class MainModelAbstract(torch.nn.Module):
 
         # To tell our batch loader how to resample streamlines during training
         # (should also be the step size during tractography).
-        if step_size and compress_lines:
-            raise ValueError("You may choose either resampling or compressing,"
-                             "but not both.")
+        if (step_size and compress_lines) or (step_size and nb_points) or (nb_points and compress_lines):
+            raise ValueError("You may choose either resampling (step_size or nb_points)"
+                             " or compressing, but not two of them or more.")
         elif step_size and step_size <= 0:
             raise ValueError("Step size can't be 0 or less!")
+        elif nb_points and nb_points <= 0:
+            raise ValueError("Number of points can't be 0 or less!")
             # Note. When using
             # scilpy.tracking.tools.resample_streamlines_step_size, a warning
             # is shown if step_size < 0.1 or > np.max(sft.voxel_sizes), saying
             # that the value is suspicious. Not raising the same warnings here
             # as you may be wanting to test weird things to understand better
             # your model.
+        self.nb_points = nb_points
         self.step_size = step_size
         self.compress_lines = compress_lines
 

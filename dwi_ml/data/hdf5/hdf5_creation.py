@@ -136,7 +136,10 @@ class HDF5Creator:
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
-                 step_size: float = None, compress: float = None,
+                 step_size: float = None,
+                 nb_points: int = None,
+                 compress: float = None,
+                 remove_invalid: bool = False,
                  enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
@@ -156,8 +159,12 @@ class HDF5Creator:
             Information from json file loaded as a dict.
         step_size: float
             Step size to resample streamlines. Default: None.
+        nb_points: int
+            Number of points per streamline. Default: None.
         compress: float
             Compress streamlines. Default: None.
+        remove_invalid: bool
+            Remove invalid streamline. Default: False
         enforce_files_presence: bool
             If true, will stop if some files are not available for a subject.
             Default: True.
@@ -175,7 +182,9 @@ class HDF5Creator:
         self.testing_subjs = testing_subjs
         self.groups_config = groups_config
         self.step_size = step_size
+        self.nb_points = nb_points
         self.compress = compress
+        self.remove_invalid = remove_invalid
 
         # Optional
         self.save_intermediate = save_intermediate
@@ -359,6 +368,8 @@ class HDF5Creator:
             hdf_handle.attrs['testing_subjs'] = self.testing_subjs
             hdf_handle.attrs['step_size'] = self.step_size if \
                 self.step_size is not None else 'Not defined by user'
+            hdf_handle.attrs['nb_points'] = self.nb_points if \
+                self.nb_points is not None else 'Not defined by user'
             hdf_handle.attrs['compress'] = self.compress if \
                 self.compress is not None else 'Not defined by user'
 
@@ -632,6 +643,8 @@ class HDF5Creator:
             Reference used to load and send the streamlines in voxel space and
             to create final merged SFT. If the file is a .trk, 'same' is used
             instead.
+        remove_invalid : bool
+            If True, invalid streamlines will be removed
 
         Returns
         -------
@@ -641,11 +654,10 @@ class HDF5Creator:
             The Euclidean length of each streamline
         """
         tractograms = self.groups_config[group]['files']
-
         if self.step_size and self.compress:
             raise ValueError(
                 "Only one option can be chosen: either resampling to "
-                "step_size or compressing, not both.")
+                "step_size, nb_points or compressing, not both.")
 
         # Silencing SFT's logger if our logging is in DEBUG mode, because it
         # typically produces a lot of outputs!
@@ -679,18 +691,11 @@ class HDF5Creator:
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
                 subj_id + '_' + group + '.trk')
-            logging.debug('      *Saving intermediate streamline group {} '
-                          'into {}.'.format(group, output_fname))
+            logging.debug("      *Saving intermediate streamline group {} "
+                          "into {}.".format(group, output_fname))
             # Note. Do not remove the str below. Does not work well
             # with Path.
             save_tractogram(final_sft, str(output_fname))
-
-        # Removing invalid streamlines
-        logging.debug('      *Total: {:,.0f} streamlines. Now removing '
-                      'invalid streamlines.'.format(len(final_sft)))
-        final_sft.remove_invalid_streamlines()
-        logging.info("         Final number of streamlines: {:,.0f}."
-                     .format(len(final_sft)))
 
         conn_matrix = None
         conn_info = None
@@ -735,10 +740,11 @@ class HDF5Creator:
                 "We do not support file's type: {}. We only support .trk "
                 "and .tck files.".format(tractogram_file))
         if file_extension == '.trk':
-            if not is_header_compatible(str(tractogram_file), header):
-                raise ValueError("Streamlines group is not compatible with "
-                                 "volume groups\n ({})"
-                                 .format(tractogram_file))
+            if header:
+                if not is_header_compatible(str(tractogram_file), header):
+                    raise ValueError("Streamlines group is not compatible "
+                                     "with volume groups\n ({})"
+                                     .format(tractogram_file))
             # overriding given header.
             header = 'same'
 
@@ -748,6 +754,9 @@ class HDF5Creator:
         sft = load_tractogram(str(tractogram_file), header)
 
         # Resample or compress streamlines
-        sft = resample_or_compress(sft, self.step_size, self.compress)
+        sft = resample_or_compress(sft, self.step_size,
+                                   self.nb_points,
+                                   self.compress,
+                                   self.remove_invalid)
 
         return sft

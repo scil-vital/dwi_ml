@@ -59,11 +59,11 @@ def add_hdf5_creation_args(p: ArgumentParser):
                    help="A txt file containing the list of subjects ids to "
                         "use for training. \n(Can be an empty file.)")
     p.add_argument('validation_subjs',
-                   help="A txt file containing the list of subjects ids to use "
-                        "for validation. \n(Can be an empty file.)")
+                   help="A txt file containing the list of subjects ids"
+                        " to use for validation. \n(Can be an empty file.)")
     p.add_argument('testing_subjs',
-                   help="A txt file containing the list of subjects ids to use "
-                        "for testing. \n(Can be an empty file.)")
+                   help="A txt file containing the list of subjects ids"
+                        " to use for testing. \n(Can be an empty file.)")
 
     # Optional arguments
     p.add_argument('--enforce_files_presence', type=bool, default=True,
@@ -76,9 +76,10 @@ def add_hdf5_creation_args(p: ArgumentParser):
                         "each subject inside the \nhdf5 folder, in sub-"
                         "folders named subjid_intermediate.\n"
                         "(Final concatenated standardized volumes and \n"
-                        "final concatenated resampled/compressed streamlines.)")
+                        "final concatenated resampled/compressed "
+                        "streamlines.)")
 
 
 def add_streamline_processing_args(p: ArgumentParser):
-    g = p.add_argument_group('Streamlines processing options:')
+    g = p.add_argument_group('Streamlines processing options')
     add_resample_or_compress_arg(g)

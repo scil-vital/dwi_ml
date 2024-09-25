@@ -123,21 +123,11 @@ class ModelConvNextAE(MainModelAbstract):
         """
         self.decoder = torch.nn.Sequential(
             ResBlock1d(1024),
-            ResBlock1d(1024),
-            ResBlock1d(1024),
             torch.nn.Upsample(scale_factor=2, mode="linear",
                               align_corners=False),
             torch.nn.Conv1d(
                 1024, 512, self.kernel_size+1, stride=1, padding=1,
                 padding_mode='reflect'),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            ResBlock1d(512),
             ResBlock1d(512),
             torch.nn.Upsample(scale_factor=2, mode="linear",
                               align_corners=False),
@@ -145,15 +135,11 @@ class ModelConvNextAE(MainModelAbstract):
                 512, 256, self.kernel_size+1, stride=1, padding=1,
                 padding_mode='reflect'),
             ResBlock1d(256),
-            ResBlock1d(256),
-            ResBlock1d(256),
             torch.nn.Upsample(scale_factor=2, mode="linear",
                               align_corners=False),
             torch.nn.Conv1d(
                 256, 128, self.kernel_size+1, stride=1, padding=1,
                 padding_mode='reflect'),
-            ResBlock1d(128),
-            ResBlock1d(128),
             ResBlock1d(128),
             torch.nn.Upsample(scale_factor=2, mode="linear",
                               align_corners=False),
@@ -161,15 +147,11 @@ class ModelConvNextAE(MainModelAbstract):
                 128, 64, self.kernel_size+1, stride=1, padding=1,
                 padding_mode='reflect'),
             ResBlock1d(64),
-            ResBlock1d(64),
-            ResBlock1d(64),
             torch.nn.Upsample(scale_factor=2, mode="linear",
                               align_corners=False),
             torch.nn.Conv1d(
                 64, 32, self.kernel_size+1, stride=1, padding=1,
                 padding_mode='reflect'),
-            ResBlock1d(32),
-            ResBlock1d(32),
             ResBlock1d(32),
             torch.nn.Conv1d(
                 32, 3, self.kernel_size+1, stride=1, padding=1,
@@ -192,7 +174,6 @@ class ModelConvNextAE(MainModelAbstract):
     @classmethod
     def _load_params(cls, model_dir):
         p = super()._load_params(model_dir)
-        p['kernel_size'] = 2
         p['latent_space_dims'] = 32
         return p
 

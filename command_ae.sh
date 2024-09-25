@@ -8,7 +8,7 @@ ae_train_model.py $experiments \
        fibercup_tracking.hdf5 \
        target \
        -v INFO \
-       --batch_size_training 1800 \
+       --batch_size_training 1100 \
        --batch_size_units nb_streamlines \
        --nb_subjects_per_batch 5 \
        --learning_rate 0.00001*300 0.000005 \

@@ -71,7 +71,7 @@ def init_from_args(args, sub_loggers_level):
         model = ModelConvNextAE(
             experiment_name=args.experiment_name,
             step_size=None, compress_lines=None,
-            kernel_size=3, latent_space_dims=32,
+            kernel_size=2, latent_space_dims=32,
             log_level=sub_loggers_level)
 
         logging.info("AEmodel final parameters:" +

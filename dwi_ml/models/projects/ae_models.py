@@ -181,21 +181,9 @@ class ModelAE(MainModelAbstract):
         return h11
 
     def compute_loss(self, model_outputs, targets, average_results=True):
-        print("COMPARISON\n")
+
         targets = torch.stack(targets)
         targets = torch.swapaxes(targets, 1, 2)
-        print(targets[0, :, 0:5])
-        print(model_outputs[0, :, 0:5])
         reconstruction_loss = torch.nn.MSELoss(reduction="sum")
         mse = reconstruction_loss(model_outputs, targets)
-
-        # loss_function_vae
-        # See Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        # kld = -0.5 * torch.sum(1 + self.logvar - self.mu.pow(2) - self.logvar.exp())
-        # kld_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-        # kld = torch.sum(kld_element).__mul__(-0.5)
-
         return mse, 1

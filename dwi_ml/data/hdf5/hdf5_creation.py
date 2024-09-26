@@ -145,6 +145,8 @@ class HDF5Creator:
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
         """
+        Params step_size, nb_points and compress are mutually exclusive.
+
         Params
         ------
         root_folder: Path
@@ -159,7 +161,7 @@ class HDF5Creator:
         groups_config: dict
             Information from json file loaded as a dict.
         dps_keys: List[str]
-            List of keys to keep in data_per_streamline. Default: None.
+            List of keys to keep in data_per_streamline. Default: [].
         step_size: float
             Step size to resample streamlines. Default: None.
         nb_points: int
@@ -201,7 +203,7 @@ class HDF5Creator:
             self._analyse_config_file()
 
         # -------- Performing checks
-
+        self._check_streamlines_operations()
         # Check that all subjects exist.
         logging.debug("Preparing hdf5 creator for \n"
                       "  training subjs {}, \n"
@@ -352,6 +354,19 @@ class HDF5Creator:
             _ = format_filelist(config_file_list,
                                 self.enforce_files_presence,
                                 folder=subj_input_dir)
+
+    def _check_streamlines_operations(self):
+        valid = True
+        if self.step_size and self.nb_points:
+            valid = False
+        elif self.step_size and self.compress:
+            valid = False
+        elif self.nb_points and self.compress:
+            valid = False
+        if not valid:
+            raise ValueError(
+                "Only one option can be chosen: either resampling to "
+                "step_size, nb_points or compressing, not both.")
 
     def create_database(self):
         """
@@ -746,11 +761,11 @@ class HDF5Creator:
                 "We do not support file's type: {}. We only support .trk "
                 "and .tck files.".format(tractogram_file))
         if file_extension == '.trk':
-            if header:
-                if not is_header_compatible(str(tractogram_file), header):
-                    raise ValueError("Streamlines group is not compatible "
-                                     "with volume groups\n ({})"
-                                     .format(tractogram_file))
+            if header and not is_header_compatible(str(tractogram_file),
+                                                   header):
+                raise ValueError("Streamlines group is not compatible "
+                                 "with volume groups\n ({})"
+                                 .format(tractogram_file))
             # overriding given header.
             header = 'same'
 

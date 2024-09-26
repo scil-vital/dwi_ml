@@ -32,8 +32,6 @@ class ModelAE(MainModelAbstract):
 
         self.pad = torch.nn.ReflectionPad1d(1)
 
-        self.post_encoding_hooks = []
-
         def pre_pad(m):
             return torch.nn.Sequential(self.pad, m)
 
@@ -138,20 +136,14 @@ class ModelAE(MainModelAbstract):
             Output data, ready to be passed to either `compute_loss()` or
             `get_tracking_directions()`.
         """
-        encoded = self.encode(input_streamlines)
 
-        for hook in self.post_encoding_hooks:
-            hook(encoded)
-
-        model_outputs = self.decode(encoded)
-        return model_outputs
+        x = self.decode(self.encode(input_streamlines))
+        return x
 
     def encode(self, x):
-        # X input shape is (batch_size, nb_points, 3)
-        if isinstance(x, list):
-            x = torch.stack(x)
-
-        x = torch.swapaxes(x, 1, 2) # input of the network should be (N, 3, nb_points)
+        # x: list of tensors
+        x = torch.stack(x)
+        x = torch.swapaxes(x, 1, 2)
 
         h1 = F.relu(self.encod_conv1(x))
         h2 = F.relu(self.encod_conv2(h1))
@@ -207,6 +199,3 @@ class ModelAE(MainModelAbstract):
         # kld = torch.sum(kld_element).__mul__(-0.5)
 
         return mse, 1
-
-    def register_hook_post_encoding(self, hook):
-        self.post_encoding_hooks.append(hook)

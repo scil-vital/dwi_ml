@@ -3,19 +3,21 @@
 import argparse
 import logging
 
+import nibabel as nib
+import numpy as np
 import torch
-
-from tqdm import tqdm
 
 from scilpy.io.utils import (add_overwrite_arg,
                              assert_outputs_exist,
                              add_reference_arg,
                              add_verbose_arg)
 from scilpy.io.streamlines import load_tractogram_with_reference
-from dipy.io.streamline import save_tractogram
+from scilpy.tracking.utils import save_tractogram
+from dipy.tracking.streamline import set_number_of_points
 from dwi_ml.io_utils import (add_arg_existing_experiment_path,
                              add_memory_args)
 from dwi_ml.models.projects.ae_next_models import ModelConvNextAE
+from nibabel.streamlines import detect_format
 
 
 def _build_arg_parser():
@@ -50,7 +52,7 @@ def main():
     args = p.parse_args()
 
     normalize = True
-
+    tracts_format = detect_format(args.out_tractogram)
     # Setting log level to INFO maximum for sub-loggers, else it becomes ugly,
     # but we will set trainer to user-defined level.
     sub_loggers_level = args.verbose if args.verbose != 'DEBUG' else 'INFO'
@@ -86,32 +88,38 @@ def main():
     sft = load_tractogram_with_reference(p, args, args.in_tractogram)
     sft.to_vox()
     sft.to_corner()
-    bundle = sft.streamlines
 
-    if normalize:
-        sft.streamlines /= sft.dimensions
+    bundle = sft.streamlines
 
     logging.info("Running model to compute loss")
     batch_size = 5000
     batches = range(0, len(sft.streamlines), batch_size)
-    all_streamlines = []
-    for i, b in enumerate(tqdm(batches)):
-        print(i, b)
-        with torch.no_grad():
-            streamlines = [
-                torch.as_tensor(s, dtype=torch.float32, device=device)
-                for s in bundle[i * batch_size:(i+1) * batch_size]]
-            tmp_outputs = model(streamlines)
-            # latent = model.encode(streamlines)
-            scaling = sft.dimensions if normalize else 1.0
-            streamlines_output = [tmp_outputs[j, :, :].transpose(
-                0, 1).cpu().numpy() * scaling
-                for j in range(tmp_outputs.shape[0])]
-            all_streamlines.extend(streamlines_output)
 
-    # print(streamlines_output[0].shape)
-    new_sft = sft.from_sft(all_streamlines, sft)
-    save_tractogram(new_sft, args.out_tractogram, bbox_valid_check=False)
+    def _autoencode_streamlines():
+        for i, b in enumerate(batches):
+            with torch.no_grad():
+                s = np.asarray(
+                    set_number_of_points(
+                        bundle[i * batch_size:(i+1) * batch_size],
+                        256))
+                if normalize:
+                    s /= sft.dimensions
+
+                streamlines = torch.as_tensor(
+                    s, dtype=torch.float32, device=device)
+                tmp_outputs = model(streamlines).cpu().numpy()
+                # latent = model.encode(streamlines)
+                scaling = sft.dimensions if normalize else 1.0
+                streamlines_output = tmp_outputs.transpose((0, 2, 1)) * scaling
+                for strml in streamlines_output:
+                    yield strml, strml[0]
+
+    # Need a nifti image to lazy-save a tractogram
+    fake_ref = nib.Nifti1Image(np.zeros(sft.dimensions), sft.affine)
+
+    save_tractogram(_autoencode_streamlines(), tracts_format, fake_ref,
+                    len(bundle), args.out_tractogram, 0, 999, False, False,
+                    args.verbose)
 
     # latent_output = [s.cpu().numpy() for s in latent]
 

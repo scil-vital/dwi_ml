@@ -630,6 +630,11 @@ class HDF5Creator:
                 logging.debug('sft contained data_per_point. Data not kept.')
 
             for dps_key in self.dps_keys:
+                if dps_key not in sft.data_per_streamline:
+                    raise ValueError(
+                        "The data_per_streamline key '{}' was not found in "
+                        "the sft. Check your tractogram file.".format(dps_key))
+                
                 logging.debug("    Include dps \"{}\" in the HDF5.".format(dps_key))
                 streamlines_group.create_dataset('dps_' + dps_key,
                                                  data=sft.data_per_streamline[dps_key])
@@ -675,10 +680,6 @@ class HDF5Creator:
             The Euclidean length of each streamline
         """
         tractograms = self.groups_config[group]['files']
-        if self.step_size and self.compress:
-            raise ValueError(
-                "Only one option can be chosen: either resampling to "
-                "step_size, nb_points or compressing, not both.")
 
         # Silencing SFT's logger if our logging is in DEBUG mode, because it
         # typically produces a lot of outputs!

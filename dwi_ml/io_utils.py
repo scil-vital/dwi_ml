@@ -2,20 +2,23 @@
 import os
 from argparse import ArgumentParser
 
-from scilpy.io.utils import add_processes_arg
-
 
 def add_resample_or_compress_arg(p: ArgumentParser):
+    p.add_argument("--remove_invalid", action='store_true',
+                   help="If set, remove invalid streamlines.")
     g = p.add_mutually_exclusive_group()
     g.add_argument(
         '--step_size', type=float, metavar='s',
         help="Step size to resample the data (in mm). Default: None")
+    g.add_argument('--nb_points', type=int, metavar='n',
+                   help='Number of points per streamline in the output.'
+                        'Default: None')
     g.add_argument(
         '--compress', type=float, metavar='r', const=0.01, nargs='?',
         dest='compress_th',
         help="Compression ratio. Default: None. Default if set: 0.01.\n"
-             "If neither step_size nor compress are chosen, streamlines "
-             "will be kept \nas they are.")
+             "If neither step_size, nb_points nor compress "
+             "are chosen, \nstreamlines will be kept as they are.")
 
 
 def add_arg_existing_experiment_path(p: ArgumentParser):

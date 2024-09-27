@@ -109,6 +109,7 @@ class TesterWithDirectionGetter:
             The mean eos error per line.
         """
         sft = resample_or_compress(sft, self.model.step_size,
+                                   self.model.nb_points,
                                    self.model.compress_lines)
         sft.to_vox()
         sft.to_corner()

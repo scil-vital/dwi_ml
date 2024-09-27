@@ -199,6 +199,7 @@ class DWIMLAbstractBatchLoader:
                          "the hdf5 dataset. Not compressing again.")
         else:
             sft = resample_or_compress(sft, self.model.step_size,
+                                       self.model.nb_points,
                                        self.model.compress_lines)
 
         # Splitting streamlines

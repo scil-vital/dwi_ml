@@ -136,11 +136,17 @@ class HDF5Creator:
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
-                 step_size: float = None, compress: float = None,
+                 dps_keys: List[str] = [],
+                 step_size: float = None,
+                 nb_points: int = None,
+                 compress: float = None,
+                 remove_invalid: bool = False,
                  enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
         """
+        Params step_size, nb_points and compress are mutually exclusive.
+
         Params
         ------
         root_folder: Path
@@ -154,10 +160,16 @@ class HDF5Creator:
             List of subject names for each data set.
         groups_config: dict
             Information from json file loaded as a dict.
+        dps_keys: List[str]
+            List of keys to keep in data_per_streamline. Default: [].
         step_size: float
             Step size to resample streamlines. Default: None.
+        nb_points: int
+            Number of points per streamline. Default: None.
         compress: float
             Compress streamlines. Default: None.
+        remove_invalid: bool
+            Remove invalid streamline. Default: False
         enforce_files_presence: bool
             If true, will stop if some files are not available for a subject.
             Default: True.
@@ -174,8 +186,11 @@ class HDF5Creator:
         self.validation_subjs = validation_subjs
         self.testing_subjs = testing_subjs
         self.groups_config = groups_config
+        self.dps_keys = dps_keys
         self.step_size = step_size
+        self.nb_points = nb_points
         self.compress = compress
+        self.remove_invalid = remove_invalid
 
         # Optional
         self.save_intermediate = save_intermediate
@@ -188,7 +203,7 @@ class HDF5Creator:
             self._analyse_config_file()
 
         # -------- Performing checks
-
+        self._check_streamlines_operations()
         # Check that all subjects exist.
         logging.debug("Preparing hdf5 creator for \n"
                       "  training subjs {}, \n"
@@ -340,6 +355,19 @@ class HDF5Creator:
                                 self.enforce_files_presence,
                                 folder=subj_input_dir)
 
+    def _check_streamlines_operations(self):
+        valid = True
+        if self.step_size and self.nb_points:
+            valid = False
+        elif self.step_size and self.compress:
+            valid = False
+        elif self.nb_points and self.compress:
+            valid = False
+        if not valid:
+            raise ValueError(
+                "Only one option can be chosen: either resampling to "
+                "step_size, nb_points or compressing, not both.")
+
     def create_database(self):
         """
         Generates a hdf5 dataset from a group of subjects. Hdf5 dataset will
@@ -359,6 +387,8 @@ class HDF5Creator:
             hdf_handle.attrs['testing_subjs'] = self.testing_subjs
             hdf_handle.attrs['step_size'] = self.step_size if \
                 self.step_size is not None else 'Not defined by user'
+            hdf_handle.attrs['nb_points'] = self.nb_points if \
+                self.nb_points is not None else 'Not defined by user'
             hdf_handle.attrs['compress'] = self.compress if \
                 self.compress is not None else 'Not defined by user'
 
@@ -598,9 +628,16 @@ class HDF5Creator:
 
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
-            if len(sft.data_per_streamline) > 0:
-                logging.debug('sft contained data_per_streamlines. Data not '
-                              'kept.')
+
+            for dps_key in self.dps_keys:
+                if dps_key not in sft.data_per_streamline:
+                    raise ValueError(
+                        "The data_per_streamline key '{}' was not found in "
+                        "the sft. Check your tractogram file.".format(dps_key))
+                
+                logging.debug("    Include dps \"{}\" in the HDF5.".format(dps_key))
+                streamlines_group.create_dataset('dps_' + dps_key,
+                                                 data=sft.data_per_streamline[dps_key])
 
             # Accessing private Dipy values, but necessary.
             # We need to deconstruct the streamlines into arrays with
@@ -632,6 +669,8 @@ class HDF5Creator:
             Reference used to load and send the streamlines in voxel space and
             to create final merged SFT. If the file is a .trk, 'same' is used
             instead.
+        remove_invalid : bool
+            If True, invalid streamlines will be removed
 
         Returns
         -------
@@ -641,11 +680,6 @@ class HDF5Creator:
             The Euclidean length of each streamline
         """
         tractograms = self.groups_config[group]['files']
-
-        if self.step_size and self.compress:
-            raise ValueError(
-                "Only one option can be chosen: either resampling to "
-                "step_size or compressing, not both.")
 
         # Silencing SFT's logger if our logging is in DEBUG mode, because it
         # typically produces a lot of outputs!
@@ -679,18 +713,11 @@ class HDF5Creator:
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
                 subj_id + '_' + group + '.trk')
-            logging.debug('      *Saving intermediate streamline group {} '
-                          'into {}.'.format(group, output_fname))
+            logging.debug("      *Saving intermediate streamline group {} "
+                          "into {}.".format(group, output_fname))
             # Note. Do not remove the str below. Does not work well
             # with Path.
             save_tractogram(final_sft, str(output_fname))
-
-        # Removing invalid streamlines
-        logging.debug('      *Total: {:,.0f} streamlines. Now removing '
-                      'invalid streamlines.'.format(len(final_sft)))
-        final_sft.remove_invalid_streamlines()
-        logging.info("         Final number of streamlines: {:,.0f}."
-                     .format(len(final_sft)))
 
         conn_matrix = None
         conn_info = None
@@ -735,9 +762,10 @@ class HDF5Creator:
                 "We do not support file's type: {}. We only support .trk "
                 "and .tck files.".format(tractogram_file))
         if file_extension == '.trk':
-            if not is_header_compatible(str(tractogram_file), header):
-                raise ValueError("Streamlines group is not compatible with "
-                                 "volume groups\n ({})"
+            if header and not is_header_compatible(str(tractogram_file),
+                                                   header):
+                raise ValueError("Streamlines group is not compatible "
+                                 "with volume groups\n ({})"
                                  .format(tractogram_file))
             # overriding given header.
             header = 'same'
@@ -748,6 +776,9 @@ class HDF5Creator:
         sft = load_tractogram(str(tractogram_file), header)
 
         # Resample or compress streamlines
-        sft = resample_or_compress(sft, self.step_size, self.compress)
+        sft = resample_or_compress(sft, self.step_size,
+                                   self.nb_points,
+                                   self.compress,
+                                   self.remove_invalid)
 
         return sft

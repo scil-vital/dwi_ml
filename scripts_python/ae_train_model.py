@@ -27,6 +27,7 @@ from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader)
 from dwi_ml.training.utils.trainer import add_training_args
 from dwi_ml.training.batch_loaders import DWIMLStreamlinesBatchLoader
+from dwi_ml.viz.latent_streamlines import BundlesLatentSpaceVisualizer
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
 from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
@@ -43,6 +44,9 @@ def prepare_arg_parser():
     add_training_args(p)
     p.add_argument('streamline_group_name',
                    help="Name of the group in hdf5")
+    p.add_argument('--viz_latent_space_freq', type=int, default=None,
+                   help="Frequency at which to visualize latent space.\n"
+                   "This is expressed in number of epochs.")
     add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_verbose_arg(p)
 
@@ -115,6 +119,42 @@ def init_from_args(args, sub_loggers_level):
             log_level=sub_loggers_level)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
+
+    if args.viz_latent_space_freq is not None:
+        # Setup to visualize latent space
+        save_dir = os.path.join(args.experiments_path, args.experiment_name, 'latent_space_plots')
+        os.makedirs(save_dir, exist_ok=True)
+
+        ls_viz = BundlesLatentSpaceVisualizer(save_dir,
+                                            prefix_numbering=True,
+                                            max_subset_size=1000)
+        current_epoch = 0
+        def visualize_latent_space(encoding):
+            """
+            This is not a clean way to do it. This would require changes in the
+            trainer to allow for a callback system where we could register a
+            function to be called at the end of each epoch to plot the latent space
+            of the data accumulated during the epoch (at each batch).
+
+            Also, using this method, the latent space of the last epoch will not be
+            plotted. We would need to calculate which batch step would be the last in
+            the epoch and then plot accordingly.
+            """
+            nonlocal current_epoch, trainer, ls_viz
+
+            # Only execute the following if we are in training
+            if not trainer.model.context == 'training':
+                return
+
+            changed_epoch = current_epoch != trainer.current_epoch
+            if not changed_epoch:
+                ls_viz.add_data_to_plot(encoding)
+            elif changed_epoch and trainer.current_epoch % args.viz_latent_space_freq == 0:
+                current_epoch = trainer.current_epoch
+                ls_viz.plot(title="Latent space at epoch {}".format(current_epoch))
+                ls_viz.reset_data()
+                ls_viz.add_data_to_plot(encoding)
+        model.register_hook_post_encoding(visualize_latent_space)
 
     return trainer
 

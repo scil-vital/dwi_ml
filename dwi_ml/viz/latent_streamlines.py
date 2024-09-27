@@ -1,5 +1,5 @@
+import os
 import logging
-
 from typing import Union, List, Tuple
 from sklearn.manifold import TSNE
 import numpy as np
@@ -7,64 +7,7 @@ import torch
 
 import matplotlib.pyplot as plt
 
-def plot_latent_streamlines(
-        encoded_streamlines: Union[np.ndarray, torch.Tensor],
-        save_path: str = None,
-        fig_size: Union[List, Tuple] = None,
-        random_state: int = 42,
-        max_subset_size: int = None
-    ):
-    """
-    Projects and plots the latent space representation
-    of the streamlines using t-SNE dimensionality reduction.
-
-    Parameters
-    ----------
-    encoded_streamlines: Union[np.ndarray, torch.Tensor]
-        Latent space streamlines to plot of shape (N, latent_space_dim).
-    save_path: str
-        Path to save the figure. If not specified, the figure will be shown.
-    fig_size: List[int] or Tuple[int]
-        2-valued figure size (x, y)
-    random_state: int
-        Random state for t-SNE.
-    max_subset_size: int:
-        In case of performance issues, you can limit the number of streamlines to plot.
-    """
-    
-    if isinstance(encoded_streamlines, torch.Tensor):
-        latent_space_streamlines = encoded_streamlines.cpu().numpy()
-    else:
-        latent_space_streamlines = encoded_streamlines
-    
-    if max_subset_size is not None:
-        if not (max_subset_size > 0):
-            raise ValueError("A max_subset_size of an integer value greater than 0 is required.")
-        
-        # Only sample if we need to reduce the number of latent streamlines
-        # to show on the plot.
-        if (len(latent_space_streamlines) > max_subset_size):
-            sample_indices = np.random.choice(len(latent_space_streamlines), max_subset_size, replace=False)
-            latent_space_streamlines = latent_space_streamlines[sample_indices] # (max_subset_size, 2)
-
-    # Project the data into 2 dimensions.
-    tsne = TSNE(n_components=2, random_state=random_state)
-    X_tsne = tsne.fit_transform(latent_space_streamlines) # Output (N, 2)
-
-
-    logging.info("New figure for t-SNE visualisation.")
-    fig, ax = plt.subplots()
-    if fig_size is not None:
-        fig.set_figheight(fig_size[0])
-        fig.set_figwidth(fig_size[1])
-
-    ax.scatter(X_tsne[:, 0], X_tsne[:, 1], alpha=0.9, edgecolors='black', linewidths=0.5)
-    
-    if save_path is not None:
-        fig.savefig(save_path)
-    else:
-        plt.show()
-
+LOGGER = logging.getLogger(__name__)
 
 class BundlesLatentSpaceVisualizer(object):
     """
@@ -79,10 +22,12 @@ class BundlesLatentSpaceVisualizer(object):
     be projected at the same time since it aims to preserve the local structure of the data.
     """
     def __init__(self,
-        save_path: str = None,
+        save_dir: str = None,
         fig_size: Union[List, Tuple] = None,
         random_state: int = 42,
-        max_subset_size: int = None
+        max_subset_size: int = None,
+        prefix_numbering: bool = False,
+        reset_warning: bool = True
     ):
         """
         Parameters
@@ -93,18 +38,43 @@ class BundlesLatentSpaceVisualizer(object):
             2-valued figure size (x, y)
         random_state: List
             Random state for t-SNE.
-        max_subset_size:
+        max_subset_size: int
             In case of performance issues, you can limit the number of streamlines to plot
             for each bundle.
+        prefix_numbering: bool
+            If True, the saved figures will be numbered with the current plot number.
+            The plot number is incremented after each call to the "plot" method.
+        reset_warning: bool
+            If True, a warning will be displayed when calling "plot" several times
+            without calling "reset_data" in between to clear the data.
         """
-        self.save_path = save_path
+        self.save_dir = save_dir
+        
+        # Make sure that self.save_dir is a directory and exists.
+        if self.save_dir is not None:
+            if not os.path.isdir(self.save_dir):
+                raise ValueError("The save_dir should be a directory.")
+
         self.fig_size = fig_size
         self.random_state = random_state
         self.max_subset_size = max_subset_size
+        self.prefix_numbering = prefix_numbering
+        self.reset_warning = reset_warning
+        
+        self.current_plot_number = 0
+        self.should_call_reset_before_plot = False
 
         self.tsne = TSNE(n_components=2, random_state=self.random_state)
         self.bundles = {}
-        
+
+    def reset_data(self):
+        """
+        Reset the data to plot. If you call plot several times without
+        calling this method, the data will be accumulated.
+        """
+        # Not sure if resetting the TSNE object is necessary.
+        self.tsne = TSNE(n_components=2, random_state=self.random_state)
+        self.bundles = {}
 
     def add_data_to_plot(self, data: np.ndarray, label: str = '_'):
         """
@@ -119,7 +89,7 @@ class BundlesLatentSpaceVisualizer(object):
             Name of the bundle. Used for the legend.
         """
         if isinstance(data, torch.Tensor):
-            latent_space_streamlines = data.cpu().numpy()
+            latent_space_streamlines = data.detach().numpy()
         else:
             latent_space_streamlines = data
         
@@ -135,13 +105,28 @@ class BundlesLatentSpaceVisualizer(object):
         
         self.bundles[label] = latent_space_streamlines
 
-    def plot(self):
+    def plot(self, title: str = "", figure_name_prefix: str = 'lt_space'):
         """
         Fit and plot the t-SNE projection of the latent space streamlines.
         This should be called once after adding all the data to plot using "add_data_to_plot".
+        
+        Parameters
+        ----------
+        figure_name_prefix: str
+            Name of the figure to be saved. This is just the prefix of the full file
+            name as it will be suffixed with the current plot number if enabled.
         """
+        if self.should_call_reset_before_plot and self.reset_warning:
+            LOGGER.warning("You plotted another time without resetting the data. "
+                           "The data will be accumulated, which might lead to unexpected results.")
+            self.should_call_reset_before_plot = False
+        elif not self.current_plot_number > 0:
+            # Only enable the flag for the first plot.
+            # So that the warning above is only displayed once.
+            self.should_call_reset_before_plot = True
+
         nb_streamlines = sum(b.shape[0] for b in self.bundles.values())
-        logging.info("Plotting a total of {} streamlines".format(nb_streamlines))
+        LOGGER.info("Plotting a total of {} streamlines".format(nb_streamlines))
 
         bundles_indices = {}
         current_start = 0
@@ -153,11 +138,12 @@ class BundlesLatentSpaceVisualizer(object):
 
         all_streamlines = np.concatenate(list(self.bundles.values()), axis=0)
 
-        logging.info("Fitting TSNE projection.")
+        LOGGER.info("Fitting TSNE projection.")
         all_projected_streamlines = self.tsne.fit_transform(all_streamlines)
 
-        logging.info("New figure for t-SNE visualisation.")
+        LOGGER.info("New figure for t-SNE visualisation.")
         fig, ax = plt.subplots()
+        ax.set_title(title)
         if self.fig_size is not None:
             fig.set_figheight(self.fig_size[0])
             fig.set_figwidth(self.fig_size[1])
@@ -174,10 +160,16 @@ class BundlesLatentSpaceVisualizer(object):
                 linewidths=0.5,
             )
     
-        ax.legend()
+        if len(self.bundles) > 1:
+            ax.legend()
 
-        if self.save_path is not None:
-            fig.savefig(self.save_path)
+        if self.save_dir is not None:
+            filename = '{}_{}.png'.format(figure_name_prefix, self.current_plot_number) \
+                if self.prefix_numbering else '{}.png'.format(figure_name_prefix)
+            filename = os.path.join(self.save_dir, filename)
+            fig.savefig(filename)
         else:
             plt.show()
+
+        self.current_plot_number += 1
 

@@ -203,6 +203,7 @@ class DWIMLStreamlinesBatchLoader:
                          "- step_size: {}\n".format(self.model.step_size) +
                          "- compress_lines: {}".format(self.model.compress_lines))
             sft = resample_or_compress(sft, self.model.step_size,
+                                       self.model.nb_points,
                                        self.model.compress_lines)
 
         # Splitting streamlines

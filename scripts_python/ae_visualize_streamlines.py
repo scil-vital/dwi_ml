@@ -12,7 +12,7 @@ from scilpy.io.utils import (add_overwrite_arg,
 from scilpy.io.streamlines import load_tractogram_with_reference
 from dipy.io.streamline import save_tractogram
 from dwi_ml.io_utils import (add_arg_existing_experiment_path,
-                           add_memory_args)
+                             add_memory_args)
 from dwi_ml.models.projects.ae_models import ModelAE
 from dwi_ml.viz.latent_streamlines import BundlesLatentSpaceVisualizer
 from dipy.tracking.streamline import set_number_of_points
@@ -73,7 +73,8 @@ def main():
 
     # Setup vizualisation
     ls_viz = BundlesLatentSpaceVisualizer(save_path=args.viz_save_path)
-    model.register_hook_post_encoding(lambda encoded_data: ls_viz.add_data_to_plot(encoded_data))
+    model.register_hook_post_encoding(
+        lambda encoded_data: ls_viz.add_data_to_plot(encoded_data))
 
     sft = load_tractogram_with_reference(p, args, args.in_tractogram)
     sft.to_vox()
@@ -87,12 +88,13 @@ def main():
 
     with torch.no_grad():
         streamlines = torch.as_tensor(np.asarray(set_number_of_points(bundle, 256)),
-                                          dtype=torch.float32, device=device)
+                                      dtype=torch.float32, device=device)
         tmp_outputs = model(streamlines)
 
         ls_viz.plot()
 
-    streamlines_output = [tmp_outputs[i, :, :].transpose(0, 1).cpu().numpy() for i in range(len(bundle))]
+    streamlines_output = [tmp_outputs[i, :, :].transpose(
+        0, 1).cpu().numpy() for i in range(len(bundle))]
     new_sft = sft.from_sft(streamlines_output, sft)
     save_tractogram(new_sft, args.out_tractogram, bbox_valid_check=False)
 

@@ -15,7 +15,7 @@ from scilpy.io.utils import (add_overwrite_arg,
                              add_verbose_arg)
 from scilpy.io.streamlines import load_tractogram_with_reference
 from dwi_ml.io_utils import (add_arg_existing_experiment_path,
-                           add_memory_args)
+                             add_memory_args)
 from dwi_ml.models.projects.ae_models import ModelAE
 from dwi_ml.viz.latent_streamlines import BundlesLatentSpaceVisualizer
 
@@ -42,6 +42,7 @@ def _build_arg_parser():
     add_verbose_arg(p)
     return p
 
+
 def load_bundles(p, args, files_list: list):
     bundles = []
     for bundle_file in files_list:
@@ -50,6 +51,7 @@ def load_bundles(p, args, files_list: list):
         bundle_sft.to_corner()
         bundles.append(bundle_sft)
     return bundles
+
 
 def main():
     p = _build_arg_parser()
@@ -91,12 +93,13 @@ def main():
 
     with torch.no_grad():
         for i, bundle_sft in enumerate(bundles_sft):
-            
+
             # Resample
             streamlines = torch.as_tensor(np.asarray(set_number_of_points(bundle_sft.streamlines, 256)),
                                           dtype=torch.float32, device=device)
-            
-            latent_streamlines = model.encode(streamlines).cpu().numpy() # output of (N, 32)
+
+            latent_streamlines = model.encode(
+                streamlines).cpu().numpy()  # output of (N, 32)
             ls_viz.add_data_to_plot(latent_streamlines, label=bundles_label[i])
 
     ls_viz.plot()

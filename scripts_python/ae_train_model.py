@@ -14,7 +14,8 @@ import os
 import comet_ml
 import torch
 
-from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, add_verbose_arg
+from scilpy.io.utils import (assert_inputs_exist, assert_outputs_exist,
+                             add_verbose_arg)
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
@@ -40,7 +41,7 @@ def prepare_arg_parser():
     add_mandatory_args_experiment_and_hdf5_path(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
-    #training_group = add_training_args(p)
+    # training_group = add_training_args(p)
     add_training_args(p)
     p.add_argument('streamline_group_name',
                    help="Name of the group in hdf5")
@@ -51,7 +52,7 @@ def prepare_arg_parser():
     add_verbose_arg(p)
 
     # Additional arg for projects
-    #training_group.add_argument(
+    # training_group.add_argument(
     #    '--clip_grad', type=float, default=None,
     #    help="Value to which the gradient norms to avoid exploding gradients."
     #         "\nDefault = None (not clipping).")
@@ -122,13 +123,15 @@ def init_from_args(args, sub_loggers_level):
 
     if args.viz_latent_space_freq is not None:
         # Setup to visualize latent space
-        save_dir = os.path.join(args.experiments_path, args.experiment_name, 'latent_space_plots')
+        save_dir = os.path.join(args.experiments_path,
+                                args.experiment_name, 'latent_space_plots')
         os.makedirs(save_dir, exist_ok=True)
 
         ls_viz = BundlesLatentSpaceVisualizer(save_dir,
-                                            prefix_numbering=True,
-                                            max_subset_size=1000)
+                                              prefix_numbering=True,
+                                              max_subset_size=1000)
         current_epoch = 0
+
         def visualize_latent_space(encoding):
             """
             This is not a clean way to do it. This would require changes in the
@@ -151,7 +154,8 @@ def init_from_args(args, sub_loggers_level):
                 ls_viz.add_data_to_plot(encoding)
             elif changed_epoch and trainer.current_epoch % args.viz_latent_space_freq == 0:
                 current_epoch = trainer.current_epoch
-                ls_viz.plot(title="Latent space at epoch {}".format(current_epoch))
+                ls_viz.plot(title="Latent space at epoch {}".format(
+                    current_epoch))
                 ls_viz.reset_data()
                 ls_viz.add_data_to_plot(encoding)
         model.register_hook_post_encoding(visualize_latent_space)
@@ -175,10 +179,12 @@ def main():
     assert_outputs_exist(p, args, args.experiments_path)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
-    if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
-                                   "checkpoint")):
-        raise FileExistsError("This experiment already exists. Delete or use "
-                              "script l2t_resume_training_from_checkpoint.py.")
+    if os.path.exists(os.path.join(
+            args.experiments_path, args.experiment_name,
+            "checkpoint")):
+        raise FileExistsError(
+            "This experiment already exists. Delete or use "
+            "script l2t_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

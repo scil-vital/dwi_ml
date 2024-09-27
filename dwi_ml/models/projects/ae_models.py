@@ -3,33 +3,9 @@ import logging
 from typing import List
 
 import torch
+from torch.nn import functional as F
 
 from dwi_ml.models.main_models import MainModelAbstract
-
-
-class ResBlock1d(torch.nn.Module):
-
-    def __init__(self, channels, stride=1):
-        super(ResBlock1d, self).__init__()
-
-        self.block = torch.nn.Sequential(
-            torch.nn.Conv1d(channels, channels, kernel_size=1,
-                            stride=stride, padding=0),
-            torch.nn.BatchNorm1d(channels),
-            torch.nn.GELU(),
-            torch.nn.Conv1d(channels, channels, kernel_size=3,
-                            stride=stride, padding=1, padding_mode='reflect'),
-            torch.nn.BatchNorm1d(channels),
-            torch.nn.GELU(),
-            torch.nn.Conv1d(channels, channels, 1,
-                            1, 0),
-            torch.nn.BatchNorm1d(channels))
-
-    def forward(self, x):
-        identity = x
-        xp = self.block(x)
-
-        return xp + identity
 
 
 class ModelAE(MainModelAbstract):
@@ -42,7 +18,6 @@ class ModelAE(MainModelAbstract):
     deterministic (3D vectors) or probabilistic (based on probability
     distribution parameters).
     """
-
     def __init__(self, kernel_size, latent_space_dims,
                  experiment_name: str,
                  # Target preprocessing params for the batch loader + tracker
@@ -54,7 +29,11 @@ class ModelAE(MainModelAbstract):
 
         self.kernel_size = kernel_size
         self.latent_space_dims = latent_space_dims
-        self.reconstruction_loss = torch.nn.MSELoss(reduction="sum")
+
+        self.pad = torch.nn.ReflectionPad1d(1)
+
+        def pre_pad(m):
+            return torch.nn.Sequential(self.pad, m)
 
         self.fc1 = torch.nn.Linear(8192,
                                    self.latent_space_dims)  # 8192 = 1024*8
@@ -63,102 +42,60 @@ class ModelAE(MainModelAbstract):
         """
         Encode convolutions
         """
-        self.encoder = torch.nn.Sequential(
-            torch.nn.Conv1d(3, 32, self.kernel_size, stride=2, padding=1,
-                            padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(32),
-            ResBlock1d(32),
-            ResBlock1d(32),
-            torch.nn.Conv1d(32, 64, self.kernel_size, stride=2, padding=1,
-                            padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(64),
-            ResBlock1d(64),
-            ResBlock1d(64),
-            torch.nn.Conv1d(64, 128, self.kernel_size, stride=2, padding=1,
-                            padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(128),
-            ResBlock1d(128),
-            ResBlock1d(128),
-            torch.nn.Conv1d(128, 256, self.kernel_size, stride=2, padding=1,
-                            padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(256),
-            ResBlock1d(256),
-            ResBlock1d(256),
-            torch.nn.Conv1d(256, 512, self.kernel_size, stride=2, padding=1,
-                            padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            torch.nn.Conv1d(512, 1024, self.kernel_size, stride=1, padding=1,
-                            padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(1024),
-            ResBlock1d(1024),
-            ResBlock1d(1024),
+        self.encod_conv1 = pre_pad(
+            torch.nn.Conv1d(3, 32, self.kernel_size, stride=2, padding=0)
+        )
+        self.encod_conv2 = pre_pad(
+            torch.nn.Conv1d(32, 64, self.kernel_size, stride=2, padding=0)
+        )
+        self.encod_conv3 = pre_pad(
+            torch.nn.Conv1d(64, 128, self.kernel_size, stride=2, padding=0)
+        )
+        self.encod_conv4 = pre_pad(
+            torch.nn.Conv1d(128, 256, self.kernel_size, stride=2, padding=0)
+        )
+        self.encod_conv5 = pre_pad(
+            torch.nn.Conv1d(256, 512, self.kernel_size, stride=2, padding=0)
+        )
+        self.encod_conv6 = pre_pad(
+            torch.nn.Conv1d(512, 1024, self.kernel_size, stride=1, padding=0)
         )
 
         """
         Decode convolutions
         """
-        self.decoder = torch.nn.Sequential(
-            ResBlock1d(1024),
-            ResBlock1d(1024),
-            ResBlock1d(1024),
-            torch.nn.GELU(),
-            torch.nn.Conv1d(
-                1024, 512, self.kernel_size, stride=1, padding=1,
-                padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            ResBlock1d(512),
-            torch.nn.Upsample(scale_factor=2, mode="linear",
-                              align_corners=False),
-            torch.nn.Conv1d(
-                512, 256, self.kernel_size, stride=1, padding=1,
-                padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(256),
-            ResBlock1d(256),
-            ResBlock1d(256),
-            torch.nn.Upsample(scale_factor=2, mode="linear",
-                              align_corners=False),
-            torch.nn.Conv1d(
-                256, 128, self.kernel_size, stride=1, padding=1,
-                padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(128),
-            ResBlock1d(128),
-            ResBlock1d(128),
-            torch.nn.Upsample(scale_factor=2, mode="linear",
-                              align_corners=False),
-            torch.nn.Conv1d(
-                128, 64, self.kernel_size, stride=1, padding=1,
-                padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(64),
-            ResBlock1d(64),
-            ResBlock1d(64),
-            torch.nn.Upsample(scale_factor=2, mode="linear",
-                              align_corners=False),
-            torch.nn.Conv1d(
-                64, 32, self.kernel_size, stride=1, padding=1,
-                padding_mode='reflect'),
-            torch.nn.GELU(),
-            ResBlock1d(32),
-            ResBlock1d(32),
-            ResBlock1d(32),
-            torch.nn.Upsample(scale_factor=2, mode="linear",
-                              align_corners=False),
-            torch.nn.Conv1d(
-                32, 3, self.kernel_size, stride=1, padding=1,
-                padding_mode='reflect'),
-            torch.nn.GELU(),
+        self.decod_conv1 = pre_pad(
+            torch.nn.Conv1d(1024, 512, self.kernel_size, stride=1, padding=0)
+        )
+        self.upsampl1 = torch.nn.Upsample(
+            scale_factor=2, mode="linear", align_corners=False
+        )
+        self.decod_conv2 = pre_pad(
+            torch.nn.Conv1d(512, 256, self.kernel_size, stride=1, padding=0)
+        )
+        self.upsampl2 = torch.nn.Upsample(
+            scale_factor=2, mode="linear", align_corners=False
+        )
+        self.decod_conv3 = pre_pad(
+            torch.nn.Conv1d(256, 128, self.kernel_size, stride=1, padding=0)
+        )
+        self.upsampl3 = torch.nn.Upsample(
+            scale_factor=2, mode="linear", align_corners=False
+        )
+        self.decod_conv4 = pre_pad(
+            torch.nn.Conv1d(128, 64, self.kernel_size, stride=1, padding=0)
+        )
+        self.upsampl4 = torch.nn.Upsample(
+            scale_factor=2, mode="linear", align_corners=False
+        )
+        self.decod_conv5 = pre_pad(
+            torch.nn.Conv1d(64, 32, self.kernel_size, stride=1, padding=0)
+        )
+        self.upsampl5 = torch.nn.Upsample(
+            scale_factor=2, mode="linear", align_corners=False
+        )
+        self.decod_conv6 = pre_pad(
+            torch.nn.Conv1d(32, 3, self.kernel_size, stride=1, padding=0)
         )
 
     @property
@@ -208,13 +145,20 @@ class ModelAE(MainModelAbstract):
         x = torch.stack(x)
         x = torch.swapaxes(x, 1, 2)
 
-        x = self.encoder(x)
-        self.encoder_out_size = (x.shape[1], x.shape[2])
+        h1 = F.relu(self.encod_conv1(x))
+        h2 = F.relu(self.encod_conv2(h1))
+        h3 = F.relu(self.encod_conv3(h2))
+        h4 = F.relu(self.encod_conv4(h3))
+        h5 = F.relu(self.encod_conv5(h4))
+        h6 = self.encod_conv6(h5)
+
+        self.encoder_out_size = (h6.shape[1], h6.shape[2])
 
         # Flatten
-        h7 = x.view(-1, self.encoder_out_size[0] * self.encoder_out_size[1])
+        h7 = h6.view(-1, self.encoder_out_size[0] * self.encoder_out_size[1])
 
         fc1 = self.fc1(h7)
+
         return fc1
 
     def decode(self, z):
@@ -222,21 +166,24 @@ class ModelAE(MainModelAbstract):
         fc_reshape = fc.view(
             -1, self.encoder_out_size[0], self.encoder_out_size[1]
         )
-        z = self.decoder(fc_reshape)
-        return z
+        h1 = F.relu(self.decod_conv1(fc_reshape))
+        h2 = self.upsampl1(h1)
+        h3 = F.relu(self.decod_conv2(h2))
+        h4 = self.upsampl2(h3)
+        h5 = F.relu(self.decod_conv3(h4))
+        h6 = self.upsampl3(h5)
+        h7 = F.relu(self.decod_conv4(h6))
+        h8 = self.upsampl4(h7)
+        h9 = F.relu(self.decod_conv5(h8))
+        h10 = self.upsampl5(h9)
+        h11 = self.decod_conv6(h10)
+
+        return h11
 
     def compute_loss(self, model_outputs, targets, average_results=True):
+
         targets = torch.stack(targets)
         targets = torch.swapaxes(targets, 1, 2)
-        mse = self.reconstruction_loss(model_outputs, targets)
-
-        # loss_function_vae
-        # See Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        # kld = -0.5 * torch.sum(1 + self.logvar - self.mu.pow(2) - self.logvar.exp())
-        # kld_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-        # kld = torch.sum(kld_element).__mul__(-0.5)
-
+        reconstruction_loss = torch.nn.MSELoss(reduction="sum")
+        mse = reconstruction_loss(model_outputs, targets)
         return mse, 1

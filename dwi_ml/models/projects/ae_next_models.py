@@ -6,6 +6,7 @@ import torch
 
 from dwi_ml.models.main_models import MainModelAbstract
 
+
 class Permute(torch.nn.Module):
     """This module returns a view of the tensor input with its dimensions permuted.
     From https://github.com/pytorch/vision/blob/main/torchvision/ops/misc.py#L308  # noqa E501
@@ -23,6 +24,13 @@ class Permute(torch.nn.Module):
 
 
 class LayerNorm1d(torch.nn.LayerNorm):
+    """ Layer normalization module. Uses the same normalization as torch.nn.LayerNorm
+    but with the input tensor permuted before and after the normalization. This is
+    necessary because torch.nn.LayerNorm normalizes the last dimension of the input
+    tensor, but we want to normalize the middle dimension to fit with convolutional layers.
+
+    From https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py # noqa E501
+    """
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.permute(0, 2, 1)
         x = torch.nn.functional.layer_norm(
@@ -32,8 +40,29 @@ class LayerNorm1d(torch.nn.LayerNorm):
 
 
 class ResBlock1d(torch.nn.Module):
+    """ ConvNext residual block.
+
+    Uses a 1D convolution with kernel size 7 and groups=channels to ensure that
+    each channel is processed independently. The block is composed of a layer
+    normalization, a GELU activation function, a linear layer with 4 times the
+    number of channels, a GELU activation function, and a linear layer with the
+    same number of channels as the input. The output is added to the input
+    tensor.
+    """
 
     def __init__(self, channels, stride=1, norm=LayerNorm1d):
+        """ Constructor
+
+        Parameters
+        ----------
+        channels : int
+            Number of channels in the input tensor.
+        stride : int
+            Stride of the convolution.
+        norm : torch.nn.Module
+            Normalization layer to use.
+        """
+
         super(ResBlock1d, self).__init__()
 
         self.block = torch.nn.Sequential(
@@ -48,7 +77,10 @@ class ResBlock1d(torch.nn.Module):
                 in_features=channels * 4, out_features=channels, bias=True),
             Permute((0, 2, 1)))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """ Forward pass.
+        """
+
         identity = x
         x = self.block(x)
 
@@ -56,7 +88,18 @@ class ResBlock1d(torch.nn.Module):
 
 
 class ModelConvNextAE(MainModelAbstract):
-    """
+    """ ConvNext autoencoder model, modified to work with 1D data.
+
+    The model is composed of an encoder and a decoder. The encoder is composed
+    of a series of 1D convolutions and residual blocks. The decoder is composed
+    of residual blocks, upsampling layers, and 1D convolutions. The decoder is
+    much smaller than the encoder to reduce the number of parameters and
+    enforce a well defined latent space.
+
+    References:
+    [1]: Liu, Z., Mao, H., Wu, C. Y., Feichtenhofer, C., Darrell, T., & Xie, S.
+    (2022). A convnet for the 2020s. In Proceedings of the IEEE/CVF conference
+    on computer vision and pattern recognition (pp. 11976-11986).
     """
 
     def __init__(self, kernel_size, latent_space_dims,
@@ -72,12 +115,9 @@ class ModelConvNextAE(MainModelAbstract):
         self.latent_space_dims = latent_space_dims
         self.reconstruction_loss = torch.nn.MSELoss(reduction="sum")
 
-        self.fc1 = torch.nn.Linear(8192,
-                                   self.latent_space_dims)  # 8192 = 1024*8
-        self.fc2 = torch.nn.Linear(self.latent_space_dims, 8192)
-
         """
-        Encode convolutions
+        Encode convolutions. Follows the same structure as the original
+        ConvNext-Tiny architecture, but with 1D convolutions.
         """
         self.encoder = torch.nn.Sequential(
             torch.nn.Conv1d(3, 32, self.kernel_size+1, stride=1, padding=1,
@@ -117,9 +157,17 @@ class ModelConvNextAE(MainModelAbstract):
             ResBlock1d(1024),
             ResBlock1d(1024),
         )
+        """
+        Latent space
+        """
+
+        self.fc1 = torch.nn.Linear(8192,
+                                   self.latent_space_dims)  # 8192 = 1024*8
+        self.fc2 = torch.nn.Linear(self.latent_space_dims, 8192)
 
         """
-        Decode convolutions
+        Decode convolutions. Uses upsampling and 1D convolutions instead of
+        transposed convolutions to avoid checkerboard artifacts.
         """
         self.decoder = torch.nn.Sequential(
             ResBlock1d(1024),
@@ -199,7 +247,20 @@ class ModelConvNextAE(MainModelAbstract):
         x = self.decode(self.encode(input_streamlines))
         return x
 
-    def encode(self, x):
+    def encode(self, x: List[torch.Tensor]) -> torch.Tensor:
+        """ Encode the input data.
+
+        Parameters
+        ----------
+        x : list of tensors
+            List of input tensors.
+
+        Returns
+        -------
+        torch.Tensor
+            Input data encoded to the latent space.
+        """
+
         # x: list of tensors
         if isinstance(x, list):
             x = torch.stack(x)
@@ -214,7 +275,20 @@ class ModelConvNextAE(MainModelAbstract):
         fc1 = self.fc1(h7)
         return fc1
 
-    def decode(self, z):
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        """ Decode the input data.
+
+        Parameters
+        ----------
+        z : torch.Tensor
+            Input data in the latent space.
+
+        Returns
+        -------
+        torch.Tensor
+            Decoded data.
+        """
+
         fc = self.fc2(z)
         fc_reshape = fc.view(
             -1, self.encoder_out_size[0], self.encoder_out_size[1]
@@ -223,17 +297,25 @@ class ModelConvNextAE(MainModelAbstract):
         return z
 
     def compute_loss(self, model_outputs, targets, average_results=True):
+        """Compute the loss of the model.
+
+        Parameters
+        ----------
+        model_outputs : List[Tensor]
+            Model outputs.
+        targets : List[Tensor]
+            Target data.
+        average_results : bool
+            If True, the loss will be averaged across the batch.
+
+        Returns
+        -------
+        loss : Tensor
+            Loss value.
+        """
+
         targets = torch.stack(targets)
         targets = torch.swapaxes(targets, 1, 2)
         mse = self.reconstruction_loss(model_outputs, targets)
-
-        # loss_function_vae
-        # See Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        # kld = -0.5 * torch.sum(1 + self.logvar - self.mu.pow(2) - self.logvar.exp())
-        # kld_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-        # kld = torch.sum(kld_element).__mul__(-0.5)
 
         return mse, 1

@@ -30,11 +30,11 @@ def _build_arg_parser():
 
     p.add_argument('in_tractogram',
                    help="If set, saves the tractogram with the loss per point "
-                        "as a data per point (color)")
+                   "as a data per point (color)")
 
     p.add_argument('out_tractogram',
                    help="If set, saves the tractogram with the loss per point "
-                        "as a data per point (color)")
+                   "as a data per point (color)")
 
     # Options
     p.add_argument('--batch_size', type=int)
@@ -90,6 +90,10 @@ def main():
     sft.to_corner()
 
     bundle = sft.streamlines
+
+    bundle = sft.streamlines
+
+    bundle = set_number_of_points(bundle, 256)
 
     logging.info("Running model to compute loss")
     batch_size = 5000

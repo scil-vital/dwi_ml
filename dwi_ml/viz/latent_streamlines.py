@@ -152,7 +152,8 @@ class BundlesLatentSpaceVisualizer(object):
         assert current_start == nb_streamlines
 
         all_streamlines = np.concatenate(list(self.bundles.values()), axis=0)
-
+        # Set NaNs to 0
+        all_streamlines[np.isnan(all_streamlines)] = np.zeros(32)
         logging.info("Fitting TSNE projection.")
         all_projected_streamlines = self.tsne.fit_transform(all_streamlines)
 

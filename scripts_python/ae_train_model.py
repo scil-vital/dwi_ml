@@ -63,9 +63,6 @@ def init_from_args(args, sub_loggers_level):
         # INPUTS: verifying args
         model = ModelAE(
             experiment_name=args.experiment_name,
-            step_size=None,
-            nb_points=None,
-            compress_lines=None,
             log_level=sub_loggers_level)
 
         logging.info("AEmodel final parameters:" +

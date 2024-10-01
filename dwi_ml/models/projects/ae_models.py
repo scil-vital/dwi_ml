@@ -20,12 +20,15 @@ class ModelAE(MainModelAbstract):
     """
     def __init__(self,
                  experiment_name: str,
+                 step_size: float = None,
+                 nb_points: int = None,
+                 compress_lines: float = False,
                  # Other
                  log_level=logging.root.level):
         super().__init__(experiment_name,
-                         step_size=None,
-                         nb_points=None,
-                         compress_lines=None,
+                         step_size=step_size,
+                         nb_points=nb_points,
+                         compress_lines=compress_lines,
                          log_level=log_level)
 
         self.kernel_size = 3

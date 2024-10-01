@@ -102,7 +102,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  neighborhood_type: Optional[str] = None,
                  neighborhood_radius: Optional[int] = None,
                  neighborhood_resolution: Optional[float] = None,
-                 log_level=logging.root.level):
+                 log_level=logging.root.level,
+                 nb_points: Optional[int] = None):
         """
         Params
         ------
@@ -133,6 +134,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         """
         super().__init__(
             experiment_name=experiment_name, step_size=step_size,
+            nb_points=nb_points,
             compress_lines=compress_lines, log_level=log_level,
             # For modelWithNeighborhood
             neighborhood_type=neighborhood_type,

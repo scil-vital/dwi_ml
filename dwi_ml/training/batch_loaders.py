@@ -197,11 +197,14 @@ class DWIMLStreamlinesBatchLoader:
                 self.context_subset.compress == self.model.compress_lines:
             logger.debug("Compression rate is the same as when creating "
                          "the hdf5 dataset. Not compressing again.")
-        elif self.model.step_size is not None and \
-                self.model.compress_lines is not None:
+        elif self.model.nb_points is not None and self.model.nb_points == self.context_subset.nb_points:
+            logging.debug("Number of points per streamline is the same"
+                          " as when creating the hdf5. Not resampling again.")
+        else:
             logger.debug("Resample streamlines using: \n" +
                          "- step_size: {}\n".format(self.model.step_size) +
-                         "- compress_lines: {}".format(self.model.compress_lines))
+                         "- compress_lines: {}".format(self.model.compress_lines) +
+                         "- nb_points: {}".format(self.model.nb_points))
             sft = resample_or_compress(sft, self.model.step_size,
                                        self.model.nb_points,
                                        self.model.compress_lines)

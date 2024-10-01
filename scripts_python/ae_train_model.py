@@ -63,8 +63,9 @@ def init_from_args(args, sub_loggers_level):
         # INPUTS: verifying args
         model = ModelAE(
             experiment_name=args.experiment_name,
-            step_size=None, compress_lines=None,
-            kernel_size=3, latent_space_dims=32,
+            step_size=None,
+            nb_points=None,
+            compress_lines=None,
             log_level=sub_loggers_level)
 
         logging.info("AEmodel final parameters:" +
@@ -131,7 +132,7 @@ def main():
     if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
                                    "checkpoint")):
         raise FileExistsError("This experiment already exists. Delete or use "
-                              "script l2t_resume_training_from_checkpoint.py.")
+                              "script ae_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

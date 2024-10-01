@@ -652,7 +652,7 @@ class HDF5Creator:
 
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,
-            header: nib.Nifti1Header, remove_invalid=False):
+            header: nib.Nifti1Header):
         """
         Loads and processes a group of tractograms and merges all streamlines
         together.
@@ -669,8 +669,6 @@ class HDF5Creator:
             Reference used to load and send the streamlines in voxel space and
             to create final merged SFT. If the file is a .trk, 'same' is used
             instead.
-        remove_invalid : bool
-            If True, invalid streamlines will be removed
 
         Returns
         -------

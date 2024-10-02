@@ -17,15 +17,15 @@ def resample_or_compress(sft, step_size_mm: float = None,
                          nb_points: int = None,
                          compress: float = None,
                          remove_invalid: bool = False):
-    if step_size_mm is not None:
+    if step_size_mm:
         # Note. No matter the chosen space, resampling is done in mm.
         logging.debug("    Resampling (step size): {}mm".format(step_size_mm))
         sft = resample_streamlines_step_size(sft, step_size=step_size_mm)
-    elif nb_points is not None:
+    elif nb_points:
         logging.debug("    Resampling: " +
                       "{} points per streamline".format(nb_points))
         sft = resample_streamlines_num_points(sft, nb_points)
-    elif compress is not None:
+    elif compress:
         logging.debug("    Compressing: {}".format(compress))
         sft = compress_sft(sft, compress)
 

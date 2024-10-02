@@ -11,7 +11,7 @@ import os
 # comet_ml not used, but comet_ml requires to be imported before torch.
 # See bug report here https://github.com/Lightning-AI/lightning/issues/5829
 # Importing now to solve issues later.
-import comet_ml
+import comet_ml  # noqa F401
 import torch
 
 from scilpy.io.utils import (assert_inputs_exist, assert_outputs_exist,
@@ -26,13 +26,12 @@ from dwi_ml.training.trainers import DWIMLAbstractTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader)
-from dwi_ml.training.utils.trainer import add_training_args
+from dwi_ml.training.utils.trainer import (add_training_args, run_experiment,
+                                           format_lr)
 from dwi_ml.training.batch_loaders import DWIMLStreamlinesBatchLoader
 from dwi_ml.viz.latent_streamlines import BundlesLatentSpaceVisualizer
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
-from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
-    format_lr
 
 
 def prepare_arg_parser():
@@ -41,7 +40,6 @@ def prepare_arg_parser():
     add_mandatory_args_experiment_and_hdf5_path(p)
     add_args_batch_sampler(p)
     add_args_batch_loader(p)
-    # training_group = add_training_args(p)
     add_training_args(p)
     p.add_argument('streamline_group_name',
                    help="Name of the group in hdf5")
@@ -50,12 +48,6 @@ def prepare_arg_parser():
                    "This is expressed in number of epochs.")
     add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_verbose_arg(p)
-
-    # Additional arg for projects
-    # training_group.add_argument(
-    #    '--clip_grad', type=float, default=None,
-    #    help="Value to which the gradient norms to avoid exploding gradients."
-    #         "\nDefault = None (not clipping).")
 
     return p
 
@@ -75,8 +67,6 @@ def init_from_args(args, sub_loggers_level):
         # INPUTS: verifying args
         model = ModelAE(
             experiment_name=args.experiment_name,
-            step_size=None, compress_lines=None,
-            kernel_size=3, latent_space_dims=32,
             log_level=sub_loggers_level)
 
         logging.info("AEmodel final parameters:" +
@@ -179,12 +169,10 @@ def main():
     assert_outputs_exist(p, args, args.experiments_path)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
-    if os.path.exists(os.path.join(
-            args.experiments_path, args.experiment_name,
-            "checkpoint")):
-        raise FileExistsError(
-            "This experiment already exists. Delete or use "
-            "script l2t_resume_training_from_checkpoint.py.")
+    if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
+                                   "checkpoint")):
+        raise FileExistsError("This experiment already exists. Delete or use "
+                              "script ae_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

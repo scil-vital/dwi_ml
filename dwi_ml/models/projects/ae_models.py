@@ -18,17 +18,22 @@ class ModelAE(MainModelAbstract):
     deterministic (3D vectors) or probabilistic (based on probability
     distribution parameters).
     """
-    def __init__(self, kernel_size, latent_space_dims,
+
+    def __init__(self,
                  experiment_name: str,
-                 # Target preprocessing params for the batch loader + tracker
                  step_size: float = None,
+                 nb_points: int = None,
                  compress_lines: float = False,
                  # Other
                  log_level=logging.root.level):
-        super().__init__(experiment_name, step_size, compress_lines, log_level)
+        super().__init__(experiment_name,
+                         step_size=step_size,
+                         nb_points=nb_points,
+                         compress_lines=compress_lines,
+                         log_level=log_level)
 
-        self.kernel_size = kernel_size
-        self.latent_space_dims = latent_space_dims
+        self.kernel_size = 3
+        self.latent_space_dims = 32
 
         self.pad = torch.nn.ReflectionPad1d(1)
         self.post_encoding_hooks = []
@@ -99,26 +104,6 @@ class ModelAE(MainModelAbstract):
             torch.nn.Conv1d(32, 3, self.kernel_size, stride=1, padding=0)
         )
 
-    @property
-    def params_for_checkpoint(self):
-        """All parameters necessary to create again the same model. Will be
-        used in the trainer, when saving the checkpoint state. Params here
-        will be used to re-create the model when starting an experiment from
-        checkpoint. You should be able to re-create an instance of your
-        model with those params."""
-        # p = super().params_for_checkpoint()
-        p = {'kernel_size': self.kernel_size,
-             'latent_space_dims': self.latent_space_dims,
-             'experiment_name': self.experiment_name}
-        return p
-
-    @classmethod
-    def _load_params(cls, model_dir):
-        p = super()._load_params(model_dir)
-        p['kernel_size'] = 3
-        p['latent_space_dims'] = 32
-        return p
-
     def forward(self,
                 input_streamlines: List[torch.tensor],
                 ):
@@ -151,7 +136,8 @@ class ModelAE(MainModelAbstract):
         if isinstance(x, list):
             x = torch.stack(x)
 
-        x = torch.swapaxes(x, 1, 2) # input of the network should be (N, 3, nb_points)
+        # input of the network should be (N, 3, nb_points)
+        x = torch.swapaxes(x, 1, 2)
 
         h1 = F.relu(self.encod_conv1(x))
         h2 = F.relu(self.encod_conv2(h1))
@@ -189,13 +175,12 @@ class ModelAE(MainModelAbstract):
         return h11
 
     def compute_loss(self, model_outputs, targets, average_results=True):
+
         targets = torch.stack(targets)
         targets = torch.swapaxes(targets, 1, 2)
-        reconstruction_loss = torch.nn.MSELoss()
+        reconstruction_loss = torch.nn.MSELoss(reduction="sum")
         mse = reconstruction_loss(model_outputs, targets)
-
         return mse, 1
-    
+
     def register_hook_post_encoding(self, hook):
         self.post_encoding_hooks.append(hook)
-        

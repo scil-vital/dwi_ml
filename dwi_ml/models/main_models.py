@@ -128,6 +128,7 @@ class MainModelAbstract(torch.nn.Module):
             'experiment_name': self.experiment_name,
             'step_size': self.step_size,
             'compress_lines': self.compress_lines,
+            'nb_points': self.nb_points,
         }
 
     @property

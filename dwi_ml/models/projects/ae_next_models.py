@@ -102,14 +102,24 @@ class ModelConvNextAE(MainModelAbstract):
     on computer vision and pattern recognition (pp. 11976-11986).
     """
 
-    def __init__(self, kernel_size, latent_space_dims,
-                 experiment_name: str,
-                 # Target preprocessing params for the batch loader + tracker
-                 step_size: float = None,
-                 compress_lines: float = False,
-                 # Other
-                 log_level=logging.root.level):
-        super().__init__(experiment_name, step_size, compress_lines, log_level)
+    def __init__(
+        self,
+        kernel_size,
+        latent_space_dims,
+        experiment_name: str,
+        nb_points: int = None,
+        step_size: float = None,
+        compress_lines: float = False,
+        # Other
+        log_level=logging.root.level
+    ):
+        super().__init__(
+            experiment_name,
+            step_size=step_size,
+            nb_points=nb_points,
+            compress_lines=compress_lines,
+            log_level=log_level
+        )
 
         self.kernel_size = kernel_size
         self.latent_space_dims = latent_space_dims
@@ -219,15 +229,10 @@ class ModelConvNextAE(MainModelAbstract):
              'experiment_name': self.experiment_name}
         return p
 
-    @classmethod
-    def _load_params(cls, model_dir):
-        p = super()._load_params(model_dir)
-        p['latent_space_dims'] = 32
-        return p
-
-    def forward(self,
-                input_streamlines: List[torch.tensor],
-                ):
+    def forward(
+        self,
+        input_streamlines: List[torch.tensor],
+    ):
         """Run the model on a batch of sequences.
 
         Parameters
@@ -257,7 +262,7 @@ class ModelConvNextAE(MainModelAbstract):
 
         Returns
         -------
-        torch.Tensor
+        z : torch.Tensor
             Input data encoded to the latent space.
         """
 
@@ -272,8 +277,8 @@ class ModelConvNextAE(MainModelAbstract):
         # Flatten
         h7 = x.reshape(-1, self.encoder_out_size[0] * self.encoder_out_size[1])
 
-        fc1 = self.fc1(h7)
-        return fc1
+        z = self.fc1(h7)
+        return z
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         """ Decode the input data.
@@ -285,7 +290,7 @@ class ModelConvNextAE(MainModelAbstract):
 
         Returns
         -------
-        torch.Tensor
+        x_hat : torch.Tensor
             Decoded data.
         """
 
@@ -293,8 +298,8 @@ class ModelConvNextAE(MainModelAbstract):
         fc_reshape = fc.view(
             -1, self.encoder_out_size[0], self.encoder_out_size[1]
         )
-        z = self.decoder(fc_reshape)
-        return z
+        x_hat = self.decoder(fc_reshape)
+        return x_hat
 
     def compute_loss(self, model_outputs, targets, average_results=True):
         """Compute the loss of the model.

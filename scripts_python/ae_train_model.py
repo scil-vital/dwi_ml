@@ -48,10 +48,25 @@ def prepare_arg_parser():
                    "This is expressed in number of epochs.")
     p.add_argument('--color_by', type=str, default=None, choices=['dps_bundle_index'],
                    help="Name of the group in hdf5 to color by.")
+    p.add_argument('--bundles_mapping', type=str, default=None,
+                   help="Path to a txt file mapping bundles to a new name.\n"
+                   "Each line of that file should be: <bundle_name> <number>")
     add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_verbose_arg(p)
 
     return p
+
+
+def parse_bundle_mapping(bundles_mapping_file: str = None):
+    if bundles_mapping_file is None:
+        return None
+
+    with open(bundles_mapping_file, 'r') as f:
+        bundle_mapping = {}
+        for line in f:
+            bundle_name, bundle_number = line.strip().split()
+            bundle_mapping[int(bundle_number)] = bundle_name
+    return bundle_mapping
 
 
 def init_from_args(args, sub_loggers_level):
@@ -124,10 +139,12 @@ def init_from_args(args, sub_loggers_level):
                                 args.experiment_name, 'latent_space_plots')
         os.makedirs(save_dir, exist_ok=True)
 
+        bundle_mapping = parse_bundle_mapping(args.bundles_mapping)
         ls_viz = BundlesLatentSpaceVisualizer(save_dir,
                                               prefix_numbering=True,
-                                              max_subset_size=1000)
-        current_epoch = 0
+                                              max_subset_size=1000,
+                                              bundle_mapping=bundle_mapping)
+        current_epoch = -1
 
         def visualize_latent_space(encoding, related_data):
             """
@@ -147,14 +164,14 @@ def init_from_args(args, sub_loggers_level):
             if not trainer.model.context == 'training':
                 return
 
-            changed_epoch = current_epoch != trainer.current_epoch
+            changed_epoch = current_epoch != trainer.current_epoch - 1
             if not changed_epoch:
                 ls_viz.add_data_to_plot(encoding, labels=related_data)
             elif changed_epoch \
-                    and trainer.current_epoch % viz_latent_space_freq == 0:
-                current_epoch = trainer.current_epoch
-                ls_viz.plot(title="Latent space at epoch {}".format(
-                    current_epoch))
+                    and (trainer.current_epoch - 1) % viz_latent_space_freq == 0:
+                current_epoch = trainer.current_epoch - 1
+                ls_viz.plot(current_epoch,
+                            best_epoch=trainer.best_epoch_monitor.best_epoch)
                 ls_viz.reset_data()
                 ls_viz.add_data_to_plot(encoding, labels=related_data)
         model.register_hook_post_encoding(visualize_latent_space)

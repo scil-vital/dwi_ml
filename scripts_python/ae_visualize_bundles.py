@@ -29,7 +29,8 @@ def _build_arg_parser():
     # Add_args_testing_subj_hdf5(p)
 
     p.add_argument('in_bundles',
-                   help="The 'glob' path to several bundles identified by their file name."
+                   help="The 'glob' path to several bundles identified "
+                   "by their file name."
                    "e.g. FiberCupGroundTruth_filtered_bundle_0.tck")
 
     # Options
@@ -75,7 +76,8 @@ def main():
     # 1. Load model
     logging.debug("Loading model.")
     model = ModelAE.load_model_from_params_and_state(
-        args.experiment_path + '/best_model', log_level=sub_loggers_level).to(device)
+        args.experiment_path + '/best_model', log_level=sub_loggers_level)
+    model = model.to(device)
 
     expanded = expanduser(args.in_bundles)
     bundles_files = glob(expanded)

@@ -50,6 +50,7 @@ class DWIMLAbstractTrainer:
 
     NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, CORNER ORIGIN.
     """
+
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
@@ -63,7 +64,8 @@ class DWIMLAbstractTrainer:
                  nb_cpu_processes: int = 0, use_gpu: bool = False,
                  clip_grad: float = None,
                  comet_workspace: str = None, comet_project: str = None,
-                 from_checkpoint: bool = False, log_level=logging.root.level):
+                 from_checkpoint: bool = False, log_level=logging.root.level,
+                 related_data_retrieval: bool = False):
         """
         Parameters
         ----------
@@ -228,12 +230,15 @@ class DWIMLAbstractTrainer:
         #     dataloader output is on GPU, ready to be fed to the model.
         #     Otherwise, dataloader output is kept on CPU, and the main thread
         #     sends volumes and coords on GPU for interpolation.
+        self.related_data_retrieval = related_data_retrieval
+        self.collate_fn = self.batch_loader.load_batch_streamlines_and_related \
+            if self.related_data_retrieval else self.batch_loader.load_batch_streamlines
         logger.debug("- Instantiating dataloaders...")
         self.train_dataloader = DataLoader(
             dataset=self.batch_sampler.dataset.training_set,
             batch_sampler=self.batch_sampler,
             num_workers=self.nb_cpu_processes,
-            collate_fn=self.batch_loader.load_batch_streamlines,
+            collate_fn=self.collate_fn,
             pin_memory=self.use_gpu)
         self.valid_dataloader = None
         if self.use_validation:
@@ -241,7 +246,7 @@ class DWIMLAbstractTrainer:
                 dataset=self.batch_sampler.dataset.validation_set,
                 batch_sampler=self.batch_sampler,
                 num_workers=self.nb_cpu_processes,
-                collate_fn=self.batch_loader.load_batch_streamlines,
+                collate_fn=self.collate_fn,
                 pin_memory=self.use_gpu)
 
         # ----------------------
@@ -517,8 +522,10 @@ class DWIMLAbstractTrainer:
         # A. Rng value.
         # RNG:
         #  - numpy
-        self.batch_sampler.np_rng.set_state(current_states['sampler_np_rng_state'])
-        self.batch_loader.np_rng.set_state(current_states['loader_np_rng_state'])
+        self.batch_sampler.np_rng.set_state(
+            current_states['sampler_np_rng_state'])
+        self.batch_loader.np_rng.set_state(
+            current_states['loader_np_rng_state'])
         #  - torch
         torch.set_rng_state(current_states['torch_rng_state'])
         if self.use_gpu:
@@ -568,10 +575,13 @@ class DWIMLAbstractTrainer:
                     display_summary_level=False)
                 self.comet_exp.set_name(self.experiment_name)
                 self.comet_exp.log_parameters(self.params_for_checkpoint)
-                self.comet_exp.log_parameters(self.batch_sampler.params_for_checkpoint)
-                self.comet_exp.log_parameters(self.batch_loader.params_for_checkpoint)
+                self.comet_exp.log_parameters(
+                    self.batch_sampler.params_for_checkpoint)
+                self.comet_exp.log_parameters(
+                    self.batch_loader.params_for_checkpoint)
                 self.comet_exp.log_parameters(self.model.params_for_checkpoint)
-                self.comet_exp.log_parameters(self.model.computed_params_for_display)
+                self.comet_exp.log_parameters(
+                    self.model.computed_params_for_display)
                 self.comet_key = self.comet_exp.get_key()
                 # Couldn't find how to set log level. Getting it directly.
                 comet_log = logging.getLogger("comet_ml")
@@ -814,10 +824,17 @@ class DWIMLAbstractTrainer:
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
 
+                if self.related_data_retrieval:
+                    related_data = data[2]
+                    data = data[:2]
+                else:
+                    related_data = None
+
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
                 with grad_context():
-                    mean_loss = self.train_one_batch(data)
+                    mean_loss = self.train_one_batch(
+                        data, related_data=related_data)
 
                 unclipped_grad_norm, grad_norm = self.back_propagation(
                     mean_loss)
@@ -880,9 +897,16 @@ class DWIMLAbstractTrainer:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
 
+                if self.related_data_retrieval:
+                    related_data = data[2]
+                    data = data[:2]
+                else:
+                    related_data = None
+
                 # Validate this batch: forward propagation + loss
                 with torch.no_grad():
-                    self.validate_one_batch(data, epoch)
+                    self.validate_one_batch(
+                        data, epoch, related_data=related_data)
 
                 # Break if maximum number of epochs has been reached
                 if batch_id == self.nb_batches_valid - 1:
@@ -908,23 +932,25 @@ class DWIMLAbstractTrainer:
             monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
 
-    def train_one_batch(self, data):
+    def train_one_batch(self, data, **model_kwargs):
         """
         Computes the loss for the current batch and updates monitors.
         Returns the loss to be used for backpropagation.
         """
         # Encapsulated for easier management of child classes.
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(
+            data, **model_kwargs)
 
         # mean loss is a Tensor of a single value. item() converts to float
         self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
-    def validate_one_batch(self, data, epoch):
+    def validate_one_batch(self, data, epoch, **model_kwargs):
         """
         Computes the loss(es) for the current batch and updates monitors.
         """
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(
+            data, **model_kwargs)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 
@@ -993,7 +1019,7 @@ class DWIMLAbstractTrainer:
             json_file.write(json.dumps(best_losses, indent=4,
                                        separators=(',', ': ')))
 
-    def run_one_batch(self, data):
+    def run_one_batch(self, data, **model_kwargs):
         """
         Runs a batch of data through the model (calling its forward method)
         and returns the mean loss.
@@ -1037,7 +1063,7 @@ class DWIMLAbstractTrainer:
         # but ok, shouldn't be too heavy. Easier to deal with multiple
         # projects' requirements by sending whole streamlines rather
         # than only directions.
-        model_outputs = self.model(streamlines_f)
+        model_outputs = self.model(streamlines_f, **model_kwargs)
         del streamlines_f
 
         logger.debug('*** Computing loss')

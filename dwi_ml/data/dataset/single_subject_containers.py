@@ -17,8 +17,9 @@ class SubjectDataAbstract(object):
     single MRI acquisition. It could contain data from many "real" MRI volumes
     concatenated together.
     """
+
     def __init__(self, volume_groups: List[str], nb_features: List[int],
-                 streamline_groups: List[str], subject_id: str):
+                 streamline_groups: List[str], subject_id: str, related_data_key: str = None):
         """
         Parameters
         ----------
@@ -37,6 +38,7 @@ class SubjectDataAbstract(object):
         self.streamline_groups = streamline_groups
         self.subject_id = subject_id
         self.is_lazy = None
+        self.related_data_key = related_data_key
 
     @property
     def mri_data_list(self) -> List[MRIDataAbstract]:
@@ -50,7 +52,7 @@ class SubjectDataAbstract(object):
 
     @classmethod
     def init_single_subject_from_hdf(
-            cls, subject_id: str, hdf_file, group_info=None):
+            cls, subject_id: str, hdf_file, group_info=None, related_data_key=None):
         """Returns an instance of this class, initiated by sending only the
         hdf handle. The child class's method will define how to load the
         data based on the child data management."""
@@ -64,10 +66,12 @@ class SubjectDataAbstract(object):
 
 class SubjectData(SubjectDataAbstract):
     """Non-lazy version"""
+
     def __init__(self, subject_id: str, volume_groups: List[str],
                  nb_features: List[int], mri_data_list: List[MRIData] = None,
                  streamline_groups: List[str] = None,
-                 sft_data_list: List[SFTData] = None):
+                 sft_data_list: List[SFTData] = None,
+                 related_data_key: str = None):
         """
         Additional params compared to super:
         ----
@@ -76,7 +80,7 @@ class SubjectData(SubjectDataAbstract):
             ._data, ._offsets, ._lengths, ._lengths_mm.
         """
         super().__init__(volume_groups, nb_features, streamline_groups,
-                         subject_id)
+                         subject_id, related_data_key=related_data_key)
         self._mri_data_list = mri_data_list
         self._sft_data_list = sft_data_list
         self.is_lazy = False
@@ -91,7 +95,7 @@ class SubjectData(SubjectDataAbstract):
 
     @classmethod
     def init_single_subject_from_hdf(
-            cls, subject_id: str, hdf_file, group_info=None):
+            cls, subject_id: str, hdf_file, group_info=None, related_data_key=None):
         """
         Instantiating a single subject data: load info and use __init__
         """
@@ -113,12 +117,13 @@ class SubjectData(SubjectDataAbstract):
             logger.debug("        Loading streamlines group '{}'"
                          .format(group))
             sft_data = SFTData.init_sft_data_from_hdf_info(
-                hdf_file[subject_id][group])
+                hdf_file[subject_id][group], related_data_key=related_data_key)
             subject_sft_data_list.append(sft_data)
 
         subj_data = cls(subject_id,
                         volume_groups, nb_features, subject_mri_data_list,
-                        streamline_groups, subject_sft_data_list)
+                        streamline_groups, subject_sft_data_list,
+                        related_data_key=related_data_key)
 
         return subj_data
 
@@ -130,9 +135,10 @@ class LazySubjectData(SubjectDataAbstract):
     """
     Lazy version.
     """
+
     def __init__(self, volume_groups: List[str], nb_features: List[int],
                  streamline_groups: List[str], subject_id: str,
-                 hdf_handle=None):
+                 hdf_handle=None, related_data_key: str = None):
         """
         Additional params compared to super:
         ------
@@ -140,13 +146,13 @@ class LazySubjectData(SubjectDataAbstract):
             Opened hdf file, if any. If None, data loading is deactivated.
         """
         super().__init__(volume_groups, nb_features, streamline_groups,
-                         subject_id)
+                         subject_id, related_data_key=related_data_key)
         self.hdf_handle = hdf_handle
         self.is_lazy = True
 
     @classmethod
     def init_single_subject_from_hdf(
-            cls, subject_id: str, hdf_file, group_info=None):
+            cls, subject_id: str, hdf_file, group_info=None, related_data_key=None):
         """
         Instantiating a single subject data: NOT LOADING info and use __init__
         (so in short: this does basically nothing, the lazy data is kept
@@ -168,7 +174,7 @@ class LazySubjectData(SubjectDataAbstract):
         logger.debug('     Lazy: not loading data.')
 
         return cls(volume_groups, nb_features, streamline_groups, subject_id,
-                   hdf_handle=None)
+                   hdf_handle=None, related_data_key=related_data_key)
 
     @property
     def mri_data_list(self) -> Union[List[LazyMRIData], None]:
@@ -202,7 +208,7 @@ class LazySubjectData(SubjectDataAbstract):
             for group in self.streamline_groups:
                 hdf_group = self.hdf_handle[self.subject_id][group]
                 sft_data_list.append(
-                    LazySFTData.init_sft_data_from_hdf_info(hdf_group))
+                    LazySFTData.init_sft_data_from_hdf_info(hdf_group, related_data_key=self.related_data_key))
 
             return sft_data_list
         else:

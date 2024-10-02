@@ -67,6 +67,21 @@ def _load_connectivity_info(hdf_group: h5py.Group):
     return contains_connectivity, connectivity_nb_blocs, connectivity_labels
 
 
+def _load_related_data(hdf_group, related_data_key: str) -> Union[np.ndarray, None]:
+    related_data = None
+    # Load related data key if specified
+    if related_data_key is not None:
+        # Make sure the related data key is in the hdf5 group
+        if not (related_data_key in hdf_group.keys()):
+            raise KeyError("The key '{}' is not in the hdf5 group."
+                           .format(related_data_key))
+
+        # Load the related data
+        related_data = np.array(hdf_group[related_data_key]).squeeze(1)
+
+    return related_data
+
+
 class _LazyStreamlinesGetter(object):
     def __init__(self, hdf_group):
         self.hdf_group = hdf_group
@@ -160,10 +175,12 @@ class SFTDataAbstract(object):
     all information necessary to treat with streamlines: the data itself and
     _offset, _lengths, space attributes, etc.
     """
+
     def __init__(self, space_attributes: Tuple, space: Space, origin: Origin,
                  contains_connectivity: bool,
                  connectivity_nb_blocs: List = None,
-                 connectivity_labels: np.ndarray = None):
+                 connectivity_labels: np.ndarray = None,
+                 related_data: np.ndarray = None):
         """
         The lazy/non-lazy versions will have more parameters, such as the
         streamlines, the connectivity_matrix. In the case of the lazy version,
@@ -194,6 +211,7 @@ class SFTDataAbstract(object):
         self.contains_connectivity = contains_connectivity
         self.connectivity_nb_blocs = connectivity_nb_blocs
         self.connectivity_labels = connectivity_labels
+        self.related_data = related_data
 
     def __len__(self):
         raise NotImplementedError
@@ -244,6 +262,14 @@ class SFTDataAbstract(object):
         Useful particularly for lazy data, to avoid loading the whole data from
         the hdf5."""
         raise NotImplementedError
+
+    def get_related_data(self,
+                         streamline_ids: Union[List[int], int, slice, None] = None):
+        """Returns the data related to the streamlines."""
+        if self.related_data is None:
+            return None
+        else:
+            return self.related_data[streamline_ids]
 
     def as_sft(self,
                streamline_ids: Union[List[int], int, slice, None] = None) \
@@ -301,7 +327,7 @@ class SFTData(SFTDataAbstract):
         return self._connectivity_matrix
 
     @classmethod
-    def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group):
+    def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group, related_data_key: str = None):
         """
         Creating class instance from the hdf in cases where data is not
         loaded yet. Non-lazy = loading the data here.
@@ -318,7 +344,10 @@ class SFTData(SFTDataAbstract):
         else:
             connectivity_matrix = None
 
-        space_attributes, space, origin = _load_space_attributes_from_hdf(hdf_group)
+        related_data = _load_related_data(hdf_group, related_data_key)
+
+        space_attributes, space, origin = _load_space_attributes_from_hdf(
+            hdf_group)
 
         # Return an instance of SubjectMRIData instantiated through __init__
         # with this loaded data:
@@ -328,7 +357,8 @@ class SFTData(SFTDataAbstract):
                    space=space, origin=origin,
                    contains_connectivity=contains_connectivity,
                    connectivity_nb_blocs=connectivity_nb_blocs,
-                   connectivity_labels=connectivity_labels)
+                   connectivity_labels=connectivity_labels,
+                   related_data=related_data)
 
     def _get_streamlines_as_list(self, streamline_ids):
         if streamline_ids is not None:
@@ -367,7 +397,7 @@ class LazySFTData(SFTDataAbstract):
         return self.streamlines_getter.connectivity_matrix(indxyz)
 
     @classmethod
-    def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group):
+    def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group, related_data_key: str = None):
         space_attributes, space, origin = _load_space_attributes_from_hdf(
             hdf_group)
 
@@ -376,12 +406,15 @@ class LazySFTData(SFTDataAbstract):
 
         streamlines = _LazyStreamlinesGetter(hdf_group)
 
+        related_data = _load_related_data(hdf_group, related_data_key)
+
         return cls(streamlines_getter=streamlines,
                    space_attributes=space_attributes,
                    space=space, origin=origin,
                    contains_connectivity=contains_connectivity,
                    connectivity_nb_blocs=connectivity_nb_blocs,
-                   connectivity_labels=connectivity_labels)
+                   connectivity_labels=connectivity_labels,
+                   related_data=related_data)
 
     def _get_streamlines_as_list(self, streamline_ids):
         streamlines = self.streamlines_getter.get_array_sequence(

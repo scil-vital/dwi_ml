@@ -46,6 +46,8 @@ def prepare_arg_parser():
     p.add_argument('--viz_latent_space_freq', type=int, default=None,
                    help="Frequency at which to visualize latent space.\n"
                    "This is expressed in number of epochs.")
+    p.add_argument('--color_by', type=str, default=None, choices=['dps_bundle_index'],
+                   help="Name of the group in hdf5 to color by.")
     add_memory_args(p, add_lazy_options=True, add_rng=True)
     add_verbose_arg(p)
 
@@ -55,9 +57,13 @@ def prepare_arg_parser():
 def init_from_args(args, sub_loggers_level):
     torch.manual_seed(args.rng)  # Set torch seed
 
+    viz_latent_space_freq = args.viz_latent_space_freq
+    color_by = args.color_by
+
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args, load_testing=False,
-                                          log_level=sub_loggers_level)
+                                          log_level=sub_loggers_level,
+                                          related_data_key=color_by)
 
     # Preparing the model
     # (Direction getter)
@@ -107,11 +113,12 @@ def init_from_args(args, sub_loggers_level):
             from_checkpoint=False, clip_grad=args.clip_grad,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
-            log_level=sub_loggers_level)
+            log_level=sub_loggers_level,
+            related_data_retrieval=color_by is not None)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
 
-    if args.viz_latent_space_freq is not None:
+    if viz_latent_space_freq is not None:
         # Setup to visualize latent space
         save_dir = os.path.join(args.experiments_path,
                                 args.experiment_name, 'latent_space_plots')
@@ -122,16 +129,17 @@ def init_from_args(args, sub_loggers_level):
                                               max_subset_size=1000)
         current_epoch = 0
 
-        def visualize_latent_space(encoding):
+        def visualize_latent_space(encoding, related_data):
             """
-            This is not a clean way to do it. This would require changes in the
-            trainer to allow for a callback system where we could register a
-            function to be called at the end of each epoch to plot the latent space
-            of the data accumulated during the epoch (at each batch).
+            This is not a clean way to do it. This would require changes in
+            the trainer to allow for a callback system where we could
+            register a function to be called at the end of each epoch to
+            plot the latent space of the data accumulated during the epoch
+            (at each batch).
 
-            Also, using this method, the latent space of the last epoch will not be
-            plotted. We would need to calculate which batch step would be the last in
-            the epoch and then plot accordingly.
+            Also, using this method, the latent space of the last epoch will
+            not be plotted. We would need to calculate which batch step would
+            be the last in the epoch and then plot accordingly.
             """
             nonlocal current_epoch, trainer, ls_viz
 
@@ -141,13 +149,14 @@ def init_from_args(args, sub_loggers_level):
 
             changed_epoch = current_epoch != trainer.current_epoch
             if not changed_epoch:
-                ls_viz.add_data_to_plot(encoding)
-            elif changed_epoch and trainer.current_epoch % args.viz_latent_space_freq == 0:
+                ls_viz.add_data_to_plot(encoding, labels=related_data)
+            elif changed_epoch \
+                    and trainer.current_epoch % viz_latent_space_freq == 0:
                 current_epoch = trainer.current_epoch
                 ls_viz.plot(title="Latent space at epoch {}".format(
                     current_epoch))
                 ls_viz.reset_data()
-                ls_viz.add_data_to_plot(encoding)
+                ls_viz.add_data_to_plot(encoding, labels=related_data)
         model.register_hook_post_encoding(visualize_latent_space)
 
     return trainer
@@ -169,10 +178,10 @@ def main():
     assert_outputs_exist(p, args, args.experiments_path)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
-    if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
-                                   "checkpoint")):
-        raise FileExistsError("This experiment already exists. Delete or use "
-                              "script ae_resume_training_from_checkpoint.py.")
+    # if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
+    #                                "checkpoint")):
+    #     raise FileExistsError("This experiment already exists. Delete or use "
+    #                           "script ae_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

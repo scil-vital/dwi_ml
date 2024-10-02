@@ -63,6 +63,11 @@ class BundlesLatentSpaceVisualizer(object):
         self.fig_size = fig_size
         self.random_state = random_state
         self.max_subset_size = max_subset_size
+        if not (self.max_subset_size > 0):
+            raise ValueError(
+                "A max_subset_size of an integer value greater"
+                "than 0 is required.")
+
         self.prefix_numbering = prefix_numbering
         self.reset_warning = reset_warning
 
@@ -81,7 +86,28 @@ class BundlesLatentSpaceVisualizer(object):
         self.tsne = TSNE(n_components=2, random_state=self.random_state)
         self.bundles = {}
 
-    def add_data_to_plot(self, data: np.ndarray, label: str = '_'):
+    def add_data_to_plot(self, data: np.ndarray, labels: List[str]):
+        """
+        Add unprojected data (no t-SNE, no PCA, etc.).
+        This should be directly the output of the model as a numpy array.
+
+        Parameters
+        ----------
+        data: str
+            Unprojected latent space streamlines (N, latent_space_dim).
+        label: np.ndarray
+            Labels for each streamline.
+        """
+        latent_space_streamlines = self._to_numpy(data)
+
+        all_labels = np.unique(labels)
+        for label in all_labels:
+            label_indices = labels == label
+            label_data = latent_space_streamlines[label_indices]
+            label_data = self._resample_max_subset_size(label_data)
+            self.bundles[label] = label_data
+
+    def add_bundle_to_plot(self, data: np.ndarray, label: str = '_'):
         """
         Add unprojected data (no t-SNE, no PCA, etc.).
         This should be directly the output of the model as a numpy array.
@@ -93,26 +119,9 @@ class BundlesLatentSpaceVisualizer(object):
         label: str
             Name of the bundle. Used for the legend.
         """
-        if isinstance(data, torch.Tensor):
-            latent_space_streamlines = data.detach().cpu().numpy()
-        else:
-            latent_space_streamlines = data
-
-        if self.max_subset_size is not None:
-            if not (self.max_subset_size > 0):
-                raise ValueError(
-                    "A max_subset_size of an integer value greater"
-                    "than 0 is required.")
-
-            # Only sample if we need to reduce the number of latent streamlines
-            # to show on the plot.
-            if (len(latent_space_streamlines) > self.max_subset_size):
-                sample_indices = np.random.choice(
-                    len(latent_space_streamlines),
-                    self.max_subset_size, replace=False)
-
-                latent_space_streamlines = \
-                    latent_space_streamlines[sample_indices]
+        latent_space_streamlines = self._to_numpy(data)
+        latent_space_streamlines = self._resample_max_subset_size(
+            latent_space_streamlines)
 
         self.bundles[label] = latent_space_streamlines
 
@@ -140,10 +149,17 @@ class BundlesLatentSpaceVisualizer(object):
             # So that the warning above is only displayed once.
             self.should_call_reset_before_plot = True
 
+        # Start by making sure the number of streamlines doesn't exceed the threshold.
+        for (bname, bdata) in self.bundles.items():
+            if bdata.shape[0] > self.max_subset_size:
+                self.bundles[bname] = self._resample_max_subset_size(bdata)
+
         nb_streamlines = sum(b.shape[0] for b in self.bundles.values())
         LOGGER.info(
             "Plotting a total of {} streamlines".format(nb_streamlines))
 
+        # Build the indices for each bundle to recover the streamlines after
+        # the t-SNE projection.
         bundles_indices = {}
         current_start = 0
         for (bname, bdata) in self.bundles.items():
@@ -193,3 +209,31 @@ class BundlesLatentSpaceVisualizer(object):
             plt.show()
 
         self.current_plot_number += 1
+
+    def _to_numpy(self, data):
+        if isinstance(data, torch.Tensor):
+            return data.detach().cpu().numpy()
+        else:
+            return data
+
+    def _resample_max_subset_size(self, data: np.ndarray):
+        """
+        Resample the data to the max_subset_size.
+        """
+        _resampled = data
+        if self.max_subset_size is not None:
+            if not (self.max_subset_size > 0):
+                raise ValueError(
+                    "A max_subset_size of an integer value greater"
+                    "than 0 is required.")
+
+            # Only sample if we need to reduce the number of latent streamlines
+            # to show on the plot.
+            if (len(data) > self.max_subset_size):
+                sample_indices = np.random.choice(
+                    len(data),
+                    self.max_subset_size, replace=False)
+
+                _resampled = data[sample_indices]
+
+        return _resampled

@@ -37,8 +37,9 @@ class MultisubjectSubset(Dataset):
     Based on torch's dataset class. Provides functions for a DataLoader to
     iterate over data and process batches.
     """
+
     def __init__(self, set_name: str, hdf5_file: str, lazy: bool,
-                 cache_size: int = 0):
+                 cache_size: int = 0, related_data_key: str = None):
 
         self.set_name = set_name
         self.hdf5_file = hdf5_file
@@ -79,6 +80,7 @@ class MultisubjectSubset(Dataset):
         # This is only used in the lazy case.
         self.cache_size = cache_size
         self.volume_cache_manager = None
+        self.related_data_key = related_data_key
 
     def close_all_handles(self):
         if self.subjs_data_list.hdf_handle:
@@ -278,7 +280,7 @@ class MultisubjectSubset(Dataset):
                 # calling this method.
                 logger.debug("     Creating subject '{}'.".format(subj_id))
                 subj_data = self._init_subj_from_hdf(
-                    hdf_handle, subj_id, ref_group_info)
+                    hdf_handle, subj_id, ref_group_info, related_data_key=self.related_data_key)
 
                 # Add subject to the list
                 subj_idx = self.subjs_data_list.add_subject(subj_data)
@@ -335,13 +337,13 @@ class MultisubjectSubset(Dataset):
         else:
             return SubjectsDataList(self.hdf5_file, logger)
 
-    def _init_subj_from_hdf(self, hdf_handle, subject_id, ref_group_info):
+    def _init_subj_from_hdf(self, hdf_handle, subject_id, ref_group_info, related_data_key=None):
         if self.is_lazy:
             return LazySubjectData.init_single_subject_from_hdf(
-                subject_id, hdf_handle, ref_group_info)
+                subject_id, hdf_handle, ref_group_info, related_data_key=related_data_key)
         else:
             return SubjectData.init_single_subject_from_hdf(
-                subject_id, hdf_handle, ref_group_info)
+                subject_id, hdf_handle, ref_group_info, related_data_key=related_data_key)
 
 
 class MultiSubjectDataset:
@@ -356,8 +358,10 @@ class MultiSubjectDataset:
               datasets 'streamlines/data', 'streamlines/offsets',
               'streamlines/lengths', 'streamlines/euclidean_lengths'.
     """
+
     def __init__(self, hdf5_file: str, lazy: bool,
-                 cache_size: int = 0, log_level=None):
+                 cache_size: int = 0, log_level=None,
+                 related_data_key=None):
         """
         Params
         ------
@@ -393,11 +397,11 @@ class MultiSubjectDataset:
         # Preparing the testing set and validation set
         # In non-lazy data, the cache_size is not used.
         self.training_set = MultisubjectSubset(
-            'training', hdf5_file, self.is_lazy, cache_size)
+            'training', hdf5_file, self.is_lazy, cache_size, related_data_key=related_data_key)
         self.validation_set = MultisubjectSubset(
-            'validation', hdf5_file, self.is_lazy, cache_size)
+            'validation', hdf5_file, self.is_lazy, cache_size, related_data_key=related_data_key)
         self.testing_set = MultisubjectSubset(
-            'testing', hdf5_file, self.is_lazy, cache_size)
+            'testing', hdf5_file, self.is_lazy, cache_size, related_data_key=related_data_key)
 
     @property
     def params_for_checkpoint(self) -> Dict[str, Any]:
@@ -478,7 +482,8 @@ class MultiSubjectDataset:
                 self.nb_features = nb_features
 
             if streamline_groups is not None:
-                missing_str = np.setdiff1d(streamline_groups, poss_strea_groups)
+                missing_str = np.setdiff1d(
+                    streamline_groups, poss_strea_groups)
                 if len(missing_str) > 0:
                     raise ValueError("Streamlines {} were not found in the "
                                      "first subject of your hdf5 file."
@@ -498,7 +503,8 @@ class MultiSubjectDataset:
                           self.streamline_groups,
                           self.streamlines_contain_connectivity)
             self.training_set.set_subset_info(*group_info, step_size, compress)
-            self.validation_set.set_subset_info(*group_info, step_size, compress)
+            self.validation_set.set_subset_info(
+                *group_info, step_size, compress)
             self.testing_set.set_subset_info(*group_info, step_size, compress)
 
             # LOADING

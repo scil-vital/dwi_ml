@@ -634,7 +634,7 @@ class HDF5Creator:
                     raise ValueError(
                         "The data_per_streamline key '{}' was not found in "
                         "the sft. Check your tractogram file.".format(dps_key))
-                
+
                 logging.debug("    Include dps \"{}\" in the HDF5.".format(dps_key))
                 streamlines_group.create_dataset('dps_' + dps_key,
                                                  data=sft.data_per_streamline[dps_key])
@@ -669,8 +669,6 @@ class HDF5Creator:
             Reference used to load and send the streamlines in voxel space and
             to create final merged SFT. If the file is a .trk, 'same' is used
             instead.
-        remove_invalid : bool
-            If True, invalid streamlines will be removed
 
         Returns
         -------

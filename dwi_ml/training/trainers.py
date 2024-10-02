@@ -17,7 +17,7 @@ from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import (MainModelAbstract,
                                        ModelWithDirectionGetter)
 from dwi_ml.training.batch_loaders import (
-    DWIMLAbstractBatchLoader, DWIMLBatchLoaderOneInput)
+    DWIMLStreamlinesBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler
 from dwi_ml.training.utils.gradient_norm import compute_gradient_norm
 from dwi_ml.training.utils.monitoring import (
@@ -53,7 +53,7 @@ class DWIMLAbstractTrainer:
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
-                 batch_loader: DWIMLAbstractBatchLoader,
+                 batch_loader: DWIMLStreamlinesBatchLoader,
                  learning_rates: Union[List, float] = None,
                  weight_decay: float = 0.01,
                  optimizer: str = 'Adam', max_epochs: int = 10,
@@ -78,7 +78,7 @@ class DWIMLAbstractTrainer:
         batch_sampler: DWIMLBatchIDSampler
             Instantiated class used for sampling batches.
             Data in batch_sampler.dataset must be already loaded.
-        batch_loader: DWIMLAbstractBatchLoader
+        batch_loader: DWIMLStreamlinesBatchLoader
             Instantiated class with a load_batch method able to load data
             associated to sampled batch ids. Data in batch_sampler.dataset must
             be already loaded.
@@ -461,7 +461,7 @@ class DWIMLAbstractTrainer:
     def init_from_checkpoint(
             cls, model: MainModelAbstract, experiments_path, experiment_name,
             batch_sampler: DWIMLBatchIDSampler,
-            batch_loader: DWIMLAbstractBatchLoader,
+            batch_loader: DWIMLStreamlinesBatchLoader,
             checkpoint_state: dict, new_patience, new_max_epochs, log_level):
         """
         Loads checkpoint information (parameters and states) to instantiate
@@ -1013,7 +1013,45 @@ class DWIMLAbstractTrainer:
             Any other data returned when computing loss. Not used in the
             trainer, but could be useful anywhere else.
         """
-        raise NotImplementedError
+        # Data interpolation has not been done yet. GPU computations are done
+        # here in the main thread.
+        targets, ids_per_subj = data
+
+        # Dataloader always works on CPU. Sending to right device.
+        # (model is already moved).
+        targets = [s.to(self.device, non_blocking=True, dtype=torch.float)
+                   for s in targets]
+
+        # Uses the model's method, with the batch_loader's data.
+        # Possibly skipping the last point if not useful.
+        streamlines_f = targets
+
+        # Possibly add noise to inputs here.
+        logger.debug('*** Computing forward propagation')
+
+        # Now possibly add noise to streamlines (training / valid)
+        streamlines_f = self.batch_loader.add_noise_streamlines_forward(
+            streamlines_f, self.device)
+
+        # Possibly computing directions twice (during forward and loss)
+        # but ok, shouldn't be too heavy. Easier to deal with multiple
+        # projects' requirements by sending whole streamlines rather
+        # than only directions.
+        model_outputs = self.model(streamlines_f)
+        del streamlines_f
+
+        logger.debug('*** Computing loss')
+        targets = self.batch_loader.add_noise_streamlines_loss(
+            targets, self.device)
+
+        results = self.model.compute_loss(model_outputs, targets,
+                                          average_results=True)
+
+        if self.use_gpu:
+            log_gpu_memory_usage(logger)
+
+        # The mean tensor is a single value. Converting to float using item().
+        return results
 
     def fix_parameters(self):
         """

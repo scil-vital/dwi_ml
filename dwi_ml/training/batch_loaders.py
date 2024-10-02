@@ -58,7 +58,7 @@ from dwi_ml.models.main_models import MainModelOneInput, \
 logger = logging.getLogger('batch_loader_logger')
 
 
-class DWIMLAbstractBatchLoader:
+class DWIMLStreamlinesBatchLoader:
     def __init__(self, dataset: MultiSubjectDataset, model: MainModelAbstract,
                  streamline_group_name: str, rng: int,
                  split_ratio: float = 0.,
@@ -197,7 +197,14 @@ class DWIMLAbstractBatchLoader:
                 self.context_subset.compress == self.model.compress_lines:
             logger.debug("Compression rate is the same as when creating "
                          "the hdf5 dataset. Not compressing again.")
+        elif self.model.nb_points is not None and self.model.nb_points == self.context_subset.nb_points:
+            logging.debug("Number of points per streamline is the same"
+                          " as when creating the hdf5. Not resampling again.")
         else:
+            logger.debug("Resample streamlines using: \n" +
+                         "- step_size: {}\n".format(self.model.step_size) +
+                         "- compress_lines: {}".format(self.model.compress_lines) +
+                         "- nb_points: {}".format(self.model.nb_points))
             sft = resample_or_compress(sft, self.model.step_size,
                                        self.model.nb_points,
                                        self.model.compress_lines)
@@ -314,6 +321,7 @@ class DWIMLAbstractBatchLoader:
             sft.to_vox()
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
+
         batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
 
         return batch_streamlines, final_s_ids_per_subj
@@ -351,7 +359,7 @@ class DWIMLAbstractBatchLoader:
                 connectivity_nb_blocs, connectivity_labels)
 
 
-class DWIMLBatchLoaderOneInput(DWIMLAbstractBatchLoader):
+class DWIMLBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
     """
     Loads:
         input = one volume group

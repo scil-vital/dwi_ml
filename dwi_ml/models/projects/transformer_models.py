@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from typing import Union, List, Tuple, Optional
+from typing import Union, List, Optional
 
 from dipy.data import get_sphere
 import numpy as np
@@ -137,7 +137,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
                  neighborhood_type: Optional[str] = None,
                  neighborhood_radius: Optional[int] = None,
                  neighborhood_resolution: Optional[float] = None,
-                 log_level=logging.root.level):
+                 log_level=logging.root.level,
+                 nb_points: Optional[int] = None):
         """
         Note about embedding size:
             In the original model + SrcOnly model: defines d_model.
@@ -185,6 +186,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         super().__init__(
             # MainAbstract
             experiment_name=experiment_name, step_size=step_size,
+            nb_points=nb_points,
             compress_lines=compress_lines, log_level=log_level,
             # Neighborhood
             neighborhood_type=neighborhood_type,
@@ -610,7 +612,7 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
 
     def _run_embeddings(self, inputs, use_padding, batch_max_len):
         return self._run_input_embedding(inputs, use_padding, batch_max_len)
-    
+
     def _run_position_encoding(self, inputs):
         inputs = self.position_encoding_layer(inputs)
         inputs = self.dropout(inputs)

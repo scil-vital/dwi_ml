@@ -94,7 +94,7 @@ class BundlesLatentSpaceVisualizer(object):
             Name of the bundle. Used for the legend.
         """
         if isinstance(data, torch.Tensor):
-            latent_space_streamlines = data.detach().numpy()
+            latent_space_streamlines = data.detach().cpu().numpy()
         else:
             latent_space_streamlines = data
 

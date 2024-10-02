@@ -9,18 +9,33 @@ from nibabel.streamlines.tractogram import (PerArrayDict, PerArraySequenceDict)
 import numpy as np
 
 from scilpy.tractograms.streamline_operations import \
-    resample_streamlines_step_size, compress_sft
+    resample_streamlines_num_points, resample_streamlines_step_size, \
+    compress_sft
 
 
 def resample_or_compress(sft, step_size_mm: float = None,
-                         compress: float = None):
-    if step_size_mm is not None:
+                         nb_points: int = None,
+                         compress: float = None,
+                         remove_invalid: bool = False):
+    if step_size_mm:
         # Note. No matter the chosen space, resampling is done in mm.
-        logging.debug("            Resampling: {}".format(step_size_mm))
+        logging.debug("    Resampling (step size): {}mm".format(step_size_mm))
         sft = resample_streamlines_step_size(sft, step_size=step_size_mm)
-    if compress is not None:
-        logging.debug("            Compressing: {}".format(compress))
+    elif nb_points:
+        logging.debug("    Resampling: " +
+                      "{} points per streamline".format(nb_points))
+        sft = resample_streamlines_num_points(sft, nb_points)
+    elif compress:
+        logging.debug("    Compressing: {}".format(compress))
         sft = compress_sft(sft, compress)
+
+    if remove_invalid:
+        logging.debug("    Total: {:,.0f} streamlines. Now removing "
+                      "invalid streamlines.".format(len(sft)))
+        sft.remove_invalid_streamlines()
+        logging.info("    Final number of streamlines: {:,.0f}."
+                     .format(len(sft)))
+
     return sft
 
 

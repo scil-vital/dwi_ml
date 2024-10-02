@@ -1022,15 +1022,9 @@ class DWIMLAbstractTrainer:
         targets = [s.to(self.device, non_blocking=True, dtype=torch.float)
                    for s in targets]
 
-        # Getting the inputs points from the volumes.
         # Uses the model's method, with the batch_loader's data.
         # Possibly skipping the last point if not useful.
         streamlines_f = targets
-        if isinstance(self.model, ModelWithDirectionGetter) and \
-                not self.model.direction_getter.add_eos:
-            # No EOS = We don't use the last coord because it does not have an
-            # associated target direction.
-            streamlines_f = [s[:-1, :] for s in streamlines_f]
 
         # Possibly add noise to inputs here.
         logger.debug('*** Computing forward propagation')

@@ -14,8 +14,8 @@ import os
 import comet_ml  # noqa F401
 import torch
 
-from scilpy.io.utils import (
-    assert_inputs_exist, assert_outputs_exist, add_verbose_arg)
+from scilpy.io.utils import (assert_inputs_exist, assert_outputs_exist,
+                             add_verbose_arg)
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset
 from dwi_ml.experiment_utils.prints import format_dict_to_str
@@ -27,11 +27,11 @@ from dwi_ml.training.trainers import DWIMLAbstractTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader)
+from dwi_ml.training.utils.trainer import (add_training_args, run_experiment,
+                                           format_lr)
 from dwi_ml.training.batch_loaders import DWIMLStreamlinesBatchLoader
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
-from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
-    format_lr
 
 
 def prepare_arg_parser():
@@ -66,6 +66,7 @@ def init_from_args(args, sub_loggers_level):
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         # INPUTS: verifying args
+
         if args.model == 'finta':
             model = ModelAE(
                 experiment_name=args.experiment_name,
@@ -144,7 +145,7 @@ def main():
     if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
                                    "checkpoint")):
         raise FileExistsError("This experiment already exists. Delete or use "
-                              "script l2t_resume_training_from_checkpoint.py.")
+                              "script ae_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

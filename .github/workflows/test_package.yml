@@ -25,6 +25,7 @@ jobs:
 
     - name: Install dependencies
       run: |
+        export SETUPTOOLS_USE_DISTUTILS=stdlib
         pip install --upgrade pip
         pip install pytest
         pip install -e .

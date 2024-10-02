@@ -87,7 +87,12 @@ def prepare_hdf5_creator(args):
     # Instantiate a creator and perform checks
     creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
                           training_subjs, validation_subjs, testing_subjs,
-                          groups_config, args.step_size, args.compress_th,
+                          groups_config,
+                          args.dps_keys,
+                          args.step_size,
+                          args.nb_points,
+                          args.compress_th,
+                          args.remove_invalid,
                           args.enforce_files_presence,
                           args.save_intermediate, intermediate_subdir)
 

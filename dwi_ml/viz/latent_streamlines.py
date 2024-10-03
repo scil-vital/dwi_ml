@@ -257,12 +257,16 @@ class BundlesLatentSpaceVisualizer(object):
             self.fig, self.axes = self._init_figure()
 
         self.axes[0].clear()
-        self._plot_bundle(
-            self.axes[0],
-            all_projected_streamlines[:, 0],
-            all_projected_streamlines[:, 1],
-            'Best epoch ({})'.format(self.best_epoch))
+        for (bname, bdata) in self.bundles.items():
+            bindices = bundles_indices[bname]
+            proj_data = all_projected_streamlines[bindices]
+            blabel = self.bundle_mapping.get(
+                bname, bname) if self.bundle_mapping else bname
 
+            self._plot_bundle(
+                self.axes[0], proj_data[:, 0], proj_data[:, 1], blabel)
+
+        self.axes[0].set_title("Best epoch ({})".format(self.best_epoch))
         self._set_legend(self.axes[0], len(self.bundles))
 
         # Clear data

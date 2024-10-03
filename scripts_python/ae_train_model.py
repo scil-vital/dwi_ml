@@ -167,12 +167,16 @@ def init_from_args(args, sub_loggers_level):
             changed_epoch = current_epoch != trainer.current_epoch - 1
             if not changed_epoch:
                 ls_viz.add_data_to_plot(encoding, labels=related_data)
-            elif changed_epoch \
-                    and (trainer.current_epoch - 1) % viz_latent_space_freq == 0:
+            elif changed_epoch:
                 current_epoch = trainer.current_epoch - 1
-                ls_viz.plot(current_epoch,
-                            best_epoch=trainer.best_epoch_monitor.best_epoch)
-                ls_viz.reset_data()
+                if (trainer.current_epoch - 1) % viz_latent_space_freq == 0:
+                    ls_viz.plot(current_epoch,
+                                best_epoch=trainer.best_epoch_monitor.best_epoch)
+                    ls_viz.reset_data()
+                else:
+                    ls_viz.check_and_register_best_epoch(
+                        current_epoch, trainer.best_epoch_monitor.best_epoch)
+
                 ls_viz.add_data_to_plot(encoding, labels=related_data)
         model.register_hook_post_encoding(visualize_latent_space)
 

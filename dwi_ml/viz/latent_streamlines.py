@@ -5,9 +5,85 @@ from sklearn.manifold import TSNE
 import numpy as np
 import torch
 
+import math
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+from matplotlib.cm import hsv
 
 LOGGER = logging.getLogger(__name__)
+
+
+class ColorManager(object):
+    def __init__(self, max_num_bundles: int = 40):
+        self.bundle_color_map = {}
+        self.color_map = self._init_colormap(max_num_bundles)
+
+    def _init_colormap(self, number_of_distinct_colors):
+        """
+        Create a colormap with a number of distinct colors.
+        Needed to have bigger color maps for more bundles.
+
+        Code directly copied from: 
+        https://stackoverflow.com/questions/42697933/colormap-with-maximum-distinguishable-colours
+
+        """
+        if number_of_distinct_colors == 0:
+            number_of_distinct_colors = 80
+
+        number_of_shades = 7
+        number_of_distinct_colors_with_multiply_of_shades = int(
+            math.ceil(number_of_distinct_colors / number_of_shades) * number_of_shades)
+
+        # Create an array with uniformly drawn floats taken from <0, 1) partition
+        linearly_distributed_nums = np.arange(
+            number_of_distinct_colors_with_multiply_of_shades) / number_of_distinct_colors_with_multiply_of_shades
+
+        # We are going to reorganise monotonically growing numbers in such way that there will be single array with saw-like pattern
+        #     but each saw tooth is slightly higher than the one before
+        # First divide linearly_distributed_nums into number_of_shades sub-arrays containing linearly distributed numbers
+        arr_by_shade_rows = linearly_distributed_nums.reshape(
+            number_of_shades, number_of_distinct_colors_with_multiply_of_shades // number_of_shades)
+
+        # Transpose the above matrix (columns become rows) - as a result each row contains saw tooth with values slightly higher than row above
+        arr_by_shade_columns = arr_by_shade_rows.T
+
+        # Keep number of saw teeth for later
+        number_of_partitions = arr_by_shade_columns.shape[0]
+
+        # Flatten the above matrix - join each row into single array
+        nums_distributed_like_rising_saw = arr_by_shade_columns.reshape(-1)
+
+        # HSV colour map is cyclic (https://matplotlib.org/tutorials/colors/colormaps.html#cyclic), we'll use this property
+        initial_cm = hsv(nums_distributed_like_rising_saw)
+
+        lower_partitions_half = number_of_partitions // 2
+        upper_partitions_half = number_of_partitions - lower_partitions_half
+
+        # Modify lower half in such way that colours towards beginning of partition are darker
+        # First colours are affected more, colours closer to the middle are affected less
+        lower_half = lower_partitions_half * number_of_shades
+        for i in range(3):
+            initial_cm[0:lower_half, i] *= np.arange(0.2, 1, 0.8/lower_half)
+
+        # Modify second half in such way that colours towards end of partition are less intense and brighter
+        # Colours closer to the middle are affected less, colours closer to the end are affected more
+        for i in range(3):
+            for j in range(upper_partitions_half):
+                modifier = np.ones(
+                    number_of_shades) - initial_cm[lower_half + j * number_of_shades: lower_half + (j + 1) * number_of_shades, i]
+                modifier = j * modifier / upper_partitions_half
+                initial_cm[lower_half + j * number_of_shades: lower_half +
+                           (j + 1) * number_of_shades, i] += modifier
+
+        return ListedColormap(initial_cm)
+
+    def get_color(self, label: str):
+        if label not in self.bundle_color_map:
+            self.bundle_color_map[label] = \
+                self.color_map(
+                len(self.bundle_color_map))
+
+        return self.bundle_color_map[label]
 
 
 class BundlesLatentSpaceVisualizer(object):
@@ -77,6 +153,7 @@ class BundlesLatentSpaceVisualizer(object):
 
         self.tsne = TSNE(n_components=2, random_state=self.random_state)
         self.bundles = {}
+        self.bundle_color_manager = ColorManager()
 
         self.fig, self.axes = None, None
         self.best_epoch = -1
@@ -128,6 +205,68 @@ class BundlesLatentSpaceVisualizer(object):
             latent_space_streamlines)
 
         self.bundles[label] = latent_space_streamlines
+
+    def check_and_register_best_epoch(self, epoch: int, best_epoch: int = -1):
+        """
+        Finalize the epoch by plotting the t-SNE projection of the latent space streamlines.
+        This should be called once after adding all the data to plot using
+        "add_data_to_plot".
+
+        Parameters
+        ----------
+        epoch: int
+            Current epoch.
+        best_epoch: int
+            Best epoch.
+        """
+        is_new_best = best_epoch > self.best_epoch
+
+        if not is_new_best:
+            return
+
+        assert best_epoch == epoch, "The best epoch should be the current epoch since it just changed."
+
+        # If we have a new best epoch, we need to update the plot on the left.
+        self.best_epoch = best_epoch
+
+        for (bname, bdata) in self.bundles.items():
+            if bdata.shape[0] > self.max_subset_size:
+                self.bundles[bname] = self._resample_max_subset_size(bdata)
+
+        nb_streamlines = sum(b.shape[0] for b in self.bundles.values())
+        LOGGER.info(
+            "New best epoch with a total of {} streamlines".format(nb_streamlines))
+
+        # Build the indices for each bundle to recover the streamlines after
+        # the t-SNE projection.
+        bundles_indices = {}
+        current_start = 0
+        for (bname, bdata) in self.bundles.items():
+            bundles_indices[bname] = np.arange(
+                current_start, current_start + bdata.shape[0])
+            current_start += bdata.shape[0]
+
+        assert current_start == nb_streamlines
+
+        all_streamlines = np.concatenate(list(self.bundles.values()), axis=0)
+
+        LOGGER.info("Fitting TSNE projection.")
+        all_projected_streamlines = self.tsne.fit_transform(all_streamlines)
+
+        if self.fig is None or self.axes is None:
+            self.fig, self.axes = self._init_figure()
+
+        self.axes[0].clear()
+        self._plot_bundle(
+            self.axes[0],
+            all_projected_streamlines[:, 0],
+            all_projected_streamlines[:, 1],
+            'Best epoch ({})'.format(self.best_epoch))
+
+        self._set_legend(self.axes[0], len(self.bundles))
+
+        # Clear data
+        self.reset_data()
 
     def plot(self, epoch: int, figure_name_prefix: str = 'lt_space', best_epoch: int = -1):
         """
@@ -218,9 +357,14 @@ class BundlesLatentSpaceVisualizer(object):
 
         self.current_plot_number += 1
 
-    def _set_legend(self, ax, nb_bundles):
+    def _set_legend(self, ax, nb_bundles, order=True):
         if nb_bundles > 1:
-            ax.legend(fontsize=6, loc='center left', bbox_to_anchor=(1, 0.5))
+            handles, labels = ax.get_legend_handles_labels()
+            if order:
+                labels, handles = zip(
+                    *sorted(zip(labels, handles), key=lambda t: t[0]))
+            ax.legend(handles, labels, fontsize=6,
+                      loc='center left', bbox_to_anchor=(1, 0.5))
 
     def _plot_bundle(self, ax, dim1, dim2, blabel):
         ax.scatter(
@@ -230,6 +374,7 @@ class BundlesLatentSpaceVisualizer(object):
             alpha=0.9,
             edgecolors='black',
             linewidths=0.5,
+            color=self.bundle_color_manager.get_color(blabel)
         )
 
     def _clear_figures(self, clear_best: bool):

@@ -216,19 +216,6 @@ class ModelConvNextAE(MainModelAbstract):
                 padding_mode='reflect'),
         )
 
-    @property
-    def params_for_checkpoint(self):
-        """All parameters necessary to create again the same model. Will be
-        used in the trainer, when saving the checkpoint state. Params here
-        will be used to re-create the model when starting an experiment from
-        checkpoint. You should be able to re-create an instance of your
-        model with those params."""
-        # p = super().params_for_checkpoint()
-        p = {'kernel_size': self.kernel_size,
-             'latent_space_dims': self.latent_space_dims,
-             'experiment_name': self.experiment_name}
-        return p
-
     def forward(
         self,
         input_streamlines: List[torch.tensor],

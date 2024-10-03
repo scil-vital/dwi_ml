@@ -29,18 +29,16 @@ def _build_arg_parser():
     add_arg_existing_experiment_path(p)
     # Add_args_testing_subj_hdf5(p)
 
-    p.add_argument('in_tractogram',
-                   help="If set, saves the tractogram with the loss per point "
-                   "as a data per point (color)")
+    p.add_argument('in_tractogram', type=str,
+                   help="Tractogram to autoencode.")
 
-    p.add_argument('out_tractogram',
-                   help="If set, saves the tractogram with the loss per point "
-                   "as a data per point (color)")
+    p.add_argument('out_tractogram', type=str,
+                   help="Autoencoded tractogram.")
 
     # Additional arg for projects
     p.add_argument('--model', type=str, choices=['finta', 'convnext'],
                    default='finta',
-                   help='Type of model to train')
+                   help='Type of model to use.')
 
     # Options
     p.add_argument('--normalize', action='store_true')
@@ -56,10 +54,34 @@ def _build_arg_parser():
 def autoencode_streamlines(
     model, sft, device, batch_size=5000, normalize=False
 ):
+    """ Autoencode a tractogram. Streamlines are loaded in batches to make
+    it possible to autoencode large tractogram. This function returns a
+    generator instead of an actual tractogram for the same reason.
+
+    Parameters
+    ----------
+    model: MainModelAbstract
+        Autoencoder
+    sft: StatefulTractogram
+        Tractogram to autoencode
+    device: torch.device
+        GPU or CPU.
+    batch_size: int
+        Number of streamlines to autoencode at once.
+    normalize: bool
+        Whether to normalize the streamline coordinates before
+        inputting them to the model.
+
+    Returns
+    -------
+    _autoencode_streamlines: generator
+        Generator function which will autoencode.
+    """
+
     sft.to_vox()
     sft.to_corner()
 
-    bundle = set_number_of_points(sft.streamlines, 256)
+    bundle = sft.streamlines
 
     logging.info("Running model to compute loss")
     batch_size = batch_size

@@ -12,6 +12,8 @@ from matplotlib.cm import hsv
 
 LOGGER = logging.getLogger(__name__)
 
+DEFAULT_BUNDLE_NAME = 'UNK'
+
 
 class ColorManager(object):
     def __init__(self, max_num_bundles: int = 40):
@@ -180,13 +182,25 @@ class BundlesLatentSpaceVisualizer(object):
             Labels for each streamline.
         """
         latent_space_streamlines = self._to_numpy(data)
+        if labels is None:
+            self.bundles[DEFAULT_BUNDLE_NAME] = latent_space_streamlines
+        else:
+            all_labels = np.unique(labels)
+            _remaining_indices = np.arange(len(labels))
+            for label in all_labels:
+                label_indices = labels[_remaining_indices] == label
+                label_data = latent_space_streamlines[_remaining_indices][label_indices]
+                label_data = self._resample_max_subset_size(label_data)
+                self.bundles[label] = label_data
 
-        all_labels = np.unique(labels)
-        for label in all_labels:
-            label_indices = labels == label
-            label_data = latent_space_streamlines[label_indices]
-            label_data = self._resample_max_subset_size(label_data)
-            self.bundles[label] = label_data
+                _remaining_indices = _remaining_indices[~label_indices]
+
+            if len(_remaining_indices) > 0:
+                LOGGER.warning(
+                    "Some streamlines were not considered in the bundles,"
+                    "some labels are missing.\n"
+                    "Added them to the {} bundle.".format(DEFAULT_BUNDLE_NAME))
+                self.bundles[DEFAULT_BUNDLE_NAME] = latent_space_streamlines[all_indices]
 
     def add_bundle_to_plot(self, data: np.ndarray, label: str = '_'):
         """

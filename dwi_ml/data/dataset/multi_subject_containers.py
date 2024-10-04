@@ -38,8 +38,7 @@ class MultisubjectSubset(Dataset):
     iterate over data and process batches.
     """
 
-    def __init__(self, set_name: str, hdf5_file: str, lazy: bool,
-                 cache_size: int = 0, related_data_key: str = None):
+    def __init__(self, set_name: str, hdf5_file: str, lazy: bool, cache_size: int = 0):
 
         self.set_name = set_name
         self.hdf5_file = hdf5_file
@@ -80,7 +79,6 @@ class MultisubjectSubset(Dataset):
         # This is only used in the lazy case.
         self.cache_size = cache_size
         self.volume_cache_manager = None
-        self.related_data_key = related_data_key
 
     def close_all_handles(self):
         if self.subjs_data_list.hdf_handle:
@@ -280,7 +278,7 @@ class MultisubjectSubset(Dataset):
                 # calling this method.
                 logger.debug("     Creating subject '{}'.".format(subj_id))
                 subj_data = self._init_subj_from_hdf(
-                    hdf_handle, subj_id, ref_group_info, related_data_key=self.related_data_key)
+                    hdf_handle, subj_id, ref_group_info)
 
                 # Add subject to the list
                 subj_idx = self.subjs_data_list.add_subject(subj_data)
@@ -337,13 +335,13 @@ class MultisubjectSubset(Dataset):
         else:
             return SubjectsDataList(self.hdf5_file, logger)
 
-    def _init_subj_from_hdf(self, hdf_handle, subject_id, ref_group_info, related_data_key=None):
+    def _init_subj_from_hdf(self, hdf_handle, subject_id, ref_group_info):
         if self.is_lazy:
             return LazySubjectData.init_single_subject_from_hdf(
-                subject_id, hdf_handle, ref_group_info, related_data_key=related_data_key)
+                subject_id, hdf_handle, ref_group_info)
         else:
             return SubjectData.init_single_subject_from_hdf(
-                subject_id, hdf_handle, ref_group_info, related_data_key=related_data_key)
+                subject_id, hdf_handle, ref_group_info)
 
 
 class MultiSubjectDataset:
@@ -360,8 +358,7 @@ class MultiSubjectDataset:
     """
 
     def __init__(self, hdf5_file: str, lazy: bool,
-                 cache_size: int = 0, log_level=None,
-                 related_data_key=None):
+                 cache_size: int = 0, log_level=None):
         """
         Params
         ------
@@ -397,11 +394,11 @@ class MultiSubjectDataset:
         # Preparing the testing set and validation set
         # In non-lazy data, the cache_size is not used.
         self.training_set = MultisubjectSubset(
-            'training', hdf5_file, self.is_lazy, cache_size, related_data_key=related_data_key)
+            'training', hdf5_file, self.is_lazy, cache_size)
         self.validation_set = MultisubjectSubset(
-            'validation', hdf5_file, self.is_lazy, cache_size, related_data_key=related_data_key)
+            'validation', hdf5_file, self.is_lazy, cache_size)
         self.testing_set = MultisubjectSubset(
-            'testing', hdf5_file, self.is_lazy, cache_size, related_data_key=related_data_key)
+            'testing', hdf5_file, self.is_lazy, cache_size)
 
     @property
     def params_for_checkpoint(self) -> Dict[str, Any]:

@@ -630,6 +630,8 @@ class HDF5Creator:
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
 
+            dps_group = streamlines_group.create_group('data_per_streamline')
+
             for dps_key in self.dps_keys:
                 if dps_key not in sft.data_per_streamline:
                     raise ValueError(
@@ -638,8 +640,9 @@ class HDF5Creator:
 
                 logging.debug(
                     "    Include dps \"{}\" in the HDF5.".format(dps_key))
-                streamlines_group.create_dataset('dps_' + dps_key,
-                                                 data=sft.data_per_streamline[dps_key])
+
+                dps_group.create_dataset(
+                    dps_key, data=sft.data_per_streamline[dps_key])
 
             # Accessing private Dipy values, but necessary.
             # We need to deconstruct the streamlines into arrays with

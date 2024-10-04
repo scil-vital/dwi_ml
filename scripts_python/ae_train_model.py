@@ -77,8 +77,7 @@ def init_from_args(args, sub_loggers_level):
 
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args, load_testing=False,
-                                          log_level=sub_loggers_level,
-                                          related_data_key=color_by)
+                                          log_level=sub_loggers_level)
 
     # Preparing the model
     # (Direction getter)
@@ -128,8 +127,7 @@ def init_from_args(args, sub_loggers_level):
             from_checkpoint=False, clip_grad=args.clip_grad,
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
-            log_level=sub_loggers_level,
-            related_data_retrieval=color_by is not None)
+            log_level=sub_loggers_level)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
 
@@ -146,7 +144,7 @@ def init_from_args(args, sub_loggers_level):
                                               bundle_mapping=bundle_mapping)
         current_epoch = -1
 
-        def visualize_latent_space(encoding, related_data):
+        def visualize_latent_space(encoding, data_per_streamline):
             """
             This is not a clean way to do it. This would require changes in
             the trainer to allow for a callback system where we could
@@ -164,9 +162,11 @@ def init_from_args(args, sub_loggers_level):
             if not trainer.model.context == 'training':
                 return
 
+            bundle_index = data_per_streamline['bundle_index'].squeeze(1)
+
             changed_epoch = current_epoch != trainer.current_epoch - 1
             if not changed_epoch:
-                ls_viz.add_data_to_plot(encoding, labels=related_data)
+                ls_viz.add_data_to_plot(encoding, labels=bundle_index)
             elif changed_epoch:
                 current_epoch = trainer.current_epoch - 1
                 if (trainer.current_epoch - 1) % viz_latent_space_freq == 0:
@@ -177,7 +177,7 @@ def init_from_args(args, sub_loggers_level):
                     ls_viz.check_and_register_best_epoch(
                         current_epoch, trainer.best_epoch_monitor.best_epoch)
 
-                ls_viz.add_data_to_plot(encoding, labels=related_data)
+                ls_viz.add_data_to_plot(encoding, labels=bundle_index)
         model.register_hook_post_encoding(visualize_latent_space)
 
     return trainer
@@ -199,10 +199,10 @@ def main():
     assert_outputs_exist(p, args, args.experiments_path)
 
     # Verify if a checkpoint has been saved. Else create an experiment.
-    # if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
-    #                                "checkpoint")):
-    #     raise FileExistsError("This experiment already exists. Delete or use "
-    #                           "script ae_resume_training_from_checkpoint.py.")
+    if os.path.exists(os.path.join(args.experiments_path, args.experiment_name,
+                                   "checkpoint")):
+        raise FileExistsError("This experiment already exists. Delete or use "
+                              "script ae_resume_training_from_checkpoint.py.")
 
     trainer = init_from_args(args, sub_loggers_level)
 

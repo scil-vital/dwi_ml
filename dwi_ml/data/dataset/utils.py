@@ -7,8 +7,7 @@ from dwi_ml.experiment_utils.timer import Timer
 
 def prepare_multisubjectdataset(args, load_training=True, load_validation=True,
                                 load_testing=True,
-                                log_level=logging.root.level,
-                                related_data_key=None):
+                                log_level=logging.root.level):
     """
     Instantiates a MultiSubjectDataset AND loads data.
 
@@ -20,7 +19,7 @@ def prepare_multisubjectdataset(args, load_training=True, load_validation=True,
     with Timer("\nPreparing datasets", newline=True, color='blue'):
         dataset = MultiSubjectDataset(
             args.hdf5_file, lazy=args.lazy, cache_size=args.cache_size,
-            log_level=log_level, related_data_key=related_data_key)
+            log_level=log_level)
         dataset.load_data(load_training, load_validation, load_testing)
 
         logging.info("Number of subjects loaded: \n"

@@ -106,7 +106,7 @@ class ModelAE(MainModelAbstract):
 
     def forward(self,
                 input_streamlines: List[torch.tensor],
-                related_data=None
+                data_per_streamline: dict = None
                 ):
         """Run the model on a batch of sequences.
 
@@ -127,7 +127,7 @@ class ModelAE(MainModelAbstract):
         encoded = self.encode(input_streamlines)
 
         for hook in self.post_encoding_hooks:
-            hook(encoded, related_data)
+            hook(encoded, data_per_streamline)
 
         x = self.decode(encoded)
         return x

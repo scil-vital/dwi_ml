@@ -58,6 +58,16 @@ from dwi_ml.models.main_models import MainModelOneInput, \
 logger = logging.getLogger('batch_loader_logger')
 
 
+def _dps_to_tensors(dps: dict, device='cpu'):
+    """
+    Convert a list of DPS to a list of tensors.
+    """
+    dps_tensors = {}
+    for key, value in dps.items():
+        dps_tensors[key] = torch.tensor(value, device=device)
+    return dps_tensors
+
+
 class DWIMLStreamlinesBatchLoader:
     def __init__(self, dataset: MultiSubjectDataset, model: MainModelAbstract,
                  streamline_group_name: str, rng: int,
@@ -323,91 +333,9 @@ class DWIMLStreamlinesBatchLoader:
             batch_streamlines.extend(sft.streamlines)
 
         batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
+        data_per_streamline = _dps_to_tensors(sft.data_per_streamline)
 
-        return batch_streamlines, final_s_ids_per_subj
-
-    def load_batch_streamlines_and_related(
-            self, streamline_ids_per_subj: List[Tuple[int, list]]):
-        """
-        Fetches the chosen streamlines for all subjects in batch.
-        Pocesses data augmentation.
-
-        Torch uses this function to process the data with the dataloader
-        parallel workers (on cpu). To be used as collate_fn.
-
-        Parameters
-        ----------
-        streamline_ids_per_subj: List[Tuple[int, list]]
-            The list of streamline ids for each subject (relative ids inside
-            each subject's tractogram) for this batch.
-
-        Returns
-        -------
-            (batch_streamlines, final_s_ids_per_subj)
-        Where
-            - batch_streamlines: list[torch.tensor]
-                The new streamlines after data augmentation, IN VOXEL SPACE,
-                CORNER.
-            - final_s_ids_per_subj: Dict[int, slice]
-                The new streamline ids per subj in this augmented batch.
-        """
-        if self.context is None:
-            raise ValueError("Context must be set prior to using the batch "
-                             "loader.")
-
-        # The batch's streamline ids will change throughout processing because
-        # of data augmentation, so we need to do it subject by subject to
-        # keep track of the streamline ids. These final ids will correspond to
-        # the loaded, processed streamlines, not to the ids in the hdf5 file.
-        final_s_ids_per_subj = defaultdict(slice)
-        batch_streamlines = []
-        streamlines_related_data = []
-        for subj, s_ids in streamline_ids_per_subj:
-            logger.debug(
-                "            Data loader: Processing data preparation for "
-                "subj {} (preparing {} streamlines)".format(subj, len(s_ids)))
-
-            # No cache for the sft data. Accessing it directly.
-            # Note: If this is used through the dataloader, multiprocessing
-            # is used. Each process will open a handle.
-            subj_data = \
-                self.context_subset.subjs_data_list.get_subj_with_handle(subj)
-            subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
-
-            # Get streamlines as sft
-            logger.debug("            Loading sampled streamlines...")
-            sft = subj_sft_data.as_sft(s_ids)
-
-            # TODO: modify this list consequently to the data augmentations.
-            # Currently, if the data augmentation adds/removes streamlines,
-            # the related data won't match the streamlines list anymore.
-            related_data = subj_sft_data.get_related_data(
-                s_ids)  # Can return None
-            sft = self._data_augmentation_sft(sft)
-
-            # Remember the indices of this subject's (augmented) streamlines
-            ids_start = len(batch_streamlines)
-            ids_end = ids_start + len(sft)
-            final_s_ids_per_subj[subj] = slice(ids_start, ids_end)
-
-            # Add all (augmented) streamlines to the batch
-            # What we want is the streamline coordinates, to eventually get
-            # the underlying input(s). Sending to vox and to corner to
-            # be able to use our trilinear interpolation
-            sft.to_vox()
-            sft.to_corner()
-            batch_streamlines.extend(sft.streamlines)
-
-            if related_data is not None:
-                streamlines_related_data.extend(related_data)
-
-        batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
-
-        if len(streamlines_related_data) > 0:
-            assert len(streamlines_related_data) == len(batch_streamlines), \
-                "Related data should have the same length as the streamlines."
-
-        return batch_streamlines, final_s_ids_per_subj, streamlines_related_data
+        return batch_streamlines, final_s_ids_per_subj, data_per_streamline
 
     def load_batch_connectivity_matrices(
             self, streamline_ids_per_subj: Dict[int, slice]):

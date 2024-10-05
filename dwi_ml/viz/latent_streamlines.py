@@ -105,7 +105,7 @@ class BundlesLatentSpaceVisualizer(object):
 
     def __init__(self,
                  save_dir: str,
-                 fig_size: Union[List, Tuple] = (16, 8),
+                 fig_size: Union[List, Tuple] = (10, 8),
                  random_state: int = 42,
                  max_subset_size: int = None,
                  prefix_numbering: bool = False,
@@ -157,8 +157,7 @@ class BundlesLatentSpaceVisualizer(object):
         self.bundles = {}
         self.bundle_color_manager = ColorManager()
 
-        self.fig, self.axes = None, None
-        self.best_epoch = -1
+        self.fig, self.ax = None, None
 
     def reset_data(self):
         """
@@ -221,72 +220,7 @@ class BundlesLatentSpaceVisualizer(object):
 
         self.bundles[label] = latent_space_streamlines
 
-    # def update_best_epoch(self, epoch: int):
-    #     """
-    #     Finalize the epoch by plotting the t-SNE projection of the latent space streamlines.
-    #     This should be called once after adding all the data to plot using
-    #     "add_data_to_plot".
-
-    #     Parameters
-    #     ----------
-    #     epoch: int
-    #         Current epoch.
-    #     best_epoch: int
-    #         Best epoch.
-    #     """
-    #     if epoch == self.best_epoch:
-    #         LOGGER.warning(
-    #             "The current epoch is the same as the best epoch. "
-    #             "Skipping plot update.")
-    #         return
-
-    #     # If we have a new best epoch, we need to update the plot on the left.
-    #     self.best_epoch = epoch
-
-    #     for (bname, bdata) in self.bundles.items():
-    #         if bdata.shape[0] > self.max_subset_size:
-    #             self.bundles[bname] = self._resample_max_subset_size(bdata)
-
-    #     nb_streamlines = sum(b.shape[0] for b in self.bundles.values())
-    #     LOGGER.info(
-    #         "New best epoch with a total of {} streamlines".format(nb_streamlines))
-
-    #     # Build the indices for each bundle to recover the streamlines after
-    #     # the t-SNE projection.
-    #     bundles_indices = {}
-    #     current_start = 0
-    #     for (bname, bdata) in self.bundles.items():
-    #         bundles_indices[bname] = np.arange(
-    #             current_start, current_start + bdata.shape[0])
-    #         current_start += bdata.shape[0]
-
-    #     assert current_start == nb_streamlines
-
-    #     all_streamlines = np.concatenate(list(self.bundles.values()), axis=0)
-
-    #     LOGGER.info("Fitting TSNE projection.")
-    #     all_projected_streamlines = self.tsne.fit_transform(all_streamlines)
-
-    #     if self.fig is None or self.axes is None:
-    #         self.fig, self.axes = self._init_figure()
-
-    #     self.axes[0].clear()
-    #     for (bname, bdata) in self.bundles.items():
-    #         bindices = bundles_indices[bname]
-    #         proj_data = all_projected_streamlines[bindices]
-    #         blabel = self.bundle_mapping.get(
-    #             bname, bname) if self.bundle_mapping else bname
-
-    #         self._plot_bundle(
-    #             self.axes[0], proj_data[:, 0], proj_data[:, 1], blabel)
-
-    #     self.axes[0].set_title("Best epoch ({})".format(self.best_epoch))
-    #     self._set_legend(self.axes[0], len(self.bundles))
-
-    #     # Clear data
-    #     self.reset_data()
-
-    def plot(self, epoch: int, figure_name_prefix: str = 'lt_space', best_epoch: int = -1):
+    def plot(self, epoch: int, figure_name_prefix: str = 'lt_space'):
         """
         Fit and plot the t-SNE projection of the latent space streamlines.
         This should be called once after adding all the data to plot using
@@ -330,21 +264,14 @@ class BundlesLatentSpaceVisualizer(object):
 
         assert current_start == nb_streamlines
 
-        all_streamlines = np.concatenate(list(self.bundles.values()), axis=0)
-
         LOGGER.info("Fitting TSNE projection.")
+        all_streamlines = np.concatenate(list(self.bundles.values()), axis=0)
         all_projected_streamlines = self.tsne.fit_transform(all_streamlines)
 
-        if self.fig is None or self.axes is None:
-            self.fig, self.axes = self._init_figure()
+        if self.fig is None or self.ax is None:
+            self.fig, self.ax = self._init_figure()
 
-        # Check if we have a new best epoch.
-        # If so, that means we have to update the plot on the left.
-        is_new_best = best_epoch > self.best_epoch
-        if is_new_best:
-            self.best_epoch = best_epoch
-
-        self._clear_figures(is_new_best)
+        self._clear_figures()
 
         for (bname, bdata) in self.bundles.items():
             bindices = bundles_indices[bname]
@@ -353,20 +280,14 @@ class BundlesLatentSpaceVisualizer(object):
                 bname, bname) if self.bundle_mapping else bname
 
             self._plot_bundle(
-                self.axes[1], proj_data[:, 0], proj_data[:, 1], blabel)
-            if is_new_best:
-                self._plot_bundle(
-                    self.axes[0], proj_data[:, 0], proj_data[:, 1], blabel)
+                self.ax, proj_data[:, 0], proj_data[:, 1], blabel)
 
-        self.axes[1].set_title("Epoch {}".format(epoch))
-        self._set_legend(self.axes[1], len(self.bundles))
-        if is_new_best:
-            self.axes[0].set_title("Best epoch ({})".format(self.best_epoch))
-            self._set_legend(self.axes[0], len(self.bundles))
+        self.ax.set_title("Best epoch {}".format(epoch))
+        self._set_legend(self.ax, len(self.bundles))
 
         if self.prefix_numbering:
             filename = '{}_{}.png'.format(
-                figure_name_prefix, self.current_plot_number)
+                figure_name_prefix, epoch)
         else:
             filename = '{}.png'.format(figure_name_prefix)
 
@@ -395,28 +316,22 @@ class BundlesLatentSpaceVisualizer(object):
             color=self.bundle_color_manager.get_color(blabel)
         )
 
-    def _clear_figures(self, clear_best: bool):
-        if clear_best:
-            self.axes[0].clear()
-        self.axes[1].clear()
+    def _clear_figures(self):
+        self.ax.clear()
 
     def _init_figure(self):
         LOGGER.info("Init new figure for BundlesLatentSpaceVisualizer.")
-        fig, axes = plt.subplots(1, 2)
-        axes[0].set_title("Best epoch (?)")
-        axes[1].set_title("Last epoch (?)")
+        fig, ax = plt.subplots(1, 1)
+        ax.set_title("Best epoch (?)")
         if self.fig_size is not None:
             fig.set_figwidth(self.fig_size[0])
             fig.set_figheight(self.fig_size[1])
 
-        box_0 = axes[0].get_position()
-        axes[0].set_position(
+        box_0 = ax.get_position()
+        ax.set_position(
             [box_0.x0, box_0.y0, box_0.width * 0.8, box_0.height])
-        box_1 = axes[1].get_position()
-        axes[1].set_position(
-            [box_1.x0, box_1.y0, box_1.width * 0.8, box_1.height])
 
-        return fig, axes
+        return fig, ax
 
     def _to_numpy(self, data):
         if isinstance(data, torch.Tensor):

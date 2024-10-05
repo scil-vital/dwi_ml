@@ -168,6 +168,7 @@ class BundlesLatentSpaceVisualizer(object):
         # Not sure if resetting the TSNE object is necessary.
         self.tsne = TSNE(n_components=2, random_state=self.random_state)
         self.bundles = {}
+        self.should_call_reset_before_plot = False
 
     def add_data_to_plot(self, data: np.ndarray, labels: List[str]):
         """
@@ -200,7 +201,7 @@ class BundlesLatentSpaceVisualizer(object):
                     "Some streamlines were not considered in the bundles,"
                     "some labels are missing.\n"
                     "Added them to the {} bundle.".format(DEFAULT_BUNDLE_NAME))
-                self.bundles[DEFAULT_BUNDLE_NAME] = latent_space_streamlines[all_indices]
+                self.bundles[DEFAULT_BUNDLE_NAME] = latent_space_streamlines[_remaining_indices]
 
     def add_bundle_to_plot(self, data: np.ndarray, label: str = '_'):
         """
@@ -220,71 +221,70 @@ class BundlesLatentSpaceVisualizer(object):
 
         self.bundles[label] = latent_space_streamlines
 
-    def check_and_register_best_epoch(self, epoch: int, best_epoch: int = -1):
-        """
-        Finalize the epoch by plotting the t-SNE projection of the latent space streamlines.
-        This should be called once after adding all the data to plot using
-        "add_data_to_plot".
+    # def update_best_epoch(self, epoch: int):
+    #     """
+    #     Finalize the epoch by plotting the t-SNE projection of the latent space streamlines.
+    #     This should be called once after adding all the data to plot using
+    #     "add_data_to_plot".
 
-        Parameters
-        ----------
-        epoch: int
-            Current epoch.
-        best_epoch: int
-            Best epoch.
-        """
-        is_new_best = best_epoch > self.best_epoch
+    #     Parameters
+    #     ----------
+    #     epoch: int
+    #         Current epoch.
+    #     best_epoch: int
+    #         Best epoch.
+    #     """
+    #     if epoch == self.best_epoch:
+    #         LOGGER.warning(
+    #             "The current epoch is the same as the best epoch. "
+    #             "Skipping plot update.")
+    #         return
 
-        if not is_new_best:
-            return
+    #     # If we have a new best epoch, we need to update the plot on the left.
+    #     self.best_epoch = epoch
 
-        assert best_epoch == epoch, "The best epoch should be the current epoch since it just changed."
+    #     for (bname, bdata) in self.bundles.items():
+    #         if bdata.shape[0] > self.max_subset_size:
+    #             self.bundles[bname] = self._resample_max_subset_size(bdata)
 
-        # If we have a new best epoch, we need to update the plot on the left.
-        self.best_epoch = best_epoch
+    #     nb_streamlines = sum(b.shape[0] for b in self.bundles.values())
+    #     LOGGER.info(
+    #         "New best epoch with a total of {} streamlines".format(nb_streamlines))
 
-        for (bname, bdata) in self.bundles.items():
-            if bdata.shape[0] > self.max_subset_size:
-                self.bundles[bname] = self._resample_max_subset_size(bdata)
+    #     # Build the indices for each bundle to recover the streamlines after
+    #     # the t-SNE projection.
+    #     bundles_indices = {}
+    #     current_start = 0
+    #     for (bname, bdata) in self.bundles.items():
+    #         bundles_indices[bname] = np.arange(
+    #             current_start, current_start + bdata.shape[0])
+    #         current_start += bdata.shape[0]
 
-        nb_streamlines = sum(b.shape[0] for b in self.bundles.values())
-        LOGGER.info(
-            "New best epoch with a total of {} streamlines".format(nb_streamlines))
+    #     assert current_start == nb_streamlines
 
-        # Build the indices for each bundle to recover the streamlines after
-        # the t-SNE projection.
-        bundles_indices = {}
-        current_start = 0
-        for (bname, bdata) in self.bundles.items():
-            bundles_indices[bname] = np.arange(
-                current_start, current_start + bdata.shape[0])
-            current_start += bdata.shape[0]
+    #     all_streamlines = np.concatenate(list(self.bundles.values()), axis=0)
 
-        assert current_start == nb_streamlines
+    #     LOGGER.info("Fitting TSNE projection.")
+    #     all_projected_streamlines = self.tsne.fit_transform(all_streamlines)
 
-        all_streamlines = np.concatenate(list(self.bundles.values()), axis=0)
+    #     if self.fig is None or self.axes is None:
+    #         self.fig, self.axes = self._init_figure()
 
-        LOGGER.info("Fitting TSNE projection.")
-        all_projected_streamlines = self.tsne.fit_transform(all_streamlines)
+    #     self.axes[0].clear()
+    #     for (bname, bdata) in self.bundles.items():
+    #         bindices = bundles_indices[bname]
+    #         proj_data = all_projected_streamlines[bindices]
+    #         blabel = self.bundle_mapping.get(
+    #             bname, bname) if self.bundle_mapping else bname
 
-        if self.fig is None or self.axes is None:
-            self.fig, self.axes = self._init_figure()
+    #         self._plot_bundle(
+    #             self.axes[0], proj_data[:, 0], proj_data[:, 1], blabel)
 
-        self.axes[0].clear()
-        for (bname, bdata) in self.bundles.items():
-            bindices = bundles_indices[bname]
-            proj_data = all_projected_streamlines[bindices]
-            blabel = self.bundle_mapping.get(
-                bname, bname) if self.bundle_mapping else bname
+    #     self.axes[0].set_title("Best epoch ({})".format(self.best_epoch))
+    #     self._set_legend(self.axes[0], len(self.bundles))
 
-            self._plot_bundle(
-                self.axes[0], proj_data[:, 0], proj_data[:, 1], blabel)
-
-        self.axes[0].set_title("Best epoch ({})".format(self.best_epoch))
-        self._set_legend(self.axes[0], len(self.bundles))
-
-        # Clear data
-        self.reset_data()
+    #     # Clear data
+    #     self.reset_data()
 
     def plot(self, epoch: int, figure_name_prefix: str = 'lt_space', best_epoch: int = -1):
         """

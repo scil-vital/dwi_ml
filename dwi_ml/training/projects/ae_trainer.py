@@ -62,8 +62,8 @@ class TrainerWithBundleDPS(DWIMLAbstractTrainer):
                                                        bundle_mapping=bundle_mapping)
 
             # Register what to do post encoding.
-            def visualize_latent_space(encoding, data_per_streamline):
-                # Only execute the following if we are in training
+            def handle_latent_encodings(encoding, data_per_streamline):
+                # Only accumulate data during training
                 if not self.model.context == 'training':
                     return
 
@@ -74,23 +74,22 @@ class TrainerWithBundleDPS(DWIMLAbstractTrainer):
                         data_per_streamline[self.color_by].squeeze(1)
 
                 self.ls_viz.add_data_to_plot(encoding, labels=bundle_index)
-            model.register_hook_post_encoding(visualize_latent_space)
+            # Execute the above function within the model's forward().
+            model.register_hook_post_encoding(handle_latent_encodings)
+
+            # Plot the latent space after each best epoch.
+            # Called after running training & validation epochs.
+            self.best_epoch_monitor.register_on_best_epoch_hook(
+                self.ls_viz.plot)
 
     def train_one_epoch(self, epoch):
-        super().train_one_epoch(epoch)
-
-        # Do things post epoch
         if self.visualize:
-            current_epoch = self.current_epoch
-            best_epoch = self.best_epoch_monitor.best_epoch \
-                if self.best_epoch_monitor.best_epoch is not None else current_epoch
-            if current_epoch % self.ls_viz_freq == 0:
-                self.ls_viz.plot(current_epoch, best_epoch=best_epoch)
-                self.ls_viz.reset_data()
-            else:
+            # Before starting another training epoch, make sure the data
+            # is cleared. This is important to avoid accumulating data.
+            # We have to do it here. Since the on_new_best_epoch is called
+            # after the validation epoch, we can't do it there.
+            # Also, we won't always have the best epoch, if not, we still need
+            # to clear the data.
+            self.ls_viz.reset_data()
 
-                # TODO: This is problematic, the best epoch is updated actually after
-                # validation (which is after doing the training epoch)
-
-                self.ls_viz.check_and_register_best_epoch(
-                    current_epoch, best_epoch=best_epoch)
+        super().train_one_epoch(epoch)

@@ -271,7 +271,7 @@ class BundlesLatentSpaceVisualizer(object):
         if self.fig is None or self.ax is None:
             self.fig, self.ax = self._init_figure()
 
-        self._clear_figures()
+        self.ax.clear()
 
         for (bname, bdata) in self.bundles.items():
             bindices = bundles_indices[bname]
@@ -315,9 +315,6 @@ class BundlesLatentSpaceVisualizer(object):
             linewidths=0.5,
             color=self.bundle_color_manager.get_color(blabel)
         )
-
-    def _clear_figures(self):
-        self.ax.clear()
 
     def _init_figure(self):
         LOGGER.info("Init new figure for BundlesLatentSpaceVisualizer.")

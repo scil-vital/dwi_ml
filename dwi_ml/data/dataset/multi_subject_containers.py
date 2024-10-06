@@ -37,8 +37,8 @@ class MultisubjectSubset(Dataset):
     Based on torch's dataset class. Provides functions for a DataLoader to
     iterate over data and process batches.
     """
-
-    def __init__(self, set_name: str, hdf5_file: str, lazy: bool, cache_size: int = 0):
+    def __init__(self, set_name: str, hdf5_file: str, lazy: bool,
+                 cache_size: int = 0):
 
         self.set_name = set_name
         self.hdf5_file = hdf5_file
@@ -356,7 +356,6 @@ class MultiSubjectDataset:
               datasets 'streamlines/data', 'streamlines/offsets',
               'streamlines/lengths', 'streamlines/euclidean_lengths'.
     """
-
     def __init__(self, hdf5_file: str, lazy: bool,
                  cache_size: int = 0, log_level=None):
         """
@@ -479,8 +478,7 @@ class MultiSubjectDataset:
                 self.nb_features = nb_features
 
             if streamline_groups is not None:
-                missing_str = np.setdiff1d(
-                    streamline_groups, poss_strea_groups)
+                missing_str = np.setdiff1d(streamline_groups, poss_strea_groups)
                 if len(missing_str) > 0:
                     raise ValueError("Streamlines {} were not found in the "
                                      "first subject of your hdf5 file."
@@ -500,8 +498,7 @@ class MultiSubjectDataset:
                           self.streamline_groups,
                           self.streamlines_contain_connectivity)
             self.training_set.set_subset_info(*group_info, step_size, compress)
-            self.validation_set.set_subset_info(
-                *group_info, step_size, compress)
+            self.validation_set.set_subset_info(*group_info, step_size, compress)
             self.testing_set.set_subset_info(*group_info, step_size, compress)
 
             # LOADING

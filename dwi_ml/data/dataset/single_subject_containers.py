@@ -17,7 +17,6 @@ class SubjectDataAbstract(object):
     single MRI acquisition. It could contain data from many "real" MRI volumes
     concatenated together.
     """
-
     def __init__(self, volume_groups: List[str], nb_features: List[int],
                  streamline_groups: List[str], subject_id: str):
         """
@@ -65,7 +64,6 @@ class SubjectDataAbstract(object):
 
 class SubjectData(SubjectDataAbstract):
     """Non-lazy version"""
-
     def __init__(self, subject_id: str, volume_groups: List[str],
                  nb_features: List[int], mri_data_list: List[MRIData] = None,
                  streamline_groups: List[str] = None,
@@ -77,7 +75,8 @@ class SubjectData(SubjectDataAbstract):
             The loaded streamlines in a format copying the SFT. They contain
             ._data, ._offsets, ._lengths, ._lengths_mm.
         """
-        super().__init__(volume_groups, nb_features, streamline_groups, subject_id)
+        super().__init__(volume_groups, nb_features, streamline_groups,
+                         subject_id)
         self._mri_data_list = mri_data_list
         self._sft_data_list = sft_data_list
         self.is_lazy = False
@@ -131,7 +130,6 @@ class LazySubjectData(SubjectDataAbstract):
     """
     Lazy version.
     """
-
     def __init__(self, volume_groups: List[str], nb_features: List[int],
                  streamline_groups: List[str], subject_id: str,
                  hdf_handle=None):

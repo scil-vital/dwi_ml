@@ -29,7 +29,6 @@ from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader)
 from dwi_ml.training.utils.trainer import (add_training_args, run_experiment,
                                            format_lr)
 from dwi_ml.training.batch_loaders import DWIMLStreamlinesBatchLoader
-from dwi_ml.viz.latent_streamlines import BundlesLatentSpaceVisualizer
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
 
@@ -43,7 +42,7 @@ def prepare_arg_parser():
     add_training_args(p)
     p.add_argument('streamline_group_name',
                    help="Name of the group in hdf5")
-    p.add_argument('--viz_latent_space_freq', type=int, default=None,
+    p.add_argument('--viz_latent_space', action='store_true', default=False,
                    help="Frequency at which to visualize latent space.\n"
                    "This is expressed in number of epochs.")
     p.add_argument('--color_by', type=str, default=None,
@@ -62,7 +61,7 @@ def prepare_arg_parser():
 def init_from_args(args, sub_loggers_level):
     torch.manual_seed(args.rng)  # Set torch seed
 
-    viz_latent_space_freq = args.viz_latent_space_freq
+    viz_latent_space = args.viz_latent_space
     color_by = args.color_by
 
     # Prepare the dataset
@@ -118,7 +117,7 @@ def init_from_args(args, sub_loggers_level):
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
             log_level=sub_loggers_level,
-            ls_viz_freq=viz_latent_space_freq, color_by=color_by,
+            viz_latent_space=viz_latent_space, color_by=color_by,
             bundles_mapping_file=args.bundles_mapping,
             max_viz_subset_size=1000)
         logging.info("Trainer params : " +

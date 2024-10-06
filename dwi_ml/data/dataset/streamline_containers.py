@@ -72,6 +72,9 @@ def _load_connectivity_info(hdf_group: h5py.Group):
 def _load_data_per_streamline(hdf_group, dps_key: str = None) -> Union[np.ndarray, None]:
     dps_dict = defaultdict(list)
     # Load only related data key if specified
+    if not 'data_per_streamline' in hdf_group.keys():
+        return dps_dict
+
     dps_group = hdf_group['data_per_streamline']
     if dps_key is not None:
         # Make sure the related data key is in the hdf5 group
@@ -79,8 +82,8 @@ def _load_data_per_streamline(hdf_group, dps_key: str = None) -> Union[np.ndarra
             raise KeyError("The key '{}' is not in the hdf5 group. Keys found: {}"
                            .format(dps_key, dps_group.keys()))
 
-        # Load the related data
-        dps_dict[dps_key] = dps_group['data_per_streamline'][dps_key][:]
+        # Load the related data per streamline
+        dps_dict[dps_key] = dps_group[dps_key][:]
     # Otherwise, load every dps.
     else:
         for dps_key in dps_group.keys():

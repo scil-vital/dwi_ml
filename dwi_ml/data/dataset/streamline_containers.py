@@ -69,17 +69,18 @@ def _load_connectivity_info(hdf_group: h5py.Group):
     return contains_connectivity, connectivity_nb_blocs, connectivity_labels
 
 
-def _load_data_per_streamline(hdf_group, dps_key: str = None) -> Union[np.ndarray, None]:
+def _load_data_per_streamline(hdf_group,
+                              dps_key: str = None) -> Union[np.ndarray, None]:
     dps_dict = defaultdict(list)
     # Load only related data key if specified
-    if not 'data_per_streamline' in hdf_group.keys():
+    if 'data_per_streamline' not in hdf_group.keys():
         return dps_dict
 
     dps_group = hdf_group['data_per_streamline']
     if dps_key is not None:
         # Make sure the related data key is in the hdf5 group
         if not (dps_key in dps_group.keys()):
-            raise KeyError("The key '{}' is not in the hdf5 group. Keys found: {}"
+            raise KeyError("The key '{}' is not in the hdf5 group. Found: {}"
                            .format(dps_key, dps_group.keys()))
 
         # Load the related data per streamline
@@ -352,7 +353,7 @@ class SFTData(SFTDataAbstract):
         return self._connectivity_matrix
 
     @classmethod
-    def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group, dps_key: str = None):
+    def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group):
         """
         Creating class instance from the hdf in cases where data is not
         loaded yet. Non-lazy = loading the data here.

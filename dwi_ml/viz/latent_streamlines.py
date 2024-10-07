@@ -20,33 +20,40 @@ class ColorManager(object):
         self.bundle_color_map = {}
         self.color_map = self._init_colormap(max_num_bundles)
 
-    def _init_colormap(self, number_of_distinct_colors):
+    def _init_colormap(self, nb_distinct_colors: int):
         """
         Create a colormap with a number of distinct colors.
         Needed to have bigger color maps for more bundles.
 
-        Code directly copied from: 
-        https://stackoverflow.com/questions/42697933/colormap-with-maximum-distinguishable-colours
+        Code directly copied from:
+        https://stackoverflow.com/questions/42697933
 
         """
-        if number_of_distinct_colors == 0:
-            number_of_distinct_colors = 80
+        if nb_distinct_colors == 0:
+            nb_distinct_colors = 80
 
-        number_of_shades = 7
-        number_of_distinct_colors_with_multiply_of_shades = int(
-            math.ceil(number_of_distinct_colors / number_of_shades) * number_of_shades)
+        nb_of_shades = 7
+        nb_of_distinct_colors_with_mult_of_shades = int(
+            math.ceil(nb_distinct_colors / nb_of_shades)
+            * nb_of_shades)
 
-        # Create an array with uniformly drawn floats taken from <0, 1) partition
+        # Create an array with uniformly drawn floats taken from <0, 1)
+        # partition
         linearly_distributed_nums = np.arange(
-            number_of_distinct_colors_with_multiply_of_shades) / number_of_distinct_colors_with_multiply_of_shades
+            nb_of_distinct_colors_with_mult_of_shades) / \
+            nb_of_distinct_colors_with_mult_of_shades
 
-        # We are going to reorganise monotonically growing numbers in such way that there will be single array with saw-like pattern
-        #     but each saw tooth is slightly higher than the one before
-        # First divide linearly_distributed_nums into number_of_shades sub-arrays containing linearly distributed numbers
+        # We are going to reorganise monotonically growing numbers in such way
+        # that there will be single array with saw-like pattern but each saw
+        # tooth is slightly higher than the one before. First divide
+        # linearly_distributed_nums into nb_of_shades sub-arrays containing
+        # linearly distributed numbers.
         arr_by_shade_rows = linearly_distributed_nums.reshape(
-            number_of_shades, number_of_distinct_colors_with_multiply_of_shades // number_of_shades)
+            nb_of_shades, nb_of_distinct_colors_with_mult_of_shades //
+            nb_of_shades)
 
-        # Transpose the above matrix (columns become rows) - as a result each row contains saw tooth with values slightly higher than row above
+        # Transpose the above matrix (columns become rows) - as a result each
+        # row contains saw tooth with values slightly higher than row above
         arr_by_shade_columns = arr_by_shade_rows.T
 
         # Keep number of saw teeth for later
@@ -55,27 +62,31 @@ class ColorManager(object):
         # Flatten the above matrix - join each row into single array
         nums_distributed_like_rising_saw = arr_by_shade_columns.reshape(-1)
 
-        # HSV colour map is cyclic (https://matplotlib.org/tutorials/colors/colormaps.html#cyclic), we'll use this property
+        # HSV colour map is cyclic we'll use this property
+        # (https://matplotlib.org/tutorials/colors/colormaps.html#cyclic)
         initial_cm = hsv(nums_distributed_like_rising_saw)
 
         lower_partitions_half = number_of_partitions // 2
         upper_partitions_half = number_of_partitions - lower_partitions_half
 
-        # Modify lower half in such way that colours towards beginning of partition are darker
-        # First colours are affected more, colours closer to the middle are affected less
-        lower_half = lower_partitions_half * number_of_shades
+        # Modify lower half in such way that colours towards beginning of
+        # partition are darker .First colours are affected more, colours
+        # closer to the middle are affected less
+        lower_half = lower_partitions_half * nb_of_shades
         for i in range(3):
             initial_cm[0:lower_half, i] *= np.arange(0.2, 1, 0.8/lower_half)
 
-        # Modify second half in such way that colours towards end of partition are less intense and brighter
-        # Colours closer to the middle are affected less, colours closer to the end are affected more
+        # Modify second half in such way that colours towards end of partition
+        # are less intense and brighter. Colours closer to the middle are
+        # affected less, colours closer to the end are affected more
         for i in range(3):
             for j in range(upper_partitions_half):
-                modifier = np.ones(
-                    number_of_shades) - initial_cm[lower_half + j * number_of_shades: lower_half + (j + 1) * number_of_shades, i]
+                modifier = np.ones(nb_of_shades) \
+                    - initial_cm[lower_half + j * nb_of_shades:
+                                 lower_half + (j + 1) * nb_of_shades, i]
                 modifier = j * modifier / upper_partitions_half
-                initial_cm[lower_half + j * number_of_shades: lower_half +
-                           (j + 1) * number_of_shades, i] += modifier
+                initial_cm[lower_half + j * nb_of_shades: lower_half +
+                           (j + 1) * nb_of_shades, i] += modifier
 
         return ListedColormap(initial_cm)
 
@@ -186,21 +197,24 @@ class BundlesLatentSpaceVisualizer(object):
             self.bundles[DEFAULT_BUNDLE_NAME] = latent_space_streamlines
         else:
             all_labels = np.unique(labels)
-            _remaining_indices = np.arange(len(labels))
+            remaining_indices = np.arange(len(labels))
             for label in all_labels:
-                label_indices = labels[_remaining_indices] == label
-                label_data = latent_space_streamlines[_remaining_indices][label_indices]
+                label_indices = labels[remaining_indices] == label
+                label_data = \
+                    latent_space_streamlines[remaining_indices][label_indices]
                 label_data = self._resample_max_subset_size(label_data)
                 self.bundles[label] = label_data
 
-                _remaining_indices = _remaining_indices[~label_indices]
+                remaining_indices = remaining_indices[~label_indices]
 
-            if len(_remaining_indices) > 0:
+            if len(remaining_indices) > 0:
                 LOGGER.warning(
                     "Some streamlines were not considered in the bundles,"
                     "some labels are missing.\n"
-                    "Added them to the {} bundle.".format(DEFAULT_BUNDLE_NAME))
-                self.bundles[DEFAULT_BUNDLE_NAME] = latent_space_streamlines[_remaining_indices]
+                    "Added them to the {} bundle."
+                    .format(DEFAULT_BUNDLE_NAME))
+                self.bundles[DEFAULT_BUNDLE_NAME] = \
+                    latent_space_streamlines[remaining_indices]
 
     def add_bundle_to_plot(self, data: np.ndarray, label: str = '_'):
         """
@@ -244,7 +258,8 @@ class BundlesLatentSpaceVisualizer(object):
             # So that the warning above is only displayed once.
             self.should_call_reset_before_plot = True
 
-        # Start by making sure the number of streamlines doesn't exceed the threshold.
+        # Start by making sure the number of streamlines doesn't
+        # exceed the threshold.
         for (bname, bdata) in self.bundles.items():
             if bdata.shape[0] > self.max_subset_size:
                 self.bundles[bname] = self._resample_max_subset_size(bdata)
@@ -347,8 +362,8 @@ class BundlesLatentSpaceVisualizer(object):
                     "A max_subset_size of an integer value greater"
                     "than 0 is required.")
 
-            # Only sample if we need to reduce the number of latent streamlines
-            # to show on the plot.
+            # Only sample if we need to reduce the number of latent
+            # streamlines to show on the plot.
             if (len(data) > self.max_subset_size):
                 sample_indices = np.random.choice(
                     len(data),

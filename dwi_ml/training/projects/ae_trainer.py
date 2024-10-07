@@ -41,12 +41,17 @@ class TrainerWithBundleDPS(DWIMLAbstractTrainer):
                  comet_workspace: str = None, comet_project: str = None,
                  from_checkpoint: bool = False, log_level=logging.root.level,
                  viz_latent_space: bool = False, color_by: str = None,
-                 bundles_mapping_file: str = None, max_viz_subset_size: int = 1000):
+                 bundles_mapping_file: str = None,
+                 max_viz_subset_size: int = 1000):
 
-        super().__init__(model, experiments_path, experiment_name, batch_sampler, batch_loader,
-                         learning_rates, weight_decay, optimizer, max_epochs, max_batches_per_epoch_training,
-                         max_batches_per_epoch_validation, patience, patience_delta, nb_cpu_processes, use_gpu,
-                         clip_grad, comet_workspace, comet_project, from_checkpoint, log_level)
+        super().__init__(model, experiments_path, experiment_name,
+                         batch_sampler, batch_loader, learning_rates,
+                         weight_decay, optimizer, max_epochs,
+                         max_batches_per_epoch_training,
+                         max_batches_per_epoch_validation, patience,
+                         patience_delta, nb_cpu_processes, use_gpu,
+                         clip_grad, comet_workspace, comet_project,
+                         from_checkpoint, log_level)
 
         self.color_by = color_by
         self.viz_latent_space = viz_latent_space
@@ -57,10 +62,11 @@ class TrainerWithBundleDPS(DWIMLAbstractTrainer):
             os.makedirs(save_dir, exist_ok=True)
 
             bundle_mapping = parse_bundle_mapping(bundles_mapping_file)
-            self.ls_viz = BundlesLatentSpaceVisualizer(save_dir,
-                                                       prefix_numbering=True,
-                                                       max_subset_size=max_viz_subset_size,
-                                                       bundle_mapping=bundle_mapping)
+            self.ls_viz = BundlesLatentSpaceVisualizer(
+                save_dir,
+                prefix_numbering=True,
+                max_subset_size=max_viz_subset_size,
+                bundle_mapping=bundle_mapping)
             self.warning_printed = False
 
             # Register what to do post encoding.
@@ -71,10 +77,11 @@ class TrainerWithBundleDPS(DWIMLAbstractTrainer):
 
                 if self.color_by is None:
                     bundle_index = None
-                elif not self.color_by in data_per_streamline.keys():
+                elif self.color_by not in data_per_streamline.keys():
                     if not self.warning_printed:
                         LOGGER.warning(
-                            f"Coloring by {self.color_by} not found in data_per_streamline.")
+                            f"Coloring by {self.color_by} not found in "
+                            "data_per_streamline.")
                     self.warning_printed = True
                     bundle_index = None
                 else:

@@ -1157,7 +1157,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         """
         # Data interpolation has not been done yet. GPU computations are done
         # here in the main thread.
-        targets, ids_per_subj = data
+        targets, ids_per_subj, data_per_streamline = data
 
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
@@ -1185,7 +1185,8 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # (batch loader will do it depending on training / valid)
         streamlines_f = self.batch_loader.add_noise_streamlines_forward(
             streamlines_f, self.device)
-        model_outputs = self.model(batch_inputs, streamlines_f)
+        model_outputs = self.model(
+            batch_inputs, streamlines_f, data_per_streamline)
         del streamlines_f
 
         logger.debug('*** Computing loss')

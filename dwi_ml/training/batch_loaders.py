@@ -58,6 +58,16 @@ from dwi_ml.models.main_models import MainModelOneInput, \
 logger = logging.getLogger('batch_loader_logger')
 
 
+def _dps_to_tensors(dps: dict, device='cpu'):
+    """
+    Convert a list of DPS to a list of tensors.
+    """
+    dps_tensors = {}
+    for key, value in dps.items():
+        dps_tensors[key] = torch.tensor(value, device=device)
+    return dps_tensors
+
+
 class DWIMLStreamlinesBatchLoader:
     def __init__(self, dataset: MultiSubjectDataset, model: MainModelAbstract,
                  streamline_group_name: str, rng: int,
@@ -157,7 +167,7 @@ class DWIMLStreamlinesBatchLoader:
             'noise_gaussian_size_forward': self.noise_gaussian_size_forward,
             'noise_gaussian_size_loss': self.noise_gaussian_size_loss,
             'reverse_ratio': self.reverse_ratio,
-            'split_ratio': self.split_ratio,
+            'split_ratio': self.split_ratio
         }
         return params
 
@@ -323,8 +333,9 @@ class DWIMLStreamlinesBatchLoader:
             batch_streamlines.extend(sft.streamlines)
 
         batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
+        data_per_streamline = _dps_to_tensors(sft.data_per_streamline)
 
-        return batch_streamlines, final_s_ids_per_subj
+        return batch_streamlines, final_s_ids_per_subj, data_per_streamline
 
     def load_batch_connectivity_matrices(
             self, streamline_ids_per_subj: Dict[int, slice]):
@@ -447,8 +458,8 @@ class DWIMLBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
             # because in load_batch, we use sft.to_vox and sft.to_corner
             # before adding streamline to batch.
             subbatch_x_data = self.model.prepare_batch_one_input(
-                    streamlines, self.context_subset, subj,
-                    self.input_group_idx)
+                streamlines, self.context_subset, subj,
+                self.input_group_idx)
 
             batch_x_data.extend(subbatch_x_data)
 

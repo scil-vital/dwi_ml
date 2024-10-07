@@ -133,6 +133,7 @@ class HDF5Creator:
     See the doc for an example of config file.
     https://dwi-ml.readthedocs.io/en/latest/config_file.html
     """
+
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
@@ -629,15 +630,19 @@ class HDF5Creator:
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
 
+            dps_group = streamlines_group.create_group('data_per_streamline')
+
             for dps_key in self.dps_keys:
                 if dps_key not in sft.data_per_streamline:
                     raise ValueError(
                         "The data_per_streamline key '{}' was not found in "
                         "the sft. Check your tractogram file.".format(dps_key))
 
-                logging.debug("    Include dps \"{}\" in the HDF5.".format(dps_key))
-                streamlines_group.create_dataset('dps_' + dps_key,
-                                                 data=sft.data_per_streamline[dps_key])
+                logging.debug(
+                    "    Include dps \"{}\" in the HDF5.".format(dps_key))
+
+                dps_group.create_dataset(
+                    dps_key, data=sft.data_per_streamline[dps_key])
 
             # Accessing private Dipy values, but necessary.
             # We need to deconstruct the streamlines into arrays with

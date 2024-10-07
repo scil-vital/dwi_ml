@@ -84,7 +84,7 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
         else:
             return torch.zeros(n, device=self.device), 1
 
-    def forward(self, inputs: list, streamlines):
+    def forward(self, inputs: list, streamlines, data_per_streamline):
         # Not using streamlines. Pretending to use inputs.
         _ = self.fake_parameter
         regressed_dir = torch.as_tensor([1., 1., 1.])
@@ -143,7 +143,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
             raise ValueError("'algo' should be 'det' or 'prob'.")
 
     def forward(self, inputs: List[torch.tensor],
-                target_streamlines: List[torch.tensor]):
+                target_streamlines: List[torch.tensor],
+                data_per_streamline: List[torch.tensor]):
         # Previous dirs
         if self.nb_previous_dirs > 0:
             target_dirs = compute_directions(target_streamlines)

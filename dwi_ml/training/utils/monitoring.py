@@ -158,6 +158,14 @@ class BestEpochMonitor(object):
         self.best_value = None
         self.best_epoch = None
         self.n_bad_epochs = None
+        self.on_best_epoch_hooks = []
+
+    def register_on_best_epoch_hook(self, hook):
+        self.on_best_epoch_hooks.append(hook)
+
+    def _call_on_best_epoch_hooks(self, new_best_epoch):
+        for hook in self.on_best_epoch_hooks:
+            hook(new_best_epoch)
 
     def update(self, loss, epoch):
         """
@@ -178,12 +186,14 @@ class BestEpochMonitor(object):
             self.best_value = loss
             self.best_epoch = epoch
             self.n_bad_epochs = 0
+            self._call_on_best_epoch_hooks(epoch)
             return False
         elif loss < self.best_value - self.min_eps:
             # Improving from at least eps.
             self.best_value = loss
             self.best_epoch = epoch
             self.n_bad_epochs = 0
+            self._call_on_best_epoch_hooks(epoch)
             return False
         else:
             # Not improving enough
@@ -242,6 +252,7 @@ class IterTimer(object):
     # next iter could be twice as long as usual:
     time.time() + iter_timer.mean * 2.0 + 30 > max_time
     """
+
     def __init__(self, history_len=5):
         self.history = deque(maxlen=history_len)
         self.iterable = None

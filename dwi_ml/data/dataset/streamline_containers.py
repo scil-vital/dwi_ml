@@ -106,17 +106,25 @@ class _LazyStreamlinesGetter(object):
 
     def get_array_sequence(self, item=None):
         if item is None:
-            streamlines, dps = _load_all_streamlines_from_hdf(self.hdf_group)
+            streamlines, data_per_streamline = _load_all_streamlines_from_hdf(
+                self.hdf_group)
         else:
             streamlines = ArraySequence()
-            dps_dict = defaultdict(list)
+            data_per_streamline = defaultdict(list)
+
+            # If data_per_streamline is not in the hdf5, use an empty dict
+            # so that we don't add anything to the data_per_streamline in the
+            # following steps.
+            hdf_dps_group = self.hdf_group['data_per_streamline'] if \
+                'data_per_streamline' in self.hdf_group.keys() else {}
 
             if isinstance(item, int):
                 data = self._get_one_streamline(item)
                 streamlines.append(data)
 
-                for dps_key in self.hdf_group['dps_keys']:
-                    dps_dict[dps_key].append(self.hdf_group[dps_key][item])
+                for dps_key in hdf_dps_group.keys():
+                    data_per_streamline[dps_key].append(
+                        hdf_dps_group[dps_key][item])
 
             elif isinstance(item, list) or isinstance(item, np.ndarray):
                 # Getting a list of value from a hdf5: slow. Uses fancy indexing.
@@ -129,8 +137,9 @@ class _LazyStreamlinesGetter(object):
                     data = self._get_one_streamline(i)
                     streamlines.append(data, cache_build=True)
 
-                    for dps_key in self.hdf_group['dps_keys']:
-                        dps_dict[dps_key].append(self.hdf_group[dps_key][item])
+                    for dps_key in hdf_dps_group.keys():
+                        data_per_streamline[dps_key].append(
+                            hdf_dps_group[dps_key][item])
 
                 streamlines.finalize_append()
 
@@ -141,16 +150,16 @@ class _LazyStreamlinesGetter(object):
                     streamline = self.hdf_group['data'][offset:offset + length]
                     streamlines.append(streamline, cache_build=True)
 
-                    for dps_key in self.hdf_group['dps_keys']:
-                        dps_dict[dps_key].append(
-                            self.hdf_group[dps_key][offset:offset + length])
+                    for dps_key in hdf_dps_group.keys():
+                        data_per_streamline[dps_key].append(
+                            hdf_dps_group[dps_key][offset:offset + length])
                 streamlines.finalize_append()
 
             else:
                 raise ValueError('Item should be either a int, list, '
                                  'np.ndarray or slice but we received {}'
                                  .format(type(item)))
-        return streamlines, dps
+        return streamlines, data_per_streamline
 
     @property
     def lengths(self):

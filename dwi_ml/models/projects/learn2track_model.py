@@ -227,6 +227,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
     def forward(self, x: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
+                data_per_streamline: List[torch.tensor] = {},
                 hidden_recurrent_states: List = None, return_hidden=False,
                 point_idx: int = None):
         """Run the model on a batch of sequences.
@@ -284,7 +285,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             unsorted_indices = invert_permutation(sorted_indices)
             x = [x[i] for i in sorted_indices]
             if input_streamlines is not None:
-                input_streamlines = [input_streamlines[i] for i in sorted_indices]
+                input_streamlines = [input_streamlines[i]
+                                     for i in sorted_indices]
 
         # ==== 0. Previous dirs.
         n_prev_dirs = None

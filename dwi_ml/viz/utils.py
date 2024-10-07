@@ -1,5 +1,5 @@
 from matplotlib.colors import ListedColormap
-from skimage.color import hsv2rgb, rgb2lab
+from skimage.color import hsv2rgb, rgb2lab, deltaE_ciede2000
 import numpy as np
 
 

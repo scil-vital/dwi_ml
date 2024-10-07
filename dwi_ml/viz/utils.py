@@ -1,6 +1,7 @@
 import math
 from matplotlib.colors import ListedColormap
 from matplotlib.cm import hsv
+import numpy as np
 
 
 def generate_dissimilar_color_map(nb_distinct_colors: int):

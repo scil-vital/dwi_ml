@@ -116,6 +116,10 @@ class ModelAE(MainModelAbstract):
             Batch of streamlines. Only used if previous directions are added to
             the model. Used to compute directions; its last point will not be
             used.
+        data_per_streamline: dict of lists, optional
+            Dictionary containing additional data for each streamline. Each
+            key is the name of a data type, and each value is a list of length
+            `len(input_streamlines)` containing the data for each streamline.
 
         Returns
         -------

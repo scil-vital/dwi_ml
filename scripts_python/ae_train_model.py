@@ -43,13 +43,18 @@ def prepare_arg_parser():
     p.add_argument('streamline_group_name',
                    help="Name of the group in hdf5")
     p.add_argument('--viz_latent_space', action='store_true', default=False,
-                   help="Frequency at which to visualize latent space.\n"
-                   "This is expressed in number of epochs.")
-    p.add_argument('--color_by', type=str, default=None,
+                   help="If specified, enables latent space visualization.\n")
+    p.add_argument('--viz_color_by', type=str, default=None,
                    help="Name of the group in hdf5 to color by."
                    "In the HDF5, the coloring group should be under"
                    "data_per_streamline/<color_by>")
-    p.add_argument('--bundles_mapping', type=str, default=None,
+    p.add_argument('--viz_max_bundle_size', type=int, default=1000,
+                   help="Maximum number of streamlines per bundle to "
+                   "visualize in latent space. Will perform a random\n"
+                   "selection if the number of streamlines is higher than "
+                   "this value."
+                   )
+    p.add_argument('--viz_bundles_mapping', type=str, default=None,
                    help="Path to a txt file mapping bundles to a new name.\n"
                    "Each line of that file should be: <bundle_name> <number>")
     add_memory_args(p, add_lazy_options=True, add_rng=True)
@@ -62,7 +67,7 @@ def init_from_args(args, sub_loggers_level):
     torch.manual_seed(args.rng)  # Set torch seed
 
     viz_latent_space = args.viz_latent_space
-    color_by = args.color_by
+    viz_color_by = args.viz_color_by
 
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args, load_testing=False,
@@ -117,9 +122,9 @@ def init_from_args(args, sub_loggers_level):
             # MEMORY
             nb_cpu_processes=args.nbr_processes, use_gpu=args.use_gpu,
             log_level=sub_loggers_level,
-            viz_latent_space=viz_latent_space, color_by=color_by,
-            bundles_mapping_file=args.bundles_mapping,
-            max_viz_subset_size=1000)
+            viz_latent_space=viz_latent_space, color_by=viz_color_by,
+            bundles_mapping_file=args.viz_bundles_mapping,
+            max_viz_subset_size=args.viz_max_bundle_size)
         logging.info("Trainer params : " +
                      format_dict_to_str(trainer.params_for_checkpoint))
 

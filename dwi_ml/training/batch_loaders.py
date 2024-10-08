@@ -390,6 +390,7 @@ class DWIMLBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
                              .format(input_group_name,
                                      self.dataset.volume_groups))
         self.input_group_idx = idx
+        self.clear_cache = True
 
     @property
     def params_for_checkpoint(self):
@@ -448,7 +449,7 @@ class DWIMLBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
             # before adding streamline to batch.
             subbatch_x_data = self.model.prepare_batch_one_input(
                     streamlines, self.context_subset, subj,
-                    self.input_group_idx)
+                    self.input_group_idx, clear_cache=self.clear_cache)
 
             batch_x_data.extend(subbatch_x_data)
 

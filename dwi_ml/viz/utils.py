@@ -5,20 +5,22 @@ import numpy as np
 
 def generate_dissimilar_color_map(nb_distinct_colors: int):
     """
-    Select `nb_distinct_colors` dissimilar colors by sampling HSV values and computing distances in the CIELAB space.
+    Select `nb_distinct_colors` dissimilar colors by sampling HSV values and
+    computing distances in the CIELAB space.
 
-    Args:
+    Parameters:
         nb_distinct_colors (int): nb_distinct of colors to select.
-        h_range (tuple): Range for the hue component (default is full range 0 to 1).
-        s_range (tuple): Range for the saturation component.
-        v_range (tuple): Range for the value component.
 
     Returns:
         np.ndarray: Array of selected RGB colors.
     """
-    h_range=(0, 1)
-    s_range=(0.25, 1)
-    v_range=(0.25, 1)
+
+    # h_range (tuple): Range for the hue component.
+    # s_range (tuple): Range for the saturation component.
+    # v_range (tuple): Range for the value component.
+    h_range = (0, 1)
+    s_range = (0.25, 1)
+    v_range = (0.25, 1)
 
     # Start with a random initial color
     rgb_colors = [[1, 0, 0]]
@@ -27,7 +29,7 @@ def generate_dissimilar_color_map(nb_distinct_colors: int):
         best_color = None
 
         # Randomly generate a candidate color in HSV
-        #for _ in range(100):  # Generate 100 candidates and pick the best one
+        # for _ in range(100):  # Generate 100 candidates and pick the best one
         hue = np.random.uniform(h_range[0], h_range[1], 100)
         saturation = np.random.uniform(s_range[0], s_range[1], 100)
         value = np.random.uniform(v_range[0], v_range[1], 100)
@@ -46,19 +48,22 @@ def generate_dissimilar_color_map(nb_distinct_colors: int):
 
         rgb_colors = np.vstack([rgb_colors, best_color])
 
-
     return ListedColormap(rgb_colors)
+
 
 def compute_cielab_distances(rgb_colors, compared_to=None):
     """
-    Convert RGB colors to CIELAB and compute the Delta E (CIEDE2000) distance matrix.
+    Convert RGB colors to CIELAB and compute
+    the Delta E (CIEDE2000) distance matrix.
 
-    Args:
+    Parameters:
         rgb_colors (np.ndarray): Array of RGB colors.
-        compared_to (np.ndarray): Array of RGB colors to compare against. If None, compare to rgb_colors.
+        compared_to (np.ndarray): Array of RGB colors to compare against.
+        If None, compare to rgb_colors.
 
     Returns:
-        np.ndarray: nb_sample x nb_sample or nb_sample1 x nb_sample2 distance matrix.
+        np.ndarray: nb_sample x nb_sample or \
+                    nb_sample1 x nb_sample2 distance matrix.
     """
     # Convert RGB to CIELAB
     rgb_colors = np.clip(rgb_colors, 0, 1).astype(float)
@@ -70,7 +75,8 @@ def compute_cielab_distances(rgb_colors, compared_to=None):
         compared_to = np.clip(compared_to, 0, 1).astype(float)
         lab_colors_2 = rgb2lab(compared_to)
 
-    # Calculate the pairwise Delta E distances using broadcasting and vectorization
+    # Calculate the pairwise Delta E distances
+    # using broadcasting and vectorization
     lab_colors_1 = lab_colors_1[:, np.newaxis, :]  # Shape (n1, 1, 3)
     lab_colors_2 = lab_colors_2[np.newaxis, :, :]  # Shape (1, n2, 3)
 

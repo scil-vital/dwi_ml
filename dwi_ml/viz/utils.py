@@ -19,8 +19,8 @@ def generate_dissimilar_color_map(nb_distinct_colors: int):
     # s_range (tuple): Range for the saturation component.
     # v_range (tuple): Range for the value component.
     h_range = (0, 1)
-    s_range = (0.25, 1)
-    v_range = (0.25, 1)
+    s_range = (0.8, 1)
+    v_range = (0.8, 1)
 
     # Start with a random initial color
     rgb_colors = [[1, 0, 0]]

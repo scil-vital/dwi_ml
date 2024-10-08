@@ -29,7 +29,7 @@ def generate_dissimilar_color_map(nb_distinct_colors: int):
         best_color = None
 
         # Randomly generate a candidate color in HSV
-        # for _ in range(100):  # Generate 100 candidates and pick the best one
+        # Generate 100 candidates and pick the best one
         hue = np.random.uniform(h_range[0], h_range[1], 100)
         saturation = np.random.uniform(s_range[0], s_range[1], 100)
         value = np.random.uniform(v_range[0], v_range[1], 100)

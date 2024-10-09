@@ -21,13 +21,20 @@ from dwi_ml.unit_tests.utils.expected_values import (
     TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_NB_STREAMLINES,
     TEST_EXPECTED_MRI_SHAPE, TEST_EXPECTED_NB_SUBJECTS,
     TEST_EXPECTED_NB_FEATURES)
-from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
+from dwi_ml.unit_tests.utils.data_and_models_for_tests import \
+    fetch_testing_data
+
+dps_key = 'mean_color_dps'
 
 
-def test_multisubjectdataset():
+def test_multisubjectdataset(script_runner):
     data_dir = fetch_testing_data()
 
-    logging.debug("Unit test: previous dirs")
+    # Adding dps in the data to test better!
+    # toDO manage our test data!!
+    ret = script_runner.run(
+        'pytest', 'scripts_python/tests/test_create_hdf5_dataset.py')
+    assert ret.success
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
@@ -99,6 +106,9 @@ def _verify_sft_data(sft_data, group_number):
     # Assessing by slice
     list_4 = sft_data.as_sft(slice(0, 4))
     assert len(list_4) == 4
+
+    # DPS
+    assert dps_key in sft_data.data_per_streamline.keys()
 
 
 def _non_lazy_version(hdf5_filename):

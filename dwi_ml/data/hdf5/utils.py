@@ -78,9 +78,6 @@ def add_hdf5_creation_args(p: ArgumentParser):
                         "(Final concatenated standardized volumes and \n"
                         "final concatenated resampled/compressed "
                         "streamlines.)")
-    p.add_argument('--dps_keys', type=str, nargs='+', default=[],
-                   help="List of keys to keep in data_per_streamline. "
-                        "Default: Empty.")
 
 
 def add_streamline_processing_args(p: ArgumentParser):

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import logging
+import json
 import os
 
 import h5py
@@ -24,11 +25,53 @@ from dwi_ml.unit_tests.utils.expected_values import (
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
 
 
-def test_multisubjectdataset():
+def _tmp_add_dps(data_dir, script_runner):
+    # Fake-adding dps to our tractogram.
+    # ToDo Add dps in the data on the google drive. Currently, I need to do
+    #  this ugly trick.
+    dwi_ml_folder = os.path.join(data_dir, 'dwi_ml_ready')
+    subj_folder = os.path.join(dwi_ml_folder, 'subjX', )
+    in_trk = os.path.join(subj_folder, 'example_bundle', 'Fornix.trk')
+    in_anat = os.path.join(subj_folder, 'anat', 't1.nii.gz')
+    script_runner.run('scil_tractogram_assign_custom_color.py', in_trk,
+                      in_trk, '--from_anatomy', in_anat, '-f')
+    script_runner.run('scil_tractogram_dpp_math.py', 'mean', in_trk, in_trk,
+                      '-f', '--mode', 'dpp', '--in_dpp_name', 'color',
+                      '--out_keys', 'mean_color')
+    script_runner.run('scil_tractogram_dpp_math.py', 'mean', in_trk, in_trk,
+                      '-f', '--mode', 'dps', '--in_dpp_name', 'mean_color',
+                      '--out_keys', 'mean_color_dps')
+
+    # toDo. Add DPS to our config file
+    config = {
+        "input": {
+            "type": "volume",
+            "files": ["anat/t1.nii.gz", "dwi/fa.nii.gz"],
+            "standardization": "per_file",
+            "std_mask": ["masks/wm.nii.gz"]
+        },
+        "wm_mask": {
+            "type": "volume",
+            "files": ["masks/wm.nii.gz"],
+            "standardization": "none"
+        },
+        "streamlines": {
+            "type": "streamlines",
+            "files": ["example_bundle/Fornix.trk"],
+            "dps_keys": 'mean_color_dps'
+        }
+    }
+    config_file = os.path.join(data_dir, 'code_creation/config_file.json')
+    os.remove(config_file)
+    with open(config_file, 'w') as json_file:
+        json.dump(config, json_file)
+
+
+def test_multisubjectdataset(script_runner):
     data_dir = fetch_testing_data()
 
-    logging.debug("Unit test: previous dirs")
-
+    # Adding dps in the data to test better!
+    _tmp_add_dps(data_dir, script_runner)
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
     _non_lazy_version(hdf5_filename)

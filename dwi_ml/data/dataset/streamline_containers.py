@@ -39,11 +39,17 @@ def _load_space_attributes_from_hdf(hdf_group: h5py.Group):
 
 
 def _load_all_streamlines_from_hdf(hdf_group: h5py.Group):
+    print("???", list(hdf_group.keys()))
     streamlines = ArraySequence()
     streamlines._data = np.array(hdf_group['data'])
     streamlines._offsets = np.array(hdf_group['offsets'])
     streamlines._lengths = np.array(hdf_group['lengths'])
-    dps_dict = _load_data_per_streamline(hdf_group)
+
+    # DPS
+    hdf_dps_group = hdf_group['data_per_streamline']
+    dps_dict = defaultdict(list)
+    for dps_key in hdf_dps_group.keys():
+        dps_dict[dps_key] = hdf_dps_group[dps_key][:]
 
     return streamlines, dps_dict
 
@@ -67,31 +73,6 @@ def _load_connectivity_info(hdf_group: h5py.Group):
     else:
         contains_connectivity = False
     return contains_connectivity, connectivity_nb_blocs, connectivity_labels
-
-
-def _load_data_per_streamline(hdf_group,
-                              dps_key: str = None) -> Union[np.ndarray, None]:
-    dps_dict = defaultdict(list)
-    # Load only related data key if specified
-    if 'data_per_streamline' not in hdf_group.keys():
-        return dps_dict
-
-    dps_group = hdf_group['data_per_streamline']
-    if dps_key is not None:
-        # Make sure the related data key is in the hdf5 group
-        if not (dps_key in dps_group.keys()):
-            raise KeyError("The key '{}' is not in the hdf5 group. Found: {}"
-                           .format(dps_key, dps_group.keys()))
-
-        # Load the related data per streamline
-        dps_dict[dps_key] = dps_group[dps_key][:]
-    # Otherwise, load every dps.
-    else:
-        for dps_key in dps_group.keys():
-            dps_dict[dps_key] = dps_group[dps_key][:]
-
-    return dps_dict
-
 
 class _LazyStreamlinesGetter(object):
     def __init__(self, hdf_group):

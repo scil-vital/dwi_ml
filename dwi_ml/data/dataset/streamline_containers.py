@@ -39,7 +39,6 @@ def _load_space_attributes_from_hdf(hdf_group: h5py.Group):
 
 
 def _load_all_streamlines_from_hdf(hdf_group: h5py.Group):
-    print("???", list(hdf_group.keys()))
     streamlines = ArraySequence()
     streamlines._data = np.array(hdf_group['data'])
     streamlines._offsets = np.array(hdf_group['offsets'])
@@ -47,7 +46,7 @@ def _load_all_streamlines_from_hdf(hdf_group: h5py.Group):
 
     # DPS
     hdf_dps_group = hdf_group['data_per_streamline']
-    dps_dict = defaultdict(list)
+    dps_dict = {}
     for dps_key in hdf_dps_group.keys():
         dps_dict[dps_key] = hdf_dps_group[dps_key][:]
 
@@ -73,6 +72,7 @@ def _load_connectivity_info(hdf_group: h5py.Group):
     else:
         contains_connectivity = False
     return contains_connectivity, connectivity_nb_blocs, connectivity_labels
+
 
 class _LazyStreamlinesGetter(object):
     def __init__(self, hdf_group):
@@ -128,22 +128,30 @@ class _LazyStreamlinesGetter(object):
             elif isinstance(item, slice):
                 offsets = self.hdf_group['offsets'][item]
                 lengths = self.hdf_group['lengths'][item]
-                for offset, length in zip(offsets, lengths):
+                indices = np.arange(item.start, item.stop, item.step)
+                for offset, length, idx in zip(offsets, lengths, indices):
                     streamline = self.hdf_group['data'][offset:offset + length]
                     streamlines.append(streamline, cache_build=True)
 
                     for dps_key in hdf_dps_group.keys():
                         data_per_streamline[dps_key].append(
-                            hdf_dps_group[dps_key][offset:offset + length])
+                            hdf_dps_group[dps_key][idx])
                 streamlines.finalize_append()
 
             else:
                 raise ValueError('Item should be either a int, list, '
                                  'np.ndarray or slice but we received {}'
                                  .format(type(item)))
+
+        # The accumulated data_per_streamline is a list of numpy arrays.
+        # We need to merge them into a single numpy array so it can be
+        # reused in the StatefulTractogram.
+        for key in data_per_streamline.keys():
+            data_per_streamline[key] = np.concatenate(data_per_streamline[key])
+
         return streamlines, data_per_streamline
 
-    @property
+    @ property
     def lengths(self):
         """
         Get the lengths of all streamlines without loading everything into
@@ -153,7 +161,7 @@ class _LazyStreamlinesGetter(object):
 
         return lengths
 
-    @property
+    @ property
     def lengths_mm(self):
         """Get the lengths of all streamlines without loading everything
         into memory"""

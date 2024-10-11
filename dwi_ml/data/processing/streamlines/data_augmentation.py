@@ -103,6 +103,12 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
             all_dpp = _extend_dict(all_dpp, old_dpp)
             all_dps = _extend_dict(all_dps, old_dps)
 
+    # Since _extend_dict appends many numpy arrays into a list,
+    # we need to merge them into a single array that can be fed
+    # to StatefulTractogram at data_per_streamlines.
+    for key in sft.data_per_streamline.keys():
+        all_dps[key] = np.concatenate(all_dps[key])
+
     new_sft = StatefulTractogram.from_sft(all_streamlines, sft,
                                           data_per_point=all_dpp,
                                           data_per_streamline=all_dps)

@@ -102,13 +102,12 @@ def _verify_sft_data(sft_data, group_number):
     assert type(list_one) == StatefulTractogram
     assert len(list_one) == 1
     assert len(list_one.streamlines[0][0, :]) == 3  # a x, y, z coordinate
+    assert dps_key in list_one.data_per_streamline.keys()
 
     # Assessing by slice
     list_4 = sft_data.as_sft(slice(0, 4))
     assert len(list_4) == 4
-
-    # DPS
-    assert dps_key in sft_data.data_per_streamline.keys()
+    assert dps_key in list_4.data_per_streamline.keys()
 
 
 def _non_lazy_version(hdf5_filename):

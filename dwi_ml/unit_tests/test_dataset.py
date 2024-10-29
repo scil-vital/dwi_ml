@@ -5,6 +5,7 @@ import os
 
 import h5py
 import torch
+import numpy as np
 from dipy.io.stateful_tractogram import StatefulTractogram
 
 from dwi_ml.data.dataset.multi_subject_containers import \
@@ -24,17 +25,12 @@ from dwi_ml.unit_tests.utils.expected_values import (
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import \
     fetch_testing_data
 
-dps_key = 'mean_color_dps'
+dps_key_1 = 'mean_color_dps'
+dps_key_2 = 'mock_2d_dps'
 
 
 def test_multisubjectdataset(script_runner):
     data_dir = fetch_testing_data()
-
-    # Adding dps in the data to test better!
-    # toDO manage our test data!!
-    ret = script_runner.run(
-        'pytest', 'scripts_python/tests/test_create_hdf5_dataset.py')
-    assert ret.success
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
 
@@ -95,6 +91,7 @@ def _verify_mri(mri_data, training_set, group_number):
 def _verify_sft_data(sft_data, group_number):
     expected_nb = TEST_EXPECTED_NB_STREAMLINES[group_number]
     assert len(sft_data.as_sft()) == expected_nb
+    expected_mock_2d_dps = np.random.RandomState(42).rand(expected_nb, 42)
 
     # First streamline's first coordinate:
     # Also verifying accessing by index
@@ -102,12 +99,28 @@ def _verify_sft_data(sft_data, group_number):
     assert type(list_one) == StatefulTractogram
     assert len(list_one) == 1
     assert len(list_one.streamlines[0][0, :]) == 3  # a x, y, z coordinate
-    assert dps_key in list_one.data_per_streamline.keys()
+
+    # Both dps should be in the data_per_streamline
+    # of the sft. Also making sure that the data is
+    # the same as expected.
+    assert dps_key_1 in list_one.data_per_streamline.keys()
+    assert dps_key_2 in list_one.data_per_streamline.keys()
+    assert np.allclose(
+        list_one.data_per_streamline[dps_key_2][0],
+        expected_mock_2d_dps[0])
 
     # Assessing by slice
     list_4 = sft_data.as_sft(slice(0, 4))
     assert len(list_4) == 4
-    assert dps_key in list_4.data_per_streamline.keys()
+
+    # Same as above, but with slices. Both dps
+    # should be in the data_per_streamline and
+    # the data should be the same as expected.
+    assert dps_key_1 in list_4.data_per_streamline.keys()
+    assert dps_key_2 in list_4.data_per_streamline.keys()
+    assert np.allclose(
+        list_4.data_per_streamline[dps_key_2],
+        expected_mock_2d_dps[0:4])
 
 
 def _non_lazy_version(hdf5_filename):

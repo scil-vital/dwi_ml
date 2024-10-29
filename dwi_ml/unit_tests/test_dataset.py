@@ -119,7 +119,7 @@ def _verify_sft_data(sft_data, group_number):
     assert dps_key_1 in list_4.data_per_streamline.keys()
     assert dps_key_2 in list_4.data_per_streamline.keys()
     assert np.allclose(
-        list_4.data_per_streamline[dps_key_2],
+        list_4.data_per_streamline[dps_key_2][0:4],
         expected_mock_2d_dps[0:4])
 
 

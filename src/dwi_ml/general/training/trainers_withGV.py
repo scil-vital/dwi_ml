@@ -26,8 +26,11 @@ import numpy as np
 import torch
 from torch.nn import PairwiseDistance
 
+from scilpy.connectivity.connectivity import \
+    compute_triu_connectivity_from_labels
+
 from dwi_ml.general.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs, compute_triu_connectivity_from_labels
+    compute_triu_connectivity_from_blocs
 from dwi_ml.general.experiment_utils.memory import BYTES_IN_GB
 from dwi_ml.general.models.main_models.main_models import ModelWithDirectionGetter
 from dwi_ml.general.tracking.propagation import propagate_multiple_lines
@@ -237,12 +240,12 @@ class DWIMLTrainerOneInputWithGVPhase(DWIMLTrainerOneInput):
                     batch_matrix, _, _ = compute_triu_connectivity_from_blocs(
                         _lines, volume_size, nb_blocs)
                 else:
-                    # Note: scilpy usage not ready! Simple endpoints position
-                    # Note: uses streamlines in vox space, corner origin
+                    # Note: scilpy uses streamlines in vox space, center origin
+                    # We are currently in corner space because in our project
+                    # this is always the default.
+                    _lines = [line - 0.5 for line in _lines]
                     batch_matrix, _, _, _ =\
-                        compute_triu_connectivity_from_labels(
-                            _lines, labels, use_scilpy=False)
-
+                        compute_triu_connectivity_from_labels(_lines, labels)
                 if batch_matrix.shape[0] != real_matrix.shape[0]:
                     raise ValueError(
                         "You do not seem to be using the same labels ({} "

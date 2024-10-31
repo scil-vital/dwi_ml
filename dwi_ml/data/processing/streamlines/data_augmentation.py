@@ -81,6 +81,12 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
     for i in range(len(sft.streamlines)):
         old_streamline = sft.streamlines[i]
         old_dpp = sft.data_per_point[i]
+        
+        # Note: This getter gets lists of numpy arrays of shape
+        # (n_features, n_streamlines) for some reason. This is why we need to
+        # transpose the all_dps arrays at the end. Not sure why this is
+        # happening as the arrays are stored within the PerArrayDict as
+        # numpy arrays of shape (n_streamlines, n_features).
         old_dps = sft.data_per_streamline[i]
 
         # Cut if at least min_nb_points
@@ -106,8 +112,15 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
     # Since _extend_dict appends many numpy arrays into a list,
     # we need to merge them into a single array that can be fed
     # to StatefulTractogram at data_per_streamlines.
+    #
+    # Note: at this point, all_dps is a dict of lists of numpy arrays
+    # of shape (n_features, n_streamlines). The StatefulTractogram
+    # expects a dict of numpy arrays of shape (n_streamlines, n_features).
+    # We need to concat along the second axis and transpose to get the
+    # correct shape.
+
     for key in sft.data_per_streamline.keys():
-        all_dps[key] = np.concatenate(all_dps[key])
+        all_dps[key] = np.concatenate(all_dps[key], axis=1).transpose()
 
     new_sft = StatefulTractogram.from_sft(all_streamlines, sft,
                                           data_per_point=all_dpp,

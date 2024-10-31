@@ -85,6 +85,17 @@ class _LazyStreamlinesGetter(object):
         data = self.hdf_group['data'][offset:offset + length]
 
         return data
+    
+    def _assert_dps(self, dps_dict, n_streamlines):
+        for key, value in dps_dict.items():
+            if len(value) != n_streamlines:
+                raise ValueError(
+                    f"Length of data_per_streamline {key} is {len(value)} "
+                    f"but should be {n_streamlines}.")
+            elif type(value) != np.ndarray:
+                raise ValueError(
+                    f"Data_per_streamline {key} should be a numpy array, "
+                    f"not a {type(value)}.")
 
     def get_array_sequence(self, item=None):
         if item is None:
@@ -134,21 +145,24 @@ class _LazyStreamlinesGetter(object):
                     streamlines.append(streamline, cache_build=True)
 
                     for dps_key in hdf_dps_group.keys():
-                        data_per_streamline[dps_key].append(
-                            hdf_dps_group[dps_key][idx])
+                        # Indexing with a list (e.g. [idx]) will preserve the
+                        # shape of the array. Crucial for concatenation below.
+                        dps_data = hdf_dps_group[dps_key][[idx]] 
+                        data_per_streamline[dps_key].append(dps_data)
                 streamlines.finalize_append()
 
             else:
                 raise ValueError('Item should be either a int, list, '
                                  'np.ndarray or slice but we received {}'
                                  .format(type(item)))
-
-        # The accumulated data_per_streamline is a list of numpy arrays.
-        # We need to merge them into a single numpy array so it can be
-        # reused in the StatefulTractogram.
-        for key in data_per_streamline.keys():
-            data_per_streamline[key] = np.concatenate(data_per_streamline[key])
-
+            
+            # The accumulated data_per_streamline is a list of numpy arrays.
+            # We need to merge them into a single numpy array so it can be
+            # reused in the StatefulTractogram.
+            for key in data_per_streamline.keys():
+                data_per_streamline[key] = np.concatenate(data_per_streamline[key])
+        
+        self._assert_dps(data_per_streamline, len(streamlines))
         return streamlines, data_per_streamline
 
     @ property

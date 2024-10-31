@@ -81,7 +81,7 @@ def split_streamlines(sft: StatefulTractogram, rng: np.random.RandomState,
     for i in range(len(sft.streamlines)):
         old_streamline = sft.streamlines[i]
         old_dpp = sft.data_per_point[i]
-        
+
         # Note: This getter gets lists of numpy arrays of shape
         # (n_features, n_streamlines) for some reason. This is why we need to
         # transpose the all_dps arrays at the end. Not sure why this is

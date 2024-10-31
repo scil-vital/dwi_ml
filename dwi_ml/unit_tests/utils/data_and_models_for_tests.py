@@ -31,7 +31,7 @@ def fetch_testing_data():
         # Access to the file dwi_ml.zip:
         # https://drive.google.com/uc?id=1beRWAorhaINCncttgwqVAP2rNOfx842Q
         name_as_dict = {
-            'data_for_tests_dwi_ml.zip': "f8bd3bd88e10d939a7168468e1e99a00"}#"59c9275d2fe83b7e2d6154877ab32b8b"}
+            'data_for_tests_dwi_ml.zip': "f8bd3bd88e10d939a7168468e1e99a00"}
         fetch_data(name_as_dict)
 
     return testing_data_dir

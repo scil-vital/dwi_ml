@@ -42,8 +42,11 @@ import numpy as np
 import torch
 from torch.nn import PairwiseDistance
 
+from scilpy.connectivity.connectivity import \
+    compute_triu_connectivity_from_labels
+
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs, compute_triu_connectivity_from_labels
+    compute_triu_connectivity_from_blocs
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.io_utils import prepare_tracking_mask
@@ -356,8 +359,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 else:
                     # Note: scilpy usage not ready! Simple endpoints position
                     batch_matrix, _, _, _ =\
-                        compute_triu_connectivity_from_labels(
-                            _lines, labels, use_scilpy=False)
+                        compute_triu_connectivity_from_labels(_lines, labels)
 
                 # Where our batch has a 0: not important, maybe it was simply
                 # not in this batch.

@@ -1,5 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+"""
+This script creates a connectivity matrix (using streamline count, or binary)
+when you don't have labels for your data, using a division of the volume into
+N blocs. Useful for supervised machine learning models.
+
+If you do have labels, see
+>> scil_connectivity_compute_simple_matrix.py
+
+"""
 import argparse
 import logging
 import os.path
@@ -7,8 +17,9 @@ import os.path
 import matplotlib.pyplot as plt
 import numpy as np
 import nibabel as nib
-from dipy.io.streamline import save_tractogram
 from dipy.io.utils import is_header_compatible
+from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, \
@@ -16,8 +27,7 @@ from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist, \
 
 from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
 from dwi_ml.data.processing.streamlines.post_processing import \
-    compute_triu_connectivity_from_blocs, \
-    find_streamlines_with_chosen_connectivity, prepare_figure_connectivity
+    compute_triu_connectivity_from_blocs
 
 
 def _build_arg_parser():
@@ -42,17 +52,41 @@ def _build_arg_parser():
     p.add_argument('--show_now', action='store_true',
                    help="If set, shows the matrix with matplotlib.")
 
-    g = p.add_argument_group("Investigation of the matrix:")
-    g.add_argument('--save_biggest', metavar='filename',
-                   help="If set, saves the biggest bundle (as tck or trk).")
-    g.add_argument('--save_smallest', metavar='filename',
-                   help="If set, saves the smallest (non-zero) bundle "
-                        "(as tck or trk).")
-
     add_verbose_arg(p)
     add_overwrite_arg(p)
 
     return p
+
+
+def prepare_figure_connectivity(matrix):
+    # Equivalent to the figure in scil_connectivity_compute_simple_matrix.py
+    matrix = np.copy(matrix)
+
+    fig, axs = plt.subplots(2, 2)
+    im = axs[0, 0].imshow(matrix)
+    divider = make_axes_locatable(axs[0, 0])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[0, 0].set_title("Raw streamline count")
+
+    im = axs[0, 1].imshow(matrix + np.min(matrix[matrix > 0]), norm=LogNorm())
+    divider = make_axes_locatable(axs[0, 1])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[0, 1].set_title("Raw streamline count (log view)")
+
+    matrix = matrix / matrix.sum() * 100
+    im = axs[1, 0].imshow(matrix)
+    divider = make_axes_locatable(axs[1, 0])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    axs[1, 0].set_title("Percentage of the total streamline count")
+
+    matrix = matrix > 0
+    axs[1, 1].imshow(matrix)
+    axs[1, 1].set_title("Binary matrix: 1 if at least 1 streamline")
+
+    plt.suptitle("Connectivity matrix: streamline count")
 
 
 def main():
@@ -94,24 +128,6 @@ def main():
     # Save results.
     np.save(args.out_file, matrix)
     plt.savefig(out_fig)
-
-    # Options to try to investigate the connectivity matrix:
-    if args.save_biggest is not None:
-        i, j = np.unravel_index(np.argmax(matrix, axis=None), matrix.shape)
-        print("Saving biggest bundle: {} streamlines.".format(matrix[i, j]))
-        biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, start_blocs, end_blocs, i, j)
-        sft = in_sft.from_sft(biggest, in_sft)
-        save_tractogram(sft, args.save_biggest)
-
-    if args.save_smallest is not None:
-        tmp_matrix = np.ma.masked_equal(matrix, 0)
-        i, j = np.unravel_index(tmp_matrix.argmin(axis=None), matrix.shape)
-        print("Saving smallest bundle: {} streamlines.".format(matrix[i, j]))
-        biggest = find_streamlines_with_chosen_connectivity(
-            in_sft.streamlines, start_blocs, end_blocs, i, j)
-        sft = in_sft.from_sft(biggest, in_sft)
-        save_tractogram(sft, args.save_smallest)
 
     if args.show_now:
         plt.show()

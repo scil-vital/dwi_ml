@@ -92,7 +92,7 @@ class _LazyStreamlinesGetter(object):
                 raise ValueError(
                     f"Length of data_per_streamline {key} is {len(value)} "
                     f"but should be {n_streamlines}.")
-            elif type(value) is np.ndarray:
+            elif not isinstance(value, np.ndarray):
                 raise ValueError(
                     f"Data_per_streamline {key} should be a numpy array, "
                     f"not a {type(value)}.")

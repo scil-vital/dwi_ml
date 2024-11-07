@@ -11,7 +11,7 @@ import numpy as np
 from collections import defaultdict
 
 
-def _load_space_attributes_from_hdf(hdf_group: h5py.Group):
+def _load_streamlines_attributes_from_hdf(hdf_group: h5py.Group):
     a = np.array(hdf_group.attrs['affine'])
     d = np.array(hdf_group.attrs['dimensions'])
     vs = np.array(hdf_group.attrs['voxel_sizes'])
@@ -374,7 +374,7 @@ class SFTData(SFTDataAbstract):
         else:
             connectivity_matrix = None
 
-        space_attributes, space, origin = _load_space_attributes_from_hdf(
+        space_attributes, space, origin = _load_streamlines_attributes_from_hdf(
             hdf_group)
 
         # Return an instance of SubjectMRIData instantiated through __init__
@@ -430,7 +430,7 @@ class LazySFTData(SFTDataAbstract):
 
     @classmethod
     def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group):
-        space_attributes, space, origin = _load_space_attributes_from_hdf(
+        space_attributes, space, origin = _load_streamlines_attributes_from_hdf(
             hdf_group)
 
         contains_connectivity, connectivity_nb_blocs, connectivity_labels = \

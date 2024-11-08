@@ -50,7 +50,6 @@ class DWIMLAbstractTrainer:
 
     NOTE: TRAINER USES STREAMLINES COORDINATES IN VOXEL SPACE, CORNER ORIGIN.
     """
-
     def __init__(self,
                  model: MainModelAbstract, experiments_path: str,
                  experiment_name: str, batch_sampler: DWIMLBatchIDSampler,
@@ -518,10 +517,8 @@ class DWIMLAbstractTrainer:
         # A. Rng value.
         # RNG:
         #  - numpy
-        self.batch_sampler.np_rng.set_state(
-            current_states['sampler_np_rng_state'])
-        self.batch_loader.np_rng.set_state(
-            current_states['loader_np_rng_state'])
+        self.batch_sampler.np_rng.set_state(current_states['sampler_np_rng_state'])
+        self.batch_loader.np_rng.set_state(current_states['loader_np_rng_state'])
         #  - torch
         torch.set_rng_state(current_states['torch_rng_state'])
         if self.use_gpu:
@@ -571,13 +568,10 @@ class DWIMLAbstractTrainer:
                     display_summary_level=False)
                 self.comet_exp.set_name(self.experiment_name)
                 self.comet_exp.log_parameters(self.params_for_checkpoint)
-                self.comet_exp.log_parameters(
-                    self.batch_sampler.params_for_checkpoint)
-                self.comet_exp.log_parameters(
-                    self.batch_loader.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.batch_sampler.params_for_checkpoint)
+                self.comet_exp.log_parameters(self.batch_loader.params_for_checkpoint)
                 self.comet_exp.log_parameters(self.model.params_for_checkpoint)
-                self.comet_exp.log_parameters(
-                    self.model.computed_params_for_display)
+                self.comet_exp.log_parameters(self.model.computed_params_for_display)
                 self.comet_key = self.comet_exp.get_key()
                 # Couldn't find how to set log level. Getting it directly.
                 comet_log = logging.getLogger("comet_ml")
@@ -888,8 +882,7 @@ class DWIMLAbstractTrainer:
 
                 # Validate this batch: forward propagation + loss
                 with torch.no_grad():
-                    self.validate_one_batch(
-                        data, epoch)
+                    self.validate_one_batch(data, epoch)
 
                 # Break if maximum number of epochs has been reached
                 if batch_id == self.nb_batches_valid - 1:
@@ -1022,7 +1015,7 @@ class DWIMLAbstractTrainer:
         """
         # Data interpolation has not been done yet. GPU computations are done
         # here in the main thread.
-        targets, ids_per_subj, data_per_streamline = data
+        targets, ids_per_subj = data
 
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
@@ -1044,7 +1037,7 @@ class DWIMLAbstractTrainer:
         # but ok, shouldn't be too heavy. Easier to deal with multiple
         # projects' requirements by sending whole streamlines rather
         # than only directions.
-        model_outputs = self.model(streamlines_f, data_per_streamline)
+        model_outputs = self.model(streamlines_f)
         del streamlines_f
 
         logger.debug('*** Computing loss')
@@ -1157,7 +1150,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         """
         # Data interpolation has not been done yet. GPU computations are done
         # here in the main thread.
-        targets, ids_per_subj, data_per_streamline = data
+        targets, ids_per_subj = data
 
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
@@ -1185,8 +1178,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         # (batch loader will do it depending on training / valid)
         streamlines_f = self.batch_loader.add_noise_streamlines_forward(
             streamlines_f, self.device)
-        model_outputs = self.model(
-            batch_inputs, streamlines_f, data_per_streamline)
+        model_outputs = self.model(batch_inputs, streamlines_f)
         del streamlines_f
 
         logger.debug('*** Computing loss')

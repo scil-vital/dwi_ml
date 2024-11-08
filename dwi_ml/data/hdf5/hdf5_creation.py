@@ -133,7 +133,6 @@ class HDF5Creator:
     See the doc for an example of config file.
     https://dwi-ml.readthedocs.io/en/latest/config_file.html
     """
-
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,

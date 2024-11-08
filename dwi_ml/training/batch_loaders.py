@@ -302,6 +302,7 @@ class DWIMLStreamlinesBatchLoader:
         # the loaded, processed streamlines, not to the ids in the hdf5 file.
         final_s_ids_per_subj = defaultdict(slice)
         batch_streamlines = []
+        batch_dps = defaultdict(list)
         for subj, s_ids in streamline_ids_per_subj:
             logger.debug(
                 "            Data loader: Processing data preparation for "
@@ -331,6 +332,10 @@ class DWIMLStreamlinesBatchLoader:
             sft.to_vox()
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
+
+            # Add data per streamline for the batch elements
+            for key, value in sft.data_per_streamline.items():
+                batch_dps[key].extend(value)
 
         batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
         data_per_streamline = _dps_to_tensors(sft.data_per_streamline)

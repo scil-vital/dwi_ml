@@ -18,7 +18,6 @@ class ModelAE(MainModelAbstract):
     deterministic (3D vectors) or probabilistic (based on probability
     distribution parameters).
     """
-
     def __init__(self,
                  experiment_name: str,
                  step_size: float = None,

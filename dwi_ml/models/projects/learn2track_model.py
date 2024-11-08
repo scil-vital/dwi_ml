@@ -289,8 +289,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             unsorted_indices = invert_permutation(sorted_indices)
             x = [x[i] for i in sorted_indices]
             if input_streamlines is not None:
-                input_streamlines = [input_streamlines[i]
-                                     for i in sorted_indices]
+                input_streamlines = [input_streamlines[i] for i in sorted_indices]
 
         # ==== 0. Previous dirs.
         n_prev_dirs = None

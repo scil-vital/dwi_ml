@@ -252,7 +252,6 @@ class IterTimer(object):
     # next iter could be twice as long as usual:
     time.time() + iter_timer.mean * 2.0 + 30 > max_time
     """
-
     def __init__(self, history_len=5):
         self.history = deque(maxlen=history_len)
         self.iterable = None

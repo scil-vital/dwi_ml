@@ -4,7 +4,8 @@
 import os
 import tempfile
 
-from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
+from dwi_ml.unit_tests.utils.data_and_models_for_tests import \
+    fetch_testing_data
 
 data_dir = fetch_testing_data()
 tmp_dir = tempfile.TemporaryDirectory()
@@ -24,10 +25,8 @@ def test_run(script_runner):
     streamlines = os.path.join(dwi_ml_folder, 'example_bundle', 'Fornix.trk')
 
     out_file = 'test_matrix_connectivity.npy'
-    biggest = 'test_biggest.trk'
-
     nb_blocs = '4'
     ret = script_runner.run('dwiml_compute_connectivity_matrix_from_blocs.py',
                             in_volume, streamlines, out_file, nb_blocs,
-                            '--binary', '--save_biggest', biggest)
+                            '--binary')
     assert ret.success

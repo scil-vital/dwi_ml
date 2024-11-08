@@ -137,7 +137,6 @@ class HDF5Creator:
     def __init__(self, root_folder: Path, out_hdf_filename: Path,
                  training_subjs: List[str], validation_subjs: List[str],
                  testing_subjs: List[str], groups_config: dict,
-                 dps_keys: List[str] = [],
                  step_size: float = None,
                  nb_points: int = None,
                  compress: float = None,
@@ -161,8 +160,6 @@ class HDF5Creator:
             List of subject names for each data set.
         groups_config: dict
             Information from json file loaded as a dict.
-        dps_keys: List[str]
-            List of keys to keep in data_per_streamline. Default: [].
         step_size: float
             Step size to resample streamlines. Default: None.
         nb_points: int
@@ -187,7 +184,6 @@ class HDF5Creator:
         self.validation_subjs = validation_subjs
         self.testing_subjs = testing_subjs
         self.groups_config = groups_config
-        self.dps_keys = dps_keys
         self.step_size = step_size
         self.nb_points = nb_points
         self.compress = compress
@@ -597,7 +593,7 @@ class HDF5Creator:
                     "in the config_file. If all files are .trk, we can use "
                     "ref 'same' but if some files were .tck, we need a ref!"
                     "Hint: Create a volume group 'ref' in the config file.")
-            sft, lengths, connectivity_matrix, conn_info = (
+            sft, lengths, connectivity_matrix, conn_info, dps_keys = (
                 self._process_one_streamline_group(
                     subj_input_dir, group, subj_id, ref))
 
@@ -615,6 +611,8 @@ class HDF5Creator:
             streamlines_group.attrs['dimensions'] = d
             streamlines_group.attrs['voxel_sizes'] = vs
             streamlines_group.attrs['voxel_order'] = vo
+
+            # This streamline's group connectivity info
             if connectivity_matrix is not None:
                 streamlines_group.attrs[
                     'connectivity_matrix_type'] = conn_info[0]
@@ -627,20 +625,15 @@ class HDF5Creator:
                     streamlines_group.attrs['connectivity_nb_blocs'] = \
                         conn_info[1]
 
+            # DPP not managed yet!
             if len(sft.data_per_point) > 0:
                 logging.debug('sft contained data_per_point. Data not kept.')
+                logging.debug("    Including dps \"{}\" in the HDF5."
+                              .format(dps_keys))
 
+            # This streamline's group dps info
             dps_group = streamlines_group.create_group('data_per_streamline')
-
-            for dps_key in self.dps_keys:
-                if dps_key not in sft.data_per_streamline:
-                    raise ValueError(
-                        "The data_per_streamline key '{}' was not found in "
-                        "the sft. Check your tractogram file.".format(dps_key))
-
-                logging.debug(
-                    "    Include dps \"{}\" in the HDF5.".format(dps_key))
-
+            for dps_key in dps_keys:
                 dps_group.create_dataset(
                     dps_key, data=sft.data_per_streamline[dps_key])
 
@@ -683,6 +676,11 @@ class HDF5Creator:
             The Euclidean length of each streamline
         """
         tractograms = self.groups_config[group]['files']
+        dps_keys = []
+        if 'dps_keys' in self.groups_config[group]:
+            dps_keys = self.groups_config[group]['dps_keys']
+            if isinstance(dps_keys, str):
+                dps_keys = [dps_keys]
 
         # Silencing SFT's logger if our logging is in DEBUG mode, because it
         # typically produces a lot of outputs!
@@ -695,7 +693,7 @@ class HDF5Creator:
         tractograms = format_filelist(tractograms, self.enforce_files_presence,
                                       folder=subj_dir)
         for tractogram_file in tractograms:
-            sft = self._load_and_process_sft(tractogram_file, header)
+            sft = self._load_and_process_sft(tractogram_file, header, dps_keys)
 
             if sft is not None:
                 # Compute euclidean lengths (rasmm space)
@@ -755,9 +753,9 @@ class HDF5Creator:
             conn_matrix = np.load(conn_file)
             conn_matrix = conn_matrix > 0
 
-        return final_sft, output_lengths, conn_matrix, conn_info
+        return final_sft, output_lengths, conn_matrix, conn_info, dps_keys
 
-    def _load_and_process_sft(self, tractogram_file, header):
+    def _load_and_process_sft(self, tractogram_file, header, dps_keys):
         # Check file extension
         _, file_extension = os.path.splitext(str(tractogram_file))
         if file_extension not in ['.trk', '.tck']:
@@ -777,6 +775,19 @@ class HDF5Creator:
         logging.info("       - Processing tractogram {}"
                      .format(os.path.basename(tractogram_file)))
         sft = load_tractogram(str(tractogram_file), header)
+
+        # Check for required dps_keys
+        for dps_key in dps_keys:
+            if dps_key not in sft.data_per_streamline.keys():
+                raise ValueError("DPS key {} is not present in file {}. Only "
+                                 "found the following keys: {}"
+                                 .format(dps_key, tractogram_file,
+                                         list(sft.data_per_streamline.keys())))
+
+        # Remove non-required dps_keys
+        for dps_key in list(sft.data_per_streamline.keys()):
+            if dps_key not in dps_keys:
+                del sft.data_per_streamline[dps_key]
 
         # Resample or compress streamlines
         sft = resample_or_compress(sft, self.step_size,

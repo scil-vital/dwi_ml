@@ -55,7 +55,8 @@ def torch_nearest_neighbor_interpolation(volume: torch.Tensor,
 
 
 def torch_trilinear_interpolation(volume: torch.Tensor,
-                                  coords_vox_corner: torch.Tensor):
+                                  coords_vox_corner: torch.Tensor,
+                                  clear_cache=True):
     """Evaluates the data volume at given coordinates using trilinear
     interpolation on a torch tensor.
 
@@ -71,6 +72,9 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
         The input volume to interpolate from
     coords_vox_corner : torch.Tensor with shape (N,3)
         The coordinates where to interpolate. (Origin = corner, space = vox).
+    clear_cache : bool
+        If True, will clear the cache after interpolation. This can be useful
+        to save memory, but will slow down the function.
 
     Returns
     -------
@@ -146,7 +150,8 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
         # p: of shape n x 8 x features
         # Q1: n x 8 x 1
         # This can save a bit of space.
-        torch.cuda.empty_cache()
+        if clear_cache:
+            torch.cuda.empty_cache()
 
         # return torch.sum(p * Q1, dim=1)
         # Able to have bigger batches by avoiding 3D matrix.
@@ -164,7 +169,8 @@ def torch_trilinear_interpolation(volume: torch.Tensor,
 
 
 def interpolate_volume_in_neighborhood(
-        volume_as_tensor, coords_vox_corner, neighborhood_vectors_vox=None):
+        volume_as_tensor, coords_vox_corner, neighborhood_vectors_vox=None,
+        clear_cache=True):
     """
     Params
     ------
@@ -178,6 +184,9 @@ def interpolate_volume_in_neighborhood(
         The neighboors to add to each coord. Do not include the current point
         ([0,0,0]). Values are considered in the same space as
         coords_vox_corner, and should thus be in voxel space.
+    clear_cache: bool
+        If True, will clear the cache after interpolation. This can be useful
+        to save memory, but will slow down the function.
 
     Returns
     -------
@@ -202,7 +211,8 @@ def interpolate_volume_in_neighborhood(
         # DWI data features for each neighbor are concatenated.
         # Result is of shape: (M * (N+1), F).
         flat_subj_x_data = torch_trilinear_interpolation(volume_as_tensor,
-                                                         coords_vox_corner)
+                                                         coords_vox_corner,
+                                                         clear_cache)
 
         # Neighbors become new features of the current point.
         # Reshape signal into (M, (N+1)*F))
@@ -211,20 +221,23 @@ def interpolate_volume_in_neighborhood(
 
     else:  # No neighborhood:
         subj_x_data = torch_trilinear_interpolation(volume_as_tensor,
-                                                    coords_vox_corner)
+                                                    coords_vox_corner,
+                                                    clear_cache)
 
     if volume_as_tensor.is_cuda:
         logging.debug("Emptying cache now. Can be a little slow but saves A "
                       "LOT of memory for our\n current trilinear "
                       "interpolation. (We could improve code \na little but "
                       "would loose a lot of readability).")
+
         # Ex: with 2000 streamlines (134 000 points), with neighborhood axis
         # [1 2] (13 neighbors), 47 features per point, we remove 6.5 GB of
         # memory!
-        logging.debug("Torch trilinear: emptying cache. Before:")
-        log_gpu_memory_usage(logging.getLogger())
-        torch.cuda.empty_cache()
-        logging.debug("After")
-        log_gpu_memory_usage(logging.getLogger())
+        if clear_cache:
+            logging.debug("Torch trilinear: emptying cache. Before:")
+            log_gpu_memory_usage(logging.getLogger())
+            torch.cuda.empty_cache()
+            logging.debug("After")
+            log_gpu_memory_usage(logging.getLogger())
 
     return subj_x_data, coords_vox_corner

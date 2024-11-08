@@ -11,7 +11,7 @@ import numpy as np
 from collections import defaultdict
 
 
-def _load_space_attributes_from_hdf(hdf_group: h5py.Group):
+def _load_streamlines_attributes_from_hdf(hdf_group: h5py.Group):
     a = np.array(hdf_group.attrs['affine'])
     d = np.array(hdf_group.attrs['dimensions'])
     vs = np.array(hdf_group.attrs['voxel_sizes'])
@@ -44,6 +44,12 @@ def _load_all_streamlines_from_hdf(hdf_group: h5py.Group):
     streamlines._offsets = np.array(hdf_group['offsets'])
     streamlines._lengths = np.array(hdf_group['lengths'])
     dps_dict = _load_data_per_streamline(hdf_group)
+
+    # DPS
+    hdf_dps_group = hdf_group['data_per_streamline']
+    dps_dict = {}
+    for dps_key in hdf_dps_group.keys():
+        dps_dict[dps_key] = hdf_dps_group[dps_key][:]
 
     return streamlines, dps_dict
 
@@ -105,6 +111,17 @@ class _LazyStreamlinesGetter(object):
 
         return data
 
+    def _assert_dps(self, dps_dict, n_streamlines):
+        for key, value in dps_dict.items():
+            if len(value) != n_streamlines:
+                raise ValueError(
+                    f"Length of data_per_streamline {key} is {len(value)} "
+                    f"but should be {n_streamlines}.")
+            elif not isinstance(value, np.ndarray):
+                raise ValueError(
+                    f"Data_per_streamline {key} should be a numpy array, "
+                    f"not a {type(value)}.")
+
     def get_array_sequence(self, item=None):
         if item is None:
             streamlines, data_per_streamline = _load_all_streamlines_from_hdf(
@@ -128,8 +145,8 @@ class _LazyStreamlinesGetter(object):
                         hdf_dps_group[dps_key][item])
 
             elif isinstance(item, list) or isinstance(item, np.ndarray):
-                # Getting a list of value from a hdf5: slow. Uses fancy indexing.
-                # But possible. See here:
+                # Getting a list of value from a hdf5: slow. Uses fancy
+                # indexing. But possible. See here:
                 # https://stackoverflow.com/questions/21766145/h5py-correct-way-to-slice-array-datasets
                 # Looping and accessing ourselves.
                 # Good also load the whole data and access the indexes after.
@@ -147,19 +164,31 @@ class _LazyStreamlinesGetter(object):
             elif isinstance(item, slice):
                 offsets = self.hdf_group['offsets'][item]
                 lengths = self.hdf_group['lengths'][item]
-                for offset, length in zip(offsets, lengths):
+                indices = np.arange(item.start, item.stop, item.step)
+                for offset, length, idx in zip(offsets, lengths, indices):
                     streamline = self.hdf_group['data'][offset:offset + length]
                     streamlines.append(streamline, cache_build=True)
 
                     for dps_key in hdf_dps_group.keys():
-                        data_per_streamline[dps_key].append(
-                            hdf_dps_group[dps_key][offset:offset + length])
+                        # Indexing with a list (e.g. [idx]) will preserve the
+                        # shape of the array. Crucial for concatenation below.
+                        dps_data = hdf_dps_group[dps_key][[idx]]
+                        data_per_streamline[dps_key].append(dps_data)
                 streamlines.finalize_append()
 
             else:
                 raise ValueError('Item should be either a int, list, '
                                  'np.ndarray or slice but we received {}'
                                  .format(type(item)))
+
+            # The accumulated data_per_streamline is a list of numpy arrays.
+            # We need to merge them into a single numpy array so it can be
+            # reused in the StatefulTractogram.
+            for key in data_per_streamline.keys():
+                data_per_streamline[key] = \
+                    np.concatenate(data_per_streamline[key])
+
+        self._assert_dps(data_per_streamline, len(streamlines))
         return streamlines, data_per_streamline
 
     @property
@@ -370,7 +399,7 @@ class SFTData(SFTDataAbstract):
         else:
             connectivity_matrix = None
 
-        space_attributes, space, origin = _load_space_attributes_from_hdf(
+        space_attributes, space, origin = _load_streamlines_attributes_from_hdf(
             hdf_group)
 
         # Return an instance of SubjectMRIData instantiated through __init__
@@ -426,7 +455,7 @@ class LazySFTData(SFTDataAbstract):
 
     @classmethod
     def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group):
-        space_attributes, space, origin = _load_space_attributes_from_hdf(
+        space_attributes, space, origin = _load_streamlines_attributes_from_hdf(
             hdf_group)
 
         contains_connectivity, connectivity_nb_blocs, connectivity_labels = \

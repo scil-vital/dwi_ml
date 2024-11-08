@@ -31,8 +31,9 @@ Here is the output format created by dwiml_create_hdf5_dataset.py and recognized
     # (others:)
     hdf5['subj1']['group1']['connectivity_matrix']
     hdf5['subj1']['group1']['connectivity_matrix_type'] = 'from_blocs' or 'from_labels'
-    hdf5['subj1']['group1']['connectivity_label_volume'] (the labels' volume group) OR
+    hdf5['subj1']['group1']['connectivity_label_volume'] (the labels\' volume group) OR
     hdf5['subj1']['group1']['connectivity_nb_blocs'] (a list of three integers)
+    hdf5['subj1']['group1']['data_per_streamline'] (a HDF5 group of 2D numpy arrays)
 
     # For volumes, other available data:
     hdf5['sub1']['group1']['affine']

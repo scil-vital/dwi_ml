@@ -83,7 +83,8 @@ To create the hdf5 file, you will need a config file such as below. HDF groups w
             "files": ["tractograms/bundle1.trk", "tractograms/wholebrain.trk", "tractograms/*__wholebrain.trk"], ----> Will get, for instance, sub1000__bundle1.trk
             "connectivity_matrix": "my_file.npy",
             "connectivity_nb_blocs": 6  ---> OR
-            "connectivity_labels": labels_volume_group
+            "connectivity_labels": labels_volume_group,
+            "dps_keys": ['dps1', 'dps2']
              }
         "bad_streamlines": {
             "type": "streamlines",
@@ -137,6 +138,8 @@ Additional attributes for streamlines groups:
 
         - **connectivity_nb_blocs**: This explains that the connectivity matrix was created by dividing the volume space into regular blocs. See dwiml_compute_connectivity_matrix_from_blocs for a description. The value should be either an integers or a list of three integers.
         - **connectivity_labels**: This explains that the connectivity matrix was created by dividing the cortex into a list of regions associated with labels. The value must be the name of the associated labels file (typically a nifti file filled with integers).
+
+    - **dps_keys**: List of data_per_streamline keys to keep in memory in the hdf5.
 
 2.4. Creating the hdf5
 **********************

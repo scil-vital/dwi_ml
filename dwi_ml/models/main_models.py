@@ -454,7 +454,8 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 class MainModelOneInput(MainModelAbstract):
     def prepare_batch_one_input(self, streamlines, subset: MultisubjectSubset,
-                                subj_idx, input_group_idx, prepare_mask=False):
+                                subj_idx, input_group_idx, prepare_mask=False,
+                                clear_cache=True):
         """
         These params are passed by either the batch loader or the propagator,
         which manage the data.
@@ -495,10 +496,11 @@ class MainModelOneInput(MainModelAbstract):
         if isinstance(self, ModelWithNeighborhood):
             # Adding neighborhood.
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, self.neighborhood_vectors)
+                data_tensor, flat_subj_x_coords, self.neighborhood_vectors,
+                clear_cache=clear_cache)
         else:
             subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
-                data_tensor, flat_subj_x_coords, None)
+                data_tensor, flat_subj_x_coords, None, clear_cache=clear_cache)
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]

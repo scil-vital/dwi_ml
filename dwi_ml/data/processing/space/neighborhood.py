@@ -72,7 +72,7 @@ def get_neighborhood_vectors_axes(radius: int, resolution: float):
     """
     This neighborhood definition lies on a sphere.
 
-    For radius = 1, returns a list of 7 positions (current, up, down, left,
+    For radius = 1, returns a list of 6 positions (up, down, left,
     right, behind, in front) at exactly `resolution` (mm or voxels) from origin
     (i.e. current postion).
     If radius is > 1, returns a multi-radius neighborhood (lying on
@@ -102,15 +102,15 @@ def get_neighborhood_vectors_grid(radius: int, resolution: float):
     """
     This neighborhood definition lies on a grid. Returns a list of vectors
     pointing to points surrounding the origin that mimic the original voxel
-    grid, in voxel space. Ex: with radius 1, this is 27 points. With radius 2,
-    it's 125 points.
+    grid, in voxel space. Ex: with radius 1, this is 26 points. With radius 2,
+    it's 124 points. This does not include the origin.
 
     Returns
     -------
     neighborhood_vectors : tensor shape (N, 3)
         A list of vectors with last dimension = 3 (x,y,z coordinate for each
         neighbour per respect to the origin). The current point (0,0,0) is NOT
-        included. Final neighboorhood will be of dimension 2*(radius+1) ^3.
+        included. Final neighboorhood will be of dimension (2*(radius+1) ^3)-1.
     """
     neighborhood_vectors = []
     the_range = range(-radius, radius + 1)

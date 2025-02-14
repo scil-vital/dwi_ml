@@ -127,6 +127,12 @@ class DWIMLBatchIDSampler(Sampler):
         self.nb_streamlines_per_chunk = nb_streamlines_per_chunk
 
         # Find idx of streamline group
+        if streamline_group_name not in self.dataset.streamline_groups:
+            raise ValueError("The chosen streamline group name for the "
+                             "batch sampler during training ({}) does not "
+                             "exist. Possible choices in the current dataset "
+                             "are: {}".format(streamline_group_name,
+                                              self.dataset.streamline_groups))
         self.streamline_group_idx = self.dataset.streamline_groups.index(
             self.streamline_group_name)
 

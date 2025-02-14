@@ -34,7 +34,6 @@ opts = dict(name=NAME,
             version=VERSION,
             packages=find_packages(),
             python_requires=PYTHON_VERSION,
-            setup_requires=['numpy'],
             install_requires=external_dependencies,
             entry_points={
                 'console_scripts': ["{}=scripts_python.{}:main".format(

@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from scilpy.tractanalysis.tools import \
+from scilpy.tractanalysis.connectivity_segmentation import \
     extract_longest_segments_from_profile as segmenting_func
 from scilpy.tractograms.uncompress import uncompress
 

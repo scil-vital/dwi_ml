@@ -7,8 +7,8 @@
 #    which installs a version >2.28. Adding request version explicitely.
 # -------
 requests==2.28.*
-dipy==1.9.*
-scilpy==2.0.2
+dipy==1.10.*
+#scilpy==2.2.0-rc1 - to be installed manually
 
 # -------
 # Other important dependencies
@@ -28,9 +28,9 @@ pynvml>=11.5.0
 # Necessary but should be installed with scilpy (Last check: 04/2024):
 # -------
 future==0.18.*
-h5py==3.7.*   # h5py must absolutely be >2.4: that's when it became thread-safe
+h5py==3.10.*
 matplotlib==3.6.*   # Hint: If matplotlib fails, you may try to install pyQt5.
 nibabel==5.2.*
-numpy==1.23.*
-scipy==1.9.*
+numpy==1.25.*
+scipy==1.11.*
 scikit-image==0.22.*

@@ -7,10 +7,9 @@ import torch
 from matplotlib import pyplot as plt
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-from scilpy.tractanalysis.tools import \
+from scilpy.tractanalysis.connectivity_segmentation import \
     extract_longest_segments_from_profile as segmenting_func
-from scilpy.tractograms.uncompress import uncompress
+from scilpy.tractograms.uncompress import streamlines_to_voxel_coordinates
 
 # We could try using nan instead of zeros for non-existing previous dirs...
 DEFAULT_UNEXISTING_VAL = torch.zeros((1, 3), dtype=torch.float32)
@@ -349,7 +348,8 @@ def compute_triu_connectivity_from_labels(streamlines, data_labels,
     end_labels = []
 
     if use_scilpy:
-        indices, points_to_idx = uncompress(streamlines, return_mapping=True)
+        indices, points_to_idx = streamlines_to_voxel_coordinates(
+            streamlines, return_mapping=True)
 
         for strl_vox_indices in indices:
             segments_info = segmenting_func(strl_vox_indices, data_labels)

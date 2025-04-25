@@ -8,7 +8,7 @@
 # -------
 requests==2.28.*
 dipy==1.10.*
-#scilpy==2.2.0-rc1 - to be installed manually
+scilpy @ git+https://github.com/scilus/scilpy@2.2.0-rc1
 
 # -------
 # Other important dependencies

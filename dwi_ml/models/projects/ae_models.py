@@ -35,6 +35,7 @@ class ModelAE(MainModelAbstract):
         self.latent_space_dims = 32
 
         self.pad = torch.nn.ReflectionPad1d(1)
+        self.post_encoding_hooks = []
 
         def pre_pad(m):
             return torch.nn.Sequential(self.pad, m)
@@ -104,6 +105,7 @@ class ModelAE(MainModelAbstract):
 
     def forward(self,
                 input_streamlines: List[torch.tensor],
+                data_per_streamline: dict = None
                 ):
         """Run the model on a batch of sequences.
 
@@ -113,6 +115,10 @@ class ModelAE(MainModelAbstract):
             Batch of streamlines. Only used if previous directions are added to
             the model. Used to compute directions; its last point will not be
             used.
+        data_per_streamline: dict of lists, optional
+            Dictionary containing additional data for each streamline. Each
+            key is the name of a data type, and each value is a list of length
+            `len(input_streamlines)` containing the data for each streamline.
 
         Returns
         -------
@@ -121,12 +127,20 @@ class ModelAE(MainModelAbstract):
             `get_tracking_directions()`.
         """
 
-        x = self.decode(self.encode(input_streamlines))
+        encoded = self.encode(input_streamlines)
+
+        for hook in self.post_encoding_hooks:
+            hook(encoded, data_per_streamline)
+
+        x = self.decode(encoded)
         return x
 
     def encode(self, x):
-        # x: list of tensors
-        x = torch.stack(x)
+        # X input shape is (batch_size, nb_points, 3)
+        if isinstance(x, list):
+            x = torch.stack(x)
+
+        # input of the network should be (N, 3, nb_points)
         x = torch.swapaxes(x, 1, 2)
 
         h1 = F.relu(self.encod_conv1(x))
@@ -171,3 +185,6 @@ class ModelAE(MainModelAbstract):
         reconstruction_loss = torch.nn.MSELoss(reduction="sum")
         mse = reconstruction_loss(model_outputs, targets)
         return mse, 1
+
+    def register_hook_post_encoding(self, hook):
+        self.post_encoding_hooks.append(hook)

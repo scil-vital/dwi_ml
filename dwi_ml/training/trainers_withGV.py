@@ -242,7 +242,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         seeds and first few segments. Expected results are the batch's
         validation streamlines.
         """
-        real_lines, ids_per_subj = data
+        real_lines, ids_per_subj, data_per_streamline = data
 
         # Possibly sending again to GPU even if done in the local loss
         # computation, but easier with current implementation.

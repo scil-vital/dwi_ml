@@ -195,7 +195,7 @@ def test_sphere_classification_loss():
     logging.debug('Testing sphere classification loss')
 
     model = SphereClassificationDG(input_size=1)
-    sphere = get_sphere('symmetric724')
+    sphere = get_sphere(name='symmetric724')
 
     logging.debug("  - Neg log likelihood, expecting -ln(softmax).")
 

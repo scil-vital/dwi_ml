@@ -312,7 +312,7 @@ class SFTDataAbstract(object):
         streamlines, dps = self._get_streamlines_as_list(streamline_ids)
 
         sft = StatefulTractogram(streamlines, self.space_attributes,
-                                 self.space, self.origin,
+                                 self.space, origin=self.origin,
                                  data_per_streamline=dps)
 
         return sft

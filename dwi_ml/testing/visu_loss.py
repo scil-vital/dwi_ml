@@ -292,7 +292,8 @@ def _create_colored_displacement(out_dirs, sft, model):
         'color_y': color_y,
         'color_z': color_z
     }
-    sft = sft.from_sft(out_streamlines, sft, data_per_point)
+    sft = sft.from_sft(out_streamlines, sft,
+                       data_per_point=data_per_point)
 
     return sft
 

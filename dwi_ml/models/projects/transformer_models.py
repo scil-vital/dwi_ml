@@ -657,7 +657,7 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
             self.token_sphere = None
             self.target_features = 4
         else:
-            dipy_sphere = get_sphere(sos_token_type)
+            dipy_sphere = get_sphere(name=sos_token_type)
             self.token_sphere = TorchSphere(dipy_sphere)
             # nb classes = nb_vertices + SOS
             self.target_features = len(self.token_sphere.vertices) + 1

@@ -601,7 +601,7 @@ class AbstractSphereClassificationDG(AbstractDirectionGetterModel):
 
         # Classes
         self.sphere_name = sphere
-        sphere = dipy.data.get_sphere(sphere)
+        sphere = dipy.data.get_sphere(name=sphere)
         self.torch_sphere = TorchSphere(sphere)
         self.output_size = sphere.vertices.shape[0]   # nb_classes
 

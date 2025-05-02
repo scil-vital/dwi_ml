@@ -28,7 +28,7 @@ def test_zeros():
 
 
 def test_classes(plot_sphere=False):
-    sphere = get_sphere('repulsion100')  # Sphere
+    sphere = get_sphere(name='repulsion100')  # Sphere
     torch_sphere = TorchSphere(sphere)
     idx_sos = 100
     idx_eos = 101

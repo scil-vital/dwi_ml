@@ -429,7 +429,7 @@ class DWIMLBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
             Debugging purposes. Saves the input coordinates as a mask.
             The inputs will be modified to a tuple containing the
             batch_streamlines, to compare the streamlines with masks.
-        device: torch device
+        device: torch.device
             Torch device.
 
         Returns

@@ -23,11 +23,12 @@ def add_transformers_model_args(p):
     AbstractTransformerModel.add_args_main_model(p)
 
     gx = p.add_argument_group(
-        "Embedding of the input (X)",
+        "Input management and embedding of the input (X)",
         "Input embedding size defines the d_model. The d_model must be "
         "divisible by the number of heads.\n"
         "Note that for TTST, total d_model will rather be "
         "input_embedded_size + target_embedded_size.\n")
+    AbstractTransformerModel.add_args_model_one_input(gx)
     AbstractTransformerModel.add_args_input_embedding(
         gx, default_embedding='nn_embedding')
     gx.add_argument(

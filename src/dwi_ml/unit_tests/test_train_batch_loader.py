@@ -61,7 +61,10 @@ def test_batch_loader():
         # 1) With resampling
         logging.info('*** Test with batch size {} + loading with '
                      'resample, noise, split, reverse.'.format(batch_size))
-        model = MainModelOneInput(experiment_name='test', step_size=0.5)
+        model = MainModelOneInput(experiment_name='test', step_size=0.5,
+                                  nb_features_per_point=1,
+                                  add_raw_coords_to_input=False,
+                                  add_relative_coords_to_input=False)
         batch_loader = create_batch_loader(
             dataset, model, noise_size=0.2, split_ratio=SPLIT_RATIO,
             reverse_ratio=0.5)
@@ -77,7 +80,10 @@ def test_batch_loader():
         # 2) With compressing
         logging.info('*** Test with batch size {} + loading with compress'
                      .format(batch_size))
-        model = MainModelOneInput(experiment_name='test', compress_lines=True)
+        model = MainModelOneInput(experiment_name='test', compress_lines=True,
+                                  nb_features_per_point=1,
+                                  add_raw_coords_to_input=False,
+                                  add_relative_coords_to_input=False)
         batch_loader = create_batch_loader(dataset, model)
         batch_loader.set_context('training')
         _load_directly_and_verify(batch_loader, batch_idx_tuples,

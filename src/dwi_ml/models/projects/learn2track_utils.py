@@ -23,7 +23,8 @@ def add_model_args(p: argparse.ArgumentParser):
     Learn2TrackModel.add_args_model_with_pd(prev_dirs_g)
 
     inputs_g = p.add_argument_group(
-        "Learn2track model: Main inputs embedding layer")
+        "Learn2track model: Main inputs and inputs embedding layer")
+    Learn2TrackModel.add_args_model_one_input(inputs_g)
     Learn2TrackModel.add_neighborhood_args_to_parser(inputs_g)
     Learn2TrackModel.add_args_input_embedding(inputs_g)
 

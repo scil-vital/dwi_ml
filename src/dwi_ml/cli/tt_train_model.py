@@ -107,7 +107,7 @@ def init_from_args(args, sub_loggers_level):
 
     # (nb features)
     input_group_idx = dataset.volume_groups.index(args.input_group_name)
-    args.nb_features = dataset.nb_features[input_group_idx]
+    nb_features = dataset.nb_features[input_group_idx]
 
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
@@ -115,11 +115,15 @@ def init_from_args(args, sub_loggers_level):
             experiment_name=args.experiment_name,
             step_size=args.step_size, compress_lines=args.compress_th,
             # Concerning inputs:
-            max_len=args.max_len, nb_features=args.nb_features,
+            max_len=args.max_len,
+            nb_features_per_point=nb_features,
+            add_raw_coords_to_input=args.add_raw_coords_to_input,
+            add_relative_coords_to_input=args.add_relative_coords_to_input,
             positional_encoding_key=args.position_encoding,
             input_embedding_key=args.input_embedding_key,
-            input_embedded_size=args.input_embedded_size,
-            nb_cnn_filters=args.nb_cnn_filters, kernel_size=args.kernel_size,
+            input_embedding_nn_out_size=args.input_embedded_size,
+            input_embedding_cnn_nb_filters=args.nb_cnn_filters,
+            input_embedding_cnn_kernel_size=args.kernel_size,
             # Torch's transformer parameters
             ffnn_hidden_size=args.ffnn_hidden_size,
             nheads=args.nheads, dropout_rate=args.dropout_rate,

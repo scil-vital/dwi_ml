@@ -20,7 +20,13 @@ def test_model_batch():
                                   lazy=False, log_level=logging.WARNING)
     dataset.load_data()
 
-    model = MainModelOneInput('test', step_size=0.5, compress_lines=False)
+    nb_features = TEST_EXPECTED_MRI_SHAPE[0][-1]
+    model = MainModelOneInput(experiment_name='test',
+                              step_size=0.5,
+                              compress_lines=False,
+                              nb_features_per_point=nb_features,
+                              add_raw_coords_to_input=False,
+                              add_relative_coords_to_input=False)
 
     one_line = torch.rand(6, 3)
     batch_streamlines = [one_line, one_line]
@@ -28,8 +34,7 @@ def test_model_batch():
         streamlines=batch_streamlines, subset=dataset.training_set,
         subj_idx=0, input_group_idx=0)
     assert len(batch_inputs) == 2
-    assert np.array_equal(batch_inputs[0].shape,
-                          [6, TEST_EXPECTED_MRI_SHAPE[0][-1]])
+    assert np.array_equal(batch_inputs[0].shape, [6, nb_features])
 
 
 if __name__ == '__main__':

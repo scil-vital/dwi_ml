@@ -15,7 +15,7 @@ from dwi_ml.cache.cache_manager import SingleThreadCacheManager
 from dwi_ml.data.dataset.checks_for_groups import prepare_groups_info
 from dwi_ml.data.dataset.mri_data_containers import MRIDataAbstract
 from dwi_ml.data.dataset.subjectdata_list_containers import (
-    LazySubjectsDataList, SubjectsDataList)
+    SubjectsDataListAbstract, LazySubjectsDataList, SubjectsDataList)
 from dwi_ml.data.dataset.single_subject_containers import (LazySubjectData,
                                                            SubjectData)
 
@@ -50,7 +50,7 @@ class MultisubjectSubset(Dataset):
 
         # The subjects data list will be either a SubjectsDataList or a
         # LazySubjectsDataList depending on MultisubjectDataset.is_lazy.
-        self.subjs_data_list = None
+        self.subjs_data_list = None # type:SubjectsDataListAbstract
         self.subjects = []  # type:List[str]
         self.nb_subjects = 0
 

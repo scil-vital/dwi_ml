@@ -21,7 +21,7 @@ class SubjectsDataListAbstract(object):
 
         # Do not access it directly. Use get_subj.
         # Will be a list of SubjectData or LazySubjectData
-        self._subjects_data_list = []
+        self._subjects_data_list = [] #type:List[SubjectDataAbstract]
 
     def add_subject(self, subject_data: SubjectDataAbstract):
         """

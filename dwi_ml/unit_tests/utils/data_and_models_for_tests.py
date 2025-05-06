@@ -67,9 +67,15 @@ def create_test_batch_2lines_4features():
 
 class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
     def __init__(self, experiment_name: str = 'test',
+                 nb_features: int = 1,
+                 add_raw_coords_to_input: bool = False,
+                 add_relative_coords_to_input: bool = False,
                  neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
         super().__init__(experiment_name=experiment_name,
+                         nb_features_per_point=nb_features,
+                         add_raw_coords_to_input=add_raw_coords_to_input,
+                         add_relative_coords_to_input=add_relative_coords_to_input,
                          neighborhood_type=neighborhood_type,
                          neighborhood_radius=neighborhood_radius,
                          log_level=log_level)
@@ -99,6 +105,10 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
                  log_level=logging.root.level,
                  # NEIGHBORHOOD
                  neighborhood_type: str = None, neighborhood_radius=None,
+                 # Input
+                 nb_features_per_point: int = 1,
+                 add_raw_coords_to_input: bool = False,
+                 add_relative_coords_to_input: bool = False,
                  # PREVIOUS DIRS
                  nb_previous_dirs=0, prev_dirs_embedded_size=None,
                  prev_dirs_embedding_key=None, normalize_prev_dirs=True,
@@ -111,6 +121,10 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
             # For super ModelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
+            # For model with One Input
+            nb_features_per_point=nb_features_per_point,
+            add_raw_coords_to_input=add_raw_coords_to_input,
+            add_relative_coords_to_input=add_relative_coords_to_input,
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
             prev_dirs_embedded_size=prev_dirs_embedded_size,

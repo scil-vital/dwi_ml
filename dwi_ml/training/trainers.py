@@ -912,9 +912,14 @@ class DWIMLAbstractTrainer:
         """
         Computes the loss for the current batch and updates monitors.
         Returns the loss to be used for backpropagation.
+
+        Params
+        ------
+        data: Tuple
+            The data produced by the dataloader.
         """
         # Encapsulated for easier management of child classes.
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(*data)
 
         # mean loss is a Tensor of a single value. item() converts to float
         self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
@@ -923,8 +928,13 @@ class DWIMLAbstractTrainer:
     def validate_one_batch(self, data, epoch):
         """
         Computes the loss(es) for the current batch and updates monitors.
+
+        Params
+        ------
+        data: Tuple
+            The data produced by the dataloader.
         """
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(*data)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 
@@ -993,30 +1003,19 @@ class DWIMLAbstractTrainer:
             json_file.write(json.dumps(best_losses, indent=4,
                                        separators=(',', ': ')))
 
-    def run_one_batch(self, data):
+    def run_one_batch(self, targets, ids_per_subj):
         """
         Runs a batch of data through the model (calling its forward method)
         and returns the mean loss.
 
-        Parameters
-        ----------
-        data : tuple of (List[StatefulTractogram], dict)
-            Output of the batch loader's collate_fn.
-            With our basic BatchLoader class, data is a tuple
-            - batch_sfts: one sft per subject
-            - final_streamline_ids_per_subj: the dict of streamlines ids from
-              the list of all streamlines (if we concatenate all sfts'
-              streamlines)
-        n: int
-            The number of points in this batch
-        X: Any
-            Any other data returned when computing loss. Not used in the
-            trainer, but could be useful anywhere else.
+        Params
+        ------
+        targets: list[Tensor]
+            The streamlines for this batch.
+        ids_per_subj: dict[int, slice]
+            The dict of streamlines ids from all streamlines (after data
+            augmentation).
         """
-        # Data interpolation has not been done yet. GPU computations are done
-        # here in the main thread.
-        targets, ids_per_subj = data
-
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
         targets = [s.to(self.device, non_blocking=True, dtype=torch.float)
@@ -1125,21 +1124,20 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def run_one_batch(self, data):
+    def run_one_batch(self, targets, ids_per_subj):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
 
+        Input is the output of the BatchLoader's load_batch_streamlines()
+
         Parameters
         ----------
-        data : tuple of (List[StatefulTractogram], dict)
-            This is the output of the AbstractBatchLoader's
-            load_batch_streamlines()
-            method. data is a tuple
-            - batch_sfts: one sft per subject
-            - final_streamline_ids_per_subj: the dict of streamlines ids from
-              the list of all streamlines (if we concatenate all sfts'
-              streamlines).
+        targets: list[Tensor]
+            The streamlines for this batch.
+        ids_per_subj: dict[int, slice]
+            The dict of streamlines ids from all streamlines (after data
+            augmentation).
 
         Returns
         -------
@@ -1150,7 +1148,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         """
         # Data interpolation has not been done yet. GPU computations are done
         # here in the main thread.
-        targets, ids_per_subj = data
 
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
@@ -1179,7 +1176,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         streamlines_f = self.batch_loader.add_noise_streamlines_forward(
             streamlines_f, self.device)
         model_outputs = self.model(batch_inputs, streamlines_f)
-        del streamlines_f
+        del streamlines_f, batch_inputs
 
         logger.debug('*** Computing loss')
         # Add noise to targets.

@@ -58,6 +58,16 @@ from dwi_ml.models.main_models import MainModelOneInput, \
 logger = logging.getLogger('batch_loader_logger')
 
 
+def _dps_to_tensors(dps: dict, device='cpu'):
+    """
+    Convert a list of DPS to a list of tensors.
+    """
+    dps_tensors = {}
+    for key, value in dps.items():
+        dps_tensors[key] = torch.tensor(value, device=device)
+    return dps_tensors
+
+
 class DWIMLStreamlinesBatchLoader:
     def __init__(self, dataset: MultiSubjectDataset, model: MainModelAbstract,
                  streamline_group_name: str, rng: int,
@@ -157,7 +167,7 @@ class DWIMLStreamlinesBatchLoader:
             'noise_gaussian_size_forward': self.noise_gaussian_size_forward,
             'noise_gaussian_size_loss': self.noise_gaussian_size_loss,
             'reverse_ratio': self.reverse_ratio,
-            'split_ratio': self.split_ratio,
+            'split_ratio': self.split_ratio
         }
         return params
 
@@ -292,6 +302,7 @@ class DWIMLStreamlinesBatchLoader:
         # the loaded, processed streamlines, not to the ids in the hdf5 file.
         final_s_ids_per_subj = defaultdict(slice)
         batch_streamlines = []
+        batch_dps = defaultdict(list)
         for subj, s_ids in streamline_ids_per_subj:
             logger.debug(
                 "            Data loader: Processing data preparation for "
@@ -322,9 +333,14 @@ class DWIMLStreamlinesBatchLoader:
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
 
-        batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
+            # Add data per streamline for the batch elements
+            for key, value in sft.data_per_streamline.items():
+                batch_dps[key].extend(value)
 
-        return batch_streamlines, final_s_ids_per_subj
+        batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
+        data_per_streamline = _dps_to_tensors(sft.data_per_streamline)
+
+        return batch_streamlines, final_s_ids_per_subj, data_per_streamline
 
     def load_batch_connectivity_matrices(
             self, streamline_ids_per_subj: Dict[int, slice]):

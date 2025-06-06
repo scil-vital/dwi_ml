@@ -358,7 +358,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         return mask_future, mask_padding
 
     def forward(self, inputs: List[torch.tensor],
-                input_streamlines: List[torch.tensor] = None):
+                input_streamlines: List[torch.tensor] = None,
+                data_per_streamline: dict = None):
         """
         Params
         ------
@@ -376,7 +377,10 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
             adequately masked to hide future positions. The last direction is
             not used.
             - As target during training. The whole sequence is used.
-
+        data_per_streamline: dict of lists, optional
+            Dictionary containing additional data for each streamline. Each
+            key is the name of a data type, and each value is a list of length
+            `len(input_streamlines)` containing the data for each streamline.
         Returns
         -------
         output: Tensor,

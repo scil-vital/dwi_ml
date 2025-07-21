@@ -227,6 +227,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
     def forward(self, x: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
+                data_per_streamline: List[torch.tensor] = {},
                 hidden_recurrent_states: List = None, return_hidden=False,
                 point_idx: int = None):
         """Run the model on a batch of sequences.
@@ -243,6 +244,10 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             Batch of streamlines. Only used if previous directions are added to
             the model. Used to compute directions; its last point will not be
             used.
+        data_per_streamline: dict of lists, optional
+            Dictionary containing additional data for each streamline. Each
+            key is the name of a data type, and each value is a list of length
+            `len(input_streamlines)` containing the data for each streamline.
         hidden_recurrent_states : list[states]
             The current hidden states of the (stacked) RNN model.
         return_hidden: bool

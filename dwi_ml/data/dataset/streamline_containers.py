@@ -11,7 +11,22 @@ import numpy as np
 from collections import defaultdict
 
 
-def _load_streamlines_attributes_from_hdf(hdf_group: h5py.Group):
+def load_streamlines_attributes_from_hdf(hdf_group: h5py.Group):
+    """
+    Loads tractogram attributes from a HDF5 file.
+
+    Parameters
+    ----------
+    hdf_group : h5py.Group
+        The streamlines group.
+
+    Returns
+    -------
+    space_attributes: tuple (a, d, vs, vo)
+        a: affine. d: dimensions. vs: voxel size. vo: voxel order.
+    space: Space
+    origin: Origin
+    """
     a = np.array(hdf_group.attrs['affine'])
     d = np.array(hdf_group.attrs['dimensions'])
     vs = np.array(hdf_group.attrs['voxel_sizes'])
@@ -38,17 +53,34 @@ def _load_streamlines_attributes_from_hdf(hdf_group: h5py.Group):
     return space_attributes, space, origin
 
 
-def _load_all_streamlines_from_hdf(hdf_group: h5py.Group):
+def load_all_streamlines_from_hdf(hdf_group: h5py.Group):
+    """
+    Loads all streamlines from a HDF5 file.
+
+    Parameters
+    ----------
+    hdf_group : h5py.Group
+        The streamlines group.
+
+    Returns
+    -------
+    streamlines : ArraySequence
+        The streamlines.
+    dps: dict
+        The data_per_streamlines
+    """
     streamlines = ArraySequence()
     streamlines._data = np.array(hdf_group['data'])
     streamlines._offsets = np.array(hdf_group['offsets'])
     streamlines._lengths = np.array(hdf_group['lengths'])
 
     # DPS
-    hdf_dps_group = hdf_group['data_per_streamline']
     dps_dict = {}
-    for dps_key in hdf_dps_group.keys():
-        dps_dict[dps_key] = hdf_dps_group[dps_key][:]
+
+    if 'data_per_streamlines' in hdf_group:   # accepting older hdf5 versions
+        hdf_dps_group = hdf_group['data_per_streamline']
+        for dps_key in hdf_dps_group.keys():
+            dps_dict[dps_key] = hdf_dps_group[dps_key][:]
 
     return streamlines, dps_dict
 
@@ -99,7 +131,7 @@ class _LazyStreamlinesGetter(object):
 
     def get_array_sequence(self, item=None):
         if item is None:
-            streamlines, data_per_streamline = _load_all_streamlines_from_hdf(
+            streamlines, data_per_streamline = load_all_streamlines_from_hdf(
                 self.hdf_group)
         else:
             streamlines = ArraySequence()
@@ -362,7 +394,7 @@ class SFTData(SFTDataAbstract):
         Creating class instance from the hdf in cases where data is not
         loaded yet. Non-lazy = loading the data here.
         """
-        streamlines, dps_dict = _load_all_streamlines_from_hdf(hdf_group)
+        streamlines, dps_dict = load_all_streamlines_from_hdf(hdf_group)
         # Adding non-hidden parameters for nicer later access
         lengths_mm = hdf_group['euclidean_lengths']
 
@@ -374,7 +406,7 @@ class SFTData(SFTDataAbstract):
         else:
             connectivity_matrix = None
 
-        space_attributes, space, origin = _load_streamlines_attributes_from_hdf(
+        space_attributes, space, origin = load_streamlines_attributes_from_hdf(
             hdf_group)
 
         # Return an instance of SubjectMRIData instantiated through __init__
@@ -430,7 +462,7 @@ class LazySFTData(SFTDataAbstract):
 
     @classmethod
     def init_sft_data_from_hdf_info(cls, hdf_group: h5py.Group):
-        space_attributes, space, origin = _load_streamlines_attributes_from_hdf(
+        space_attributes, space, origin = load_streamlines_attributes_from_hdf(
             hdf_group)
 
         contains_connectivity, connectivity_nb_blocs, connectivity_labels = \

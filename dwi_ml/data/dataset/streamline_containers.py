@@ -77,7 +77,8 @@ def load_all_streamlines_from_hdf(hdf_group: h5py.Group):
     # DPS
     dps_dict = {}
 
-    if 'data_per_streamlines' in hdf_group:   # accepting older hdf5 versions
+    # accepting older hdf5 versions: no dps was saved.
+    if 'data_per_streamline' in hdf_group:
         hdf_dps_group = hdf_group['data_per_streamline']
         for dps_key in hdf_dps_group.keys():
             dps_dict[dps_key] = hdf_dps_group[dps_key][:]

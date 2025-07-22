@@ -29,7 +29,7 @@ dps_key_1 = 'mean_color_dps'
 dps_key_2 = 'mock_2d_dps'
 
 
-def test_multisubjectdataset(script_runner):
+def test_multisubjectdataset():
     data_dir = fetch_testing_data()
 
     hdf5_filename = os.path.join(data_dir, 'hdf5_file.hdf5')
@@ -103,7 +103,10 @@ def _verify_sft_data(sft_data, group_number):
     # Both dps should be in the data_per_streamline
     # of the sft. Also making sure that the data is
     # the same as expected.
-    assert dps_key_1 in list_one.data_per_streamline.keys()
+    assert dps_key_1 in list_one.data_per_streamline.keys(), \
+        (("Expected to receive the right data_per_streamline. "
+         "Expected {} but got {}")
+         .format(dps_key_1, list(list_one.data_per_streamline.keys())))
     assert dps_key_2 in list_one.data_per_streamline.keys()
     assert np.allclose(
         list_one.data_per_streamline[dps_key_2][0],

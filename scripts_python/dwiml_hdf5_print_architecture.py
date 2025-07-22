@@ -41,8 +41,17 @@ def main():
         print("- For each subject, caracteristics are:")
         first_subj = list(hdf_handle.keys())[0]
         for key, val in hdf_handle[first_subj].items():
-            print("   - {}, with attributes {}"
-                  .format(key, list(hdf_handle[first_subj][key].attrs.keys())))
+            print("   - {}\n"
+                  "       type: {}\n"
+                  "       attributes: {}\n"
+                  "       data groups: {}"
+                  .format(key,
+                          hdf_handle[first_subj][key].attrs['type'],
+                          list(hdf_handle[first_subj][key].attrs.keys()),
+                          list(hdf_handle[first_subj][key].keys())))
+            if hdf_handle[first_subj][key].attrs['type'] == 'volume':
+                print("       Number of features: {}"
+                      .format(hdf_handle[first_subj][key].attrs['nb_features']))
 
 
 if __name__ == '__main__':

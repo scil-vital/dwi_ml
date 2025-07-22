@@ -9,11 +9,11 @@ experiment_name = 'test_experiment'
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run('dwiml_print_hdf5_architecture.py', '--help')
+    ret = script_runner.run('dwiml_hdf5_print_architecture.py', '--help')
     assert ret.success
 
 
 def test_execution(script_runner):
     hdf5_file = os.path.join(data_dir, 'hdf5_file.hdf5')
-    ret = script_runner.run('dwiml_print_hdf5_architecture.py', hdf5_file)
+    ret = script_runner.run('dwiml_hdf5_print_architecture.py', hdf5_file)
     assert ret.success

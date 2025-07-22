@@ -70,10 +70,14 @@ def _build_arg_parser():
 def main():
     p = _build_arg_parser()
     args = p.parse_args()
+    logging.getLogger().setLevel(logging.getLevelName(args.verbose))
 
-    if args.verbose:
-        # Currenlty, with debug, matplotlib prints a lot of stuff. Why??
-        logging.getLogger().setLevel(logging.INFO)
+    # Currently, with debug, matplotlib prints a lot of stuff. Why??
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+    logging.getLogger('matplotlib.ticker').setLevel(logging.ERROR)
+    logging.getLogger('matplotlib.colorbar').setLevel(logging.ERROR)
+    logging.getLogger('matplotlib.pyplot').setLevel(logging.ERROR)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.ERROR)
 
     tmp, ext = os.path.splitext(args.out_file)
 
@@ -96,10 +100,13 @@ def main():
     else:
         args.reference = args.in_labels
 
-    logging.info("Loading tractogram.")
+    logging.info("Loading tractogram and labels.")
     in_sft = load_tractogram_with_reference(p, args, args.streamlines)
     in_img = nib.load(args.in_labels)
     data_labels = get_data_as_labels(in_img)
+
+    logging.info("Tractogram contains {} streamlines."
+                 .format(len(in_sft.streamlines)))
 
     in_sft.to_vox()
     in_sft.to_corner()

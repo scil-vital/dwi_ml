@@ -653,6 +653,11 @@ class DWIMLAbstractTrainer:
         # Train each epoch
         self.optimizer.zero_grad(set_to_none=True)
         for epoch in iter_timer(range(self.current_epoch, self.max_epochs)):
+            # At each new epoch, cleaning the memory
+            # Maybe not useful, see https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/4
+            # But I'm trying to see why memory accumulates through epochs.
+            torch.cuda.empty_cache()
+
             # Updating current epoch. First epoch is 0!
             self.current_epoch = epoch
             if self.comet_exp:

@@ -34,6 +34,8 @@ class DWIMLAbstractTracker:
 
     Abstract version: Uses only the last coordinate of the streamlines in the
     model to get the next direction.
+
+    Tracks in voxel space, corner origin.
     """
     def __init__(self, dataset: MultisubjectSubset, subj_idx: int,
                  model: ModelWithDirectionGetter, mask: TrackingMask,

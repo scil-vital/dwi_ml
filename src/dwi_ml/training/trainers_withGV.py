@@ -242,9 +242,18 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                         _lines, volume_size, nb_blocs)
                 else:
                     # Note: scilpy usage not ready! Simple endpoints position
+                    # Note: uses streamlines in vox space, corner origin
                     batch_matrix, _, _, _ =\
                         compute_triu_connectivity_from_labels(
                             _lines, labels, use_scilpy=False)
+
+                if batch_matrix.shape[0] != real_matrix.shape[0]:
+                    raise ValueError(
+                        "You do not seem to be using the same labels ({} "
+                        "labels) for the connectivity matrix as what used to "
+                        "compute the reference connectivity matrices in the "
+                        "hdf5 (nb rows: {})."
+                        .format(batch_matrix[0].shape, real_matrix.shape[0]))
 
                 # Where our batch has a 0: not important, maybe it was simply
                 # not in this batch.

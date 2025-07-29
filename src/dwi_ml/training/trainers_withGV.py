@@ -28,6 +28,7 @@ from torch.nn import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_triu_connectivity_from_blocs, compute_triu_connectivity_from_labels
+from dwi_ml.experiment_utils.memory import BYTES_IN_GB
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.io_utils import prepare_tracking_mask
@@ -130,6 +131,10 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
     def validate_one_batch(self, data, epoch):
         # 1. Compute the local loss as usual.
         super().validate_one_batch(data, epoch)
+
+        logger.debug("--> Max peak during validation (forward, before "
+                     "GV phase): ")
+        logger.debug(torch.cuda.max_memory_allocated() / BYTES_IN_GB)
 
         # 2. Compute generation losses.
         if self.add_a_tracking_validation_phase:

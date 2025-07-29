@@ -3,25 +3,9 @@
 Adds a generation-validation phase: a tracking step. Metrics on the streamlines
 are:
 
-- Very good / acceptable / very far IS threshold:
-    Percentage of streamlines ending inside a radius of 15 / 25 / 40 voxels of
-    the expected endpoint. This metric has the drawback that streamlines
-    following a correct path different from the "true" validation streamline
-    contribute negatively to the metric.
-- 'diverg':
-    The point where the streamline becomes significantly far (i.e. > 25 voxels)
-    from the "true" path. Values range between 100 (100% bad, i.e. diverging
-    from the start) to 0 (0% bad; ended correclty). If the generated streamline
-    is longer than the "true" one, values range between 0 (0% bad) and infinit
-    (ex: 100% = went 100% too far before becoming far from the expected point.
-    I.e. the generated streamline is at least twice as long as expected). Same
-    drawback as above.
 - Mean distance from expected endpoint:
     In voxel space. Same drawback as above. Also, a single bad streamline may
     contribute intensively to the score.
-- Idem, clipped.
-    Distances are clipped at 25. We consider that bad streamlines are bad, no
-    matter if they end up near or far.
 - Connectivity fit:
     Percentage of streamlines ending in a block of the volume indeed connected
     in the validation subject. Real connectivity matrices must be saved in the
@@ -52,14 +36,6 @@ from dwi_ml.training.trainers import DWIMLTrainerOneInput
 from dwi_ml.training.utils.monitoring import BatchHistoryMonitor
 
 logger = logging.getLogger('train_logger')
-
-# Emma tests in ISMRM: sphere of 50 mm of diameter (in MI-Brain, imagining a
-# sphere encapsulated in a cube box of 50x50x50) around any point seems to
-# englobe mostly acceptable streamlines.
-# So half of it, a ray of 25 mm seems ok.
-VERY_CLOSE_THRESHOLD = 15.0
-ACCEPTABLE_THRESHOLD = 25.0
-VERY_FAR_THRESHOLD = 40.0
 
 
 class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
@@ -114,35 +90,16 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         # At training time: only the one metric used for training.
         # At validation time: A lot of exploratory metrics monitors.
 
-        # Percentage of streamlines inside a radius
-        self.tracking_very_good_IS_monitor = BatchHistoryMonitor(
-            'tracking_very_good_IS_monitor', weighted=True)
-        self.tracking_acceptable_IS_monitor = BatchHistoryMonitor(
-            'tracking_acceptable_IS_monitor', weighted=True)
-        self.tracking_very_far_IS_monitor = BatchHistoryMonitor(
-            'tracking_very_far_IS_monitor', weighted=True)
-
-        # Point where the streamline starts diverging from "acceptable"
-        self.tracking_valid_diverg_monitor = BatchHistoryMonitor(
-            'tracking_valid_diverg_monitor', weighted=True)
-
         # Final distance from expected point
         self.tracking_mean_final_distance_monitor = BatchHistoryMonitor(
             'tracking_mean_final_distance_monitor', weighted=True)
-        self.tracking_clipped_final_distance_monitor = BatchHistoryMonitor(
-            'tracking_clipped_final_distance_monitor', weighted=True)
 
         # Connectivity matrix accordance
         self.tracking_connectivity_score_monitor = BatchHistoryMonitor(
             'tracking_connectivity_score_monitor', weighted=True)
 
         if self.add_a_tracking_validation_phase:
-            new_monitors = [self.tracking_very_good_IS_monitor,
-                            self.tracking_acceptable_IS_monitor,
-                            self.tracking_very_far_IS_monitor,
-                            self.tracking_valid_diverg_monitor,
-                            self.tracking_mean_final_distance_monitor,
-                            self.tracking_clipped_final_distance_monitor,
+            new_monitors = [self.tracking_mean_final_distance_monitor,
                             self.tracking_connectivity_score_monitor]
             self.monitors += new_monitors
             self.validation_monitors += new_monitors
@@ -179,24 +136,11 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
             if (epoch + 1) % self.tracking_phase_frequency == 0:
                 logger.debug("Additional tracking-like generation validation "
                              "from batch.")
-                (gen_n, mean_final_dist, mean_clipped_final_dist,
-                 percent_IS_very_good, percent_IS_acceptable,
-                 percent_IS_very_far, diverging_pnt, connectivity) = \
+                (gen_n, mean_final_dist, connectivity) = \
                     self.gv_phase_one_batch(data, compute_all_scores=True)
-
-                self.tracking_very_good_IS_monitor.update(
-                    percent_IS_very_good, weight=gen_n)
-                self.tracking_acceptable_IS_monitor.update(
-                    percent_IS_acceptable, weight=gen_n)
-                self.tracking_very_far_IS_monitor.update(
-                    percent_IS_very_far, weight=gen_n)
 
                 self.tracking_mean_final_distance_monitor.update(
                     mean_final_dist, weight=gen_n)
-                self.tracking_clipped_final_distance_monitor.update(
-                    mean_clipped_final_dist, weight=gen_n)
-                self.tracking_valid_diverg_monitor.update(
-                    diverging_pnt, weight=gen_n)
 
                 if self.compute_connectivity:
                     self.tracking_connectivity_score_monitor.update(
@@ -206,20 +150,8 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                             "from batch. No values yet: adding fake initial "
                             "values.")
                 # Fake values at the beginning
-                # Bad IS = 100%
-                self.tracking_very_good_IS_monitor.update(100.0)
-                self.tracking_acceptable_IS_monitor.update(100.0)
-                self.tracking_very_far_IS_monitor.update(100.0)
-
-                # Bad diverging = very far from 0. Either 100% (if diverged at
-                # first point) or anything >0 if diverged further than expected
-                # point.
-                self.tracking_valid_diverg_monitor.update(100.0)
-
                 # Bad mean dist = very far. ex, 100, or clipped.
                 self.tracking_mean_final_distance_monitor.update(100.0)
-                self.tracking_clipped_final_distance_monitor.update(
-                    ACCEPTABLE_THRESHOLD)
 
                 if self.compute_connectivity:
                     self.tracking_connectivity_score_monitor.update(1)
@@ -227,12 +159,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 logger.info("Skipping tracking-like generation validation "
                             "from batch. Copying previous epoch's values.")
                 # Copy previous value
-                for monitor in [self.tracking_very_good_IS_monitor,
-                                self.tracking_acceptable_IS_monitor,
-                                self.tracking_very_far_IS_monitor,
-                                self.tracking_valid_diverg_monitor,
-                                self.tracking_mean_final_distance_monitor,
-                                self.tracking_clipped_final_distance_monitor,
+                for monitor in [self.tracking_mean_final_distance_monitor,
                                 self.tracking_connectivity_score_monitor]:
                     monitor.update(monitor.average_per_epoch[-1])
 
@@ -270,56 +197,16 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         if not compute_all_scores:
             return final_dist
         else:
-            # 1. (bis) Also clipping final dist
-            final_dist_clipped = torch.clip(final_dist, min=None,
-                                            max=ACCEPTABLE_THRESHOLD)
-            final_dist_clipped = torch.mean(final_dist_clipped)
+            # 1. Final distance
+            final_dist = torch.mean(final_dist)
+            final_dist = final_dist.item()
 
             # 2. Connectivity scores, if available (else None)
             connectivity_score = self._compare_connectivity(lines,
                                                             ids_per_subj)
 
-            # 3. "IS ratio", i.e. percentage of streamlines ending inside a
-            # predefined radius.
-            invalid_ratio_severe = torch.sum(
-                final_dist > VERY_CLOSE_THRESHOLD) / len(lines) * 100
-            invalid_ratio_acceptable = torch.sum(
-                final_dist > ACCEPTABLE_THRESHOLD) / len(lines) * 100
-            invalid_ratio_loose = torch.sum(
-                final_dist > VERY_FAR_THRESHOLD) / len(lines) * 100
-            final_dist = torch.mean(final_dist)
 
-            # 4. Verify point where streamline starts diverging.
-            # abs(100 - score): 0 = good. 100 = bad (either
-            # abs(100) -> diverged at first point or
-            # abs(-100) = diverged after twice the expected length.
-            total_point = 0
-            for line, real_line in zip(lines, real_lines):
-                expected_nb = len(real_line)
-                diff_nb = abs(len(real_line) - len(line))
-                if len(line) < expected_nb:
-                    diff_nb = len(real_line) - len(line)
-                    line = torch.vstack((line, line[-1, :].repeat(diff_nb, 1)))
-                elif len(line) > expected_nb:
-                    real_line = torch.vstack(
-                        (real_line, real_line[-1, :].repeat(diff_nb, 1)))
-                dist = l2_loss(line, real_line).cpu().numpy()
-                point, = np.where(dist > ACCEPTABLE_THRESHOLD)
-                if len(point) > 0:  # (else: score = 0. Never out of range).
-                    div_point = point[0] / expected_nb * 100.0
-                    total_point += abs(100 - div_point)
-            diverging_point = total_point / len(lines)
-
-            invalid_ratio_severe = invalid_ratio_severe.item()
-            invalid_ratio_acceptable = invalid_ratio_acceptable.item()
-            invalid_ratio_loose = invalid_ratio_loose.item()
-            final_dist = final_dist.item()
-            final_dist_clipped = final_dist_clipped.item()
-
-            return (len(lines), final_dist, final_dist_clipped,
-                    invalid_ratio_severe, invalid_ratio_acceptable,
-                    invalid_ratio_loose, diverging_point,
-                    connectivity_score)
+            return len(lines), final_dist, connectivity_score
 
     def _compare_connectivity(self, lines, ids_per_subj):
         """

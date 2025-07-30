@@ -699,6 +699,7 @@ class DWIMLAbstractTrainer:
             logging.debug("Between train and validate: ")
             log_allocated(logger)
             log_gpu_per_tensor(logger)
+            self.batch_loader.context_subset.empty_cache_now()
 
             # Validation
             if self.use_validation:
@@ -707,6 +708,7 @@ class DWIMLAbstractTrainer:
                 self.validate_one_epoch(epoch)
                 logging.info("Max allocated GPU memory during validation: {}"
                              .format(torch.cuda.max_memory_allocated()))
+                self.batch_loader.context_subset.empty_cache_now()
 
             # Updating info
             mean_epoch_loss = self._get_latest_loss_to_supervise_best()

@@ -48,7 +48,8 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 
-from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
+from dwi_ml.data.dataset.multi_subject_containers import (
+    MultiSubjectDataset, MultisubjectSubset)
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     reverse_streamlines, split_streamlines, resample_or_compress)
 from dwi_ml.data.processing.utils import add_noise_to_tensor
@@ -140,10 +141,10 @@ class DWIMLStreamlinesBatchLoader:
         logger.setLevel(log_level)
 
         # For later use, context
-        self.context = None
-        self.context_subset = None
-        self.context_noise_size_forward = None
-        self.context_noise_size_loss = None
+        self.context = None  # type: str
+        self.context_subset = None  # type: MultisubjectSubset
+        self.context_noise_size_forward = None  # type: float
+        self.context_noise_size_loss = None  # type: float
 
     @property
     def params_for_checkpoint(self):

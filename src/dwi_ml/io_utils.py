@@ -62,10 +62,7 @@ def add_memory_args(p: ArgumentParser, add_lazy_options=False,
         g.add_argument(
             '--cache_size', type=int, metavar='s', default=1,
             help="Relevant only if lazy data is used. Size of the cache in "
-                 "terms of length of the \nqueue (i.e. number of volumes). "
-                 "NOTE: Real cache size will actually be larger \ndepending "
-                 "on usage; the training, validation and testing sets each "
-                 "have their \ncache. [1]")
+                 "terms of length number of volumes. [1]")
         g.add_argument(
             '--lazy', action='store_true',
             help="If set, do not load all the dataset in memory at once. "

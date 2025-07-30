@@ -9,10 +9,23 @@ import gc
 BYTES_IN_GB = 1024 ** 3
 
 
-def log_gpu_general_info(logger=None):
+def torch_reset_peaks_memory():
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+
+def log_gpu_general_info(logger_info=None, context: str = None):
     """
-    Prints general info. If logger: on logger.info.
+    Prints general info. Available GPU, used by other processes, etc.
     Intended to be used at the start of the experiment.
+    (other logs below are on logger.debug)
+
+    Params
+    ------
+    logger_info: logging.Logger
+        If set, will show on logger.info. Else, will print.
+    context: str
+        IF set, will add additional information in the message.
     """
     if torch.cuda.is_available():
         # From torch
@@ -29,19 +42,32 @@ def log_gpu_general_info(logger=None):
         # ALLOCATED {:>6.3f}GB; CACHED: {:>6.3f}GB)
         # torch.cuda.max_memory_allocated() / BYTES_IN_GB,
         # torch.cuda.max_memory_reserved() / BYTES_IN_GB,
-        msg = ("GPU: TOTAL: Asking torch: {:>6.3f}GB. Asking pynvml: {:>6.3f}GB\n"
-               "   - Total used including other processes: Asking pynvml: {:>6.3f}GB.\n"
-               "   - Free: Asking torch: {:>6.3f}GB. Asking pynvml: {:>6.3f}GB\n"
-               .format(total / BYTES_IN_GB, info.total / BYTES_IN_GB,
+        msg = ("GPU: {}\n"
+               "   - TOTAL: Asking torch: {:>6.3f}GB. Asking pynvml: {:>6.3f}GB\n"
+               "   - CURRENTLY USED:\n"
+               "   -    Used (including other processes): {:>6.3f}GB.\n"
+               "   -    Free: Asking torch: {:>6.3f}GB. Asking pynvml: {:>6.3f}GB\n"
+               .format(context,
+                       total / BYTES_IN_GB, info.total / BYTES_IN_GB,
                        info.used / BYTES_IN_GB,
                        total_free / BYTES_IN_GB, info.free / BYTES_IN_GB))
-        if logger is None:
+        if logger_info is None:
             print(msg)
         else:
-            logger.info(msg)
+            logger_info.info(msg)
 
 
-def log_allocated(logger=None):
+def log_currently_allocated(logger_debug=None, context: str = None):
+    """
+    Prints currently allocated GPU memory.
+
+    Params
+    ------
+    logger_debug: logging.Logger
+        If set, will show on logger.info. Else, will print.
+    context: str
+        IF set, will add additional information in the message.
+    """
     if torch.cuda.is_available():
         # From torch
         # total can also be found with:
@@ -54,15 +80,26 @@ def log_allocated(logger=None):
         # ALLOCATED {:>6.3f}GB; CACHED: {:>6.3f}GB)
         # torch.cuda.max_memory_allocated() / BYTES_IN_GB,
         # torch.cuda.max_memory_reserved() / BYTES_IN_GB,
-        msg = ("GPU: ALLOCATED: {:>6.3f}GB + CACHED: {:>6.3f}GB = {:>6.3f}GB"
-               .format(allocated, cached, allocated + cached))
-        if logger is None:
+        msg = ("GPU: {}\n"
+               "  - allocated: {:>6.3f}GB + cached: {:>6.3f}GB = {:>6.3f}GB"
+               .format(context, allocated, cached, allocated + cached))
+        if logger_debug is None:
             print(msg)
         else:
-            logger.debug(msg)
+            logger_debug.debug(msg)
 
+def log_max_allocated(logger_debug=None, context: str = None):
+    if torch.cuda.is_available():
+        msg = ("GPU: {}\n"
+               "  - max memory: {:>6.3f}GB"
+               .format(context,
+                       torch.cuda.max_memory_allocated() / BYTES_IN_GB))
+        if logger_debug is None:
+            print(msg)
+        else:
+            logger_debug.debug(msg)
 
-def log_gpu_per_tensor(logger=None):
+def log_gpu_per_tensor(logger_debug=None, context: str = None):
     """
     Prints currently alive Tensors and Variables
     This is extensive and intended for debugging.
@@ -100,8 +137,10 @@ def log_gpu_per_tensor(logger=None):
                 all_tensors_cpu[1].append(size_GB)
 
     # ========== Ok.==============
-    msg = ("    Total: {} obj ({} ignored), {} GPU, {} CPU"
-          .format(len(all_tensors_gpu[0]) + len(all_tensors_cpu[0]), ignored,
+    msg = ("Number of objects found: {}\n"
+           "    - Total : {} tensor obj ({} other types ignored), {} GPU, {} CPU"
+          .format(context,
+                  len(all_tensors_gpu[0]) + len(all_tensors_cpu[0]), ignored,
                   len(all_tensors_gpu[0]), len(all_tensors_cpu[0])))
 
     counts = Counter(all_tensors_gpu[0])
@@ -110,13 +149,13 @@ def log_gpu_per_tensor(logger=None):
     for key in keys:
         sizes = [s for (n, s) in
                  zip(all_tensors_gpu[0], all_tensors_gpu[1]) if n == key ]
-        msg += ("\n        - GPU: Found {} x {}. Total size: {:.2f}. Biggest size: {:.2f}"
+        msg += ("\n     - GPU: Found {} x {}. Total size: {:.2f}. Biggest size: {:.2f}"
               .format(counts[key], key, np.sum(sizes), np.max(sizes)))
 
-    if logger is None:
+    if logger_debug is None:
         print(msg)
     else:
-        logger.debug(msg)
+        logger_debug.debug(msg)
 
 
 def plot_gpu_usage():

@@ -13,7 +13,8 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
 from dwi_ml.experiment_utils.memory import (
-    log_gpu_per_tensor, log_allocated, log_gpu_general_info, BYTES_IN_GB)
+    log_gpu_per_tensor, log_currently_allocated, log_gpu_general_info, BYTES_IN_GB,
+    torch_reset_peaks_memory, log_max_allocated)
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import (MainModelAbstract,
                                        ModelWithDirectionGetter)
@@ -647,8 +648,8 @@ class DWIMLAbstractTrainer:
 
         logger.info("Trainer {}: \nRunning the model {}.\n\n"
                      .format(type(self), type(self.model)))
-        logging.info("Memory info at the start of experiment: ")
-        log_gpu_general_info(logger)
+        log_gpu_general_info(logger_info=logger,
+                             context="At the start of the experiment")
 
         # If data comes from checkpoint, this is already computed
         if self.nb_batches_train is None:
@@ -675,8 +676,10 @@ class DWIMLAbstractTrainer:
 
             logger.info("\n\n******* STARTING : Epoch {} (i.e. #{}) *******"
                         .format(epoch, epoch + 1))
-            log_allocated(logger)
-            log_gpu_per_tensor(logger)
+            log_currently_allocated(
+                logger_debug=logger, context="Starting a new epoch")
+            log_gpu_per_tensor(
+                logger_debug=logger, context="Starting a new epoch")
 
             # Computing learning rate
             current_lr = self.learning_rates[
@@ -691,24 +694,26 @@ class DWIMLAbstractTrainer:
 
             # Training
             logger.info("*** TRAINING")
-            torch.cuda.reset_peak_memory_stats()
             self.train_one_epoch(epoch)
-            logging.info("Max allocated GPU memory during training: {}"
-                         .format(torch.cuda.max_memory_allocated()))
 
-            logging.debug("Between train and validate: ")
-            log_allocated(logger)
-            log_gpu_per_tensor(logger)
-            self.batch_loader.context_subset.empty_cache_now()
+            log_currently_allocated(logger_debug=logger,
+                                    context="Between train and validate")
+            self.batch_loader.dataset.training_set.empty_cache_now()
+            log_currently_allocated(
+                logger_debug=logger,
+                context="Between train and validate (after emptying cache)")
 
             # Validation
             if self.use_validation:
                 logger.info("*** VALIDATION")
-                torch.cuda.reset_peak_memory_stats()
                 self.validate_one_epoch(epoch)
-                logging.info("Max allocated GPU memory during validation: {}"
-                             .format(torch.cuda.max_memory_allocated()))
+
+                log_currently_allocated(logger_debug=logger,
+                                        context="After validation")
                 self.batch_loader.context_subset.empty_cache_now()
+                log_currently_allocated(
+                    logger_debug=logger,
+                    context="After validation (after emptying cache)")
 
             # Updating info
             mean_epoch_loss = self._get_latest_loss_to_supervise_best()
@@ -839,32 +844,28 @@ class DWIMLAbstractTrainer:
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
                 logger.debug("\n\nStart of training batch: ")
-                log_allocated(logger)
-                log_gpu_per_tensor(logger)
+                log_currently_allocated(
+                    logger_debug=logger,
+                    context="At the beginning of a training batch")
+                log_gpu_per_tensor(logger_debug=logger)
 
                 # ------ Forward pass + loss -------
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
-                torch.cuda.reset_peak_memory_stats()
+                torch_reset_peaks_memory()
                 with grad_context():
                     mean_loss = self.train_one_batch(data)
-                logger.debug("--> Max peak during forward pass: ")
-                logger.debug(torch.cuda.max_memory_allocated() / BYTES_IN_GB)
-
-                logger.debug("--> Between forward and backpropagation: ")
-                log_allocated(logger)
-                log_gpu_per_tensor(logger)
+                log_max_allocated(
+                    logger_debug=logger,
+                    context="During training (forward + compute loss)")
 
                 # ------------ Back propagation ---------
-                torch.cuda.reset_peak_memory_stats()
+                torch_reset_peaks_memory()
                 unclipped_grad_norm, grad_norm = self.back_propagation(
                     mean_loss)
-                logger.debug("--> Max peak during back-propagation: ")
-                logger.debug(torch.cuda.max_memory_allocated() / BYTES_IN_GB)
-
-                logger.debug("--> End of training batch: ")
-                log_allocated(logger)
-                log_gpu_per_tensor(logger)
+                log_max_allocated(
+                    logger_debug=logger,
+                    context="During training (backpropagation)")
 
                 # ------- Saving info
                 self.unclipped_grad_norm_monitor.update(unclipped_grad_norm)
@@ -926,18 +927,18 @@ class DWIMLAbstractTrainer:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
                 logger.debug("\n\nStart of validation batch: ")
-                log_allocated(logger)
+                log_currently_allocated(
+                    logger_debug=logger,
+                    context="At the beginning of a validation batch")
                 log_gpu_per_tensor(logger)
 
                 # ------ Forward pass + loss -------
-                torch.cuda.reset_peak_memory_stats()
+                torch_reset_peaks_memory()
                 with torch.no_grad():
                     self.validate_one_batch(data, epoch)
-                logger.debug("--> Max peak during validation (forward): ")
-                logger.debug(torch.cuda.max_memory_allocated() / BYTES_IN_GB)
-
-                logger.debug("--> End of validation batch: ")
-                log_allocated(logger)
+                log_max_allocated(
+                    logger_debug=logger,
+                    context="During validation (forward + compute loss)")
 
                 # ------ Save info -------
 

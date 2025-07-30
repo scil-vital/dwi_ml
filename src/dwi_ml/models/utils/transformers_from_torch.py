@@ -17,7 +17,6 @@ from torch import Tensor
 from torch.nn import Transformer, TransformerDecoder, TransformerEncoder
 from torch.nn.modules.transformer import _get_seq_len, _detect_is_causal_mask
 
-from dwi_ml.experiment_utils.memory import log_gpu_memory_current_usage
 from dwi_ml.models.projects.transformer_sublayers import \
     ModifiedTransformerDecoderLayer, ModifiedTransformerEncoderLayer
 

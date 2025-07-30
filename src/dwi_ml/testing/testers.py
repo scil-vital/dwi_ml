@@ -7,7 +7,6 @@ from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
-from dwi_ml.experiment_utils.memory import log_gpu_memory_current_usage
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithDirectionGetter)
 from dwi_ml.testing.utils import prepare_dataset_one_subj

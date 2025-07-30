@@ -32,6 +32,16 @@ from dwi_ml.tracking.io_utils import (add_tracking_options,
                                       prepare_tracking_mask, track_and_save)
 
 
+# Also, after upgrading torch, I now have a lot of warnings:
+# FutureWarning: `torch.distributed.reduce_op` is deprecated, please use
+# `torch.distributed.ReduceOp` instead
+# But I don't use torch.distributed anywhere. Comes from inside torch.
+# Hiding warnings for now.
+import warnings
+warnings.filterwarnings("ignore",
+                        message="`torch.distributed.reduce_op` is deprecated")
+
+
 def build_argparser():
     p = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
                                 description=__doc__)

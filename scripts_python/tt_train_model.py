@@ -12,6 +12,16 @@ import os
 # See bug report here https://github.com/Lightning-AI/lightning/issues/5829
 # Importing now to solve issues later.
 import comet_ml
+
+# Also, after upgrading torch, I now have a lot of warnings:
+# FutureWarning: `torch.distributed.reduce_op` is deprecated, please use
+# `torch.distributed.ReduceOp` instead
+# But I don't use torch.distributed anywhere. Comes from inside torch.
+# Hiding warnings for now.
+import warnings
+warnings.filterwarnings("ignore",
+                        message="`torch.distributed.reduce_op` is deprecated")
+
 import torch
 
 from scilpy.io.utils import (add_verbose_arg, assert_inputs_exist,

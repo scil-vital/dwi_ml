@@ -21,6 +21,16 @@ from dwi_ml.testing.projects.tt_visu_utils import get_out_dir_and_create, \
 # Do not run it there though! Else, saving it will save the outputs too!
 
 
+# Also, after upgrading torch, I now have a lot of warnings:
+# FutureWarning: `torch.distributed.reduce_op` is deprecated, please use
+# `torch.distributed.ReduceOp` instead
+# But I don't use torch.distributed anywhere. Comes from inside torch.
+# Hiding warnings for now.
+import warnings
+warnings.filterwarnings("ignore",
+                        message="`torch.distributed.reduce_op` is deprecated")
+
+
 def main():
     # Getting the raw args. Will be sent to jupyter.
     argv = sys.argv

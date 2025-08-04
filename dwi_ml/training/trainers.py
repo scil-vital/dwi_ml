@@ -31,11 +31,6 @@ QUIT_TIME_DELAY_SECONDS = 10
 # Update comet every 10 batch for faster management.
 COMET_UPDATE_FREQUENCY = 10
 
-# toDo. See if we would like to implement mixed precision.
-#  Could improve performance / speed
-#  https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
-#  https://pytorch.org/blog/what-every-user-should-know-about-mixed-precision-training-in-pytorch/
-
 
 class DWIMLAbstractTrainer:
     """
@@ -506,7 +501,7 @@ class DWIMLAbstractTrainer:
         if not os.path.isfile(total_path):
             raise FileNotFoundError('Checkpoint was not found! ({})'
                                     .format(total_path))
-        checkpoint_state = torch.load(total_path)
+        checkpoint_state = torch.load(total_path, weights_only=False)
 
         return checkpoint_state
 

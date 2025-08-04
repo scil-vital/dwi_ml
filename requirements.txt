@@ -1,5 +1,5 @@
-# Supported for python 3.10
-# Should work for python > 3.8.
+# Supported for python 3.11
+# Should work for python > 3.10.
 
 # -------
 # Main dependency: scilpy
@@ -8,18 +8,17 @@
 # -------
 requests==2.28.*
 dipy==1.10.*
-scilpy @ git+https://github.com/scilus/scilpy@2.2.0-rc1
+scilpy==2.1.0
 
 # -------
 # Other important dependencies
 # -------
-bertviz==1.4.0  # For transformer's visu
-torch==2.2.0
+bertviz==1.4.1  # For transformer's visu
+torch==2.7.1
 tqdm==4.64.*
-comet-ml>=3.22.0
-contextlib2==21.6.0
+comet-ml>=3.47.0
 jupyterlab>=3.6.2  # For transformer's visu
-jupyter>=1.0.0
+jupyter>=1.0.0     # For transformer's visu
 IProgress>=0.4     # For jupyter with tdqm
 nested_lookup==0.2.25  # For lists management
 pynvml>=11.5.0

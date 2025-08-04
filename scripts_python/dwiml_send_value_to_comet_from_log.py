@@ -8,7 +8,6 @@ USE WITH CARE. This cannot be undone.
 """
 import argparse
 import glob
-import logging
 import os
 from time import sleep
 

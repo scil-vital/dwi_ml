@@ -9,6 +9,16 @@ import os
 # Importing now to solve issues later.
 import comet_ml
 
+# Also, after upgrading torch, I now have a lot of warnings:
+# FutureWarning: `torch.distributed.reduce_op` is deprecated, please use
+# `torch.distributed.ReduceOp` instead
+# But I don't use torch.distributed anywhere. Comes from inside torch.
+# Hiding warnings for now.
+import warnings
+warnings.filterwarnings("ignore",
+                        message="`torch.distributed.reduce_op` is deprecated")
+
+
 from scilpy.io.utils import add_verbose_arg
 
 from dwi_ml.data.dataset.utils import prepare_multisubjectdataset

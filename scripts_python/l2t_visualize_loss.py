@@ -4,8 +4,17 @@ import argparse
 import logging
 import os
 
+# Also, after upgrading torch, I now have a lot of warnings:
+# FutureWarning: `torch.distributed.reduce_op` is deprecated, please use
+# `torch.distributed.ReduceOp` instead
+# But I don't use torch.distributed anywhere. Comes from inside torch.
+# Hiding warnings for now.
+import warnings
+warnings.filterwarnings("ignore",
+                        message="`torch.distributed.reduce_op` is deprecated")
+
+
 import torch
-from scilpy.io.utils import add_reference_arg
 
 from dwi_ml.io_utils import add_arg_existing_experiment_path
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel

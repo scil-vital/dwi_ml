@@ -11,7 +11,7 @@ tmp_dir = tempfile.TemporaryDirectory()
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run('dwiml_compute_connectivity_matrix_from_blocs.py',
+    ret = script_runner.run('dwiml_compute_connectivity_matrix_from_blocs',
                             '--help')
     assert ret.success
 
@@ -27,7 +27,7 @@ def test_run(script_runner):
     biggest = 'test_biggest.trk'
 
     nb_blocs = '4'
-    ret = script_runner.run('dwiml_compute_connectivity_matrix_from_blocs.py',
+    ret = script_runner.run('dwiml_compute_connectivity_matrix_from_blocs',
                             in_volume, streamlines, out_file, nb_blocs,
                             '--binary', '--save_biggest', biggest)
     assert ret.success

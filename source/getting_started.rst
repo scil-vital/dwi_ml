@@ -11,21 +11,15 @@ To use the DWI_ML toolkit you will need to clone the repository and install the 
 Installing dependencies
 ***********************
 
-We support python 3.10.  (python3.10-distutils and python3.10-dev must also be installed). Code seems to work on python 3.8, but we do not support it.
+We support python 3.11.  (python3.11-distutils and python3.11-dev must also be installed).
 
 The toolkit relies on `Scilpy`_ and on a number of other packages available through the `Python Package Index (PyPI)`_ (i.e. you can use pip).
 
 We strongly recommend working in a virtual environment to install all dependencies related to DWI_ML.
 
-- To install `Scilpy`_, clone the repository locally and follow the instructions in the ``README`` files in each of the repositories.
-
-- To install the dependencies of DWI_ML, do::
-
-   pip install -r requirements.txt
-
 - The toolkit heavily relies on deep learning methods. As such, a GPU device will be instantiated whenever one is available. DWI_ML uses PyTorch as its deep learning back end. Thus, in order to use DWI_ML deep learning methods you will need to take a few additional steps.
 
-  1. **Cuda**:
+**Cuda**:
 
   - Verify that your computer has the required capabilities in the *Pre-installation Actions* section at `cuda/cuda-installation-guide <https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html>`_ (sections 2.1 - 2.4). To find your OS version and the available GPU, check the *About* menu in your computer settings.
 
@@ -33,14 +27,7 @@ We strongly recommend working in a virtual environment to install all dependenci
 
   - Follow the installation instructions.
 
-  2. **PyTorch**:
-
-  - Install `PyTorch`_. Use the selector under the *Start locally* section at `pytorch.org/get-started <https://pytorch.org/get-started/locally/>`_ to have the specific command line instructions to install PyTorch with CUDA capabilities on your system.
-
-  - Perform the suggested verifications to make sure that both `CUDA`_ and `PyTorch`_ have been correctly installed.
-
-Creating a Comet account
-************************
+**Creating a Comet account**:
 
 - The toolkit uses `comet_ml <https://www.comet.ml/docs/python-sdk/advanced/>`_. It is a python library that creates an "Experiment" (ex, training a model with a given set of hyperparameters) which automatically creates many types of logs online. It requires user to set an API key in $HOME/.comet.config with contents:
 
@@ -59,12 +46,15 @@ Installing dwi_ml
 
 If you want to install the toolkit on your machine or your virtual environment, as a user you should type::
 
-   python setup.py install
+   export SETUPTOOLS_USE_DISTUTILS=stdlib
+   pip install uv
+   uv pip install .
 
-If you want to develop DWI_ML you should type::
+Or, if you want to develop, use::
 
-   python setup.py develop
-
+   export SETUPTOOLS_USE_DISTUTILS=stdlib
+   pip install uv
+   uv pip install -e .
 
 .. Links
 .. Python-related tools
@@ -72,6 +62,5 @@ If you want to develop DWI_ML you should type::
 
 .. Toolkits/packages
 .. _CUDA: https://developer.nvidia.com/cuda-zone
-.. _PyTorch: https://pytorch.org>`
 .. _VITALabAi: https://bitbucket.org/vitalab/vitalabai_public
 .. _Scilpy: https://github.com/scilus/scilpy

@@ -5,11 +5,9 @@ import os
 import pytest
 import tempfile
 
-import torch
-
-from dwi_ml.unit_tests.utils.expected_values import (
-    TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_STREAMLINE_GROUPS,
-    TEST_EXPECTED_SUBJ_NAMES)
+from dwi_ml.unit_tests.utils.expected_values import \
+    (TEST_EXPECTED_VOLUME_GROUPS, TEST_EXPECTED_STREAMLINE_GROUPS,
+     TEST_EXPECTED_SUBJ_NAMES)
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
 
 data_dir = fetch_testing_data()
@@ -18,24 +16,14 @@ tmp_dir = tempfile.TemporaryDirectory()
 MAX_LEN = 400
 
 
-def test_help_option(script_runner):
-    ret = script_runner.run('tt_train_model.py', '--help')
-    assert ret.success
-
-    ret = script_runner.run(
-        'tt_resume_training_from_checkpoint.py', '--help')
-    assert ret.success
-
-    ret = script_runner.run('tt_track_from_model.py', '--help')
-    assert ret.success
-
-    ret = script_runner.run('tt_visualize_loss.py', '--help')
-    assert ret.success
+def test_help_option():
+    # All help tests already tested in test_all_steps_tto.
+    pass
 
 
 @pytest.fixture(scope="session")
 def experiments_path(tmp_path_factory):
-    experiments_path = tmp_path_factory.mktemp("experiments_tto")
+    experiments_path = tmp_path_factory.mktemp("experiments_ttst")
     return str(experiments_path)
 
 
@@ -50,45 +38,27 @@ def test_execution(script_runner, experiments_path):
     # Max length in current testing dataset is 108. Setting max length to 115
     # for faster testing. Also decreasing other default values.
     logging.info("************ TESTING TRAINING ************")
-    ret = script_runner.run('tt_train_model.py',
+    ret = script_runner.run('tt_train_model',
                             experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
-                            '--model', 'TTO', '--dg_key', 'gaussian',
+                            '--model', 'TTST',
                             '--max_epochs', '1', '--batch_size_training', '5',
                             '--batch_size_units', 'nb_streamlines',
                             '--max_batches_per_epoch_training', '2',
                             '--max_batches_per_epoch_validation', '1',
                             '--nheads', '2', '--max_len', str(MAX_LEN),
                             '--input_embedding_key', 'nn_embedding',
-                            '--input_embedded_size', '6', '--n_layers_e', '1',
-                            '--ffnn_hidden_size', '3', '--step_size', '1',
-                            '-v', 'INFO')
+                            '--input_embedded_size', '6',
+                            '--target_embedded_size', '2',
+                            '--n_layers_e', '1',
+                            '--ffnn_hidden_size', '3', '-v', 'INFO')
     assert ret.success
 
     logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
     ret = script_runner.run(
-        'tt_resume_training_from_checkpoint.py',
+        'tt_resume_training_from_checkpoint',
         experiments_path, 'test_experiment', '--new_max_epochs', '2')
     assert ret.success
-
-    # Test training GPU
-    if torch.cuda.is_available():
-        logging.info("************ TESTING TRAINING GPU ************")
-        ret = script_runner.run('tt_train_model.py',
-                                experiments_path, 'tto_test', hdf5_file,
-                                input_group_name, streamline_group_name,
-                                '--model', 'TTO',
-                                '--max_epochs', '1', '--step_size', '1',
-                                '--batch_size_training', '5',
-                                '--batch_size_units', 'nb_streamlines',
-                                '--max_batches_per_epoch_training', '2',
-                                '--max_batches_per_epoch_validation', '1',
-                                '--nheads', '2', '--max_len', str(MAX_LEN),
-                                '--input_embedding_key', 'nn_embedding',
-                                '--input_embedded_size', '6',
-                                '--n_layers_e', '1', '--ffnn_hidden_size', '3',
-                                '-v', 'INFO', '--use_gpu')
-        assert ret.success
 
     logging.info("************ TESTING TRACKING FROM MODEL ************")
     whole_experiment_path = os.path.join(experiments_path, experiment_name)
@@ -100,7 +70,7 @@ def test_execution(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     ret = script_runner.run(
-        'tt_track_from_model.py', whole_experiment_path, subj_id,
+        'tt_track_from_model', whole_experiment_path, subj_id,
         input_group, out_tractogram, seeding_mask_group,
         '--hdf5_file', hdf5_file,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0',
@@ -112,7 +82,7 @@ def test_execution(script_runner, experiments_path):
 
     # Test visu loss
     prefix = 'fornix_'
-    ret = script_runner.run('tt_visualize_loss.py', whole_experiment_path,
+    ret = script_runner.run('tt_visualize_loss', whole_experiment_path,
                             hdf5_file, subj_id, input_group_name,
                             '--streamlines_group', streamline_group_name,
                             '--out_prefix', prefix,
@@ -128,11 +98,10 @@ def test_execution(script_runner, experiments_path):
                           'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
     prefix = 'fornix_'
     ret = script_runner.run(
-        'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
+        'tt_visualize_weights', whole_experiment_path, hdf5_file, subj_id,
         input_group, in_sft, '--out_prefix', prefix,
         '--as_matrices', '--color_multi_length', '--color_x_y_summary',
         '--bertviz_locally',
         '--subset', 'training', '-v', 'INFO',
-        '--resample_plots', '15', '--rescale_non_lin')
+        '--resample_plots', '15', '--rescale_z')
     assert ret.success
-

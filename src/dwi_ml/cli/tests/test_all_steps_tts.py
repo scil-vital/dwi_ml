@@ -38,7 +38,7 @@ def test_execution(script_runner, experiments_path):
     # Max length in current testing dataset is 108. Setting max length to 115
     # for faster testing. Also decreasing other default values.
     logging.info("************ TESTING TRAINING ************")
-    ret = script_runner.run('tt_train_model.py',
+    ret = script_runner.run('tt_train_model',
                             experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
                             '--dg_key', 'gaussian',
@@ -56,7 +56,7 @@ def test_execution(script_runner, experiments_path):
 
     logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
     ret = script_runner.run(
-        'tt_resume_training_from_checkpoint.py',
+        'tt_resume_training_from_checkpoint',
         experiments_path, 'test_experiment', '--new_max_epochs', '2')
     assert ret.success
 
@@ -70,7 +70,7 @@ def test_execution(script_runner, experiments_path):
     subj_id = TEST_EXPECTED_SUBJ_NAMES[0]
 
     ret = script_runner.run(
-        'tt_track_from_model.py', whole_experiment_path, subj_id,
+        'tt_track_from_model', whole_experiment_path, subj_id,
         input_group, out_tractogram, seeding_mask_group,
         '--hdf5_file', hdf5_file,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0',
@@ -82,7 +82,7 @@ def test_execution(script_runner, experiments_path):
 
     # Test visu loss
     prefix = 'fornix_'
-    ret = script_runner.run('tt_visualize_loss.py', whole_experiment_path,
+    ret = script_runner.run('tt_visualize_loss', whole_experiment_path,
                             hdf5_file, subj_id, input_group_name,
                             '--streamlines_group', streamline_group_name,
                             '--out_prefix', prefix,
@@ -98,7 +98,7 @@ def test_execution(script_runner, experiments_path):
                           'dwi_ml_ready/subjX/example_bundle/Fornix.trk')
     prefix = 'fornix_'
     ret = script_runner.run(
-        'tt_visualize_weights.py', whole_experiment_path, hdf5_file, subj_id,
+        'tt_visualize_weights', whole_experiment_path, hdf5_file, subj_id,
         input_group, in_sft, '--out_prefix', prefix,
         '--as_matrices', '--color_multi_length', '--color_x_y_summary',
         '--bertviz_locally',

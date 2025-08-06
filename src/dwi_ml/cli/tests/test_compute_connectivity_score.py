@@ -11,7 +11,7 @@ tmp_dir = tempfile.TemporaryDirectory()
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run('dwiml_compute_connectivity_score.py', '--help')
+    ret = script_runner.run('dwiml_compute_connectivity_score', '--help')
     assert ret.success
 
 
@@ -25,10 +25,10 @@ def test_execution(script_runner):
     matrix = 'matrix_connectivity.npy'
 
     nb_blocs = '4'
-    script_runner.run('dwiml_compute_connectivity_matrix_from_blocs.py',
+    script_runner.run('dwiml_compute_connectivity_matrix_from_blocs',
                       in_volume, streamlines, matrix, nb_blocs, '--binary')
 
     # Now scoring
-    ret = script_runner.run('dwiml_compute_connectivity_score.py',
+    ret = script_runner.run('dwiml_compute_connectivity_score',
                             matrix, matrix)
     assert ret.success

@@ -19,19 +19,19 @@ streamline_group_name = TEST_EXPECTED_STREAMLINE_GROUPS[0]
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run('l2t_train_model.py', '--help')
+    ret = script_runner.run('l2t_train_model', '--help')
     assert ret.success
 
-    ret = script_runner.run('l2t_resume_training_from_checkpoint.py', '--help')
+    ret = script_runner.run('l2t_resume_training_from_checkpoint', '--help')
     assert ret.success
 
-    ret = script_runner.run('l2t_track_from_model.py', '--help')
+    ret = script_runner.run('l2t_track_from_model', '--help')
     assert ret.success
 
-    ret = script_runner.run('l2t_visualize_loss.py', '--help')
+    ret = script_runner.run('l2t_visualize_loss', '--help')
     assert ret.success
 
-    ret = script_runner.run('l2t_update_deprecated_exp.py', '--help')
+    ret = script_runner.run('l2t_update_deprecated_exp', '--help')
     assert ret.success
 
 
@@ -45,7 +45,7 @@ def test_training(script_runner, experiments_path):
     # Here, testing default values only. See dwi_ml.unit_tests.test_trainer for
     # more various testing.
     logging.info("************ TESTING TRAINING ************")
-    ret = script_runner.run('l2t_train_model.py',
+    ret = script_runner.run('l2t_train_model',
                             experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
                             '--max_epochs', '1', '--batch_size_training', '5',
@@ -61,7 +61,7 @@ def test_training(script_runner, experiments_path):
     # Test training on GPU
     if torch.cuda.is_available():
         logging.info("************ TESTING TRAINING GPU ************")
-        ret = script_runner.run('l2t_train_model.py',
+        ret = script_runner.run('l2t_train_model',
                                 experiments_path, 'test_l2t_gpu', hdf5_file,
                                 input_group_name, streamline_group_name,
                                 '--max_epochs', '1', '--step_size', '0.5',
@@ -78,7 +78,7 @@ def test_training(script_runner, experiments_path):
 
 def test_checkpoint(script_runner, experiments_path):
     logging.info("************ TESTING RESUMING FROM CHECKPOINT ************")
-    ret = script_runner.run('l2t_resume_training_from_checkpoint.py',
+    ret = script_runner.run('l2t_resume_training_from_checkpoint',
                             experiments_path, 'test_experiment',
                             '--new_max_epochs', '2')
     assert ret.success
@@ -96,7 +96,7 @@ def test_tracking(script_runner, experiments_path):
     # Testing HDF5 data does not contain a testing set to keep it light. Using
     # subjectX from training set.
     ret = script_runner.run(
-        'l2t_track_from_model.py', whole_experiment_path, subj_id,
+        'l2t_track_from_model', whole_experiment_path, subj_id,
         input_group_name, out_tractogram, seeding_mask_group,
         '--hdf5_file', hdf5_file,
         '--algo', 'det', '--nt', '2', '--rng_seed', '0', '--min_length', '0',
@@ -109,7 +109,7 @@ def test_tracking(script_runner, experiments_path):
         logging.info("********** TESTING GPU TRACKING FROM MODEL ************")
         out_tractogram = os.path.join(experiments_path, 'test_tractogram2.trk')
         ret = script_runner.run(
-            'l2t_track_from_model.py', whole_experiment_path,
+            'l2t_track_from_model', whole_experiment_path,
             subj_id, input_group_name, out_tractogram, seeding_mask_group,
             '--algo', 'det', '--nt', '20', '--rng_seed', '0',
             '--min_length', '0', '--subset', 'training',
@@ -126,7 +126,7 @@ def test_visu(script_runner, experiments_path):
 
     # Test visu loss
     prefix = 'fornix_'
-    ret = script_runner.run('l2t_visualize_loss.py', whole_experiment_path,
+    ret = script_runner.run('l2t_visualize_loss', whole_experiment_path,
                             hdf5_file, subj_id, input_group_name,
                             '--streamlines_group', streamline_group_name,
                             '--out_prefix', prefix,
@@ -145,7 +145,7 @@ def test_training_with_generation_validation(script_runner, experiments_path):
 
     logging.info("************ TESTING TRAINING WITH GENERATION ************")
     experiment_name = 'test2'
-    ret = script_runner.run('l2t_train_model.py',
+    ret = script_runner.run('l2t_train_model',
                             experiments_path, experiment_name, hdf5_file,
                             input_group_name, streamline_group_name,
                             '--max_epochs', '1', '--batch_size_training', '5',

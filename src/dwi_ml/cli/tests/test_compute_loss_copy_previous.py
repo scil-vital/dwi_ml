@@ -11,7 +11,7 @@ data_dir = fetch_testing_data()
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run('dwiml_compute_loss_copy_previous.py', '--help')
+    ret = script_runner.run('dwiml_compute_loss_copy_previous', '--help')
     assert ret.success
 
 
@@ -28,7 +28,7 @@ def test_running(script_runner, experiments_path):
 
     prefix = 'fornix_'
     out_dir = os.path.join(experiments_path, 'test_visu')
-    ret = script_runner.run('dwiml_compute_loss_copy_previous.py',
+    ret = script_runner.run('dwiml_compute_loss_copy_previous',
                             hdf5_file, subj_id,
                             '--streamlines_group', streamline_group_name,
                             '--out_prefix', prefix,

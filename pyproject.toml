@@ -49,6 +49,7 @@ dev = ["pytest", "ipython"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+script-files = ["bash_utilities/scil_score_ismrm_Renauld2023.sh"]
 
 [project.scripts]
 ae_train_model = "dwi_ml.cli.ae_train_model:main"

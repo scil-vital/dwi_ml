@@ -11,7 +11,7 @@ tmp_dir = tempfile.TemporaryDirectory()
 
 
 def test_help_option(script_runner):
-    ret = script_runner.run('dwiml_divide_volume_into_blocs.py', '--help')
+    ret = script_runner.run('dwiml_divide_volume_into_blocs', '--help')
     assert ret.success
 
 
@@ -24,6 +24,6 @@ def test_run(script_runner):
     out_file = 'volume_blocs.nii.gz'
 
     nb_blocs = '4'
-    ret = script_runner.run('dwiml_divide_volume_into_blocs.py',
+    ret = script_runner.run('dwiml_divide_volume_into_blocs',
                             in_volume, out_file, nb_blocs)
     assert ret.success

@@ -1,0 +1,79 @@
+[build-system]
+requires = [
+    "setuptools >= 64",
+    "Cython==3.0.*",
+    "numpy==1.25.*"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dwi_ml"
+version = "1.0.0"
+description = "dwi_ml: Diffusion Magnetic Resonance Imaging analysis toolkit using machine learning and deep learning methods"
+authors = [{ name = "VITAL Team" }]
+readme = "README.md"
+requires-python = ">=3.10, <3.13"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Topic :: Scientific/Engineering"
+]
+dependencies = [
+"requests==2.28.*",
+"dipy==1.10.*",
+"scilpy==2.1.0",
+"bertviz==1.4.1",  # For transformer's visu
+"torch==2.7.1",
+"tqdm==4.64.*",
+"comet-ml>=3.47.0",
+"jupyterlab>=3.6.2",  # For transformer's visu
+"jupyter>=1.0.0",
+"h5py==3.10.*",
+"IProgress>=0.4",     # For jupyter with tdqm
+"nested_lookup==0.2.25",  # For lists management
+"pynvml>=11.5.0",
+"future==0.18.*",
+"matplotlib==3.6.*",   # Hint: If matplotlib fails, you may try to install pyQt5.
+"nibabel==5.2.*",
+"numpy==1.25.*",
+"scipy==1.11.*",
+"scikit-image==0.22.*"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ipython"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[project.scripts]
+ae_train_model = "dwi_ml.cli.ae_train_model:main"
+dwiml_compute_connectivity_matrix_from_blocs = "dwi_ml.cli.dwiml_compute_connectivity_matrix_from_blocs:main"
+dwiml_compute_connectivity_matrix_from_labels = "dwi_ml.cli.dwiml_compute_connectivity_matrix_from_labels:main"
+dwiml_compute_connectivity_score = "dwi_ml.cli.dwiml_compute_connectivity_score:main"
+dwiml_compute_loss_copy_previous = "dwi_ml.cli.dwiml_compute_loss_copy_previous:main"
+dwiml_create_hdf5_dataset = "dwi_ml.cli.dwiml_create_hdf5_dataset:main"
+dwiml_divide_volume_into_blocs = "dwi_ml.cli.dwiml_divide_volume_into_blocs:main"
+dwiml_hdf5_extract_data = "dwi_ml.cli.dwiml_hdf5_extract_data:main"
+dwiml_hdf5_print_architecture = "dwi_ml.cli.dwiml_hdf5_print_architecture:main"
+dwiml_print_hdf5_architecture = "dwi_ml.cli.dwiml_print_hdf5_architecture:main"
+dwiml_send_value_to_comet_from_log = "dwi_ml.cli.dwiml_send_value_to_comet_from_log:main"
+dwiml_send_value_to_comet_manually = "dwi_ml.cli.dwiml_send_value_to_comet_manually:main"
+dwiml_visualize_logs_correlation = "dwi_ml.cli.dwiml_visualize_logs_correlation:main"
+dwiml_visualize_logs = "dwi_ml.cli.dwiml_visualize_logs:main"
+dwiml_visualize_noise_on_streamlines = "dwi_ml.cli.dwiml_visualize_noise_on_streamlines:main"
+l2t_resume_training_from_checkpoint = "dwi_ml.cli.l2t_resume_training_from_checkpoint:main"
+l2t_track_from_model = "dwi_ml.cli.l2t_track_from_model:main"
+l2t_train_model = "dwi_ml.cli.l2t_train_model:main"
+l2t_update_deprecated_exp = "dwi_ml.cli.l2t_update_deprecated_exp:main"
+l2t_visualize_loss = "dwi_ml.cli.l2t_visualize_loss:main"
+l2t_visualize_weights_evolution = "dwi_ml.cli.l2t_visualize_weights_evolution:main"
+tt_resume_training_from_checkpoint = "dwi_ml.cli.tt_resume_training_from_checkpoint:main"
+tt_track_from_model = "dwi_ml.cli.tt_track_from_model:main"
+tt_train_model = "dwi_ml.cli.tt_train_model:main"
+tt_visualize_loss = "dwi_ml.cli.tt_visualize_loss:main"
+tt_visualize_weights = "dwi_ml.cli.tt_visualize_weights:main"

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 def test_help_option(script_runner):
-    ret = script_runner.run('dwiml_send_value_to_comet_manually.py', '--help')
+    ret = script_runner.run('dwiml_send_value_to_comet_manually', '--help')
     assert ret.success
 
 

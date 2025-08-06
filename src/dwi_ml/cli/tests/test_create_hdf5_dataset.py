@@ -31,7 +31,7 @@ tmp_dir = tempfile.TemporaryDirectory()
 # }
 
 def test_help_option(script_runner):
-    ret = script_runner.run('dwiml_create_hdf5_dataset.py', '--help')
+    ret = script_runner.run('dwiml_create_hdf5_dataset', '--help')
     assert ret.success
 
 
@@ -47,7 +47,7 @@ def test_execution(script_runner):
 
     hdf5_output = 'test.hdf5'
 
-    ret = script_runner.run('dwiml_create_hdf5_dataset.py',
+    ret = script_runner.run('dwiml_create_hdf5_dataset',
                             dwi_ml_folder, hdf5_output, config_file,
                             training_subjs, validation_subjs, testing_subjs)
     assert ret.success

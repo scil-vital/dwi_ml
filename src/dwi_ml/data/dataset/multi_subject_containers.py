@@ -78,7 +78,7 @@ class MultisubjectSubset(Dataset):
 
         # This is only used in the lazy case.
         self.cache_size = cache_size
-        self.volume_cache_manager = None
+        self.volume_cache_manager = None  # type: SingleThreadCacheManager
 
     def close_all_handles(self):
         if self.subjs_data_list.hdf_handle:
@@ -200,6 +200,10 @@ class MultisubjectSubset(Dataset):
                 self.volume_cache_manager[cache_key] = mri_data_tensor
 
         return mri_data_tensor
+
+    def empty_cache_now(self):
+        if self.volume_cache_manager is not None:
+            self.volume_cache_manager.empty_cache()
 
     def get_mri_data(self, subj_idx: int, group_idx: int,
                      load_it: bool = True) -> MRIDataAbstract:

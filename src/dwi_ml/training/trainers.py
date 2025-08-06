@@ -12,7 +12,9 @@ import torch
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
+from dwi_ml.experiment_utils.memory import (
+    log_gpu_per_tensor, log_currently_allocated, log_gpu_general_info, BYTES_IN_GB,
+    torch_reset_peaks_memory, log_max_allocated)
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_models import (MainModelAbstract,
                                        ModelWithDirectionGetter)
@@ -607,11 +609,21 @@ class DWIMLAbstractTrainer:
         nb_train /= self.batch_sampler.batch_size_training
         final_nb_train = min(nb_train, self.max_batches_per_epochs_train)
         final_nb_train = max(final_nb_train, 1)  # Minimum 1 batch.
-
+        logger.info("There are enough streamlines for {} batches per epoch, "
+                    "using {} streamlines per batch. We will use {} batches "
+                    "per epoch"
+                    .format(nb_train, self.batch_sampler.batch_size_training,
+                            final_nb_train))
         if self.use_validation:  # Verifying or else, could divide by 0.
             nb_valid /= self.batch_sampler.batch_size_validation
             final_nb_valid = min(nb_valid, self.max_batches_per_epochs_valid)
             final_nb_valid = max(final_nb_valid, 1)
+            logger.info(
+                "There are enough streamlines for {} batches per epoch, "
+                "using {} streamlines per batch. We will use {} batches "
+                "per epoch"
+                .format(nb_valid, self.batch_sampler.batch_size_validation,
+                        final_nb_valid))
         else:
             final_nb_valid = 0
 
@@ -631,9 +643,13 @@ class DWIMLAbstractTrainer:
               reached,
             - saves the model if the loss is good.
         """
-        logger.debug("Trainer {}: \nRunning the model {}.\n\n"
-                     .format(type(self), type(self.model)))
+        logger.info("Saving this run's parameters to file.")
         self.save_params_to_json()
+
+        logger.info("Trainer {}: \nRunning the model {}.\n\n"
+                     .format(type(self), type(self.model)))
+        log_gpu_general_info(logger_info=logger,
+                             context="At the start of the experiment")
 
         # If data comes from checkpoint, this is already computed
         if self.nb_batches_train is None:
@@ -660,6 +676,10 @@ class DWIMLAbstractTrainer:
 
             logger.info("\n\n******* STARTING : Epoch {} (i.e. #{}) *******"
                         .format(epoch, epoch + 1))
+            log_currently_allocated(
+                logger_debug=logger, context="Starting a new epoch")
+            log_gpu_per_tensor(
+                logger_debug=logger, context="Starting a new epoch")
 
             # Computing learning rate
             current_lr = self.learning_rates[
@@ -676,10 +696,24 @@ class DWIMLAbstractTrainer:
             logger.info("*** TRAINING")
             self.train_one_epoch(epoch)
 
+            log_currently_allocated(logger_debug=logger,
+                                    context="Between train and validate")
+            self.batch_loader.dataset.training_set.empty_cache_now()
+            log_currently_allocated(
+                logger_debug=logger,
+                context="Between train and validate (after emptying cache)")
+
             # Validation
             if self.use_validation:
                 logger.info("*** VALIDATION")
                 self.validate_one_epoch(epoch)
+
+                log_currently_allocated(logger_debug=logger,
+                                        context="After validation")
+                self.batch_loader.context_subset.empty_cache_now()
+                log_currently_allocated(
+                    logger_debug=logger,
+                    context="After validation (after emptying cache)")
 
             # Updating info
             mean_epoch_loss = self._get_latest_loss_to_supervise_best()
@@ -703,6 +737,7 @@ class DWIMLAbstractTrainer:
                     step=epoch)
 
             # End of epoch, save checkpoint for resuming later
+            print("Saving checkpoint")
             self.save_checkpoint()
             self.save_local_logs()
 
@@ -808,14 +843,31 @@ class DWIMLAbstractTrainer:
 
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
+                logger.debug("\n\nStart of training batch: ")
+                log_currently_allocated(
+                    logger_debug=logger,
+                    context="At the beginning of a training batch")
+                log_gpu_per_tensor(logger_debug=logger)
 
+                # ------ Forward pass + loss -------
                 # Enable gradients for backpropagation. Uses torch's module
                 # train(), which "turns on" the training mode.
+                torch_reset_peaks_memory()
                 with grad_context():
                     mean_loss = self.train_one_batch(data)
+                log_max_allocated(
+                    logger_debug=logger,
+                    context="During training (forward + compute loss)")
 
+                # ------------ Back propagation ---------
+                torch_reset_peaks_memory()
                 unclipped_grad_norm, grad_norm = self.back_propagation(
                     mean_loss)
+                log_max_allocated(
+                    logger_debug=logger,
+                    context="During training (backpropagation)")
+
+                # ------- Saving info
                 self.unclipped_grad_norm_monitor.update(unclipped_grad_norm)
                 self.grad_norm_monitor.update(grad_norm)
 
@@ -874,10 +926,21 @@ class DWIMLAbstractTrainer:
                                    tqdm_class=tqdm) as pbar:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
+                logger.debug("\n\nStart of validation batch: ")
+                log_currently_allocated(
+                    logger_debug=logger,
+                    context="At the beginning of a validation batch")
+                log_gpu_per_tensor(logger)
 
-                # Validate this batch: forward propagation + loss
+                # ------ Forward pass + loss -------
+                torch_reset_peaks_memory()
                 with torch.no_grad():
                     self.validate_one_batch(data, epoch)
+                log_max_allocated(
+                    logger_debug=logger,
+                    context="During validation (forward + compute loss)")
+
+                # ------ Save info -------
 
                 # Break if maximum number of epochs has been reached
                 if batch_id == self.nb_batches_valid - 1:
@@ -1002,11 +1065,6 @@ class DWIMLAbstractTrainer:
             - final_streamline_ids_per_subj: the dict of streamlines ids from
               the list of all streamlines (if we concatenate all sfts'
               streamlines)
-        n: int
-            The number of points in this batch
-        X: Any
-            Any other data returned when computing loss. Not used in the
-            trainer, but could be useful anywhere else.
         """
         # Data interpolation has not been done yet. GPU computations are done
         # here in the main thread.
@@ -1041,9 +1099,6 @@ class DWIMLAbstractTrainer:
 
         results = self.model.compute_loss(model_outputs, targets,
                                           average_results=True)
-
-        if self.use_gpu:
-            log_gpu_memory_usage(logger)
 
         # The mean tensor is a single value. Converting to float using item().
         return results
@@ -1183,8 +1238,5 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
                                                                self.device)
         mean_loss, n = self.model.compute_loss(model_outputs, targets,
                                                average_results=True)
-
-        if self.use_gpu:
-            log_gpu_memory_usage(logger)
 
         return mean_loss, n

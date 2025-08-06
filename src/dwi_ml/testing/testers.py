@@ -7,7 +7,6 @@ from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
-from dwi_ml.experiment_utils.memory import log_gpu_memory_usage
 from dwi_ml.models.main_models import (MainModelOneInput,
                                        ModelWithDirectionGetter)
 from dwi_ml.testing.utils import prepare_dataset_one_subj
@@ -166,9 +165,6 @@ class TesterWithDirectionGetter:
                     if tmp_eos_probs is not None:
                         eos_probs.extend([eos_loss.cpu().numpy()
                                           for eos_loss in tmp_eos_probs])
-
-                if logging.getLogger().level == logging.DEBUG:
-                    log_gpu_memory_usage()
 
                 # Prepare next batch
                 batch_start = batch_end

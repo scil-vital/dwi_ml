@@ -20,6 +20,9 @@ class CacheManager(object):
     def __setitem__(self, key, value):
         raise NotImplementedError
 
+    def empty_cache(self):
+        raise NotImplementedError
+
 
 class SingleThreadCacheManager(CacheManager):
     """A single-thread FIFO dictionary cache"""
@@ -35,3 +38,7 @@ class SingleThreadCacheManager(CacheManager):
             del self._cache[to_delete]
         self._queue.append(key)
         self._cache[key] = value
+
+    def empty_cache(self):
+        self._cache = dict()
+        self._queue = deque()

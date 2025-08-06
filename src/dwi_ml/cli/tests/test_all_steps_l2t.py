@@ -144,6 +144,7 @@ def test_visu(script_runner, experiments_path):
 def test_training_with_generation_validation(script_runner, experiments_path):
 
     logging.info("************ TESTING TRAINING WITH GENERATION ************")
+    # Note. No connectivity in the data! To add!
     experiment_name = 'test2'
     ret = script_runner.run('l2t_train_model',
                             experiments_path, experiment_name, hdf5_file,

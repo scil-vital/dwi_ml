@@ -11,7 +11,7 @@ from dwi_ml.GUI.styles.my_styles import STYLE_FIXED_WINDOW, \
 from dwi_ml.GUI.styles.theme_inputs import add_color_legend
 from dwi_ml.GUI.args_management.gui_to_argparse import get_all_values_as_str
 from dwi_ml.GUI.utils.window import callback_change_window
-from scripts_python.dwiml_create_hdf5_dataset import prepare_argparser
+from dwi_ml.cli.dwiml_create_hdf5_dataset import prepare_argparser
 
 TAG_HDF_SCRIPT_PATH = 'hdf5_creation_script'
 

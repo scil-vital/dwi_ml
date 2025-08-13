@@ -128,9 +128,9 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         else:
             return super()._get_latest_loss_to_supervise_best()
 
-    def validate_one_batch(self, data, epoch):
+    def validate_one_batch(self, targets, ids_per_subj, epoch):
         # 1. Compute the local loss as usual.
-        super().validate_one_batch(data, epoch)
+        super().validate_one_batch(targets, ids_per_subj, epoch)
 
         logger.debug("--> Max peak during validation (forward, before "
                      "GV phase): ")
@@ -142,7 +142,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                 logger.debug("Additional tracking-like generation validation "
                              "from batch.")
                 (gen_n, mean_final_dist, connectivity) = \
-                    self.gv_phase_one_batch(data, compute_all_scores=True)
+                    self.gv_phase_one_batch(targets, ids_per_subj)
 
                 self.tracking_mean_final_distance_monitor.update(
                     mean_final_dist, weight=gen_n)
@@ -168,25 +168,23 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                                 self.tracking_connectivity_score_monitor]:
                     monitor.update(monitor.average_per_epoch[-1])
 
-    def gv_phase_one_batch(self, data, compute_all_scores=False):
+    def gv_phase_one_batch(self, targets, ids_per_subj):
         """
         Use tractography to generate streamlines starting from the "true"
         seeds and first few segments. Expected results are the batch's
         validation streamlines.
         """
-        real_lines, ids_per_subj = data
-
         # Possibly sending again to GPU even if done in the local loss
         # computation, but easier with current implementation.
-        real_lines = [line.to(self.device, non_blocking=True,
+        targets = [line.to(self.device, non_blocking=True,
                               dtype=torch.float)
-                      for line in real_lines]
-        last_pos = torch.vstack([line[-1, :] for line in real_lines])
+                      for line in targets]
+        last_pos = torch.vstack([line[-1, :] for line in targets])
 
         # Starting from the n first segments.
         # Ex: 1 segment = seed + 1 point = 2 points = s[0:2]
         lines = [s[0:min(len(s), self.tracking_phase_nb_segments_init + 1), :]
-                 for s in real_lines]
+                 for s in targets]
 
         # Propagation: no backward tracking.
         previous_context = self.model.context
@@ -198,20 +196,13 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
         computed_last_pos = torch.vstack([line[-1, :] for line in lines])
         l2_loss = PairwiseDistance(p=2)
         final_dist = l2_loss(computed_last_pos, last_pos)
+        final_dist = torch.mean(final_dist)
+        final_dist = final_dist.item()
 
-        if not compute_all_scores:
-            return final_dist
-        else:
-            # 1. Final distance
-            final_dist = torch.mean(final_dist)
-            final_dist = final_dist.item()
+        # 2. Connectivity scores, if available (else None)
+        connectivity_score = self._compare_connectivity(lines, ids_per_subj)
 
-            # 2. Connectivity scores, if available (else None)
-            connectivity_score = self._compare_connectivity(lines,
-                                                            ids_per_subj)
-
-
-            return len(lines), final_dist, connectivity_score
+        return len(lines), final_dist, connectivity_score
 
     def _compare_connectivity(self, lines, ids_per_subj):
         """
@@ -281,37 +272,45 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                                  ids_per_subj):
         """
         Tractography propagation of 'lines'.
+        Supposing the model receives the current input and current position.
         """
         assert self.model.step_size is not None, \
             "We can't propagate compressed streamlines."
 
+        # Setting our own limits here.
+        theta = 2 * np.pi  # theta = 360 degrees
+        max_nbr_pts = int(200 / self.model.step_size)
+
+        # These methods will be used during the loop on subjects
+        # Based on the tracker
         def update_memory_after_removing_lines(_, __):
             pass
 
-        def get_dirs_at_last_pos(_lines: List[torch.Tensor], n_last_pos):
-            n_last_pos = [pos[None, :] for pos in n_last_pos]
-            batch_inputs = self.batch_loader.load_batch_inputs(
-                n_last_pos, ids_per_subj)
+        def get_dirs_at_last_pos(subj_lines: List[torch.Tensor], n_last_pos):
+            nonlocal subj_idx
 
-            model_outputs = self.model(batch_inputs, n_last_pos)
+            n_last_pos = [pos[None, :] for pos in n_last_pos]
+            subj_dict = {subj_idx: slice(0, len(n_last_pos))}
+            subj_inputs = self.batch_loader.load_batch_inputs(
+                n_last_pos, subj_dict)
+
+            # Supposing the model receives the current input and current
+            # position.
+            model_outputs = self.model(subj_inputs, n_last_pos)
 
             next_dirs = self.model.get_tracking_directions(
                 model_outputs, algo='det', eos_stopping_thresh=0.5)
             return next_dirs
 
-        theta = 2 * np.pi  # theta = 360 degrees
-        max_nbr_pts = int(200 / self.model.step_size)
-
-        # Looping on subjects because current implementation requires a single
-        # tracking mask. But all the rest (get_dirs_at_last_pos, particularly)
-        # work on multiple subjects because the batch loader loads input
-        # according to subject id. Could refactor "propagate_multiple_line" to
-        # accept multiple masks or manage it differently.
+        # Running the propagation separately for each subject
+        # (because they all need their own tracking mask)
         final_lines = []
         for subj_idx, line_idx in ids_per_subj.items():
+            subj_id = self.batch_loader.context_subset.subjects[subj_idx]
+
+            # Load the subject's tracking mask
             with h5py.File(self.batch_loader.dataset.hdf5_file, 'r'
                            ) as hdf_handle:
-                subj_id = self.batch_loader.context_subset.subjects[subj_idx]
                 logging.debug("Loading subj {} ({})'s tracking mask."
                               .format(subj_idx, subj_id))
                 tracking_mask, _ = prepare_tracking_mask(
@@ -319,6 +318,7 @@ class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
                     mask_interp='nearest')
                 tracking_mask.move_to(self.device)
 
+            # Propagates all lines for this subject
             final_lines.extend(propagate_multiple_lines(
                 lines[line_idx], update_memory_after_removing_lines,
                 get_dirs_at_last_pos, theta=theta,

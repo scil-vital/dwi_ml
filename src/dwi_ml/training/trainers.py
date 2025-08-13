@@ -832,10 +832,6 @@ class DWIMLAbstractTrainer:
         grad_context = torch.enable_grad
 
         # Training all batches
-        # Note: loggers = [logging.root] only.
-        # If we add our sub-loggers there, they duplicate.
-        # A handler is added in the root logger, and sub-loggers propagate
-        # their message.
         with tqdm_logging_redirect(self.train_dataloader, ncols=100,
                                    total=self.nb_batches_train,
                                    loggers=[logging.root],
@@ -843,6 +839,11 @@ class DWIMLAbstractTrainer:
 
             train_iterator = enumerate(pbar)
             for batch_id, data in train_iterator:
+                # For each batch, data is obtained from our batch sampler using
+                # the train_iterator. It is a tuple:
+                # (targets, ids_per_subj)
+
+                # Showing current memory:
                 logger.debug("\n\nStart of training batch: ")
                 log_currently_allocated(
                     logger_debug=logger,
@@ -854,7 +855,7 @@ class DWIMLAbstractTrainer:
                 # train(), which "turns on" the training mode.
                 torch_reset_peaks_memory()
                 with grad_context():
-                    mean_loss = self.train_one_batch(data)
+                    mean_loss = self.train_one_batch(*data)
                 log_max_allocated(
                     logger_debug=logger,
                     context="During training (forward + compute loss)")
@@ -926,6 +927,11 @@ class DWIMLAbstractTrainer:
                                    tqdm_class=tqdm) as pbar:
             valid_iterator = enumerate(pbar)
             for batch_id, data in valid_iterator:
+                # For each batch, data is obtained from our batch sampler using
+                # the train_iterator. It is a tuple:
+                # (targets, ids_per_subj)
+
+                # Showing memory information
                 logger.debug("\n\nStart of validation batch: ")
                 log_currently_allocated(
                     logger_debug=logger,
@@ -935,7 +941,7 @@ class DWIMLAbstractTrainer:
                 # ------ Forward pass + loss -------
                 torch_reset_peaks_memory()
                 with torch.no_grad():
-                    self.validate_one_batch(data, epoch)
+                    self.validate_one_batch(*data, epoch)
                 log_max_allocated(
                     logger_debug=logger,
                     context="During validation (forward + compute loss)")
@@ -966,23 +972,23 @@ class DWIMLAbstractTrainer:
             monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
 
-    def train_one_batch(self, data):
+    def train_one_batch(self, targets, ids_per_subj):
         """
         Computes the loss for the current batch and updates monitors.
         Returns the loss to be used for backpropagation.
         """
         # Encapsulated for easier management of child classes.
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(targets, ids_per_subj)
 
         # mean loss is a Tensor of a single value. item() converts to float
         self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
         return mean_local_loss
 
-    def validate_one_batch(self, data, epoch):
+    def validate_one_batch(self, targets, ids_per_subj, epoch):
         """
         Computes the loss(es) for the current batch and updates monitors.
         """
-        mean_local_loss, n = self.run_one_batch(data)
+        mean_local_loss, n = self.run_one_batch(targets, ids_per_subj)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 
@@ -1051,25 +1057,27 @@ class DWIMLAbstractTrainer:
             json_file.write(json.dumps(best_losses, indent=4,
                                        separators=(',', ': ')))
 
-    def run_one_batch(self, data):
+    def run_one_batch(self, targets, ids_per_subj):
         """
-        Runs a batch of data through the model (calling its forward method)
-        and returns the mean loss.
+        Run a batch of data through the model (calling its forward method)
+        and return the mean loss. If training, run the backward method too.
 
         Parameters
         ----------
-        data : tuple of (List[StatefulTractogram], dict)
-            Output of the batch loader's collate_fn.
-            With our basic BatchLoader class, data is a tuple
-            - batch_sfts: one sft per subject
-            - final_streamline_ids_per_subj: the dict of streamlines ids from
-              the list of all streamlines (if we concatenate all sfts'
-              streamlines)
-        """
-        # Data interpolation has not been done yet. GPU computations are done
-        # here in the main thread.
-        targets, ids_per_subj = data
+        targets: list of torch.tensors
+            This is the output of the AbstractBatchLoader's method
+            load_batch_streamlines().
+        ids_per_subj: dict
+            The dict of streamlines ids associated with each subject from the
+            list of all targets.
 
+        Returns
+        -------
+        mean_loss : Tensor of shape (1,) ; float.
+            The mean loss of the provided batch.
+        n: int
+            Total number of points for this batch.
+        """
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
         targets = [s.to(self.device, non_blocking=True, dtype=torch.float)
@@ -1175,21 +1183,23 @@ class DWIMLAbstractTrainer:
 class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
-    def run_one_batch(self, data):
+    def run_one_batch(self, targets, ids_per_subj):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
 
+        Will load the DWI data associated with each target here. (Data
+        interpolation has not been done yet. GPU computations are done here in
+        the main thread.)
+
         Parameters
         ----------
-        data : tuple of (List[StatefulTractogram], dict)
-            This is the output of the AbstractBatchLoader's
-            load_batch_streamlines()
-            method. data is a tuple
-            - batch_sfts: one sft per subject
-            - final_streamline_ids_per_subj: the dict of streamlines ids from
-              the list of all streamlines (if we concatenate all sfts'
-              streamlines).
+        targets: list of torch.tensors
+            This is the output of the AbstractBatchLoader's method
+            load_batch_streamlines().
+        ids_per_subj: dict
+            The dict of streamlines ids associated with each subject from the
+            list of all targets.
 
         Returns
         -------
@@ -1198,10 +1208,6 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         n: int
             Total number of points for this batch.
         """
-        # Data interpolation has not been done yet. GPU computations are done
-        # here in the main thread.
-        targets, ids_per_subj = data
-
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
         targets = [s.to(self.device, non_blocking=True, dtype=torch.float)

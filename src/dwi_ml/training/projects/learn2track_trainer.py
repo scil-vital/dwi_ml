@@ -41,26 +41,24 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
         # Based on the tracker
         def update_memory_after_removing_lines(can_continue: np.ndarray, _):
             # Removing these lines from the hidden state
-            nonlocal subjs_hidden_states
-            nonlocal subj_idx_in_batch
-            subjs_hidden_states[subj_idx_in_batch] = (
-                self.model.take_lines_in_hidden_state(
-                    subjs_hidden_states[subj_idx_in_batch], can_continue))
+            nonlocal subj_hidden_states
+            subj_hidden_states = (
+                self.model.take_lines_in_hidden_state(subj_hidden_states,
+                                                      can_continue))
 
         def get_dirs_at_last_pos(subj_lines: List[torch.Tensor], n_last_pos):
             # Get dirs for current subject: run model
-            nonlocal subjs_hidden_states
+            nonlocal subj_hidden_states
             nonlocal subj_idx
-            nonlocal subj_idx_in_batch
 
             n_last_pos = [pos[None, :] for pos in n_last_pos]
             subj_dict = {subj_idx: slice(0, len(n_last_pos))}
-            subj_inputs = self.batch_loader.load_batch_inputs(
-                n_last_pos, subj_dict)
+            subj_inputs = self.batch_loader.load_batch_inputs(n_last_pos,
+                                                              subj_dict)
 
-            model_outputs, subjs_hidden_states[subj_idx_in_batch] = self.model(
+            model_outputs, subj_hidden_states = self.model(
                 subj_inputs, subj_lines,
-                hidden_recurrent_states=subjs_hidden_states[subj_idx_in_batch],
+                hidden_recurrent_states=subj_hidden_states,
                 return_hidden=True, point_idx=-1)
 
             next_dirs = self.model.get_tracking_directions(
@@ -72,8 +70,8 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
         # Here, subjs_hidden_states will be a list of hidden_states per subj.
         if self.tracking_phase_nb_segments_init > 0:
             tmp_lines = [line[:-1, :] for line in lines]
-            inputs = self.batch_loader.load_batch_inputs(
-                tmp_lines, ids_per_subj)
+            inputs = self.batch_loader.load_batch_inputs(tmp_lines,
+                                                         ids_per_subj)
             _, whole_hidden_states = self.model(inputs, tmp_lines,
                                                 return_hidden=True)
 
@@ -88,9 +86,12 @@ class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
         # Running the propagation separately for each subject
         # (because they all need their own tracking mask)
         final_lines = []
-        subj_idx_in_batch = -1
+        i = -1
         for subj_idx, subj_line_idx_slice in ids_per_subj.items():
-            subj_idx_in_batch += 1   # Will be used as non-local in methods above
+            i += 1
+            # Will be used as non-local in methods above
+            subj_hidden_states = subjs_hidden_states[i] if \
+                subjs_hidden_states is not None else None
 
             # Load the subject's tracking mask
             with h5py.File(self.batch_loader.dataset.hdf5_file, 'r'

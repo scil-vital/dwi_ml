@@ -269,20 +269,15 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         """
         # Reminder.
         # Correct interpolation and management of points should be done before.
+        assert x[0].shape[-1] == self.expected_input_size, \
+            ("Not the expected input size! Should be {} (i.e. {} features for "
+             "each of the {} neighbors, maybe with 3 additional values for "
+             "the current coordinates), but got {} (input shape {})."
+             .format(self.expected_input_size, self.nb_features_per_point,
+                     self.nb_neighbors, x[0].shape[-1], x[0].shape))
+
         if self.context is None:
             raise ValueError("Please set context before usage.")
-
-        # Right now input is always flattened (interpolation is implemented
-        # that way). For CNN, we will rearrange it ourselves.
-        # Verifying the first input
-        expected_input_size = self.nb_features_per_point * self.nb_neighbors
-        if self.add_raw_coords_to_input or self.add_relative_coords_to_input:
-            expected_input_size += 3
-        assert x[0].shape[-1] == expected_input_size, \
-            "Not the expected input size! Should be {} (i.e. {} features for " \
-            "each of the {} neighbors), but got {} (input shape {})." \
-            .format(self.input_size, self.nb_features_per_point,
-                    self.nb_neighbors, x[0].shape[-1], x[0].shape)
 
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.

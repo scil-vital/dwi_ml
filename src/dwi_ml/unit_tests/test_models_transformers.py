@@ -14,10 +14,13 @@ nb_streamlines = len(batch_x_various_lengths)
 
 
 def _prepare_original_model():
+    # Nb features per point = 4.
+    # Pretending that this is 1 + 3 coordinates.
+
     # Using defaults from script
     model = OriginalTransformerModel(
         experiment_name='test', step_size=0.5, compress_lines=None,
-        nb_features_per_point=4, input_embedding_nn_out_size=4, max_len=5,
+        nb_features_per_point=1, input_embedding_nn_out_size=4, max_len=5,
         log_level='DEBUG', positional_encoding_key='sinusoidal',
         sos_token_type='as_label', input_embedding_key='nn_embedding',
         target_embedding_key='nn_embedding', ffnn_hidden_size=None, nheads=1,
@@ -27,7 +30,7 @@ def _prepare_original_model():
         input_embedding_cnn_nb_filters=None,
         input_embedding_cnn_kernel_size=None,
         add_raw_coords_to_input=False,
-        add_relative_coords_to_input=False,
+        add_relative_coords_to_input=True,
         start_from_copy_prev=False)
     return model
 

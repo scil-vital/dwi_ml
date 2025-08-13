@@ -673,23 +673,26 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
                     "on kernel size and number of filters. Do not use "
                     "nn_embedded_size")
 
-        # Computing expected input size
-        # Right now input is always flattened (interpolation is implemented
-        # that way). For CNN, we will rearrange it ourselves.
+        # When data is received from the trainer, input is flattened
+        # (interpolation is implemented that way).
         # For options add_raw/relative_coords_to_input, we will add 3
         # additional inputs.
+        self.input_size_nn = None
+        self.input_size_cnn = None
+        self.expected_input_size = self.nb_features_per_point * self.nb_neighbors
+        add_coords = (self.add_raw_coords_to_input or
+                      self.add_relative_coords_to_input)
         if input_embedding_key == 'cnn_embedding':
-            if (self.add_raw_coords_to_input or
-                    self.add_relative_coords_to_input):
+            if add_coords:
                 raise NotImplementedError(
                     "Not ready to concatenate coordinates to input with "
-                    "CNN embedding.")
-            self.input_size = self.nb_features_per_point
+                    "CNN embedding. Would need to add it to data at each "
+                    "point in the neighborhood.")
+            self.input_size_cnn = self.nb_features_per_point
         else:
-            self.input_size = self.nb_features_per_point * self.nb_neighbors
-            if (self.add_raw_coords_to_input or
-                    self.add_relative_coords_to_input):
-                self.input_size += 3
+            if add_coords:
+                self.expected_input_size += 3
+            self.input_size_nn = self.expected_input_size
 
         # This variable will eventually contain the final computed size.
         self.computed_input_embedded_size = None
@@ -713,7 +716,7 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         elif self.input_embedding_key == 'nn_embedding':
             self._instantiate_nn_embedding()
         else: # self.input_embedding_key == 'no_embedding'
-            self.computed_input_embedded_size = self.input_size
+            self.computed_input_embedded_size = self.input_size_nn
             self.input_embedding_layer = torch.nn.Identity()
 
     def _instantiate_cnn_embedding(self):
@@ -748,7 +751,7 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
                 "size. Not expected, as we are not padding the data.")
 
         self.input_embedding_layer = cnn_embedding_cls(
-            nb_features_in=self.input_size,
+            nb_features_in=self.input_size_cnn,
             nb_filters=self.input_embedding_cnn_nb_filters,
             kernel_sizes=self.input_embedding_cnn_kernel_size,
             image_shape=[neighb_size] * 3)
@@ -759,7 +762,7 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         self.computed_input_embedded_size = self.input_embedding_nn_out_size
         input_embedding_cls = keys_to_embeddings[self.input_embedding_key]
         self.input_embedding_layer = input_embedding_cls(
-            nb_features_in=self.input_size,
+            nb_features_in=self.input_size_nn,
             nb_features_out=self.computed_input_embedded_size)
 
     @property

@@ -47,8 +47,7 @@ def add_hdf5_creation_args(p: ArgumentParser):
                    help="Path and name of the output hdf5 file. \nIf "
                         "--save_intermediate is set, the intermediate files "
                         "will be saved in \nthe same location, in a folder "
-                        "name based on date and hour of creation.\n"
-                        "If it already exists, use -f to allow overwriting.")
+                        "name based on date and hour of creation.")
     p.add_argument('config_file',
                    help="Path to the json config file defining the groups "
                         "wanted in your hdf5. \n"
@@ -59,18 +58,16 @@ def add_hdf5_creation_args(p: ArgumentParser):
                    help="A txt file containing the list of subjects ids to "
                         "use for training. \n(Can be an empty file.)")
     p.add_argument('validation_subjs',
-                   help="A txt file containing the list of subjects ids"
-                        " to use for validation. \n(Can be an empty file.)")
+                   help="A txt file containing the list of subjects ids to "
+                        "use for validation. \n(Can be an empty file.)")
     p.add_argument('testing_subjs',
-                   help="A txt file containing the list of subjects ids"
-                        " to use for testing. \n(Can be an empty file.)")
+                   help="A txt file containing the list of subjects ids to "
+                        "use for testing. \n(Can be an empty file.)")
 
     # Optional arguments
-    p.add_argument('--enforce_files_presence', type=bool, default=True,
-                   metavar="True/False",
-                   help='If True, the process will stop if one file is '
-                        'missing for a subject. \nChecks are not made for '
-                        'option "ALL" for streamline groups.\nDefault: True')
+    p.add_argument('--enforce_files_presence', action='store_true',
+                   help='If set, the process will stop if one file is '
+                        'missing for a subject.')
     p.add_argument('--save_intermediate', action="store_true",
                    help="If set, save intermediate processing files for "
                         "each subject inside the \nhdf5 folder, in sub-"

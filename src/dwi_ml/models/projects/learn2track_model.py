@@ -81,7 +81,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     def __init__(self, experiment_name,
                  step_size: Union[float, None],
                  compress_lines: Union[float, None],
-                 nb_features: int,
+                 nb_features_per_point: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
                  prev_dirs_embedded_size: Union[int, None],
@@ -89,9 +89,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  normalize_prev_dirs: bool,
                  # INPUTS
                  input_embedding_key: str,
-                 input_embedded_size: Union[int, None],
-                 nb_cnn_filters: Optional[List[int]],
-                 kernel_size: Optional[List[int]],
+                 input_embedding_nn_out_size: Union[int, None],
+                 input_embedding_cnn_nb_filters: Optional[List[int]],
+                 input_embedding_cnn_kernel_size: Optional[List[int]],
+                 add_raw_coords_to_input: bool,
+                 add_relative_coords_to_input: bool,
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
                  use_skip_connection: bool, use_layer_normalization: bool,
@@ -110,6 +112,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         nb_previous_dirs: int
             Number of previous direction (i.e. [x,y,z] information) to be
             received.
+        nb_features_per_point: int
+            Number of features per point. Real input size received from batch
+            loader will be nb_features_per_point * neigbhorhood_size.
         rnn_key: str
             Either 'LSTM' or 'GRU'.
         rnn_layer_sizes: List[int]
@@ -140,11 +145,15 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,
             neighborhood_resolution=neighborhood_resolution,
+            # For super ModelWithOneInput:
+            nb_features_per_point=nb_features_per_point,
+            add_raw_coords_to_input=add_raw_coords_to_input,
+            add_relative_coords_to_input=add_relative_coords_to_input,
             # For super ModelWithInputEmbedding:
-            nb_features=nb_features,
             input_embedding_key=input_embedding_key,
-            input_embedded_size=input_embedded_size,
-            nb_cnn_filters=nb_cnn_filters, kernel_size=kernel_size,
+            input_embedding_nn_out_size=input_embedding_nn_out_size,
+            input_embedding_cnn_nb_filters=input_embedding_cnn_nb_filters,
+            input_embedding_cnn_kernel_size=input_embedding_cnn_kernel_size,
             # For super MainModelWithPD:
             nb_previous_dirs=nb_previous_dirs,
             prev_dirs_embedded_size=prev_dirs_embedded_size,
@@ -155,12 +164,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
         self.dropout = dropout
         self.start_from_copy_prev = start_from_copy_prev
-        self.nb_cnn_filters = nb_cnn_filters
-        self.kernel_size = kernel_size
-
-        # Right now input is always flattened (interpolation is implemented
-        # that way). For CNN, we will rearrange it ourselves.
-        self.input_size = nb_features * self.nb_neighbors
 
         # ----------- Checks
         if dropout < 0 or dropout > 1:
@@ -176,7 +179,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # ---------- Instantiations
         # 1. Previous dirs embedding: prepared by super.
 
-        # 2. Input embedding
+        # 2. Input embedding: prepared by super. Adding dropout
+        self.instantiate_input_embedding_layer()
         self.embedding_dropout = torch.nn.Dropout(self.dropout)
 
         # 3. Stacked RNN
@@ -189,14 +193,14 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             use_skip_connection=use_skip_connection,
             use_layer_normalization=use_layer_normalization, dropout=dropout)
 
-        # 4. Direction getter:
+        # 4. Direction getter: (calls super's method)
         self.instantiate_direction_getter(self.rnn_model.output_size)
 
     def set_context(self, context):
         # Training, validation: Used by trainer. Nothing special.
         # Tracking: Used by tracker. Returns only the last point.
-        #     Preparing_backward: Used by tracker. Nothing special, but does
-        #     not return only the last point.
+        # Preparing_backward: Used by tracker. Nothing special, but does
+        #  not return only the last point.
         # Visu: Nothing special. Used by tester.
         assert context in ['training', 'validation', 'tracking', 'visu',
                            'preparing_backward']
@@ -208,7 +212,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # during checkpoint state saving.
         params = super().params_for_checkpoint
         params.update({
-            'nb_features': int(self.nb_features),
+            'nb_features_per_point': self.nb_features_per_point,
+            'add_raw_coords_to_input': self.add_raw_coords_to_input,
+            'add_relative_coords_to_input': self.add_relative_coords_to_input,
             'rnn_key': self.rnn_model.rnn_torch_key,
             'rnn_layer_sizes': self.rnn_model.layer_sizes,
             'use_skip_connection': self.rnn_model.use_skip_connection,
@@ -226,8 +232,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         return p
 
     def forward(self, x: List[torch.tensor],
-                input_streamlines: List[torch.tensor] = None,
-                hidden_recurrent_states: List = None, return_hidden=False,
+                input_streamlines: List[torch.tensor],
+                hidden_recurrent_states: List = None,
+                return_hidden=False,
                 point_idx: int = None):
         """Run the model on a batch of sequences.
 
@@ -262,17 +269,15 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         """
         # Reminder.
         # Correct interpolation and management of points should be done before.
+        assert x[0].shape[-1] == self.expected_input_size, \
+            ("Not the expected input size! Should be {} (i.e. {} features for "
+             "each of the {} neighbors, maybe with 3 additional values for "
+             "the current coordinates), but got {} (input shape {})."
+             .format(self.expected_input_size, self.nb_features_per_point,
+                     self.nb_neighbors, x[0].shape[-1], x[0].shape))
+
         if self.context is None:
             raise ValueError("Please set context before usage.")
-
-        # Right now input is always flattened (interpolation is implemented
-        # that way). For CNN, we will rearrange it ourselves.
-        # Verifying the first input
-        assert x[0].shape[-1] == self.input_size, \
-            "Not the expected input size! Should be {} (i.e. {} features for " \
-            "each of the {} neighbors), but got {} (input shape {})." \
-            .format(self.input_size, self.nb_features, self.nb_neighbors,
-                    x[0].shape[-1], x[0].shape)
 
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.
@@ -284,7 +289,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             unsorted_indices = invert_permutation(sorted_indices)
             x = [x[i] for i in sorted_indices]
             if input_streamlines is not None:
-                input_streamlines = [input_streamlines[i] for i in sorted_indices]
+                input_streamlines = [input_streamlines[i]
+                                     for i in sorted_indices]
 
         # ==== 0. Previous dirs.
         n_prev_dirs = None

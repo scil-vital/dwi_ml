@@ -71,7 +71,8 @@ def init_from_args(args, sub_loggers_level):
     dg_args = check_args_direction_getter(args)
     # (Nb features)
     input_group_idx = dataset.volume_groups.index(args.input_group_name)
-    args.nb_features = dataset.nb_features[input_group_idx]
+
+    nb_features = dataset.nb_features[input_group_idx]
     # Final model
     with Timer("\n\nPreparing model", newline=True, color='yellow'):
         # INPUTS: verifying args
@@ -84,10 +85,13 @@ def init_from_args(args, sub_loggers_level):
             nb_previous_dirs=args.nb_previous_dirs,
             normalize_prev_dirs=args.normalize_prev_dirs,
             # INPUTS
+            nb_features_per_point=nb_features,
             input_embedding_key=args.input_embedding_key,
-            input_embedded_size=args.input_embedded_size,
-            nb_features=args.nb_features, kernel_size=args.kernel_size,
-            nb_cnn_filters=args.nb_cnn_filters,
+            input_embedding_nn_out_size=args.input_embedded_size,
+            input_embedding_cnn_kernel_size=args.kernel_size,
+            input_embedding_cnn_nb_filters=args.nb_cnn_filters,
+            add_raw_coords_to_input=args.add_raw_coords_to_input,
+            add_relative_coords_to_input=args.add_relative_coords_to_input,
             # RNN
             rnn_key=args.rnn_key, rnn_layer_sizes=args.rnn_layer_sizes,
             dropout=args.dropout,

@@ -208,10 +208,11 @@ class MainModelAbstract(torch.nn.Module):
 
         return model_state
 
-    def forward(self, inputs, streamlines):
+    def forward(self, streamlines):
         raise NotImplementedError
 
-    def compute_loss(self, model_outputs, target_streamlines):
+    def compute_loss(self, model_outputs, target_streamlines,
+                     average_results: bool = False):
         raise NotImplementedError
 
     def merge_batches_outputs(self, all_outputs, new_batch):
@@ -453,6 +454,70 @@ class ModelWithPreviousDirections(MainModelAbstract):
 
 
 class MainModelOneInput(MainModelAbstract):
+    def __init__(self,
+                 nb_features_per_point: int,
+                 add_raw_coords_to_input: bool,
+                 add_relative_coords_to_input: bool,
+                 **kwargs):
+        """
+        Params
+        ------
+        add_raw_coords_to_input: bool
+            If true, add raw coordinates to input vectors.
+        add_relative_coords_to_input: bool
+            If true, add relative coordinates to input vectors, ie
+            coords / volume_dims."""
+        super().__init__(**kwargs)
+
+        self.nb_features_per_point = int(nb_features_per_point)
+        self.add_raw_coords_to_input = add_raw_coords_to_input
+        self.add_relative_coords_to_input = add_relative_coords_to_input
+
+        if self.add_raw_coords_to_input and self.add_relative_coords_to_input:
+            raise ValueError(
+                "add_raw_coords_to_input and add_relative_coords_toinput "
+                "cannot be used at the same time.")
+
+    @staticmethod
+    def add_args_model_one_input(p):
+        g = p.add_mutually_exclusive_group()
+        g.add_argument("--add_raw_coords_to_input", action="store_true",
+                       help="If true, add raw coordinates to input vectors.")
+        g.add_argument("--add_relative_coords_to_input", action="store_true",
+                       help="If true, add relative coordinates to input "
+                            "vectors, i.e. \ncoords / volume_dims.")
+
+    @classmethod
+    def _load_params(cls, model_dir):
+        params = super()._load_params(model_dir)
+        if 'nb_features' in params:
+            logging.warning("Deprecated model usage, with 'nb_features' in "
+                            "its params. Modifying automatically. Support "
+                            "will eventually be removed.")
+            if params['nb_neighbors'] > 0:
+                params['nb_features_per_point'] = \
+                    float(params['nb_features']) / params['nb_neighbors']
+                assert params['nb_features_per_points'].is_integer(), \
+                    ("Unexpected error. Deprecated nb_features should have "
+                     "been real_nb_features * nb_neighbors. "
+                     "Ask Emmanuelle to fix.")
+            else:
+                params['nb_features_per_point'] = params['nb_features']
+        return params
+
+    @property
+    def params_for_checkpoint(self):
+        # Every parameter necessary to build the different layers again.
+        # during checkpoint state saving.
+        params = super().params_for_checkpoint
+        params.update({
+            'nb_features_per_point': self.nb_features_per_point,
+            'add_raw_coords_to_input': self.add_raw_coords_to_input,
+            'add_relative_coords_to_input': self.add_relative_coords_to_input,
+        })
+
+        return params
+
     def prepare_batch_one_input(self, streamlines, subset: MultisubjectSubset,
                                 subj_idx, input_group_idx, prepare_mask=False,
                                 clear_cache=True):
@@ -495,16 +560,25 @@ class MainModelOneInput(MainModelAbstract):
         # to volume bounds.
         if isinstance(self, ModelWithNeighborhood):
             # Adding neighborhood.
-            subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
+            subj_x, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, self.neighborhood_vectors,
                 clear_cache=clear_cache)
         else:
-            subj_x_data, coords_torch = interpolate_volume_in_neighborhood(
+            subj_x, coords_torch = interpolate_volume_in_neighborhood(
                 data_tensor, flat_subj_x_coords, None, clear_cache=clear_cache)
 
         # Split the flattened signal back to streamlines
         lengths = [len(s) for s in streamlines]
-        subj_x_data = list(subj_x_data.split(lengths))
+        subj_x = list(subj_x.split(lengths))
+
+        if self.add_raw_coords_to_input:
+            subj_x = [torch.cat((_x, _s), dim=1) for _x, _s
+                           in zip(subj_x, streamlines)]
+        elif self.add_relative_coords_to_input:
+            volume_dim = torch.as_tensor(data_tensor.shape[0:3],
+                                         device=self.device)
+            subj_x = [torch.cat((_x, torch.divide(_s, volume_dim)), dim=1)
+                 for _x, _s in zip(subj_x, streamlines)]
 
         if prepare_mask:
             logging.warning("Model OneInput: DEBUGGING MODE. Returning "
@@ -521,134 +595,174 @@ class MainModelOneInput(MainModelAbstract):
             for s in range(len(coords_torch)):
                 input_mask.data[tuple(coords_to_idx_clipped[s, :])] = 1
 
-            return subj_x_data, input_mask
+            return subj_x, input_mask
 
-        return subj_x_data
+        return subj_x
+
+    def forward(self, inputs, streamlines):
+        raise NotImplementedError
 
 
 class ModelOneInputWithEmbedding(MainModelOneInput):
-    def __init__(self, nb_features: int,
+    def __init__(self,
                  input_embedding_key: str,
-                 input_embedded_size: int = None,
-                 nb_cnn_filters: List[int] = None,
-                 kernel_size: List[int] = None, **kw):
+                 input_embedding_nn_out_size: int = None,
+                 input_embedding_cnn_nb_filters: List[int] = None,
+                 input_embedding_cnn_kernel_size: List[int] = None, **kw):
         """
+        Note that input_size should be given later, when instantiating the
+        layers.
+
         Parameters
         ----------
-        nb_features: int
-            This value should be known from the actual data. Number of features
-            in the data (last dimension).
         input_embedding_key: str
             Key to an embedding class (one of
             dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
             Default: 'no_embedding'.
-        input_embedded_size: int
-            Output embedding size for the input. Not required for no_embedding.
-        nb_cnn_filters: int
+        input_embedding_nn_out_size: int
+            Output embedding size for the input for the NN embedding.
+        input_embedding_cnn_nb_filters: int
             Number of filters in the CNN. Output size at each voxel.
-        kernel_size: int
+        input_embedding_cnn_kernel_size: int
             Used only with CNN embedding. Size of the 3D filter matrix.
             Will be of shape [k, k, k].
         """
-
         super().__init__(**kw)
 
         self.input_embedding_key = input_embedding_key
-        self.input_embedded_size = input_embedded_size
-        self.nb_cnn_filters = nb_cnn_filters
-        self.kernel_size = kernel_size
-        self.nb_features = nb_features
+        self.input_embedding_nn_out_size = input_embedding_nn_out_size
+        self.input_embedding_cnn_nb_filters = input_embedding_cnn_nb_filters
+        self.input_embedding_cnn_kernel_size = input_embedding_cnn_kernel_size
 
         # Preparing layer variables now but not instantiated. User must provide
         # input size.
         self.input_embedding_layer = None
 
-        # ----------- Instantiation + checks
+        # ----------- Checking options
         if self.input_embedding_key not in keys_to_embeddings.keys():
             raise ValueError("Embedding choice for x data not understood: {}"
                              .format(self.input_embedding_key))
+        elif self.input_embedding_key in ['nn_embedding', 'no_embedding']:
+            # No CNN option
+            if self.input_embedding_cnn_nb_filters is not None:
+                raise ValueError("Nb CNN filters should not be used when "
+                                 "embedding is not CNN.")
+            if self.input_embedding_cnn_kernel_size is not None:
+                raise ValueError("CNN kernel_size should not be used when "
+                                 "embedding is not CNN.")
 
-        # This variable will contain final computed size.
-        self.computed_input_embedded_size = None
-        if self.input_embedding_key == 'cnn_embedding':
-            self.instantiate_cnn_embedding()
+            # NN options
+            if (self.input_embedding_key == 'nn_embedding' and
+                    input_embedding_nn_out_size is None):
+                raise ValueError("Input embedded size should be defined.")
+
+        elif self.input_embedding_key == 'cnn_embedding':
+            # For CNN: make sure that neighborhood is included.
+            if not isinstance(self, ModelWithNeighborhood):
+                raise ValueError("CNN embedding cannot be used without a "
+                                 "neighborhood. Add ModelWithNeighborhood as "
+                                 "parent to your model class.")
+            if self.neighborhood_type != 'grid':
+                raise ValueError("CNN embedding should be used with a "
+                                 "grid-like neighborhood.")
+
+            # No NN options
+            if input_embedding_nn_out_size is not None:
+                raise ValueError(
+                    "CNN embedded size will be computed automatically based "
+                    "on kernel size and number of filters. Do not use "
+                    "nn_embedded_size")
+
+        # When data is received from the trainer, input is flattened
+        # (interpolation is implemented that way).
+        # For options add_raw/relative_coords_to_input, we will add 3
+        # additional inputs.
+        self.input_size_nn = None
+        self.input_size_cnn = None
+        self.expected_input_size = self.nb_features_per_point * self.nb_neighbors
+        add_coords = (self.add_raw_coords_to_input or
+                      self.add_relative_coords_to_input)
+        if input_embedding_key == 'cnn_embedding':
+            if add_coords:
+                raise NotImplementedError(
+                    "Not ready to concatenate coordinates to input with "
+                    "CNN embedding. Would need to add it to data at each "
+                    "point in the neighborhood.")
+            self.input_size_cnn = self.nb_features_per_point
         else:
-            self.instantiate_nn_embedding()
+            if add_coords:
+                self.expected_input_size += 3
+            self.input_size_nn = self.expected_input_size
 
-    def instantiate_cnn_embedding(self):
-        input_embedding_cls = keys_to_embeddings[self.input_embedding_key]
+        # This variable will eventually contain the final computed size.
+        self.computed_input_embedded_size = None
 
-        # For CNN: make sure that neighborhood is included.
-        if not isinstance(self, ModelWithNeighborhood):
-            raise ValueError("CNN embedding cannot be used without a "
-                             "neighborhood. Add ModelWithNeighborhood as "
-                             "parent to your model class.")
-        if self.neighborhood_type != 'grid':
-            raise ValueError(
-                "CNN embedding should be used with a grid-like neighborhood.")
+    def instantiate_input_embedding_layer(self):
+        """
+        Params
+        ------
+        input_size: int
+            This value should be known from the actual data. Number of features
+            in the data (last dimension) that will be passed to the input
+            embedding layer.
+            - Using CNN: data should be a neighborhood of points with last
+              dimension "input_size"
+            - Using NN: data should be a single vector of dimension
+              "input_size". Ex, with a neighborhood, this value is probably
+              input_size = real_nb_features * nb_points_in_neighborhood
+        """
+        if self.input_embedding_key == 'cnn_embedding':
+            self._instantiate_cnn_embedding()
+        elif self.input_embedding_key == 'nn_embedding':
+            self._instantiate_nn_embedding()
+        else: # self.input_embedding_key == 'no_embedding'
+            self.computed_input_embedded_size = self.input_size_nn
+            self.input_embedding_layer = torch.nn.Identity()
 
-        if self.input_embedded_size is not None:
+    def _instantiate_cnn_embedding(self):
+        cnn_embedding_cls = keys_to_embeddings[self.input_embedding_key]
+
+        # Size, if neighborhood_radius is n, nb of voxels is 2*n + 1.
+        neighb_size = 2 * self.neighborhood_radius + 1
+        logging.debug("Computed that CNN (input embedding) will reveive data "
+                      "coming from a neighborhood of size {}"
+                      .format(neighb_size))
+
+        if self.input_embedding_nn_out_size is not None:
             raise ValueError(
                 "You should not use input_embedded_size with CNN embedding."
                 "Rather, use the nb_filters and kernel_size.")
 
-        if self.kernel_size is None:
+        if self.input_embedding_cnn_kernel_size is None:
             raise ValueError("Kernel size must be defined to use CNN "
                              "embedding")
 
-        if len(self.kernel_size) != len(self.nb_cnn_filters):
+        if (len(self.input_embedding_cnn_kernel_size) !=
+                len(self.input_embedding_cnn_nb_filters)):
             raise ValueError("kernel_size and nb_cnn_filters must contain "
                              "the same number of values.")
 
-        if self.kernel_size[0] > 2 * self.neighborhood_radius + 1:
+        if self.input_embedding_cnn_kernel_size[0] > neighb_size:
             # Kernel size cannot be bigger than the number of points.
-            # Per size, if neighborhood_radius in n, nb of voxels is 2*n + 1.
             # Kernel size of other layers would be longer to check.
             # We will wait for error in forward, if any.
             raise ValueError(
-                "CNN kernel size is bigger than the neighborhood size."
-                "Not expected, as we are not padding the data.")
+                "CNN kernel size (layer 1) is bigger than the neighborhood "
+                "size. Not expected, as we are not padding the data.")
 
-        neighb_size = 2 * self.neighborhood_radius + 1
-        self.input_embedding_layer = input_embedding_cls(
-            nb_features_in=self.nb_features,
-            nb_filters=self.nb_cnn_filters,
-            kernel_sizes=self.kernel_size,
+        self.input_embedding_layer = cnn_embedding_cls(
+            nb_features_in=self.input_size_cnn,
+            nb_filters=self.input_embedding_cnn_nb_filters,
+            kernel_sizes=self.input_embedding_cnn_kernel_size,
             image_shape=[neighb_size] * 3)
         self.computed_input_embedded_size = \
             self.input_embedding_layer.out_flattened_size
 
-    def instantiate_nn_embedding(self):
-        # NN embedding or identity embedding:
-
-        if self.nb_cnn_filters is not None:
-            raise ValueError("Nb CNN filters should not be used when "
-                             "embedding is not CNN.")
-        if self.kernel_size is not None:
-            raise ValueError("CNN kernel_size should not be used when "
-                             "embedding is not CNN.")
-
-        input_size = self.nb_features
-        if isinstance(self, ModelWithNeighborhood):
-            input_size *= self.nb_neighbors
-
-        if self.input_embedding_key == 'no_embedding':
-            if self.computed_input_embedded_size is None:
-                self.computed_input_embedded_size = input_size
-            else:
-                assert self.computed_input_embedded_size == input_size, \
-                    "Got input size {} ({} features x {} neighbors) but " \
-                    "expecting {}".format(input_size, self.nb_features,
-                                          self.nb_neighbors,
-                                          self.computed_input_embedded_size)
-        else:
-            if self.input_embedded_size is None:
-                raise ValueError("Input embedded size should be defined.")
-            self.computed_input_embedded_size = self.input_embedded_size
-
+    def _instantiate_nn_embedding(self):
+        self.computed_input_embedded_size = self.input_embedding_nn_out_size
         input_embedding_cls = keys_to_embeddings[self.input_embedding_key]
         self.input_embedding_layer = input_embedding_cls(
-            nb_features_in=input_size,
+            nb_features_in=self.input_size_nn,
             nb_features_out=self.computed_input_embedded_size)
 
     @property
@@ -658,9 +772,9 @@ class ModelOneInputWithEmbedding(MainModelOneInput):
         params = super().params_for_checkpoint
         params.update({
             'input_embedding_key': self.input_embedding_key,
-            'input_embedded_size': self.input_embedded_size,
-            'kernel_size': self.kernel_size,
-            'nb_cnn_filters': self.nb_cnn_filters,
+            'input_embedding_nn_out_size': self.input_embedding_nn_out_size,
+            'input_embedding_cnn_kernel_size': self.input_embedding_cnn_kernel_size,
+            'input_embedding_cnn_nb_filters': self.input_embedding_cnn_nb_filters,
         })
 
         return params

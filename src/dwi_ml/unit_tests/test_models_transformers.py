@@ -14,39 +14,46 @@ nb_streamlines = len(batch_x_various_lengths)
 
 
 def _prepare_original_model():
+    # Nb features per point = 4.
+    # Pretending that this is 1 + 3 coordinates.
+
     # Using defaults from script
     model = OriginalTransformerModel(
         experiment_name='test', step_size=0.5, compress_lines=None,
-        nb_features=4, input_embedded_size=4, max_len=5,
+        nb_features_per_point=1, input_embedding_nn_out_size=4, max_len=5,
         log_level='DEBUG', positional_encoding_key='sinusoidal',
         sos_token_type='as_label', input_embedding_key='nn_embedding',
         target_embedding_key='nn_embedding', ffnn_hidden_size=None, nheads=1,
         dropout_rate=0., activation='relu', norm_first=False, n_layers_e=1,
         n_layers_d=1, dg_key='cosine-regression', dg_args=None,
         neighborhood_type=None, neighborhood_radius=None,
-        nb_cnn_filters=None, kernel_size=None,
+        input_embedding_cnn_nb_filters=None,
+        input_embedding_cnn_kernel_size=None,
+        add_raw_coords_to_input=False,
+        add_relative_coords_to_input=True,
         start_from_copy_prev=False)
     return model
 
 
 def _prepare_ttst_model():
+    # neighborhood --> No. The number of features is fixed in our fake data
+
     model = TransformerSrcAndTgtModel(
-        # Varying sos_token_type.
-        # ffnn_hidden_size,
-        # norm_first
-        # dg_key
-        # eos
-        # neighborhood --> No. The number of features is fixed in our fake data
-        # start from copy prev
         experiment_name='test',  step_size=0.5, compress_lines=None,
-        nb_features=4, max_len=5, input_embedded_size=4, target_embedded_size=2,
+        nb_features_per_point=4, max_len=5,
+        target_embedded_size=2,
         log_level='DEBUG', sos_token_type='repulsion100',
-        positional_encoding_key='sinusoidal', input_embedding_key='nn_embedding',
+        positional_encoding_key='sinusoidal',
+        input_embedding_key='nn_embedding',
         target_embedding_key='nn_embedding', ffnn_hidden_size=6, nheads=1,
         dropout_rate=0., activation='relu', norm_first=True, n_layers_e=1,
         dg_key='sphere-classification', dg_args={'add_eos': True},
         neighborhood_type=None, neighborhood_radius=None,
-        nb_cnn_filters=None, kernel_size=None,
+        input_embedding_nn_out_size=4,
+        input_embedding_cnn_nb_filters=None,
+        input_embedding_cnn_kernel_size=None,
+        add_raw_coords_to_input=False,
+        add_relative_coords_to_input=False,
         start_from_copy_prev=True)
     return model
 
@@ -54,13 +61,17 @@ def _prepare_ttst_model():
 def _prepare_tts_model():
     model = TransformerSrcOnlyModel(
         experiment_name='test',  step_size=0.5, compress_lines=None,
-        nb_features=4, max_len=5, log_level='DEBUG',
-        input_embedded_size=4,
-        positional_encoding_key='sinusoidal', input_embedding_key='nn_embedding',
+        nb_features_per_point=4, max_len=5, log_level='DEBUG',
+        input_embedding_nn_out_size=4,
+        positional_encoding_key='sinusoidal',
+        input_embedding_key='nn_embedding',
         ffnn_hidden_size=None, nheads=1, dropout_rate=0., activation='relu',
         norm_first=False, n_layers_e=1, dg_key='cosine-regression',
         dg_args=None, neighborhood_type=None, neighborhood_radius=None,
-        nb_cnn_filters=None, kernel_size=None)
+        input_embedding_cnn_nb_filters=None,
+        input_embedding_cnn_kernel_size=None,
+        add_raw_coords_to_input=False,
+        add_relative_coords_to_input=False)
     return model
 
 
@@ -90,7 +101,7 @@ def _run_original_model(model):
     assert output.shape[1] == 3  # Here, regression, should output x, y, z
     assert not isnan(output[0, 0])
 
-    # Note. output[0].shape[0] ==> Depends if we unpad sequences.
+    # Note. output[0].shape[0] ==> Depends on if we unpad sequences.
 
 
 def _run_ttst_model(model):

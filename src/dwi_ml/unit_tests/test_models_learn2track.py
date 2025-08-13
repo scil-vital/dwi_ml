@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 
+import torch
 from torch.nn.utils.rnn import pack_sequence
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
@@ -34,21 +35,28 @@ def test_stacked_rnn():
 
 
 def test_learn2track():
+
+    # Nb features per point = 4.
+    # Pretending that this is 1 + 3 coordinates.
+
     model = Learn2TrackModel('test', step_size=0.5, compress_lines=False,
-                             nb_features=4, rnn_layer_sizes=[3, 3],
+                             nb_features_per_point=1, rnn_layer_sizes=[3, 3],
                              log_level='DEBUG',
                              # Using default from script:
                              nb_previous_dirs=0, prev_dirs_embedded_size=None,
                              prev_dirs_embedding_key=None,
                              normalize_prev_dirs=True,
                              input_embedding_key='nn_embedding',
-                             input_embedded_size=5, kernel_size=None,
-                             nb_cnn_filters=None,
+                             input_embedding_nn_out_size=5,
+                             input_embedding_cnn_kernel_size=None,
+                             input_embedding_cnn_nb_filters=None,
+                             add_raw_coords_to_input=False,
+                             add_relative_coords_to_input=True,
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,
                              start_from_copy_prev=False,
                              dg_key='cosine-regression', dg_args=None,
-                             neighborhood_type=None, neighborhood_radius=None)
+                             neighborhood_type=None, neighborhood_radius=None,)
 
     logging.info("Learn2track model final parameters:" +
                  format_dict_to_str(model.params_for_checkpoint))
@@ -60,15 +68,18 @@ def test_learn2track():
 
 def test_learn2track_cnn():
     model = Learn2TrackModel('test', step_size=0.5, compress_lines=False,
-                             nb_features=4, rnn_layer_sizes=[3, 3],
+                             nb_features_per_point=4, rnn_layer_sizes=[3, 3],
                              log_level='DEBUG',
                              # Using default from script:
                              nb_previous_dirs=0, prev_dirs_embedded_size=None,
                              prev_dirs_embedding_key=None,
                              normalize_prev_dirs=True,
                              input_embedding_key='cnn_embedding',
-                             nb_cnn_filters=[4], kernel_size=[3],
-                             input_embedded_size=None,
+                             input_embedding_cnn_nb_filters=[4],
+                             input_embedding_cnn_kernel_size=[3],
+                             input_embedding_nn_out_size=None,
+                             add_raw_coords_to_input=False,
+                             add_relative_coords_to_input=False,
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,
                              start_from_copy_prev=False,

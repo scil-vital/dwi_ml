@@ -1208,6 +1208,9 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         n: int
             Total number of points for this batch.
         """
+        # Data interpolation has not been done yet. GPU computations are done
+        # here in the main thread.
+
         # Dataloader always works on CPU. Sending to right device.
         # (model is already moved).
         targets = [s.to(self.device, non_blocking=True, dtype=torch.float)
@@ -1235,7 +1238,7 @@ class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
         streamlines_f = self.batch_loader.add_noise_streamlines_forward(
             streamlines_f, self.device)
         model_outputs = self.model(batch_inputs, streamlines_f)
-        del streamlines_f
+        del streamlines_f, batch_inputs
 
         logger.debug('*** Computing loss')
         # Add noise to targets.

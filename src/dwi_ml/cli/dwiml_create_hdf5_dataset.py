@@ -4,17 +4,10 @@
 This script combines multiple diffusion MRI volumes and their streamlines into
 a single .hdf5 file.
 
---------------------------------------
-See here for the complete explanation!
+See our doc (https://dwi-ml.readthedocs.io/en/latest/2_A_creating_the_hdf5.html)
+for the complete explanation, including:
     - How to organize your data
     - How to prepare the config file
-    - How to run this script.
-    https://dwi-ml.readthedocs.io/en/latest/2_A_creating_the_hdf5.html
---------------------------------------
-
-** Note: The memory is a delicate question here, but checks have been made, and
-it appears that the SFT's garbage collector may not be working entirely well.
-Keeping as is for now, hoping that next Dipy versions will solve the problem.
 """
 
 import argparse
@@ -25,11 +18,12 @@ import os
 import shutil
 from pathlib import Path
 
+from dipy.io.stateful_tractogram import set_sft_logger_level
+
 from scilpy.io.utils import (add_overwrite_arg, add_verbose_arg,
                              assert_inputs_exist, assert_outputs_exist)
 
-from dipy.io.stateful_tractogram import set_sft_logger_level
-
+from dwi_ml.GUI.args_management.argparse_equivalent import ArgparserForGui
 from dwi_ml.data.hdf5.hdf5_creation import HDF5Creator
 from dwi_ml.data.hdf5.utils import (
     add_hdf5_creation_args, add_streamline_processing_args)
@@ -98,9 +92,19 @@ def prepare_hdf5_creator(args):
     return creator
 
 
-def _parse_args():
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawTextHelpFormatter)
+def prepare_argparser(from_gui=False):
+    if from_gui:
+        p = ArgparserForGui(description=__doc__)
+    else:
+        epilog = """
+--------------
+** Hint: You may also prepare your call of this script using
+>>> dwiml_launch_GUI.py
+        """
+
+        p = argparse.ArgumentParser(
+            description=__doc__, formatter_class=argparse.RawTextHelpFormatter,
+            epilog=epilog)
 
     add_hdf5_creation_args(p)
     add_streamline_processing_args(p)
@@ -112,7 +116,7 @@ def _parse_args():
 
 def main():
     """Parse arguments, generate hdf5 dataset and save it on disk."""
-    p = _parse_args()
+    p = prepare_argparser()
     args = p.parse_args()
 
     # Initialize logger

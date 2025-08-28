@@ -25,9 +25,9 @@ global_required_theme = None
 
 def add_color_legend():
     dpg.add_text("Values in red are required",
-                 color=required_red, indent=WINDOW_WIDTH - 300)
+                 color=required_red, indent=WINDOW_WIDTH - 400)
     dpg.add_text("Values in purple already have been set.",
-                 color=chosen_purple, indent=WINDOW_WIDTH - 300)
+                 color=chosen_purple, indent=WINDOW_WIDTH - 400)
 
 
 def get_modified_theme() -> int:

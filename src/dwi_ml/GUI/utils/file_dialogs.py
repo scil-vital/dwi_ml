@@ -245,8 +245,8 @@ def add_file_dialog_input_group(input_tag, file_dialog_params,
         tag=input_tag, width=INPUTS_WIDTH - 100,
         callback=callback_log_value_change_style_required, parent=input_parent)
     dpg.add_button(
-        tag=input_tag + FILE_DIALOG_BUTTON_SUFFIX, width=100,
-        label='Click to select.',
+        tag=input_tag + FILE_DIALOG_BUTTON_SUFFIX, width=120,
+        label='Click to select',
         callback=lambda: dpg.show_item(input_tag + FILE_DIALOG_SUFFIX),
         parent=button_parent)
 

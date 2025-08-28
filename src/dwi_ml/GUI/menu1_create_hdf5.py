@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import os
 
 import dearpygui.dearpygui as dpg
 
@@ -42,6 +43,7 @@ def open_menu_create_hdf5():
             txt = dpg.add_text(
                 "Choose your options. We will prepare a bash script for you "
                 "that you can then run in command line.\n\n")
+
             dpg.add_text("Script description "
                          "(dwiml_create_hdf5_dataset.py --help):")
 
@@ -60,12 +62,12 @@ def open_menu_create_hdf5():
             # - config_file => .json
             # - subjects lists => .txt
             known_file_dialogs = {
-                'dwi_ml_ready_folder': ['unique_folder', ],
-                'out_hdf5_file': ['unique_file', ['.hdf5']],
-                'config_file': ['unique_file', ['.json']],
-                'training_subjs': ['unique_file', ['.txt']],
-                'validation_subjs': ['unique_file', ['.txt']],
-                'testing_subjs': ['unique_file', ['.txt']]}
+                'dwi_ml_ready_folder': ('unique_folder', ),
+                'out_hdf5_file': ('unique_file', ['.hdf5']),
+                'config_file': ('unique_file', ['.json']),
+                'training_subjs': ('unique_file', ['.txt']),
+                'validation_subjs': ('unique_file', ['.txt']),
+                'testing_subjs': ('unique_file', ['.txt'])}
 
             # Ok! Adding all buttons
             add_args_to_gui(gui_parser, known_file_dialogs)
@@ -80,15 +82,15 @@ def open_menu_create_hdf5():
 
             dpg.add_text("\n")
             dpg.add_button(
-                label='OK! Create my command line!', indent=1005, width=200,
+                label='OK! Create my \nbash script!', indent=1005, width=200,
                 height=100, callback=__create_hdf5_script_callback,
                 user_data=gui_parser)
 
         # Set Title fonts
-        MY_FONTS = get_my_fonts_dictionary()
-        dpg.bind_item_font(main_title, MY_FONTS['main_title'])
-        dpg.bind_item_font(txt, MY_FONTS['section_title'])
-        dpg.bind_item_font(desc_text, MY_FONTS['code'])
+        my_fonts = get_my_fonts_dictionary()
+        dpg.bind_item_font(main_title, my_fonts['main_title'])
+        dpg.bind_item_font(txt, my_fonts['section_title'])
+        dpg.bind_item_font(desc_text, my_fonts['code'])
 
 
 def __create_hdf5_script_callback(_, __, user_data):
@@ -108,8 +110,10 @@ def __create_hdf5_script_callback(_, __, user_data):
         show_infobox("Wrong filename", "Your output filename should be .sh, "
                                        "got '{}'".format(out_path))
         return
-
-    logging.info("Will save the command line in {}.".format(out_path))
+    elif os.path.isfile(out_path):
+        show_infobox("Output file already exists",
+                     "Error: File '{}' already exists.".format(out_path))
+        return
 
     # 2. Get values. Verify that no warning message popped-up (if so, returns
     # None)
@@ -122,10 +126,17 @@ def __create_hdf5_script_callback(_, __, user_data):
     logging.debug('dwiml_create_hdf5_dataset.py \n \\' + '\n'.join(all_values))
     logging.debug("IN : {}".format(out_path))
 
-    raise NotImplementedError
+    logging.info("Will save the command line in {}.".format(out_path))
+    with open(out_path, 'w') as f:
+        f.write('dwiml_create_hdf5_dataset.py \\ \n')
+        for i in range(len(all_values)):
+            if i == len(all_values) - 1:
+                f.write(all_values[i])
+            else:
+                f.write(all_values[i] + " \\ \n")
 
-    # toDo
-    script_out_file = 'TO BE DETERMINED'
-    with open(script_out_file, 'w') as f:
-        f.write('dwiml_create_hdf5_dataset.py \n')
-        f.writelines(all_values)
+    show_infobox("Script created!",
+                 "The file '{}' has been created with the command line to \n"
+                 "create your HDF5!\n"
+                 "Verify that it is correct before closing the GUI!"
+                 .format(out_path))

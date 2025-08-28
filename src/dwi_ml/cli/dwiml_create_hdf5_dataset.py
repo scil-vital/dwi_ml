@@ -97,8 +97,9 @@ def prepare_argparser(from_gui=False):
         p = ArgparserForGui(description=__doc__)
     else:
         epilog = """
-        You may also prepare your call of this script using
-        >>> dwiml_launch_GUI.py
+--------------
+** Hint: You may also prepare your call of this script using
+>>> dwiml_launch_GUI.py
         """
 
         p = argparse.ArgumentParser(

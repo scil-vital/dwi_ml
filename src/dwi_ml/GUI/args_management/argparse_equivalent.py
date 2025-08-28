@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
 
-store_options = ['store_true', 'store_false']
-
 
 def format_arg(argname, help, metavar=None, type=str, default=None,
                action=None, const=None, nargs=None, dest=None, choices=None):
@@ -12,8 +10,8 @@ def format_arg(argname, help, metavar=None, type=str, default=None,
 
     # Format metavar
     optional = True if argname[0] == '-' else False
-    if metavar is None and optional and action not in store_options:
-        # .upper() to put in capital like real argparser, but I don't like that
+    if (metavar is None and optional and
+            action not in ['store_true', 'store_false']):
         metavar = argname.replace('-', '')
 
     # Modifying metavar if 'nargs' is set.
@@ -36,25 +34,27 @@ class ArgparserForGui:
     def __init__(self, description=None):
         logging.debug("    GUI.args_management.argparse_equivalent: "
                       "Initializing ArgparserForGui")
+        self.is_subgroup = False
         self.description = description
-        self.required_args_dict = {}
-        self.optional_args_dict = {}
+        self.main_required_args_dict = {}  # type: dict[str, dict]
+        self.main_optional_args_dict = {}  # type: dict[str, dict]
         self.exclusive_groups = []  # type: List[MutuallyExclusiveGroup]
-
-        # Should never be changed if self is created with add_argument_group.
-        # But we rely on the fact that the scripts are used through the real
-        # argparser. No need to test.
         self.groups_of_args = []  # type: List[ArgparserForGui]
 
     def add_argument(self, argname, **kwargs):
         optional = True if argname[0] == '-' else False
         if optional:
-            self.optional_args_dict[argname] = format_arg(argname, **kwargs)
+            self.main_optional_args_dict[argname] = format_arg(argname, **kwargs)
         else:
-            self.required_args_dict[argname] = format_arg(argname, **kwargs)
+            if self.is_subgroup:
+                raise NotImplementedError("I don't know how to manage "
+                                          "required args from inside a group!"
+                                          "Where do they go as positional args?")
+            self.main_required_args_dict[argname] = format_arg(argname, **kwargs)
 
     def add_argument_group(self, desc):
         g = ArgparserForGui(desc)
+        g.is_subgroup = True
         self.groups_of_args.append(g)
         return g
 
@@ -63,11 +63,26 @@ class ArgparserForGui:
         self.exclusive_groups.append(g)
         return g
 
+    def get_all_optional_argnames(self):
+        names = list(self.main_optional_args_dict.keys())
+        for eg in self.exclusive_groups:
+            names.extend(list(eg.arguments_list.keys()))
+        for eg in self.groups_of_args:
+            names.extend(eg.get_all_optional_argnames())
+        return names
+
+    def get_all_required_names(self):
+        names = list(self.main_required_args_dict.keys())
+        # Currently, this should be empty:
+        for eg in self.groups_of_args:
+            names.extend(list(eg.main_required_args_dict.keys()))
+        return names
+
 
 class MutuallyExclusiveGroup:
     def __init__(self, required):
         self.required = required
-        self.arguments_list = {}
+        self.arguments_list = {}  # type: dict[str, dict]
 
     def add_argument(self, argname, **kwargs):
         self.arguments_list[argname] = format_arg(argname, **kwargs)

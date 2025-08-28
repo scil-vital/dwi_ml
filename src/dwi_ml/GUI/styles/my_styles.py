@@ -61,8 +61,8 @@ def get_my_fonts_dictionary():
 
         with dpg.font_registry():
             # first argument is the path to the .ttf or .otf file
-            default_font = dpg.add_font(basic_font, 18)
-            group_font = dpg.add_font(basic_font, 22)
+            default_font = dpg.add_font(basic_font, 22)
+            group_font = dpg.add_font(basic_font, 25)
             title_font = dpg.add_font(basic_font, 30)
             main_title_font = dpg.add_font(basic_font, 40)
             code_font = dpg.add_font(courier_font, 15)

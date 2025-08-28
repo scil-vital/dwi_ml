@@ -1,15 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-Organization of page:
+Organization of a single argument:
+
+Each argument is one of:
+    - A file dialog: input text on the left, button on the right.
+        ** The input text associated to the file dialog has the tag=argname.
+    - A nargs group, consisting of:
+        - If the number of nargs is not fixed: a button to add or remove nargs.
+        -
 
 HELP_AND_INPUT_GROUP:
 -------------------------------------------------------------------------------
 |  HELP_TABLE:                       INPUTS_AND_OPTIONS_TABLE:                |
 |  --------------------------------- ---------------------------------------- |
 |  | Row 1 = argname + metavar.... | | Column1 = INPUTS | Column2 = OPTIONS   |
-|  | ------------------------------| | One row: narg#0  | One row: [] Option ||
-|  | ROW2 = help, help, help       | |          narg#1  |        [] Add narg ||
-|  |        help, help, help       | |          narg#2  |       [] Less narg ||
+|  | ------------------------------| |          narg#0  |    [] Click to set ||
+|  | Row 2 = help, help, help      | |          narg#1  |    [] Add narg     ||
+|  |        help, help, help       | |          narg#2  |    [] Less narg    ||
+|  |        help, help, help       | |          narg#2  |                    ||
 |  ------------------------------- | |---------------------- ----------------||
 -------------------------------------------------------------------------------
 """
@@ -19,7 +27,10 @@ from typing import Dict, List
 import dearpygui.dearpygui as dpg
 import numpy as np
 
-from dwi_ml.GUI.args_management.argparse_equivalent import store_options
+from dwi_ml.GUI.args_management.tags_and_texts import HELP_AND_INPUT_GROUP, \
+    HELP_TABLE, INPUTS_AND_OPTIONS_TABLE, INPUTS_CELL, OPTION_DEFAULT_TEXTBOX, \
+    OPTIONS_CELL, OPTION_CHECKBOX, ADD_NARGS_BUTTON, REMOVE_NARGS_BUTTON, \
+    NARGS_GROUP, TEXT_SELECTED, TEXT_UNSELECTED
 from dwi_ml.GUI.utils.file_dialogs import add_file_dialog_input_group
 from dwi_ml.GUI.args_management.inputs import add_input_item_based_on_type
 from dwi_ml.GUI.styles.my_styles import \
@@ -27,35 +38,12 @@ from dwi_ml.GUI.styles.my_styles import \
      HELP_WIDTH, OPTIONS_WIDTH, get_my_fonts_dictionary)
 from dwi_ml.GUI.styles.theme_inputs import get_required_theme
 
-# Top level
-HELP_AND_INPUT_GROUP = '_help_and_input'
-
-# Side by side:
-# Tables because dpg.group does not respect width.
-HELP_TABLE = '_help'
-INPUTS_AND_OPTIONS_TABLE = '_inputs_and_checkbox'
-INPUTS_CELL = '_inputs'
-OPTIONS_CELL = '_options'
-
-# In the inputs group:
-# FILE_DIALOG_BUTTON
-# or
-OPTION_DEFAULT_TEXTBOX = '_notSetTxt'
-# or
-# 'narg0', 'narg1', etc.
-
-# In the options group:
-OPTION_CHECKBOX = '_default_checkbox'
-NARGS_GROUP = '_nargs'
-ADD_NARGS_BUTTON = '_add_narg_button'
-REMOVE_NARGS_BUTTON = '_remove_narg_button'
-
 
 def add_one_arg_and_help_to_gui(
         argname: str, params: Dict, known_file_dialogs: Dict = None,
         exclusive_list: List = None):
     """
-    Prepare one arg.
+    Prepare one arg, as described at the top of this file.
     """
     logging.debug("GUI.args_to_gui_one_arg: add_one_arg_and_help_to_gui "
                   "(TOP METHOD FOR ARG: {}!)".format(argname))
@@ -74,11 +62,10 @@ def add_one_arg_and_help_to_gui(
                        tag=argname + HELP_TABLE):
             dpg.add_table_column()  # Single column table.
 
-            # Two rows.
-            # 1) Argname + metavar
+            # Two rows:
+            # 1) Argname + metavar + dots (...................)
             with dpg.table_row():
-                # Prepare help text + dots (...................)
-                metavar = params['metavar']  # Will not be none if optional!
+                metavar = params['metavar']
                 metavar = '' if metavar is None else metavar
                 metavar = '  ' + metavar
                 dots = '.' * NB_DOTS  # If too long, hidden out of table. ok.
@@ -108,18 +95,22 @@ def add_one_arg_and_help_to_gui(
                 with dpg.table_cell(tag=argname + INPUTS_CELL):
                     # (nargs group OR default text OR file dialog)
                     need_to_add_file_dialog = False
-                    required_arg_with_input = False
-                    if argname in known_file_dialogs.keys():
-                        # Special cases for known arguments that require a file
-                        # dialog.  Waiting for option cell to be created
-                        assert params['nargs'] is None
-                        assert params['default'] is None
-                        need_to_add_file_dialog = True
+                    required_arg_except_file = False
 
-                    elif optional:
-                        if (params['action'] in store_options or
-                                exclusive_list is not None):
-                            dpg.add_text("(Default: not selected)",
+                    if argname in known_file_dialogs.keys():
+                        # Waiting for option cell to be created, for the
+                        # "Click to select" button.
+                        need_to_add_file_dialog = True
+                    elif not optional:
+                        # Required arg. Expects an input right away.
+                        # Waiting for option cell to be created, for the narg
+                        # button.
+                        required_arg_except_file = True
+                    else:
+                        # Optional. Writing something here.
+                        if (params['action'] in ['store_true', 'store_false']
+                                or exclusive_list is not None):
+                            dpg.add_text(TEXT_UNSELECTED,
                                          tag=argname + OPTION_DEFAULT_TEXTBOX)
                         else:
                             # Will add nargs, but through checkbox callback
@@ -127,12 +118,6 @@ def add_one_arg_and_help_to_gui(
                             dpg.add_text('(Default = {})'
                                          .format(params['default']),
                                          tag=argname + OPTION_DEFAULT_TEXTBOX)
-
-                    else:
-                        # Required arg. Expects an input right away.
-                        # Waiting for option cell to be created, for the narg
-                        # button.
-                        required_arg_with_input = True
 
                 # Second cell will go in column 2
                 with dpg.table_cell(tag=argname + OPTIONS_CELL):
@@ -145,19 +130,19 @@ def add_one_arg_and_help_to_gui(
                             callback=__callback_option_checkbox,
                             parent=argname + OPTIONS_CELL,
                             user_data=(argname, params, exclusive_list))
-
-                if need_to_add_file_dialog:
-                    add_file_dialog_input_group(
-                            argname, known_file_dialogs[argname],
-                            input_parent=argname + INPUTS_CELL,
-                            button_parent=argname + OPTIONS_CELL)
-                if required_arg_with_input:
-                    check_nargs_add_input(argname, params)
+                    elif need_to_add_file_dialog:
+                        add_file_dialog_input_group(
+                                argname,
+                                file_dialog_params=known_file_dialogs[argname],
+                                input_parent=argname + INPUTS_CELL,
+                                button_parent=argname + OPTIONS_CELL)
+                    elif required_arg_except_file:
+                        check_nargs_add_input(argname, params)
 
 
 def _get_nb_nargs(params):
     """Used by check_nargs_add_input"""
-    if params['action'] in store_options:
+    if params['action'] in ['store_true', 'store_false']:
         gui_narg_min = 0
         gui_narg_max = 0
     else:
@@ -185,7 +170,7 @@ def check_nargs_add_input(argname, params):
     """Used either directly by add_one_arg (for required args) or through
     clicking the optional checkbox (for optional args)."""
 
-    if params['nargs'] == '?':
+    if params['nargs'] == '?':  # This means either 0 or 1 arg.
         if params['const'] is None:
             raise NotImplementedError(
                 "Implementation error. Please contact developpers with this "
@@ -231,17 +216,12 @@ def _add_more_less_nargs_buttons(argname, narg_min, narg_max, params):
 
 
 def _add_nargs_group(argname, narg_min, params):
-    if not dpg.does_item_exist(argname + INPUTS_CELL):
-        raise NotImplementedError("Wrong implementation. Wanted to add "
-                                  "the 'add_more_nargs' button, but "
-                                  "parent INPUTS_CELL does not exist.")
-
     logging.debug("-- Adding NARGS group")
     with dpg.group(tag=argname + NARGS_GROUP,
                    parent=argname + INPUTS_CELL) as nargs_group:
         if params['action'] in ['store_true', 'store_false']:
-            dpg.add_text("Selected!",
-                         tag=argname + 'narg0')
+            # If becomes selected, the first (and only) narg will be: selected.
+            dpg.add_text(TEXT_SELECTED , tag=argname + 'narg0')
         else:
             # Add the minimal number of nargs right now.
             for n in range(narg_min):

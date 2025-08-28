@@ -62,8 +62,10 @@ def add_input_item_based_on_type(params: Dict, parent, tag: str,
         item = dpg.add_input_int(default_value=default or 0, **item_options)
 
     elif dtype == float:
-        item = dpg.add_input_float(default_value=default or 0.0,
-                                   format='%.7f', **item_options)
+        # input_float NEVER gives the right result.
+        # Ex: 0.35 gives 0.34999994039
+        item = dpg.add_input_double(default_value=default or 0.0,
+                                    **item_options)
 
     else:
         item = dpg.add_text("NOT MANAGED YET TYPE {}"

@@ -11,19 +11,21 @@ from dipy.io.streamline import load_tractogram, save_tractogram
 from dipy.io.utils import is_header_compatible
 from dipy.tracking.utils import length
 import h5py
-from scilpy.image.labels import get_data_as_labels
-
-from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
-from dwi_ml.data.processing.streamlines.data_augmentation import \
-    resample_or_compress
 from nested_lookup import nested_lookup
 import nibabel as nib
 import numpy as np
 
+from scilpy.image.labels import get_data_as_labels
 from scilpy.tractograms.tractogram_operations import concatenate_sft
 
 from dwi_ml.data.io import load_file_to4d
-from dwi_ml.data.processing.dwi.dwi import standardize_data
+from dwi_ml.data.hdf5.utils import format_nb_blocs_connectivity
+from dwi_ml.data.processing.dwi.dwi import OnlineMeanAndVariance, standardize_data
+from dwi_ml.data.processing.streamlines.data_augmentation import \
+    resample_or_compress
+
+STD_CHOICES = ['all', 'independent', 'per_file', 'per_file_across_subjs', 
+               'none']
 
 
 def format_filelist(filenames, enforce_presence, folder=None) -> List[str]:
@@ -211,6 +213,9 @@ class HDF5Creator:
         # Check that all files exist
         if enforce_files_presence:
             self._check_files_presence()
+        
+        # Preparing the data standardization across subjects
+        self.online_stats = {}
 
     def _analyse_config_file(self):
         """
@@ -238,20 +243,19 @@ class HDF5Creator:
 
             # Volume groups
             if self.groups_config[group]['type'] == 'volume':
-                std_choices = ['all', 'independent', 'per_file', 'none']
                 if 'standardization' not in self.groups_config[group]:
                     raise KeyError(
                         "Group {}'s 'standardization' was not defined. It "
                         "should be one of {}. See the doc for a "
                         "groups_config.json example."
-                        .format(group, std_choices))
+                        .format(group, STD_CHOICES))
                 if self.groups_config[group]['standardization'] not in \
-                        std_choices:
+                        STD_CHOICES:
                     raise KeyError(
                         "Group {}'s 'standardization' should be one of {}, "
                         "but we got {}. See the doc for a groups_config.json "
                         "example."
-                        .format(group, std_choices,
+                        .format(group, STD_CHOICES,
                                 self.groups_config[group]['standardization']))
                 volume_groups.append(group)
 
@@ -398,6 +402,26 @@ class HDF5Creator:
                 logging.info("*Processing subject {}/{}: {}"
                              .format(nb_processed, nb_subjs, subj_id))
                 self._create_one_subj(subj_id, hdf_handle)
+            
+            # Save the final mean and std, for normalization across subjects
+            # self.online_variances has been updated during the process
+            # We would like to save a dictionnary in the hdf5: the means and 
+            # std for each group. But hdf5 does not support dictionaries. 
+            # Saving multiple keys: hdf_handle.attrs['means_and_stds_group']
+            for group_name, info in self.online_stats.items():
+                # User options are one value per volume group (len(list) = 1) or
+                # one option per nifti volume concatenated in the group. So we 
+                # receive a list.
+                assert isinstance(info, list)  # one value per volume
+                assert isinstance(info[0], OnlineMeanAndVariance)
+
+                mean = [] 
+                std = []
+                for volumeinfo in info:
+                    mean.extend([volumeinfo.mean] * volumeinfo.nb_features)
+                    std.extend([volumeinfo.std] * volumeinfo.nb_features)
+                means_and_stds = (np.asarray(mean), np.asarray(std))
+                hdf_handle.attrs['means_and_stds_' + group_name] = means_and_stds
 
         logging.info("Saved dataset : {}".format(self.out_hdf_filename))
 
@@ -407,16 +431,13 @@ class HDF5Creator:
         volume group(s) + streamline group(s).
         """
         subj_input_dir = self.root_folder.joinpath(subj_id)
-
         subj_hdf_group = hdf_handle.create_group(subj_id)
 
         # Add the subj data based on groups in the json config file
-        ref = self._create_volume_groups(subj_id, subj_input_dir,
-                                         subj_hdf_group)
-
+        ref = self._create_volume_groups(subj_id, subj_input_dir, subj_hdf_group)
         self._create_streamline_groups(ref, subj_input_dir, subj_id,
                                        subj_hdf_group)
-
+        
     def _create_volume_groups(self, subj_id, subj_input_dir, subj_hdf_group):
         """
         Create the hdf5 groups for all volume groups in the config_file for a
@@ -453,9 +474,10 @@ class HDF5Creator:
             # Adding the shape info separately to access it without loading
             # the data (useful for lazy data!).
             subj_hdf_group[group].attrs['nb_features'] = group_data.shape[-1]
+
         return ref_header
 
-    def _process_one_volume_group(self, group: str, subj_id: str,
+    def _process_one_volume_group(self, group_name: str, subj_id: str,
                                   subj_input_dir: Path):
         """
         Processes each volume group from the json config file for a given
@@ -482,17 +504,35 @@ class HDF5Creator:
         group_affine: np.ndarray
             Affine for the group.
         """
-        std_mask = None
+        # Get the files and add the subject_dir as prefix.
+        file_list = self.groups_config[group_name]['files']
+        file_list = format_filelist(file_list, self.enforce_files_presence,
+                                    folder=subj_input_dir)
+        
+        # Std option
         std_option = 'none'
-        if 'standardization' in self.groups_config[group]:
-            std_option = self.groups_config[group]['standardization']
-        if 'std_mask' in self.groups_config[group]:
+        if 'standardization' in self.groups_config[group_name]:
+            std_option = self.groups_config[group_name]['standardization']
+
+            # Instantiate online variances if this is the first subject
+            # Just preparing the key in the dict; we need the number of features
+            # to actually instantiate it.
+            if group_name not in self.online_stats.keys():
+                if std_option == 'per_file_across_subjs':
+                    self.online_stats[group_name] = [None] * len(file_list) 
+                elif std_option == 'all_across_subjs':
+                    self.online_stats[group_name] = [None]
+
+        # Std mask
+        std_mask = None
+        if 'std_mask' in self.groups_config[group_name]:
             if std_option == 'none':
                 logging.warning("You provided a std_mask for volume group {}, "
-                                "but std_option is 'none'. Skipping.")
+                                "but std_option is 'none'. Skipping."
+                                .format(group_name))
             else:
                 # Load subject's standardization mask. Can be a list of files.
-                std_masks = self.groups_config[group]['std_mask']
+                std_masks = self.groups_config[group_name]['std_mask']
                 std_masks = format_filelist(std_masks,
                                             self.enforce_files_presence,
                                             folder=subj_input_dir)
@@ -505,46 +545,50 @@ class HDF5Creator:
                     else:
                         std_mask = np.logical_or(sub_mask_data, std_mask)
 
-        # Get the files and add the subject_dir as prefix.
-        file_list = self.groups_config[group]['files']
-        file_list = format_filelist(file_list, self.enforce_files_presence,
-                                    folder=subj_input_dir)
+        group_data = None
+        for i, file_name in enumerate(file_list):
+            logging.info("       - Processing file {}"
+                         .format(os.path.basename(file_name)))
+            
+            # Loading.
+            # First file is loaded with header information.
+            # Other files must fit.
+            if i == 0:
+                logging.debug("First file = reference.")
+                data, group_affine, group_res, group_header = \
+                        load_file_to4d(file_name)
+            else:
+                data = _load_and_verify_file(file_name, group_name,
+                                             group_affine, group_res)
 
-        # First file will define data dimension and affine
-        logging.info("       - Processing file {} (first file=reference) "
-                     .format(os.path.basename(file_list[0])))
-        group_data, group_affine, group_res, group_header = load_file_to4d(
-            file_list[0])
+            # Per-file standardization
+            if std_option == 'per_file':
+                logging.info('          - Standardizing')
+                data = standardize_data(data, std_mask, independent=False)
+            elif std_option == 'per_file_across_subjs':
+                logging.debug("         - Storing mean and variance for later "
+                              "standardization")
+                # Instantiate online variances if this is the first subject
+                if self.online_stats[group_name][i] == None:
+                    self.online_stats[group_name][i] = \
+                        OnlineMeanAndVariance(nb_features=data.shape[-1])
 
-        if std_option == 'per_file':
-            logging.debug('      *Standardizing sub-data')
-            group_data = standardize_data(group_data, std_mask,
-                                          independent=False)
+                # Update the mean and variance with current subject
+                self.online_stats[group_name][i].update_from_new_subject(data)
 
-        # Other files must fit (data shape, affine, voxel size)
-        # It is not a promise that data has been correctly registered, but it
-        # is a minimal check.
-        if len(file_list) > 1:
-            for file_name in file_list[1:]:
-                logging.info("       - Processing file {}"
-                             .format(os.path.basename(file_name)))
-                data = _load_and_verify_file(file_name, group, group_affine,
-                                             group_res)
-
-                if std_option == 'per_file':
-                    logging.info('          - Standardizing')
-                    data = standardize_data(data, std_mask, independent=False)
-
-                # Append file data to hdf group.
+            # Append file data to hdf group.
+            if i == 0:
+                group_data = data
+            else:
                 try:
                     group_data = np.append(group_data, data, axis=-1)
                 except ImportError:
                     raise ImportError(
                         'Data file {} could not be added to data group {}. '
-                        'Wrong dimensions?'.format(file_name, group))
+                        'Wrong dimensions?'.format(file_name, group_name))
 
-        # Standardize data (per channel) (if not done 'per_file' yet).
-        if std_option == 'independent':
+        # Standardize data (if not done 'per_file' yet).
+        if std_option == 'independent':  # i.e. per feature
             logging.info('       - Standardizing data on each feature.')
             group_data = standardize_data(group_data, std_mask,
                                           independent=True)
@@ -552,14 +596,24 @@ class HDF5Creator:
             logging.info('       - Standardizing data as a whole.')
             group_data = standardize_data(group_data, std_mask,
                                           independent=False)
-        elif std_option not in ['none', 'per_file']:
-            raise ValueError("standardization must be one of "
-                             "['all', 'independent', 'per_file', 'none']")
+        elif std_option == 'all_across_subjs':
+            logging.info('       - Storing mean and std of data as a whole for '
+                         'later standardization.')
+            # Instantiate online variances if this is the first subject
+            if self.online_stats[group_name][0] == None:
+                self.online_stats[group_name][0] = \
+                    OnlineMeanAndVariance(nb_features=group_data.shape[-1])
+            
+            # Update the mean and variance with current subject
+            self.online_stats[group_name].update_from_new_subject(group_data)
+                
+        elif std_option not in ['none', 'per_file', 'per_file_across_subjs']:
+            raise ValueError("standardization must be one of " + STD_CHOICES)
 
         # Save standardized data
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
-                subj_id + '_' + group + ".nii.gz")
+                subj_id + '_' + group_name + ".nii.gz")
             logging.debug('      *Saving intermediate files into {}.'
                           .format(output_fname))
             standardized_img = nib.Nifti1Image(group_data, group_affine)

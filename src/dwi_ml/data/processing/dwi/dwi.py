@@ -12,10 +12,94 @@ from scilpy.reconst.sh import compute_sh_coefficients
 eps = 1e-6
 
 
+class OnlineMeanAndVariance:
+    """
+    Class to help standardize data volumes. This procedure computes the mean and 
+    variance of the training set; a single volume (single subject) at once. Can
+    be computed during the preparation of the hdf5, for instance, where we 
+    iterate over volumes, rather than needing to load all data at once in
+    memory.
+
+    At each iteration, we update the mean and variance from a batch of data (all
+    voxels in that volume).
+
+    Solution 1:  (method = 'welford')
+    If we wanted to update a single observation at the time:  See the Welford 
+    Variance algorithm:
+    https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
+    So we can loop over voxels and use that algorithm (slow).
+
+    Solution 2:  (method = 'batch')
+    See mathematics here: 
+    https://notmatthancock.github.io/2017/03/23/simple-batch-stat-updates.html
+
+    """
+    def __init__(self, nb_features, method='batch'):
+        assert method in ['batch', 'welford'] 
+
+        # Count = the total number of voxels across all subjects, all volumes
+        self.count = 0    
+        self.mean = 0.0
+        self._variance = 0.0
+        self.method = method
+
+        # We will compute the mean and variance over all voxels, all features
+        # This is to help supervise shape.
+        self.nb_features = nb_features
+
+    def update_from_new_subject(self, x: np.ndarray):
+        """
+        Parameters
+        ----------
+        x: np.ndarray
+            A volume for one subject.
+        """
+        assert (x.shape[-1] == self.nb_features)
+        x = x.flatten()
+
+        if self.method == 'batch':
+            self.add_variable_batch(x)
+        else:
+            self.add_variable_welford(x)
+
+    def add_variable_batch(self, x):
+        m = self.count
+        mu1 = self.mean
+        s1 = self._variance
+
+        n = len(x)
+        mu2 = np.mean(x)
+        s2 = np.std(x) ** 2
+
+        self.count = m + n
+        self.mean = m/self.count*mu1 + n/self.count*mu2
+        self._variance = m/self.count*s1 + n/self.count*s2 + \
+            m*n/(self.count**2) * (mu1 - mu2)**2
+
+    def add_variable_welford(self, x):
+        # Currently looping over voxels. Not sure if it can be accelerated.
+        for xi in x:
+            self.count += 1
+            delta = (x - self.mean)
+            self.mean += delta / self.count
+            self._variance += delta * (x - self.mean)
+       
+    @property
+    def variance(self) -> float:
+        if self.method == 'batch':
+            return self._variance
+        else:
+            return self._variance / self.count
+    
+    @property
+    def std(self) -> float:
+        return np.sqrt(self.variance)
+    
+
 def standardize_data(data: np.ndarray, mask: np.ndarray = None,
                      independent: bool = False):
     """Apply classic data standardization (centralized, normalized = zero-
-    centering and variance to 1).
+    centering and variance to 1) to a single volume.
 
     Parameters
     ----------

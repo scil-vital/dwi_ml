@@ -29,6 +29,9 @@ tmp_dir = tempfile.TemporaryDirectory()
 #          "dps_keys": ['mean_color_dps', 'mock_2d_dps']
 #     }
 # }
+# TODO: test connectivity matrices (need to be added in data)
+# TODO: Test other standardization (need to modify the config_file.)
+
 
 def test_help_option(script_runner):
     ret = script_runner.run('dwiml_create_hdf5_dataset', '--help')
@@ -49,5 +52,6 @@ def test_execution(script_runner):
 
     ret = script_runner.run('dwiml_create_hdf5_dataset',
                             dwi_ml_folder, hdf5_output, config_file,
-                            training_subjs, validation_subjs, testing_subjs)
+                            training_subjs, validation_subjs, testing_subjs,
+                            '-v', 'DEBUG')
     assert ret.success

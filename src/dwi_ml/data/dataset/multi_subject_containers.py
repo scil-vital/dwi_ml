@@ -42,11 +42,23 @@ class MultisubjectSubset(Dataset):
 
         self.set_name = set_name
         self.hdf5_file = hdf5_file
+        self.is_lazy = lazy
+        self.cache_size = cache_size
 
+        # ----- General information: attributes of the hdf5
+
+        # Volumes:
         self.volume_groups = []  # type: List[str]
         self.nb_features = []  # type: List[int]
+        self.means_and_std = {} 
+
+        # Streamlines:
         self.streamline_groups = []  # type: List[str]
         self.contains_connectivity = []  # type: np.ndarray
+        self.step_size = None
+        self.compress = None
+
+        # ----- Information obtained by actually loading the data:
 
         # The subjects data list will be either a SubjectsDataList or a
         # LazySubjectsDataList depending on MultisubjectDataset.is_lazy.
@@ -70,14 +82,7 @@ class MultisubjectSubset(Dataset):
         self.streamline_lengths_mm = []  # type: List[List[int]]
         self.streamline_lengths = []  # type: List[List[int]]
 
-        # Preprocessing information will be found in the hdf5 later.
-        self.step_size = None
-        self.compress = None
-
-        self.is_lazy = lazy
-
         # This is only used in the lazy case.
-        self.cache_size = cache_size
         self.volume_cache_manager = None  # type: SingleThreadCacheManager
 
     def close_all_handles(self):
@@ -90,10 +95,15 @@ class MultisubjectSubset(Dataset):
                 s.hdf_handle.close()
                 s.hdf_handle = None
 
-    def set_subset_info(self, volume_groups, nb_features, streamline_groups,
-                        contains_connectivity, step_size, compress):
+    def set_subset_info(self, volume_groups, nb_features, means_and_stds, 
+                        streamline_groups, contains_connectivity, 
+                        step_size, compress):
+        # Volumes:
         self.volume_groups = volume_groups
         self.nb_features = nb_features
+        self.means_and_std = means_and_stds
+
+        # Streamlines:
         self.streamline_groups = streamline_groups
         self.contains_connectivity = contains_connectivity
         self.step_size = step_size
@@ -385,6 +395,7 @@ class MultiSubjectDataset:
 
         self.volume_groups = []  # type: List[str]
         self.nb_features = []  # type: List[int]
+        self.means_and_stds = {}
         self.streamline_groups = []  # type: List[str]
         self.streamlines_contain_connectivity = []
 
@@ -446,7 +457,7 @@ class MultiSubjectDataset:
             if step_size == 'Not defined by user':
                 step_size = None
             if compress == 'Not defined by user':
-                compress = None
+                compress = None          
 
             # Loading the first training subject's group information.
             # Others should fit.
@@ -463,7 +474,7 @@ class MultiSubjectDataset:
             logger.debug("Streamline groups containing a connectivity matrix: "
                          "{}".format(contains_connectivity))
 
-            # Verifying groups of interest
+            # Verifying if groups of interest are indeed in the hdf5
             if volume_groups is not None:
                 missing_vol = np.setdiff1d(volume_groups, poss_volume_groups)
                 if len(missing_vol) > 0:
@@ -496,14 +507,24 @@ class MultiSubjectDataset:
                 logger.info("--> Using all streamline groups.")
                 self.streamline_groups = poss_strea_groups
                 self.streamlines_contain_connectivity = contains_connectivity
-
             self.streamline_groups = list(self.streamline_groups)
+
+            # Loading normalization information
+            for group in self.self.volume_groups:
+                if 'means_and_stds_' + group in hdf_handle.attrs:
+                    self.means_and_stds[group] = \
+                          hdf_handle.attrs['means_and_stds_' + group] 
+                else:
+                    self.means_and_stds[group] = None
+
+            # Finalizing group information
             group_info = (self.volume_groups, self.nb_features,
+                          self.means_and_stds,
                           self.streamline_groups,
                           self.streamlines_contain_connectivity)
             self.training_set.set_subset_info(*group_info, step_size, compress)
             self.validation_set.set_subset_info(*group_info, step_size, compress)
-            self.testing_set.set_subset_info(*group_info, step_size, compress)
+            self.testing_set.set_subset_info(*group_info, step_size, compress)            
 
             # LOADING
             if load_training:

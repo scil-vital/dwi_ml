@@ -11,7 +11,7 @@ Here is the output format created by dwiml_create_hdf5_dataset.py and recognized
     hdf5.attrs['training_subjs'] = the list of str representing the training subjects.
     hdf5.attrs['validation_subjs'] = the list of str representing the validation subjects.
     hdf5.attrs['testing_subjs'] = the list of str representing the testing subjects.
-    hdf5.attrs['means_and_stds'] = a dict with the (mean, std) for each volume group (if normalization across subjects is used), else 0, where std [=sqrt(variance)]. Each one is a vector of length = nb_features
+    hdf5.attrs['means_and_stds_groupX'] = (mean, std) for olume group named groupX (if normalization across subjects is used), where std [=sqrt(variance)]. Each one is a vector of length = nb_features
 
     # hdf5.keys() are the subjects.
     hdf5['subj1'].keys() are the groups from the config_file.

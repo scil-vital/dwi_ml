@@ -31,30 +31,30 @@ fi
 
 
 echo '------------- SEGMENTATION ------------'
-scil_tractogram_segment_with_ROI_and_score.py $tractogram $config_file_segmentation $out_dir --no_empty \
+scil_tractogram_segment_with_ROI_and_score $tractogram $config_file_segmentation $out_dir --no_empty \
     --gt_dir $scoring_data --reference $ref --json_prefix tmp_ --no_bbox_check;
 
 echo '------------- Merging CC sub-bundles ------------'
 CC_files=$(ls $out_dir/segmented_VB/CC* 2> /dev/null)
 if [ "$CC_files" != '' ]
 then
-    scil_tractogram_math.py lazy_concatenate $CC_files $out_dir/segmented_VB/CC_VS.trk;
+    scil_tractogram_math lazy_concatenate $CC_files $out_dir/segmented_VB/CC_VS.trk;
 fi
 echo '------------- Merging ICP left sub-bundles ------------'
 ICP_left_files=$(ls $out_dir/segmented_VB/ICP_left* 2> /dev/null)
 if [ "$ICP_left_files" != '' ]
 then
-    scil_tractogram_math.py lazy_concatenate $ICP_left_files $out_dir/segmented_VB/ICP_left_VS.trk;
+    scil_tractogram_math lazy_concatenate $ICP_left_files $out_dir/segmented_VB/ICP_left_VS.trk;
 fi
 echo '------------- Merging ICP right sub-bundles ------------'
 ICP_right_files=$(ls $out_dir/segmented_VB/ICP_right* 2> /dev/null)
 if [ "$ICP_right_files" != '' ]
 then
-    scil_tractogram_math.py lazy_concatenate $ICP_right_files  $out_dir/segmented_VB/ICP_right_VS.trk;
+    scil_tractogram_math lazy_concatenate $ICP_right_files  $out_dir/segmented_VB/ICP_right_VS.trk;
 fi
 
 echo '------------- FINAL SCORING ------------'
-scil_bundle_score_many_bundles_one_tractogram.py $config_file_tractometry $out_dir \
+scil_bundle_score_many_bundles_one_tractogram $config_file_tractometry $out_dir \
       --gt_dir $scoring_data --reference $ref --no_bbox_check -v 
 
 cat $out_dir/results.json

@@ -23,10 +23,14 @@ exclude_patterns = []
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 # Could not make it work with either sphinx_book_theme nor sphinx_rtd_theme.
-html_theme = 'classic'   # 'pyramid', 'bizstyle', 'sphinxdoc' all work
+html_theme = "sphinx_rtd_theme"
 html_static_path = ['_static']
-html_theme_options = {'body_max_width': '80%'}
 html_show_sourcelink = False
-html_sidebars = {
-    '**': ['globaltoc.html']  # Can add: 'searchbox.html'
+html_theme_options = {
+    "collapse_navigation": False,
+    "navigation_depth": 4,
+    "sticky_navigation": True,
 }
+html_css_files = [
+    'my_style.css',  # overrides for width size
+]

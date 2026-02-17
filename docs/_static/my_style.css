@@ -1,0 +1,21 @@
+@import url("theme.css");
+/*
+"fix screen width.
+*/
+
+
+.wy-nav-content {
+    max-width: 80%;
+}
+
+.strike {
+  text-decoration: line-through;
+}
+
+/* Hiding captions on the main page. Did not allow to add comments under the
+caption. Adding subtitles instead, and we don't have duplicate caption. But we
+still want the caption in the sidebar.
+ */
+.wy-nav-content .caption-text {
+    display: none;
+}

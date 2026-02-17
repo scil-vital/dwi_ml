@@ -5,7 +5,7 @@ from typing import List
 import torch
 from torch.nn import functional as F
 
-from dwi_ml.models.main_models import MainModelAbstract
+from dwi_ml.models.main_abstract_model import MainModelAbstract
 
 
 class ModelAE(MainModelAbstract):

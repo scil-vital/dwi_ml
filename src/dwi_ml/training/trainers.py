@@ -13,11 +13,11 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
 from dwi_ml.experiment_utils.memory import (
-    log_gpu_per_tensor, log_currently_allocated, log_gpu_general_info, BYTES_IN_GB,
+    log_gpu_per_tensor, log_currently_allocated, log_gpu_general_info,
     torch_reset_peaks_memory, log_max_allocated)
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
-from dwi_ml.models.main_models import (MainModelAbstract,
-                                       ModelWithDirectionGetter)
+from dwi_ml.models.main_abstract_model import MainModelAbstract
+from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.training.batch_loaders import (
     DWIMLStreamlinesBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.training.batch_samplers import DWIMLBatchIDSampler

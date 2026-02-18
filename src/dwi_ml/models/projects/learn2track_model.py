@@ -14,7 +14,7 @@ from dwi_ml.data.processing.streamlines.sos_eos_management import \
 from dwi_ml.models.embeddings import NoEmbedding
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelWithDirectionGetter,
-    ModelWithNeighborhood, ModelOneInputWithEmbedding)
+    ModelWithNeighborhood, ModelWithOneInput)
 from dwi_ml.models.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
@@ -67,7 +67,7 @@ def faster_unpack_sequence(packed_sequence: PackedSequence):
 
 
 class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
-                       ModelWithNeighborhood, ModelOneInputWithEmbedding):
+                       ModelWithNeighborhood, ModelWithOneInput):
     """
     Recurrent tracking model.
 

@@ -85,7 +85,7 @@ def prepare_hdf5_creator(args):
     shutil.copyfile(args.config_file, config_copy_name)
 
     # Instantiate a creator and perform checks
-    enforce_files_presence = not args.skip_enforme_files_presence
+    enforce_files_presence = not args.skip_enforce_files_presence
     creator = HDF5Creator(Path(args.dwi_ml_ready_folder), args.out_hdf5_file,
                           training_subjs, validation_subjs, testing_subjs,
                           groups_config,

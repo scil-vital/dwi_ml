@@ -242,7 +242,55 @@ class ModelWithPreviousDirections(MainModelAbstract):
         raise NotImplementedError
 
 
-class MainModelOneInput(MainModelAbstract):
+class ModelWithOneInput(MainModelAbstract):
+    def __init__(self, nb_features: int,
+                 input_embedding_key: str = 'no_embedding',
+                 input_embedded_size: int = None,
+                 nb_cnn_filters: List[int] = None,
+                 kernel_size: List[int] = None, **kw):
+        """
+        Parameters
+        ----------
+        nb_features: int
+            This value should be known from the actual data. Number of features
+            in the data (last dimension).
+        input_embedding_key: str
+            Key to an embedding class (one of
+            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
+            Default: 'no_embedding'.
+        input_embedded_size: int
+            Output embedding size for the input. Not required for no_embedding.
+        nb_cnn_filters: int
+            Number of filters in the CNN. Output size at each voxel.
+        kernel_size: int
+            Used only with CNN embedding. Size of the 3D filter matrix.
+            Will be of shape [k, k, k].
+        """
+
+        super().__init__(**kw)
+
+        self.input_embedding_key = input_embedding_key
+        self.input_embedded_size = input_embedded_size
+        self.nb_cnn_filters = nb_cnn_filters
+        self.kernel_size = kernel_size
+        self.nb_features = nb_features
+
+        # Preparing layer variables now but not instantiated. User must provide
+        # input size.
+        self.input_embedding_layer = None
+
+        # ----------- Instantiation + checks
+        if self.input_embedding_key not in keys_to_embeddings.keys():
+            raise ValueError("Embedding choice for x data not understood: {}"
+                             .format(self.input_embedding_key))
+
+        # This variable will contain final computed size.
+        self.computed_input_embedded_size = None
+        if self.input_embedding_key == 'cnn_embedding':
+            self.instantiate_cnn_embedding()
+        else:
+            self.instantiate_nn_embedding()
+
     def prepare_batch_one_input(self, streamlines, subset: MultisubjectSubset,
                                 subj_idx, input_group_idx, prepare_mask=False,
                                 clear_cache=True):
@@ -314,56 +362,6 @@ class MainModelOneInput(MainModelAbstract):
             return subj_x_data, input_mask
 
         return subj_x_data
-
-
-class ModelOneInputWithEmbedding(MainModelOneInput):
-    def __init__(self, nb_features: int,
-                 input_embedding_key: str,
-                 input_embedded_size: int = None,
-                 nb_cnn_filters: List[int] = None,
-                 kernel_size: List[int] = None, **kw):
-        """
-        Parameters
-        ----------
-        nb_features: int
-            This value should be known from the actual data. Number of features
-            in the data (last dimension).
-        input_embedding_key: str
-            Key to an embedding class (one of
-            dwi_ml.models.embeddings_on_tensors.keys_to_embeddings).
-            Default: 'no_embedding'.
-        input_embedded_size: int
-            Output embedding size for the input. Not required for no_embedding.
-        nb_cnn_filters: int
-            Number of filters in the CNN. Output size at each voxel.
-        kernel_size: int
-            Used only with CNN embedding. Size of the 3D filter matrix.
-            Will be of shape [k, k, k].
-        """
-
-        super().__init__(**kw)
-
-        self.input_embedding_key = input_embedding_key
-        self.input_embedded_size = input_embedded_size
-        self.nb_cnn_filters = nb_cnn_filters
-        self.kernel_size = kernel_size
-        self.nb_features = nb_features
-
-        # Preparing layer variables now but not instantiated. User must provide
-        # input size.
-        self.input_embedding_layer = None
-
-        # ----------- Instantiation + checks
-        if self.input_embedding_key not in keys_to_embeddings.keys():
-            raise ValueError("Embedding choice for x data not understood: {}"
-                             .format(self.input_embedding_key))
-
-        # This variable will contain final computed size.
-        self.computed_input_embedded_size = None
-        if self.input_embedding_key == 'cnn_embedding':
-            self.instantiate_cnn_embedding()
-        else:
-            self.instantiate_nn_embedding()
 
     def instantiate_cnn_embedding(self):
         input_embedding_cls = keys_to_embeddings[self.input_embedding_key]

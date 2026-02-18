@@ -16,7 +16,7 @@ from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.main_models import (ModelWithDirectionGetter,
                                        ModelWithNeighborhood,
-                                       ModelOneInputWithEmbedding)
+                                       ModelWithOneInput)
 from dwi_ml.models.positional_encoding import keys_to_positional_encodings
 from dwi_ml.models.utils.transformers_from_torch import (
     ModifiedTransformer,
@@ -102,7 +102,7 @@ def merge_one_weight_type(weights, new_weights, device):
 
 
 class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
-                               ModelOneInputWithEmbedding):
+                               ModelWithOneInput):
     """
     Prepares the parts common to our two transformer versions: embeddings,
     direction getter and some parameters for the model.
@@ -590,8 +590,7 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
 
     @property
     def d_model(self):
-        # d_model is the same as the input size. Computed in
-        # MainModelOneInputWithEmbedding
+        # d_model is the same as the input size. Computed in MainModelOneInput
         return self.computed_input_embedded_size
 
     @property

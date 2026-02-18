@@ -15,10 +15,10 @@ Getting started
 
         getting_started
 
-Explanations for users
-----------------------
+Explanations for users of pre-trained models
+--------------------------------------------
 
-Page in this section explain how to use our scripts.
+Pages in this section explain how to use our scripts to use our pre-trained models.
 
 - **Models**: If you want to use our pre-trained models, you may contact us for access to the models learned weights. They will be available online once publications are accepted.
 
@@ -26,11 +26,24 @@ Page in this section explain how to use our scripts.
 
     .. toctree::
         :maxdepth: 2
-        :caption: Explanations for users
+        :caption: Explanations for users (pre-trained)
 
         for_users/our_models
         for_users/hdf5
         for_users/tracking
+
+
+Explanations for users of pre-coded models
+------------------------------------------
+
+Pages in this section are useful if you want to train a model based on pre-existing code, such as Learn2track or TractographyTransformers, using your favorite set of hyperparameters.
+
+
+    .. toctree::
+        :maxdepth: 2
+        :caption: Explanations for users (retrain)
+
+        for_users/from_start_to_finish
 
 
 Explanations for developers

@@ -855,7 +855,15 @@ class DWIMLAbstractTrainer:
                 # train(), which "turns on" the training mode.
                 torch_reset_peaks_memory()
                 with grad_context():
-                    mean_loss = self.train_one_batch(*data)
+                    # Note. Data = (target_streamlines, ids_per_subj)
+                    mean_loss, n = self.run_one_batch(data[0], data[1])
+
+                    # Saving result.
+                    # mean loss is a Tensor of a single value. item() converts
+                    # it to float
+                    self.train_loss_monitor.update(mean_loss.cpu().item(),
+                                                   weight=n)
+
                 log_max_allocated(
                     logger_debug=logger,
                     context="During training (forward + compute loss)")
@@ -971,18 +979,6 @@ class DWIMLAbstractTrainer:
         for monitor in self.validation_monitors:
             monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
-
-    def train_one_batch(self, targets, ids_per_subj):
-        """
-        Computes the loss for the current batch and updates monitors.
-        Returns the loss to be used for backpropagation.
-        """
-        # Encapsulated for easier management of child classes.
-        mean_local_loss, n = self.run_one_batch(targets, ids_per_subj)
-
-        # mean loss is a Tensor of a single value. item() converts to float
-        self.train_loss_monitor.update(mean_local_loss.cpu().item(), weight=n)
-        return mean_local_loss
 
     def validate_one_batch(self, targets, ids_per_subj, epoch):
         """

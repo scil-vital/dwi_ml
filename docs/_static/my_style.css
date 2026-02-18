@@ -19,3 +19,42 @@ still want the caption in the sidebar.
 .wy-nav-content .caption-text {
     display: none;
 }
+
+/* Code shows in red when writing with `code`. Changing to gray */
+code.literal {
+    color: dimgray !important;
+}
+
+/* Alternating sub-section color + adding a padding for continuous view
+structure is:
+div class rst-content
+    div (no class. role=main)
+        div (no class. itemprop=articleBody)
+            section (the main title of the page)
+                section (subtitles)
+ */
+
+.rst-content > div > div > section > section {
+    padding: 1em;
+}
+.rst-content > div > div > section > section:nth-of-type(odd) {
+    background-color: rgba(77, 210, 223, 0.42);
+}
+
+.rst-content > div > div > section > section:nth-of-type(even) {
+        background-color: #eeefef;
+}
+
+/* Adding the same padding to footers */
+footer {
+    padding: 1em;
+}
+
+/* Removing space in nested lists */
+ul {
+    margin-top: 0 !important;
+}
+
+li {
+    padding: 0.1em 0;
+}

@@ -8,7 +8,7 @@ sphere_choices = ['symmetric362', 'symmetric642', 'symmetric724',
 
 
 def add_transformers_model_args(p):
-    """ Parameters for TransformingTractography"""
+    """ Parameters for TractographyTransformers"""
     # Mandatory args
     p.add_argument(
         'input_group_name',

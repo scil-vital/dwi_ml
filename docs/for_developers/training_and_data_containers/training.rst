@@ -48,7 +48,7 @@ Finally, ``run_one_batch`` is not implemented in the ``DWIMLAbstractTrainer`` cl
 DWIMLTrainerOneInput
 --------------------
 
-So far, we have prepared one child Trainer class, which loads the streamlines and one volume group. It can be used with the MainModelOneInput, as described earlier. This class is used by Learn2track and by TransformingTractography; you can rely on them to discover how to use it.
+So far, we have prepared one child Trainer class, which loads the streamlines and one volume group. It can be used with the MainModelOneInput, as described earlier. This class is used by Learn2track and by TractographyTransformers; you can rely on them to discover how to use it.
 
 
 Our Batch samplers and loaders

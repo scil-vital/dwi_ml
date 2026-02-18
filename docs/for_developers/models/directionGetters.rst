@@ -1,5 +1,8 @@
 .. _direction_getters:
 
+.. role:: underline
+    :class: underline
+
 Direction Getters
 =================
 

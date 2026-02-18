@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import shutil
+from argparse import ArgumentParser
 
 import torch
 
@@ -14,14 +15,29 @@ logger = logging.getLogger('model_logger')
 
 class MainModelAbstract(torch.nn.Module):
     """
-    To be used for all models that will be trained. Defines the way to save
-    the model.
-
-    It should also define a forward() method.
+    Parent model that should be used for all models, in all projects.
+    - Defines the way to save the model at checkpoints and after training with
+      methods:
+        - save_params_and_state
+        - load_model_from_params_and_state
+    - Prepares a method 'compute_loss', which will be called by our trainer
+      during training. Should be defined by all child classes
+    - Defines the way to get streamlines from the BatchLoader, with parameters
+      such as step_size, nb_points or compress_lines. The preprocessing steps
+      are performed by the BatchLoader, but it probably influences strongly
+      how the model performs, particularly in sequence-based models, as it
+      changes the length of streamlines. When using a fully trained model in
+      various scripts, you will often have the option to modify this value in
+      the BatchLoader, but it is probably not recommanded. This is why it has
+      been added as a main hyperparameter.
+    - Defines the type of inputs the forward() method will receive when called
+      in the trainer.
+    - Adds some internal values for easier management, such as self.device and
+      self.context.
     """
 
     def __init__(self, experiment_name: str,
-                 # Target preprocessing params for the batch loader + tracker
+                 # Target preprocessing params for the BatchLoader + tracker
                  step_size: float = None,
                  nb_points: int = None,
                  compress_lines: float = False,
@@ -35,13 +51,8 @@ class MainModelAbstract(torch.nn.Module):
         step_size : float
             Constant step size that every streamline should have between points
             (in mm). Default: None.
-            The preprocessing steps are performed by the batch loader or by
-            the tracker, but it probably influences strongly how the model
-            performs, particularly in sequence-based models, as it changes the
-            length of streamlines.
-            When using an existing model in various scripts, you will often
-            have the option to modify this value, but it is probably not
-            recommanded.
+        nb_points: int
+            Alternatively, mandatory number of points per streamline.
         compress_streamlines: float
             If set, compress streamlines to that tolerance error. Cannot be
             used together with step_size. This model cannot be used for
@@ -59,11 +70,13 @@ class MainModelAbstract(torch.nn.Module):
 
         self.device = None
 
-        # To tell our batch loader how to resample streamlines during training
+        # To tell our BatchLoader how to resample streamlines during training
         # (should also be the step size during tractography).
-        if (step_size and compress_lines) or (step_size and nb_points) or (nb_points and compress_lines):
-            raise ValueError("You may choose either resampling (step_size or nb_points)"
-                             " or compressing, but not two of them or more.")
+        if ((step_size and compress_lines) or (step_size and nb_points) or
+                (nb_points and compress_lines)):
+            raise ValueError(
+                "You may choose either resampling (step_size or nb_points)"
+                " or compressing, but not two of them or more.")
         elif step_size and step_size <= 0:
             raise ValueError("Step size can't be 0 or less!")
         elif nb_points and nb_points <= 0:
@@ -85,15 +98,21 @@ class MainModelAbstract(torch.nn.Module):
         self._context = None
 
     @staticmethod
-    def add_args_main_model(p):
+    def add_args_main_model(p: ArgumentParser):
+        """Parameters to add to your scripts for this model, with argparse."""
         add_resample_or_compress_arg(p)
 
     def set_context(self, context):
+        """Sets the context management for models in dwi_ml. Some models may
+        deal differently with the data during training or validation. Our
+        trainer tells our model the context at the beginning of training and
+        at the beginning of validation."""
         assert context in ['training',  'validation']
         self._context = context
 
     @property
     def context(self):
+        "Get the context."
         return self._context
 
     def move_to(self, device):
@@ -200,20 +219,3 @@ class MainModelAbstract(torch.nn.Module):
 
     def compute_loss(self, model_outputs, target_streamlines):
         raise NotImplementedError
-
-    def merge_batches_outputs(self, all_outputs, new_batch):
-        """
-        To be used at testing time. At training or validation time, outputs are
-        discarded after each batch; only the loss is measured. At testing time,
-        it may be necessary to merge batches. The way to do it will depend on
-        your model's format.
-
-        Parameters
-        ----------
-        all_outputs: Any or None
-            All previous outputs from previous batches, already combined.
-        new_batch:
-            The batch to merge
-        """
-        raise NotImplementedError
-

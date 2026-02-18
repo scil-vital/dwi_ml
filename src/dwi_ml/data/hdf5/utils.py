@@ -66,11 +66,11 @@ def add_hdf5_creation_args(p: ArgumentParser):
                         " to use for testing. \n(Can be an empty file.)")
 
     # Optional arguments
-    p.add_argument('--enforce_files_presence', type=bool, default=True,
-                   metavar="True/False",
-                   help='If True, the process will stop if one file is '
+    p.add_argument('--skip_enforce_files_presence', action='store_true',
+                   help='If set, the process will not stop if one file is '
                         'missing for a subject. \nChecks are not made for '
-                        'option "ALL" for streamline groups.\nDefault: True')
+                        'option "ALL" for streamline groups.\nDefault: '
+                        'perform checks; all subjects must contain all data.')
     p.add_argument('--save_intermediate', action="store_true",
                    help="If set, save intermediate processing files for "
                         "each subject inside the \nhdf5 folder, in sub-"

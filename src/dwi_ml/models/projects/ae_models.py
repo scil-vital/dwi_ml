@@ -10,13 +10,7 @@ from dwi_ml.models.main_abstract_model import MainModelAbstract
 
 class ModelAE(MainModelAbstract):
     """
-    Recurrent tracking model.
-
-    Composed of an embedding for the imaging data's input + for the previous
-    direction's input, an RNN model to process the sequences, and a direction
-    getter model to convert the RNN outputs to the right structure, e.g.
-    deterministic (3D vectors) or probabilistic (based on probability
-    distribution parameters).
+    AE model
     """
     def __init__(self,
                  experiment_name: str,
@@ -118,7 +112,7 @@ class ModelAE(MainModelAbstract):
         -------
         model_outputs : List[Tensor]
             Output data, ready to be passed to either `compute_loss()` or
-            `get_tracking_directions()`.
+            `??`.
         """
 
         x = self.decode(self.encode(input_streamlines))

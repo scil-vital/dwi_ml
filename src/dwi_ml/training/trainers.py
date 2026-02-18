@@ -34,7 +34,7 @@ QUIT_TIME_DELAY_SECONDS = 10
 COMET_UPDATE_FREQUENCY = 10
 
 
-class DWIMLAbstractTrainer:
+class DWIMLTrainer:
     """
     This Trainer class's train_and_validate() method:
         - Creates DataLoaders from the data_loaders. Collate_fn will be the
@@ -1176,7 +1176,7 @@ class DWIMLAbstractTrainer:
                     "training.".format(current_epoch + 1, new_max_epochs))
 
 
-class DWIMLTrainerOneInput(DWIMLAbstractTrainer):
+class DWIMLTrainerOneInput(DWIMLTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
 
     def run_one_batch(self, targets, ids_per_subj):

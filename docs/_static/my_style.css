@@ -36,6 +36,7 @@ div class rst-content
 
 .rst-content > div > div > section > section {
     padding: 1em;
+    margin-bottom: 1em;
 }
 .rst-content > div > div > section > section:nth-of-type(odd) {
     background-color: rgba(77, 210, 223, 0.42);

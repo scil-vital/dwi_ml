@@ -10,12 +10,12 @@ from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
 from dwi_ml.tracking.io_utils import prepare_tracking_mask
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.training.trainers_withGV import \
-    DWIMLTrainerForTrackingOneInput
+    DWIMLTrainerOneInputWithGVPhase
 
 logger = logging.getLogger('trainer_logger')
 
 
-class Learn2TrackTrainer(DWIMLTrainerForTrackingOneInput):
+class Learn2TrackTrainer(DWIMLTrainerOneInputWithGVPhase):
     """
     Trainer for Learn2Track. Nearly the same as in parent class, but the
     generation-validation phase (tracking) uses the hidden states.

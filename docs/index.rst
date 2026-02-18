@@ -66,8 +66,10 @@ Page in this section explain more in details how the code is implemented in pyth
 
         for_developers/models/index
         for_developers/hdf5/advanced_hdf5_organization
-        for_developers/training_and_data_containers/training
-        for_developers/training_and_data_containers/Advanced_data_containers
-        for_developers/training_and_data_containers/BatchSampler
-        for_developers/training_and_data_containers/BatchLoader
-        for_developers/tracking/tracking_objects
+        for_developers/training/training
+        for_developers/training/trainers_details
+        for_developers/data_management/Advanced_data_containers
+        for_developers/data_management/BatchSampler
+        for_developers/data_management/BatchLoader
+        for_developers/testing/general_testing
+        for_developers/testing/tracking_objects

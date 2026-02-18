@@ -45,6 +45,15 @@ div class rst-content
         background-color: #eeefef;
 }
 
+/*Now tables colors are off*/
+table .row-odd {
+    background-color: white
+}
+
+table .row-even {
+    background-color: #bfbdbd;
+}
+
 /* Adding the same padding to footers */
 footer {
     padding: 1em;

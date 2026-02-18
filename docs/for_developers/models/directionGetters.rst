@@ -3,12 +3,13 @@
 .. role:: underline
     :class: underline
 
-Direction Getters
-=================
+Create a tractography model: use a DirectionGetter
+==================================================
 
-It adds 2-layer neural network with the appropriate output size depending on the format of the output direction: 3 values (x, y, z) for regression, n values for classification on a sphere with N directions, etc. It also defines the compute_loss method, using an appropriate choice of loss in each case (ex, cosinus error for regression, negative log-likelihood for classification, etc.). For more information, see below:
+Direction getter layers should be used as last layer of any streamline generation model for the tractography task. They define the format of the output and possible associated loss functions.
 
-Direction getter (sub)-models should be used as last layer of any streamline generation model. They define the format of the output and possible associated loss functions.
+General architecture
+--------------------
 
 All models have been defined as 2-layer neural networks, with the hidden layer-size the half of the input size (the input, here, is the output of the main model), and the output size depends on each model as described below. ReLu activation and dropout layers are added. Final direction getter layers are as below:
 
@@ -19,7 +20,7 @@ In all cases, the mean of loss values for each timestep of the streamline is com
 Regression models
 -----------------
 
-Simple regression to learn directly a direction [x,y,z].
+These models use regression to learn directly a direction, formatted as a coordinate [x,y,z].
 
 - :underline:`Shape of the output`: 3 parameters: the direction x, y, z.
 - :underline:`Deterministic tracking`: Direct use of the direction.

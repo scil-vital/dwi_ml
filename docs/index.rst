@@ -41,7 +41,7 @@ Pages in this section are useful if you want to train a model based on pre-exist
 
     .. toctree::
         :maxdepth: 2
-        :caption: Explanations for users (retrain)
+        :caption: Explanations for users (re-train)
 
         for_users/from_start_to_finish
 

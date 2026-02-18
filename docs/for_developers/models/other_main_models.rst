@@ -18,7 +18,7 @@ In models, streamlines are often used as targets. But you may also need to use t
 ``ModelWithDirectionGetter``
 ****************************
 
-This is our model intented for tractography models. It defines a layer of what we call the "directionGetter", which outputs a chosen direction for the next step of tractography propagation, in many possible formats, and knows how to compute the loss function accordingly. See the page :ref:`directionGetters` for more information.
+This is our model intented for tractography models. It defines a layer of what we call the "directionGetter", which outputs a chosen direction for the next step of tractography propagation, in many possible formats, and knows how to compute the loss function accordingly. See the page :ref:`direction_getters` for more information.
 
 It also contains a ``get_tracking_directions`` method, which should be implemented in your project to use this model for tractography.
 

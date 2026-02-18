@@ -5,7 +5,7 @@ Create your own model: use MainModelAbstract
 
 You are welcome to add your own project's model in dwi_ml!
 
-Projects using diffusion imaging and tractography streamlines are usually quite heavy in memory. For this reason, dwi_ml is not only a space for models, but it also includes smart management of data loading during training (see :ref:`training` for more information). Our training objects and model objects are thus intertwined. For this reason, you should always make your model a child class of our **MainModelAbstract**.
+Projects using diffusion imaging and tractography streamlines are usually quite heavy in memory. For this reason, dwi_ml is not only a space for models, but it also includes smart management of data loading during training (see :ref:`trainers` for more information). Our training objects and model objects are thus intertwined. For this reason, you should always make your model a child class of our **MainModelAbstract**.
 
 
 The MainModelAbstract class

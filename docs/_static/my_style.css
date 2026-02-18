@@ -51,10 +51,10 @@ footer {
 }
 
 /* Removing space in nested lists */
-ul {
+.rst-content ul {
     margin-top: 0 !important;
 }
 
-li {
+.rst-content li {
     padding: 0.1em 0;
 }

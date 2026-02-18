@@ -59,7 +59,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    if: github.repository == 'scilus/scilpy'
+    if: github.repository == 'scil-vital/dwi_ml'
     needs: test
 
     steps:

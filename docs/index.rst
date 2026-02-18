@@ -61,7 +61,7 @@ Page in this section explain more in details how the code is implemented in pyth
 
 
     .. toctree::
-        :maxdepth: 2
+        :maxdepth: 1
         :caption: Explanations for developers
 
         for_developers/models/index

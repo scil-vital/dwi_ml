@@ -1,5 +1,5 @@
-Models
-======
+Create your own model
+=====================
 
     .. toctree::
         :maxdepth: 1

@@ -71,12 +71,17 @@ jobs:
         with:
           name: test-coverage-${{ github.run_id }}
 
+      - name: Verify content
+        run: |
+          ls -l -a /home/runner/work/dwi_ml/dwi_ml
+
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v5.4.3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: .test_reports/*
           disable_search: true
+          slug: scil-vital/dwi_ml
           name: dwi_ml-tests-${{ github.run_id }}-${{ github.run_attempt }}
           verbose: true
           fail_ci_if_error: true

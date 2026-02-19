@@ -27,7 +27,7 @@ dependencies = [
 "dipy==1.10.*",
 "scilpy==2.1.0",
 "bertviz==1.4.1",  # For transformer's visu
-"torch==2.7.1",
+"torch==2.8.0",
 "tqdm==4.64.*",
 "comet-ml>=3.47.0",
 "jupyterlab>=3.6.2",  # For transformer's visu

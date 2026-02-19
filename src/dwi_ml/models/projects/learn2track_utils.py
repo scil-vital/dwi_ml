@@ -48,13 +48,6 @@ def add_model_args(p: argparse.ArgumentParser):
         '--use_layer_normalization', action='store_true',
         help="Add layer normalization. Explained here: \n"
              "https://arxiv.org/pdf/1607.06450.pdf")
-    rnn_g.add_argument(
-        "--start_from_copy_prev", action='store_true',
-        help="If set, final_output = previous_dir + model_output.\nThis can "
-             "be used independantly from the other previous dirs options that "
-             "define values to be concatenated to the input, \nand "
-             "independently from skip connections output, with concatenate "
-             "values of each layer.")
 
     g = p.add_argument_group("Learn2track model: Direction Getter options")
     Learn2TrackModel.add_args_tracking_model(g)

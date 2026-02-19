@@ -93,8 +93,7 @@ def init_from_args(args, sub_loggers_level):
 
     if args.model != 'TTS':
         specific_args.update({'target_embedding_key': args.target_embedding_key,
-                              'sos_token_type': args.SOS_token_type,
-                              'start_from_copy_prev': args.start_from_copy_prev})
+                              'sos_token_type': args.SOS_token_type})
 
     torch.manual_seed(args.rng)  # Set torch seed
 

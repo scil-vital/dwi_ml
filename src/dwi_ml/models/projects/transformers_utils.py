@@ -109,9 +109,6 @@ def add_transformers_model_args(p):
              "after.\n Torch default + in original paper: False. \nIn the "
              "tensor2tensor code, they suggest that learning is more robust "
              "when \npreprocessing each layer with the norm. Default: False.")
-    gtt.add_argument(
-        "--start_from_copy_prev", action='store_true',
-        help="If set, final_output = previous_dir + model_output.")
 
     g = p.add_argument_group("Neighborhood")
     AbstractTransformerModel.add_neighborhood_args_to_parser(g)

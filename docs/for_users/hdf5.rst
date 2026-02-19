@@ -1,4 +1,4 @@
-.. _ref_config_file:
+.. _hdf5_usage:
 
 Converting your data into a hdf5 file
 =====================================

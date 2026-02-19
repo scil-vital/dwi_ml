@@ -1,5 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+"""
+Beta script for development. Not fully tested. Do not use unless you know what
+you're doing!
+"""
+
+
 import argparse
 import os
 

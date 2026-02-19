@@ -3,7 +3,7 @@
 The hdf5 structure
 ==================
 
-The current hdf5 organization probably suffises for your needs. See page :ref:`ref_config_file` for usage explanation.
+The current hdf5 organization probably suffises for your needs. See page :ref:`hdf5_usage` for usage explanation.
 
 Here is the output format created by dwiml_create_hdf5_dataset.py and recognized by our scripts. It can also be investigated by running script ``dwiml_hdf5_print_architecture`` with an existing hdf5.
 

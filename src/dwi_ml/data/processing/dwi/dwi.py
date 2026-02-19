@@ -66,7 +66,6 @@ def standardize_data(data: np.ndarray, mask: np.ndarray = None,
     std = np.maximum(std, eps)
 
     standardized_data = (data - mean) / std
-    # standardized_data[~mask] = np.nan
 
     return standardized_data
 

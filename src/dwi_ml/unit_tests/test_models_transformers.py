@@ -24,8 +24,7 @@ def _prepare_original_model():
         dropout_rate=0., activation='relu', norm_first=False, n_layers_e=1,
         n_layers_d=1, dg_key='cosine-regression', dg_args=None,
         neighborhood_type=None, neighborhood_radius=None,
-        nb_cnn_filters=None, kernel_size=None,
-        start_from_copy_prev=False)
+        nb_cnn_filters=None, kernel_size=None)
     return model
 
 
@@ -46,8 +45,7 @@ def _prepare_ttst_model():
         dropout_rate=0., activation='relu', norm_first=True, n_layers_e=1,
         dg_key='sphere-classification', dg_args={'add_eos': True},
         neighborhood_type=None, neighborhood_radius=None,
-        nb_cnn_filters=None, kernel_size=None,
-        start_from_copy_prev=True)
+        nb_cnn_filters=None, kernel_size=None)
     return model
 
 

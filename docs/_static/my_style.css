@@ -1,0 +1,70 @@
+@import url("theme.css");
+/*
+"fix screen width.
+*/
+
+
+.wy-nav-content {
+    max-width: 80%;
+}
+
+.strike {
+  text-decoration: line-through;
+}
+
+/* Hiding captions on the main page. Did not allow to add comments under the
+caption. Adding subtitles instead, and we don't have duplicate caption. But we
+still want the caption in the sidebar.
+ */
+.wy-nav-content .caption-text {
+    display: none;
+}
+
+/* Code shows in red when writing with `code`. Changing to gray */
+code.literal {
+    color: dimgray !important;
+}
+
+/* Alternating sub-section color + adding a padding for continuous view
+structure is:
+div class rst-content
+    div (no class. role=main)
+        div (no class. itemprop=articleBody)
+            section (the main title of the page)
+                section (subtitles)
+ */
+
+.rst-content > div > div > section > section {
+    padding: 1em;
+    margin-bottom: 1em;
+}
+.rst-content > div > div > section > section:nth-of-type(odd) {
+    background-color: rgba(77, 210, 223, 0.42);
+}
+
+.rst-content > div > div > section > section:nth-of-type(even) {
+        background-color: #eeefef;
+}
+
+/*Now tables colors are off*/
+table .row-odd {
+    background-color: white
+}
+
+table .row-even {
+    background-color: #bfbdbd;
+}
+
+/* Adding the same padding to footers */
+footer {
+    padding: 1em;
+}
+
+/* Removing space in nested lists */
+.rst-content ul {
+    margin-top: 0 !important;
+}
+
+.rst-content li {
+    padding: 0.1em 0;
+}

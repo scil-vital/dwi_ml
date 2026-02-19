@@ -14,7 +14,7 @@ from dwi_ml.data.processing.streamlines.sos_eos_management import \
 from dwi_ml.models.embeddings import NoEmbedding
 from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelWithDirectionGetter,
-    ModelWithNeighborhood, ModelOneInputWithEmbedding)
+    ModelWithNeighborhood, ModelWithOneInput)
 from dwi_ml.models.stacked_rnn import StackedRNN
 
 logger = logging.getLogger('model_logger')  # Same logger as Super.
@@ -67,7 +67,7 @@ def faster_unpack_sequence(packed_sequence: PackedSequence):
 
 
 class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
-                       ModelWithNeighborhood, ModelOneInputWithEmbedding):
+                       ModelWithNeighborhood, ModelWithOneInput):
     """
     Recurrent tracking model.
 
@@ -95,7 +95,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
                  use_skip_connection: bool, use_layer_normalization: bool,
-                 dropout: float, start_from_copy_prev: bool,
+                 dropout: float,
                  # DIRECTION GETTER
                  dg_key: str, dg_args: Union[dict, None],
                  # Other
@@ -124,10 +124,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         dropout : float
             If non-zero, introduces a `Dropout` layer on the outputs of each
             RNN layer except the last layer, with given dropout probability.
-        start_from_copy_prev: bool
-            If true, final_output = previous_dir + model_output. This can be
-            used independantly from the other previous dirs options that define
-            values to be concatenated to the input.
         ---
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
         [2] https://arxiv.org/pdf/1607.06450.pdf
@@ -154,7 +150,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             dg_args=dg_args, dg_key=dg_key)
 
         self.dropout = dropout
-        self.start_from_copy_prev = start_from_copy_prev
         self.nb_cnn_filters = nb_cnn_filters
         self.kernel_size = kernel_size
 
@@ -165,13 +160,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # ----------- Checks
         if dropout < 0 or dropout > 1:
             raise ValueError('The dropout rate must be between 0 and 1.')
-
-        if start_from_copy_prev and 'gaussian' in dg_key:
-            raise ValueError("Start_from_copy_prev makes no sense with "
-                             "Gaussian direction getters.")
-        if start_from_copy_prev and 'fisher' in dg_key:
-            raise ValueError("Start_from_copy_prev makes no sense with "
-                             "Fisher von Mises direction getters.")
 
         # ---------- Instantiations
         # 1. Previous dirs embedding: prepared by super.
@@ -213,7 +201,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             'rnn_layer_sizes': self.rnn_model.layer_sizes,
             'use_skip_connection': self.rnn_model.use_skip_connection,
             'use_layer_normalization': self.rnn_model.use_layer_normalization,
-            'start_from_copy_prev': self.start_from_copy_prev,
             'dropout': self.dropout,
         })
 
@@ -289,7 +276,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # ==== 0. Previous dirs.
         n_prev_dirs = None
         copy_prev_dir = 0.0
-        if self.nb_previous_dirs > 0 or self.start_from_copy_prev:
+        if self.nb_previous_dirs > 0:
             dirs = compute_directions(input_streamlines)
             if self.normalize_prev_dirs:
                 dirs = normalize_directions(dirs)
@@ -304,10 +291,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                 # Shape: (nb_points - 1) per streamline x (3 per prev dir)
                 n_prev_dirs = self.prev_dirs_embedding(n_prev_dirs.data)
                 n_prev_dirs = self.embedding_dropout(n_prev_dirs)
-
-            # Start from copy prev option.
-            if self.start_from_copy_prev:
-                copy_prev_dir = self.copy_prev_dir(dirs)
 
         # ==== 2. Inputs embedding ====
         x = pack_sequence(x)
@@ -354,10 +337,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             "Expecting input to direction getter to be of size {}. Got {}" \
             .format(self.direction_getter.input_size, x.data.shape[-1])
         x = self.direction_getter(x)
-
-        # Adding either prev_dir or 0.
-        if self.start_from_copy_prev:
-            x = x + copy_prev_dir
 
         # Unpacking.
         if not self.context == 'tracking':

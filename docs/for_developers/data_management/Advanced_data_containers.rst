@@ -1,7 +1,7 @@
 .. _ref_data_containers:
 
-Understanding our data containers
-=================================
+The MultisubjectDataset
+=======================
 
 Here is how our data is organized to allow torch to use them through Dataloaders. All of the following can be used as lazy instead. Then, the data is only loaded when needed.
 

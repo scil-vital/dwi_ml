@@ -11,7 +11,7 @@ from scilpy.io.fetcher import fetch_data
 from dwi_ml.data.processing.streamlines.post_processing import \
     compute_directions
 from dwi_ml.models.main_models import (
-    ModelWithDirectionGetter, ModelWithNeighborhood, MainModelOneInput,
+    ModelWithDirectionGetter, ModelWithNeighborhood, ModelWithOneInput,
     ModelWithPreviousDirections)
 from dwi_ml.unit_tests.utils.expected_values import (
     TEST_EXPECTED_STREAMLINE_GROUPS, TEST_EXPECTED_VOLUME_GROUPS)
@@ -65,11 +65,13 @@ def create_test_batch_2lines_4features():
             batch_s_training, batch_s_tracking)
 
 
-class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
-    def __init__(self, experiment_name: str = 'test',
+class ModelForTest(ModelWithOneInput, ModelWithNeighborhood):
+    def __init__(self, nb_features: int,
+                 experiment_name: str = 'test',
                  neighborhood_type: str = None, neighborhood_radius=None,
                  log_level=logging.root.level):
         super().__init__(experiment_name=experiment_name,
+                         nb_features=nb_features,
                          neighborhood_type=neighborhood_type,
                          neighborhood_radius=neighborhood_radius,
                          log_level=log_level)
@@ -94,8 +96,9 @@ class ModelForTest(MainModelOneInput, ModelWithNeighborhood):
 
 class TrackingModelForTestWithPD(ModelWithPreviousDirections,
                                  ModelWithDirectionGetter,
-                                 ModelWithNeighborhood, MainModelOneInput):
-    def __init__(self, experiment_name: str = 'test',
+                                 ModelWithNeighborhood, ModelWithOneInput):
+    def __init__(self, nb_features: int,
+                 experiment_name: str = 'test',
                  log_level=logging.root.level,
                  # NEIGHBORHOOD
                  neighborhood_type: str = None, neighborhood_radius=None,
@@ -108,6 +111,8 @@ class TrackingModelForTestWithPD(ModelWithPreviousDirections,
 
         super().__init__(
             experiment_name=experiment_name, log_level=log_level,
+            # For super ModelWithOneInput
+            nb_features=nb_features,
             # For super ModelWithNeighborhood
             neighborhood_type=neighborhood_type,
             neighborhood_radius=neighborhood_radius,

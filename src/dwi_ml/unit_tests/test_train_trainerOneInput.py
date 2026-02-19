@@ -38,7 +38,8 @@ def test_trainer_and_models(experiments_path):
 
     # Initializing model 1 + associated batch sampler.
     logging.info("\n\n------------TESTING TEST MODEL # 1 : BASIC-------------")
-    model = ModelForTest()
+    # Will be using streamline's group 0 and input group 0.
+    model = ModelForTest(nb_features=dataset.nb_features[0])
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
     # Start utils
@@ -49,7 +50,9 @@ def test_trainer_and_models(experiments_path):
     # Initializing model 2
     logging.info("\n\n-----------TESTING TEST MODEL # 2: WITH PD AND "
                  "DIRECTION GETTER ------------")
-    model2 = TrackingModelForTestWithPD()
+    # Will be using streamline's group 0 and input group 0.
+
+    model2 = TrackingModelForTestWithPD(nb_features=dataset.nb_features[0])
     batch_sampler, batch_loader = _create_sampler_and_loader(dataset, model)
 
     # Start utils

@@ -72,14 +72,6 @@ jobs:
           name: test-coverage-${{ github.run_id }}
           path: .test_reports
 
-      # Not sure why, the content is not downloaded as a folder (.test_reports),
-      # instead, files are separated...
-      # Putting back in a folder (temporary fix!)
-      - name: Verify content
-        run: |
-          ls -l -a /home/runner/work/dwi_ml/dwi_ml
-          ls -l -a /home/runner/work/dwi_ml/dwi_ml/.test_reports
-
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v5.4.3
         with:

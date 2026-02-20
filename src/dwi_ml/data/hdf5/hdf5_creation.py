@@ -592,7 +592,7 @@ class HDF5Creator:
                     "in the config_file. If all files are .trk, we can use "
                     "ref 'same' but if some files were .tck, we need a ref!"
                     "Hint: Create a volume group 'ref' in the config file.")
-            sft, lengths, connectivity_matrix, conn_info, dps_keys = (
+            sft, lengths, connectivity_matrix, conn_info, dps_keys,bundle_map  = (
                 self._process_one_streamline_group(
                     subj_input_dir, group, subj_id, ref))
 
@@ -646,6 +646,18 @@ class HDF5Creator:
             streamlines_group.create_dataset('lengths',
                                              data=sft.streamlines._lengths)
             streamlines_group.create_dataset('euclidean_lengths', data=lengths)
+            # ---- bundle_map stored at ROOT level (global info)
+            bm = subj_hdf_group.parent.require_group("bundle_map")
+
+            # if rerun: clear old datasets
+            for k in list(bm.keys()):
+                del bm[k]
+
+            ids = np.array(sorted(bundle_map.keys()), dtype=np.int16)
+            names = np.array([bundle_map[i] for i in ids], dtype="S")
+
+            bm.create_dataset("ids", data=ids)
+            bm.create_dataset("names", data=names)
 
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,
@@ -688,36 +700,36 @@ class HDF5Creator:
         # Initialize
         final_sft = None
         output_lengths = []
+        bundle_map = {}
+        # dps_keys: keys to be stored in HDF5
+        dps_keys = list(dps_keys) if dps_keys is not None else []
+        if "bundle_ID" not in dps_keys:
+            dps_keys.append("bundle_ID")
 
-        tractograms = format_filelist(tractograms, self.enforce_files_presence,
-                                      folder=subj_dir)
-        for tractogram_file in tractograms:
-            sft = self._load_and_process_sft(tractogram_file, header, dps_keys)
+        # dps_keys_load: keys expected to be present in tractogram files
+        dps_keys_load = [k for k in dps_keys if k != "bundle_ID"]
 
+        tractograms = format_filelist(tractograms, self.enforce_files_presence, folder=subj_dir)
+
+        for bundle_id, tractogram_file in enumerate(tractograms):
+            # Load without requiring bundle_ID from disk
+            sft = self._load_and_process_sft(tractogram_file, header, dps_keys_load)
+            bundle_map[bundle_id] = Path(tractogram_file).stem
             if sft is not None:
-                # Compute euclidean lengths (rasmm space)
                 sft.to_space(Space.RASMM)
                 output_lengths.extend(length(sft.streamlines))
 
-                # Sending to common space
                 sft.to_vox()
                 sft.to_corner()
 
-                # Add processed tractogram to final big tractogram
+                nb_sl = len(sft.streamlines)
+                # Generate bundle_ID
+                sft.data_per_streamline["bundle_ID"] = np.full(nb_sl, bundle_id, dtype=np.int16)
+
                 if final_sft is None:
                     final_sft = sft
                 else:
-                    final_sft = concatenate_sft([final_sft, sft],
-                                                erase_metadata=False)
-
-        if self.save_intermediate:
-            output_fname = self.intermediate_folder.joinpath(
-                subj_id + '_' + group + '.trk')
-            logging.debug("      *Saving intermediate streamline group {} "
-                          "into {}.".format(group, output_fname))
-            # Note. Do not remove the str below. Does not work well
-            # with Path.
-            save_tractogram(final_sft, str(output_fname))
+                    final_sft = concatenate_sft([final_sft, sft], erase_metadata=False)
 
         conn_matrix = None
         conn_info = None
@@ -752,7 +764,7 @@ class HDF5Creator:
             conn_matrix = np.load(conn_file)
             conn_matrix = conn_matrix > 0
 
-        return final_sft, output_lengths, conn_matrix, conn_info, dps_keys
+        return final_sft, output_lengths, conn_matrix, conn_info, dps_keys,bundle_map 
 
     def _load_and_process_sft(self, tractogram_file, header, dps_keys):
         # Check file extension
@@ -773,7 +785,7 @@ class HDF5Creator:
         # Loading tractogram and sending to wanted space
         logging.info("       - Processing tractogram {}"
                      .format(os.path.basename(tractogram_file)))
-        sft = load_tractogram(str(tractogram_file), header)
+        sft = load_tractogram(str(tractogram_file), header,bbox_valid_check=False)
 
         # Check for required dps_keys
         for dps_key in dps_keys:

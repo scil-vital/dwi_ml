@@ -364,10 +364,10 @@ class DWIMLAbstractTracker:
                 random_generator, indices, first_seed_of_chunk + s)
 
             # Forward and backward tracking
-            line = self._get_multiple_lines_both_directions([seed])[0][0]
+            lines, _ = self._get_multiple_lines_both_directions([seed])
 
-            if line is not None:
-                streamline = np.array(line, dtype='float32')
+            if len(lines) > 0:  # Verifying if our line died
+                streamline = np.array(lines[0], dtype='float32')
 
                 if self.compression_th and self.compression_th > 0:
                     # Compressing. Threshold is in mm. Considering that we work

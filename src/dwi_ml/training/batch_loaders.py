@@ -53,7 +53,7 @@ from dwi_ml.data.dataset.multi_subject_containers import (
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     reverse_streamlines, split_streamlines, resample_or_compress)
 from dwi_ml.data.processing.utils import add_noise_to_tensor
-from dwi_ml.models.main_models import MainModelOneInput, \
+from dwi_ml.models.main_models import ModelWithOneInput, \
     ModelWithNeighborhood, MainModelAbstract
 
 logger = logging.getLogger('batch_loader_logger')
@@ -368,7 +368,7 @@ class DWIMLBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
                 (possibly with its neighborhood)
         target = the whole streamlines as sequences.
     """
-    model: MainModelOneInput
+    model: ModelWithOneInput
 
     def __init__(self, input_group_name, **kw):
         """

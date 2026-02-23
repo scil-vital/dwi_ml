@@ -93,7 +93,6 @@ def init_from_args(args, sub_loggers_level):
             dropout=args.dropout,
             use_layer_normalization=args.use_layer_normalization,
             use_skip_connection=args.use_skip_connection,
-            start_from_copy_prev=args.start_from_copy_prev,
             # TRACKING MODEL
             dg_key=args.dg_key, dg_args=dg_args,
             # Other

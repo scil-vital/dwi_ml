@@ -1,7 +1,7 @@
 .. _ref_formulas:
 
-(Some formulas)
-===============
+Full formulas: Gaussian and Fisher-von-mises
+============================================
 
 Log-likelihood of a single Gaussian
 -----------------------------------

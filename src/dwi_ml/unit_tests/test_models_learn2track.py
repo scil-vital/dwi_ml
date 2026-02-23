@@ -46,7 +46,6 @@ def test_learn2track():
                              nb_cnn_filters=None,
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,
-                             start_from_copy_prev=False,
                              dg_key='cosine-regression', dg_args=None,
                              neighborhood_type=None, neighborhood_radius=None)
 
@@ -71,7 +70,6 @@ def test_learn2track_cnn():
                              input_embedded_size=None,
                              rnn_key='lstm', use_skip_connection=True,
                              use_layer_normalization=True, dropout=0.,
-                             start_from_copy_prev=False,
                              dg_key='cosine-regression', dg_args=None,
                              neighborhood_type='grid', neighborhood_radius=1,
                              neighborhood_resolution=1)

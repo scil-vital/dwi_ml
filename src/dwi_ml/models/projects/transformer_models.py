@@ -16,7 +16,7 @@ from dwi_ml.data.spheres import TorchSphere
 from dwi_ml.models.embeddings import keys_to_embeddings
 from dwi_ml.models.main_models import (ModelWithDirectionGetter,
                                        ModelWithNeighborhood,
-                                       ModelOneInputWithEmbedding)
+                                       ModelWithOneInput)
 from dwi_ml.models.positional_encoding import keys_to_positional_encodings
 from dwi_ml.models.utils.transformers_from_torch import (
     ModifiedTransformer,
@@ -45,7 +45,7 @@ logger = logging.getLogger('model_logger')  # Same logger as Super.
 CLEAR_CACHE = False
 
 
-def forward_padding(data: torch.tensor, expected_length):
+def forward_padding(data: torch.Tensor, expected_length):
     return pad(data, (0, 0, 0, expected_length - len(data)))
 
 
@@ -102,7 +102,7 @@ def merge_one_weight_type(weights, new_weights, device):
 
 
 class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
-                               ModelOneInputWithEmbedding):
+                               ModelWithOneInput):
     """
     Prepares the parts common to our two transformer versions: embeddings,
     direction getter and some parameters for the model.
@@ -433,7 +433,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         # 1. Embedding + position encoding.
         # Run embedding on padded data. Necessary to make the model
         # adapt for the positional encoding.
-        data, constant_output = self._prepare_data(inputs, input_streamlines)
+        data = self._prepare_data(inputs, input_streamlines)
         data = self._run_embeddings(data, use_padding, batch_max_len)
         data = self._run_position_encoding(data)
 
@@ -470,12 +470,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
                 # Keeping stacked.
                 outputs = outputs[:, -1, :]
 
-            # if start_from_copy_prev: using last one only
-            # (could improve implementation here to skip it).
-            # never padded
-            if constant_output is not None:
-                constant_output = [c[-1, :] for c in constant_output]
-                constant_output = torch.vstack(constant_output)
         else:
             # We take all unpadded points.
             # Reminder. Each output will be the same length as the streamline,
@@ -488,14 +482,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
             # Stacking for the direction getter.
             outputs = torch.vstack(outputs)
 
-            if constant_output is not None:  # ex, start_from_copy_prev:
-                constant_output = torch.vstack(constant_output)
-
         # 3. Direction getter
         outputs = self.direction_getter(outputs)
-
-        if constant_output is not None:
-            outputs = constant_output + outputs
 
         # Splitting back. During tracking: only one point per streamline.
         if self.context != 'tracking':
@@ -590,8 +578,7 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
 
     @property
     def d_model(self):
-        # d_model is the same as the input size. Computed in
-        # MainModelOneInputWithEmbedding
+        # d_model is the same as the input size. Computed in MainModelOneInput
         return self.computed_input_embedded_size
 
     @property
@@ -607,8 +594,7 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
 
     def _prepare_data(self, inputs, _):
         # Nothing to do. Ignoring targets.
-        # No constant value to be added to output.
-        return inputs, None
+        return inputs
 
     def _run_embeddings(self, inputs, use_padding, batch_max_len):
         return self._run_input_embedding(inputs, use_padding, batch_max_len)
@@ -639,8 +625,7 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
     def __init__(self,
                  # TARGETS IN DECODER
                  sos_token_type: str, target_embedding_key: str,
-                 target_embedded_size: int,
-                 start_from_copy_prev: bool, **kwargs):
+                 target_embedded_size: int, **kwargs):
         """
         token_type: str
             Either 'as_label' or the name of the sphere to convert to classes.
@@ -676,7 +661,6 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
         super().__init__(**kwargs)
 
         self.sos_token_type = sos_token_type
-        self.start_from_copy_prev = start_from_copy_prev
 
         # Checks.
         if self.target_embedding_key not in keys_to_embeddings.keys():
@@ -699,7 +683,6 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
             'sos_token_type': self.sos_token_type,
             'target_embedding_key': self.target_embedding_key,
             'target_embedded_size': self.target_embedded_size,
-            'start_from_copy_prev': self.start_from_copy_prev
         })
 
         return p
@@ -712,12 +695,6 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
     def _prepare_data(self, inputs, input_streamlines):
         targets = compute_directions(input_streamlines)
 
-        # Start from copy prev option.
-        # Output is either itself or classes, but using output's sphere, not
-        # necessarily the same as sos_token_sphere.
-        copy_prev_dir = None
-        if self.start_from_copy_prev:
-            copy_prev_dir = self.format_prev_dir_(targets)
         if self.sos_token_type == 'as_label':
             targets = add_label_as_last_dim(targets,
                                             add_sos=True, add_eos=False)
@@ -726,7 +703,7 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
                                             add_sos=True, add_eos=False,
                                             to_one_hot=True)
 
-        return (inputs, targets), copy_prev_dir
+        return inputs, targets
 
     def _run_embeddings(self, data, use_padding, batch_max_len):
         raise NotImplementedError

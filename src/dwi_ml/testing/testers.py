@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from dwi_ml.data.processing.streamlines.data_augmentation import \
     resample_or_compress
-from dwi_ml.models.main_models import (MainModelOneInput,
+from dwi_ml.models.main_models import (ModelWithOneInput,
                                        ModelWithDirectionGetter)
 from dwi_ml.testing.utils import prepare_dataset_one_subj
 
@@ -219,7 +219,7 @@ class TesterWithDirectionGetter:
 
 
 class TesterOneInput(TesterWithDirectionGetter):
-    model: MainModelOneInput
+    model: ModelWithOneInput
 
     def __init__(self, volume_group, *args, **kw):
         self.volume_group = volume_group

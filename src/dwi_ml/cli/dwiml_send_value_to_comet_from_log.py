@@ -15,7 +15,7 @@ import numpy as np
 from comet_ml import ExistingExperiment
 from scilpy.io.utils import assert_inputs_exist
 
-from dwi_ml.training.trainers import DWIMLAbstractTrainer
+from dwi_ml.training.trainers import DWIMLTrainer
 
 
 def _build_arg_parser():
@@ -101,7 +101,7 @@ def main():
                      .format(len(args.metric_names), len(log_paths)))
 
     # Loading comet from info in checkpoint
-    checkpoint_state = DWIMLAbstractTrainer.load_params_from_checkpoint(
+    checkpoint_state = DWIMLTrainer.load_params_from_checkpoint(
         args.experiments_path, args.experiment_name)
     current_states = checkpoint_state['current_states']
     comet_key = current_states['comet_key']

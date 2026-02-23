@@ -20,18 +20,6 @@ def add_direction_getter_args(p: ArgumentParser, gaussian_fisher_args=True):
     p.add_argument(
         '--dg_dropout', type=float, metavar='r', default=0.,
         help="Dropout ratio for the direction getter. Default: 0.")
-    g = p.add_argument_group("Loss-delocalising options")
-    g.add_argument(
-        '--compress_loss', metavar='eps', nargs='?', const=1e-3, type=float,
-        help="If set, compress the loss. \nCan be used independently from "
-             "options on the input streamlines such as --compress.\n"
-             "Compression ratio (eps) can be given: as long as the angle is \n"
-             "smaller than eps (in degree), the next points' loss are "
-             "averaged together.")
-    g.add_argument(
-        '--weight_loss_with_angle', action='store_true',
-        help="If set, weight the loss at each coordinate with the angle with "
-             "previous dir.")
 
     # Gaussian models, Fisher-von-Mises models
     if gaussian_fisher_args:
@@ -80,9 +68,6 @@ def check_args_direction_getter(args):
     dg_args = {'dropout': args.dg_dropout,
                'add_eos': args.add_eos,
                'eos_weight': args.eos_weight,
-               'compress_loss': args.compress_loss is not None,
-               'compress_eps': args.compress_loss,
-               'weight_loss_with_angle': args.weight_loss_with_angle,
                }
 
     if args.dg_dropout < 0 or args.dg_dropout > 1:

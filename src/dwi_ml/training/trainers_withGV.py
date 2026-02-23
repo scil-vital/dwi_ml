@@ -39,7 +39,7 @@ from dwi_ml.training.utils.monitoring import BatchHistoryMonitor
 logger = logging.getLogger('train_logger')
 
 
-class DWIMLTrainerForTrackingOneInput(DWIMLTrainerOneInput):
+class DWIMLTrainerOneInputWithGVPhase(DWIMLTrainerOneInput):
     model: ModelWithDirectionGetter
     batch_loader: DWIMLBatchLoaderOneInput
 

@@ -10,10 +10,10 @@ from dwi_ml.tracking.io_utils import prepare_tracking_mask
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 
 from dwi_ml.training.trainers_withGV import \
-    DWIMLTrainerForTrackingOneInput
+    DWIMLTrainerOneInputWithGVPhase
 
 
-class TransformerTrainer(DWIMLTrainerForTrackingOneInput):
+class TransformerTrainer(DWIMLTrainerOneInputWithGVPhase):
     def __init__(self, **kwargs):
         """
         See Super for parameter description. No additional parameters here.

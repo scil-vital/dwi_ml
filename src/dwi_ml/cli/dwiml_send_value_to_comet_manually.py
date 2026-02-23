@@ -9,7 +9,7 @@ import argparse
 
 from comet_ml import ExistingExperiment
 
-from dwi_ml.training.trainers import DWIMLAbstractTrainer
+from dwi_ml.training.trainers import DWIMLTrainer
 
 
 def _build_arg_parser():
@@ -34,7 +34,7 @@ def main():
     args = parser.parse_args()
 
     # Loading checkpoint
-    checkpoint_state = DWIMLAbstractTrainer.load_params_from_checkpoint(
+    checkpoint_state = DWIMLTrainer.load_params_from_checkpoint(
         args.experiments_path, args.experiment_name)
 
     current_states = checkpoint_state['current_states']

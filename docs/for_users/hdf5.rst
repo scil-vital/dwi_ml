@@ -1,10 +1,10 @@
-.. _ref_config_file:
+.. _hdf5_usage:
 
-2. Converting your data into a hdf5 file
-========================================
+Converting your data into a hdf5 file
+=====================================
 
-2.1. The possibility of laziness
-********************************
+The possibility of laziness
+***************************
 
 We chose to base our code on the hdf5 data. One reason is that it allows to regroup your data in an organized way to ensure that all you data is present. But the main reason is that it is then possible to load only some chosen streamlines for each batch in the training set instead of having to keep all the streamlines in memory, which can be very heavy. This way of handling the data is called "lazy" in our project.
 
@@ -15,8 +15,8 @@ Volume groups will mimic nifti files. While creating the hdf5, you may concatena
 Streamline groups will mimic tractogram files. Again, you may concatenate many .trk or .tck files in a single group, for instance you could concatenate many bundles per subject.
 
 
-2.2 How to organize your data?
-******************************
+How to organize your data?
+**************************
 
 We suggest that your data should be organized correctly on your computer, such as described below.
 
@@ -64,8 +64,8 @@ This folder is the most important one and must be organized in a very precise wa
         | ...
 
 
-2.3. Preparing the config file
-******************************
+Preparing the config file
+*************************
 
 To create the hdf5 file, you will need a config file such as below. HDF groups will be created accordingly for each subject in the hdf5.
 
@@ -141,8 +141,8 @@ Additional attributes for streamlines groups:
 
     - **dps_keys**: List of data_per_streamline keys to keep in memory in the hdf5.
 
-2.4. Creating the hdf5
-**********************
+Creating the hdf5
+******************
 
 You will use the **dwiml_create_hdf5_dataset.py** script to create a hdf5 file.
 
@@ -159,9 +159,3 @@ You will use the **dwiml_create_hdf5_dataset.py** script to create a hdf5 file.
             --enforce_files_presence True \
             $dwi_ml_folder $hdf5_file $config_file \
             $training_subjs $validation_subjs $testing_subjs
-
-.. toctree::
-    :maxdepth: 1
-    :caption: Detailed explanations for developers:
-
-    2_B_advanced_hdf5_organization

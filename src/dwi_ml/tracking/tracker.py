@@ -20,7 +20,7 @@ from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.models.direction_getter_models import \
     AbstractRegressionDG
 from dwi_ml.models.main_models import ModelWithDirectionGetter, \
-    MainModelOneInput
+    ModelWithOneInput
 from dwi_ml.tracking.propagation import propagate_multiple_lines
 from dwi_ml.tracking.tracking_mask import TrackingMask
 
@@ -668,7 +668,7 @@ class DWIMLTrackerOneInput(DWIMLAbstractTracker):
     the data points from the volume (+possibly add a neighborhood) and
     interpolate the data.
     """
-    model: MainModelOneInput
+    model: ModelWithOneInput
 
     def __init__(self, input_volume_group: str, **kw):
         """

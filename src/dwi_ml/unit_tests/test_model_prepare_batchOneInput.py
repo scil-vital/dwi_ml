@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.models.main_models import MainModelOneInput
+from dwi_ml.models.main_models import ModelWithOneInput
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import fetch_testing_data
 from dwi_ml.unit_tests.utils.expected_values import TEST_EXPECTED_MRI_SHAPE
 
@@ -20,7 +20,11 @@ def test_model_batch():
                                   lazy=False, log_level=logging.WARNING)
     dataset.load_data()
 
-    model = MainModelOneInput('test', step_size=0.5, compress_lines=False)
+    # Will be using streamline's group 0 and input group 0.
+
+    model = ModelWithOneInput(experiment_name='test',
+                              nb_features=dataset.nb_features[0],
+                              step_size=0.5, compress_lines=False)
 
     one_line = torch.rand(6, 3)
     batch_streamlines = [one_line, one_line]

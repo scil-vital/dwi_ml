@@ -1,9 +1,11 @@
 .. _ref_creating_hdf5:
 
-The hdf5 organization
-=====================
+The hdf5 structure
+==================
 
-Here is the output format created by dwiml_create_hdf5_dataset.py and recognized by our scripts:
+The current hdf5 organization probably suffises for your needs. See page :ref:`hdf5_usage` for usage explanation.
+
+Here is the output format created by dwiml_create_hdf5_dataset.py and recognized by our scripts. It can also be investigated by running script ``dwiml_hdf5_print_architecture`` with an existing hdf5.
 
 .. code-block:: bash
 
@@ -39,3 +41,5 @@ Here is the output format created by dwiml_create_hdf5_dataset.py and recognized
     hdf5['sub1']['group1']['affine']
     hdf5['sub1']['group1']['voxres']
     hdf5['sub1']['group1']['nb_features']
+
+If this is not enough for you, you may investigate our file ``dwi_ml/data/hdf5/hdf5_creation.py``.

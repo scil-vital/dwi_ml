@@ -1,35 +1,84 @@
-name: test
+name: dwi_ml test suite
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-
+  test:
     runs-on: ${{ matrix.os }}
+    if: github.repository == 'scil-vital/dwi_ml'
+    env:
+        COVERAGE_PROCESS_START: .coveragerc
+
     strategy:
       fail-fast: false
-      # max-parallel: 6
       matrix:
         os: [ubuntu-22.04]
         python-version: [3.11.*]
         requires: ['latest']
 
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v1
+      - name: Check out repository
+        uses: actions/checkout@v1
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: |
-        export SETUPTOOLS_USE_DISTUTILS=stdlib
-        pip install --upgrade pip
-        pip install pytest
-        pip install -e .
+      - name: Install dependencies and dwi_ml
+        run: |
+          export SETUPTOOLS_USE_DISTUTILS=stdlib
+          pip install --upgrade pip
+          pip install pytest
+          pip install -e .
 
-    - name: Tests
-      run: |
-        pytest -v
+      - name: Tests
+        run: |
+          pytest src/dwi_ml --cov-report term-missing:skip-covered
+
+      - name: Save test results and coverage
+        uses: actions/upload-artifact@v4
+        id: test-coverage-results
+        with:
+          name: test-coverage-${{ github.run_id }}
+          retention-days: 1
+          include-hidden-files: true
+          path: |
+            .test_reports
+
+  coverage:
+    runs-on: ubuntu-latest
+    if: github.repository == 'scil-vital/dwi_ml'
+    needs: test
+
+    steps:
+      - name: Checkout repository at merge
+        uses: actions/checkout@v4
+
+      - name: Download test results and coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: test-coverage-${{ github.run_id }}
+          path: .test_reports
+
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v5.4.3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: .test_reports/*
+          disable_search: true
+          slug: scil-vital/dwi_ml
+          name: dwi_ml-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          verbose: true
+          fail_ci_if_error: true

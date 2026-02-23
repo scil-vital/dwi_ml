@@ -12,7 +12,7 @@ from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
 
 from dwi_ml.data.dataset.multi_subject_containers import MultiSubjectDataset
-from dwi_ml.models.main_models import MainModelOneInput
+from dwi_ml.models.main_models import ModelWithOneInput
 from dwi_ml.tracking.io_utils import ALWAYS_VOX_SPACE, ALWAYS_CORNER
 from dwi_ml.unit_tests.utils.data_and_models_for_tests import (
     create_test_batch_sampler, create_batch_loader, fetch_testing_data,
@@ -36,7 +36,7 @@ def save_loaded_batch_for_visual_assessment(dataset, ref):
     batch_idx_tuples = next(batch_generator)  # tuples of subj, batch_indices
 
     # Creating a model
-    model = MainModelOneInput(experiment_name='test')
+    model = ModelWithOneInput(experiment_name='test')
 
     # Now testing.
     # 1) With resampling + split + reverse

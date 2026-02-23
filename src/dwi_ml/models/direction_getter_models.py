@@ -13,8 +13,7 @@ from torch.nn import (CosineSimilarity, Dropout, Linear, ModuleList, ReLU,
 from torch.nn.modules.distance import PairwiseDistance
 
 from dwi_ml.data.processing.streamlines.post_processing import \
-    normalize_directions, compute_directions, compress_streamline_values, \
-    weight_value_with_angle
+    normalize_directions, compute_directions
 from dwi_ml.data.processing.streamlines.sos_eos_management import \
     add_label_as_last_dim, convert_dirs_to_class
 from dwi_ml.data.spheres import TorchSphere
@@ -77,8 +76,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
     """
     def __init__(self, input_size: int, key: str,
                  supports_compressed_streamlines: bool, dropout: float = None,
-                 compress_loss: bool = False, compress_eps: float = 1e-3,
-                 weight_loss_with_angle: bool = False,
                  loss_description: str = '', add_eos: bool = False,
                  eos_weight: float = 1.0):
         """
@@ -93,15 +90,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             Whether this model supports compressed streamlines.
         dropout: float
             Dropout rate. Usage depends on the child class.
-        compress_loss: bool
-            If set, compress the loss. This is used independently of the state
-            of the streamlines received (compressed or resampled).
-        compress_eps: float
-            Compression threshold. As long as the angle is smaller than eps
-            (in rad), the next points' loss are averaged together.
-        weight_loss_with_angle: bool
-            If set, weight loss with local angle. Can't be used together with
-            compress_loss.
         loss_description: str
             Only meant to help users.
         add_eos: bool
@@ -118,14 +106,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         self.device = None
         self.add_eos = add_eos
         self.eos_weight = eos_weight
-        self.compress_loss = compress_loss
-        self.compress_eps = compress_eps
-        self.weight_loss_with_angle = weight_loss_with_angle
-        if self.compress_loss and self.weight_loss_with_angle:
-            raise ValueError("We don't think it is a very good idea to use "
-                             "option weight_loss_with_angle together "
-                             "with compress_loss. They both serve the same "
-                             "purpose.")
 
         # Info on this Direction Getter
         self.key = key
@@ -164,9 +144,6 @@ class AbstractDirectionGetterModel(torch.nn.Module):
             'key': self.key,
             'add_eos': self.add_eos,
             'eos_weight': self.eos_weight,
-            'compress_loss': self.compress_loss,
-            'compress_eps': self.compress_eps,
-            'weight_loss_with_angle': self.weight_loss_with_angle,
             'loss_description': self.loss_description
         }
 
@@ -223,31 +200,19 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         Returns
         -------
         loss: Tensor or List[Tensor]
-            If compress_loss or average_results: The average loss. Tensor
+            If average_results: The average loss. Tensor.
             Else: The loss for each point in each streamline. List[Tensor]
         n: int
             The number of points in the batch.
         eos_probs: Tensor or List[Tensor]
             The computed EOS probability at each point (or the average).
-            (If self.compress_loss, returns None; not implemented).
             (Only returned if return_eos_probs).
         """
-        if self.compress_loss and not average_results:
-            raise ValueError("Current implementation of compress_loss does "
-                             "not allow returning non-averaged loss.")
 
         # Compute directions
         target_dirs = compute_directions(target_streamlines)
 
-        # For compress_loss and weight_with_angle: remember raw target dirs.
-        # Also, do not average now, we will do our own averaging.
-        target_dirs_copy = None
-        tmp_average_results = average_results
-        if self.weight_loss_with_angle or self.compress_loss:
-            target_dirs_copy = [t.detach().clone() for t in target_dirs]
-            tmp_average_results = False
-
-        # Modify directions based on child model requirements.
+        # Modify directions based on model requirements.
         # Ex: Add eos label. Convert to classes. Etc.
         target_dirs = self._prepare_dirs_for_loss(target_dirs)
         lengths = [len(t) for t in target_dirs]
@@ -255,39 +220,10 @@ class AbstractDirectionGetterModel(torch.nn.Module):
         # Stack and compute loss based on child model's loss definition.
         outputs, target_dirs = self.stack_batch(outputs, target_dirs)
         loss, n, eos_probs = self._compute_loss(
-            outputs, target_dirs, tmp_average_results, return_eos_probs)
-
-        # Possibly weight loss with angle
-        if self.weight_loss_with_angle:
-            loss = list(torch.split(loss, lengths))
-            if self.add_eos:
-                # No angle at last point = not weighting
-                last_point_loss = [line_loss[-1] for line_loss in loss]
-
-                # Weight other points
-                loss = [line_loss[:-1] for line_loss in loss]
-                loss = weight_value_with_angle(
-                    values=loss, streamlines=None, dirs=target_dirs_copy)
-
-                # Combine back
-                for i in range(len(loss)):
-                    loss[i] = torch.hstack((loss[i], last_point_loss[i]))
-            else:
-                loss = weight_value_with_angle(
-                    values=loss, streamlines=None, dirs=target_dirs_copy)
-            # Stack back. Possibly, will resplit. But easier to read.
-            loss = torch.hstack(loss)
+            outputs, target_dirs, average_results, return_eos_probs)
 
         # Possibly compress or average.
-        if self.compress_loss:
-            loss = list(torch.split(loss, lengths))
-            loss, n = compress_streamline_values(
-                streamlines=None, dirs=target_dirs_copy, values=loss,
-                compress_eps=self.compress_eps)
-            logging.info("Converted {} data points into {} compressed data "
-                         "points".format(sum(lengths), n))
-            eos_probs = None
-        elif average_results:
+        if average_results:
             # Loss: already averaged, often through torch's methods.
             if return_eos_probs and eos_probs is not None:
                 eos_probs = torch.mean(eos_probs)

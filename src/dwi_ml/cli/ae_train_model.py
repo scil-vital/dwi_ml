@@ -22,7 +22,7 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_memory_args
 from dwi_ml.models.projects.ae_models import ModelAE
-from dwi_ml.training.trainers import DWIMLAbstractTrainer
+from dwi_ml.training.trainers import DWIMLTrainer
 from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader)
@@ -87,7 +87,7 @@ def init_from_args(args, sub_loggers_level):
     # Instantiate trainer
     with Timer("\n\nPreparing trainer", newline=True, color='red'):
         lr = format_lr(args.learning_rate)
-        trainer = DWIMLAbstractTrainer(
+        trainer = DWIMLTrainer(
             model=model, experiments_path=args.experiments_path,
             experiment_name=args.experiment_name, batch_sampler=batch_sampler,
             batch_loader=batch_loader,

@@ -592,7 +592,7 @@ class HDF5Creator:
                     "in the config_file. If all files are .trk, we can use "
                     "ref 'same' but if some files were .tck, we need a ref!"
                     "Hint: Create a volume group 'ref' in the config file.")
-            sft, lengths, connectivity_matrix, conn_info, dps_keys,bundle_map  = (
+            sft, lengths, connectivity_matrix, conn_info, dps_keys,bundle_dict  = (
                 self._process_one_streamline_group(
                     subj_input_dir, group, subj_id, ref))
 
@@ -647,15 +647,12 @@ class HDF5Creator:
                                              data=sft.streamlines._lengths)
             streamlines_group.create_dataset('euclidean_lengths', data=lengths)
             # ---- bundle_map stored at ROOT level (global info)
-            bm = subj_hdf_group.parent.require_group("bundle_map")
+            bm = subj_hdf_group.require_group("bundle_dict")
+            ids = np.array(sorted(bundle_dict.keys()), dtype=np.int16)
+            names = np.array([bundle_dict[i] for i in ids], dtype="S")
 
-            # if rerun: clear old datasets
-            for k in list(bm.keys()):
-                del bm[k]
-
-            ids = np.array(sorted(bundle_map.keys()), dtype=np.int16)
-            names = np.array([bundle_map[i] for i in ids], dtype="S")
-
+            if "ids" in bm: del bm["ids"]
+            if "names" in bm: del bm["names"]
             bm.create_dataset("ids", data=ids)
             bm.create_dataset("names", data=names)
 
@@ -693,6 +690,8 @@ class HDF5Creator:
             if isinstance(dps_keys, str):
                 dps_keys = [dps_keys]
 
+        if "bundle_ID" in dps_keys:
+            raise ValueError("Tractograms contains data_per_streamline called 'bundle_ID'.") 
         # Silencing SFT's logger if our logging is in DEBUG mode, because it
         # typically produces a lot of outputs!
         set_sft_logger_level('WARNING')
@@ -700,21 +699,14 @@ class HDF5Creator:
         # Initialize
         final_sft = None
         output_lengths = []
-        bundle_map = {}
-        # dps_keys: keys to be stored in HDF5
-        dps_keys = list(dps_keys) if dps_keys is not None else []
-        if "bundle_ID" not in dps_keys:
-            dps_keys.append("bundle_ID")
-
-        # dps_keys_load: keys expected to be present in tractogram files
-        dps_keys_load = [k for k in dps_keys if k != "bundle_ID"]
+        bundle_dict = {}
 
         tractograms = format_filelist(tractograms, self.enforce_files_presence, folder=subj_dir)
 
         for bundle_id, tractogram_file in enumerate(tractograms):
             # Load without requiring bundle_ID from disk
-            sft = self._load_and_process_sft(tractogram_file, header, dps_keys_load)
-            bundle_map[bundle_id] = Path(tractogram_file).stem
+            sft = self._load_and_process_sft(tractogram_file, header, dps_keys)
+            bundle_dict[bundle_id] = Path(tractogram_file).stem
             if sft is not None:
                 sft.to_space(Space.RASMM)
                 output_lengths.extend(length(sft.streamlines))
@@ -730,7 +722,7 @@ class HDF5Creator:
                     final_sft = sft
                 else:
                     final_sft = concatenate_sft([final_sft, sft], erase_metadata=False)
-
+                
         conn_matrix = None
         conn_info = None
         if 'connectivity_matrix' in self.groups_config[group]:
@@ -764,7 +756,7 @@ class HDF5Creator:
             conn_matrix = np.load(conn_file)
             conn_matrix = conn_matrix > 0
 
-        return final_sft, output_lengths, conn_matrix, conn_info, dps_keys,bundle_map 
+        return final_sft, output_lengths, conn_matrix, conn_info, dps_keys,bundle_dict 
 
     def _load_and_process_sft(self, tractogram_file, header, dps_keys):
         # Check file extension

@@ -42,4 +42,15 @@ Here is the output format created by dwiml_create_hdf5_dataset.py and recognized
     hdf5['sub1']['group1']['voxres']
     hdf5['sub1']['group1']['nb_features']
 
+    # The mapping from bundle_ID -> bundle name is stored once at the HDF5 root
+    # level, with one dictionary per streamline group:
+    hdf5['bundle_dict']['group1']['ids']
+    hdf5['bundle_dict']['group1']['names']
+
+    
+    #Bundle_ID is an integer array mapping each streamline
+    # to its originating bundle.
+    hdf5['subj1']['group1']['data_per_streamline']['bundle_ID']
+
+
 If this is not enough for you, you may investigate our file ``dwi_ml/data/hdf5/hdf5_creation.py``.

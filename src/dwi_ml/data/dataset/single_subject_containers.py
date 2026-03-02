@@ -169,8 +169,7 @@ class LazySubjectData(SubjectDataAbstract):
 
         logger.debug('     Lazy: not loading data.')
 
-        # --- AJOUT: lire bundle_ID (par groupe de streamlines) ---
-
+        
         return cls(volume_groups, nb_features, streamline_groups, subject_id,
                    hdf_handle=None)
 

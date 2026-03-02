@@ -108,6 +108,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  neighborhood_resolution: Optional[float] = None,
                  log_level=logging.root.level,
                  nb_points: Optional[int] = None,
+                 #for use bundles ids options 
                  group_loader: Optional[DWIMLBatchLoaderOneInput] = None,):
                 
         """
@@ -128,7 +129,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             Whether to apply layer normalization to the forward connections.
             See [2].
         dropout : float
-            If non-zero, introduces a `Dropout` layer on the outputs of each                 num_bundles:int,
+            If non-zero, introduces a `Dropout` layer on the outputs of each                
 
             RNN layer except the last layer, with given dropout probability.
         ---
@@ -340,28 +341,33 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             b_list = [b[i].expand(x[i].shape[0], -1) for i in range(len(x))]  # [Li, emb_dim]
 
         # pack des inputs
-        x_packed = pack_sequence(x)
-        batch_sizes = x_packed.batch_sizes
-        x_data = x_packed.data
+        x= pack_sequence(x)
+        batch_sizes = x.batch_sizes
+        x = x.data
 
-        # embedding des inputs
+        # Embedding. Shape of inputs: nb_pts_total * embedded_size
         if self.input_embedding_key == 'cnn_embedding':
-            x_data = unflatten_neighborhood(...)
+            # We need to reshape flattened inputs into a neighborhood.
+            # Batch has been prepared in self.prepare_batch_one_input.
+            x = unflatten_neighborhood(
+                x, self.neighborhood_vectors, self.neighborhood_type,
+                self.neighborhood_radius, self.neighborhood_resolution)
 
-        x_data = self.input_embedding_layer(x_data)
-        x_data = self.embedding_dropout(x_data)
+        x = self.input_embedding_layer(x)
+        x = self.embedding_dropout(x)
         assert x[0].shape[-1] == self.raw_input_size, \
         f"Expected raw input {self.raw_input_size}, got {x[0].shape[-1]}"
         # pack du bundle embedding avec le même ordre/longueurs
         if bundle_ids is not None:
             b_packed = pack_sequence(b_list)
-            x_data = torch.cat((x_data, b_packed.data), dim=-1)
+            x_data = torch.cat((x, b_packed.data), dim=-1)
 
-        # concat prev dirs si besoin
+        # ==== 3. Concat with previous dirs ====
         if self.nb_previous_dirs > 0:
             x_data = torch.cat((x_data, n_prev_dirs), dim=-1)
-
-        # reconstruire PackedSequence
+        
+        # Shaping again as packed sequence.
+        # Shape of inputs.data: nb_pts_total * embedding_size_total
         x = PackedSequence(x_data, batch_sizes)
         # ==== 3. Stacked RNN (on packed sequence, returns a tensor) ====
         # rnn_output shape: nb_pts_total * last_hidden_layer_size

@@ -116,6 +116,8 @@ class SubjectData(SubjectDataAbstract):
                 hdf_file[subject_id][group])
             subject_sft_data_list.append(sft_data)
 
+            
+
         subj_data = cls(subject_id,
                         volume_groups, nb_features, subject_mri_data_list,
                         streamline_groups, subject_sft_data_list)
@@ -166,6 +168,8 @@ class LazySubjectData(SubjectDataAbstract):
             prepare_groups_info(subject_id, hdf_file, group_info)
 
         logger.debug('     Lazy: not loading data.')
+
+        # --- AJOUT: lire bundle_ID (par groupe de streamlines) ---
 
         return cls(volume_groups, nb_features, streamline_groups, subject_id,
                    hdf_handle=None)

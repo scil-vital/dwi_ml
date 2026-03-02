@@ -421,8 +421,8 @@ class MultiSubjectDataset:
         return all_params
 
     def load_data(self, load_training=True, load_validation=True,
-                  load_testing=True, subj_id: str = None,
-                  volume_groups: List = None, streamline_groups: List = None):
+              load_testing=True, subj_id: str = None,
+              volume_groups: List = None, streamline_groups: List = None):
         """
         Load raw dataset into memory.
 
@@ -451,25 +451,35 @@ class MultiSubjectDataset:
             # Loading the first training subject's group information.
             # Others should fit.
             one_subj = hdf_handle.attrs['training_subjs'][0]
+
+            # -------------------------
+            # Read number of bundles for each streamline group
+            self.num_bundles = {}
+
+            if "bundle_dict" in hdf_handle:
+                for group_name in hdf_handle["bundle_dict"].keys():
+                    ids = hdf_handle["bundle_dict"][group_name]["ids"][:]
+                    self.num_bundles[group_name] = int(ids.max()) + 1
+
             (poss_volume_groups, nb_features, poss_strea_groups,
-             contains_connectivity) = prepare_groups_info(
+            contains_connectivity) = prepare_groups_info(
                 one_subj, hdf_handle, ref_group_info=None)
             logger.debug("Possible volume groups are: {}"
-                         .format(poss_volume_groups))
+                        .format(poss_volume_groups))
             logger.debug("Number of features in each of these groups: {}"
-                         .format(nb_features))
+                        .format(nb_features))
             logger.debug("Possible streamline groups are: {}"
-                         .format(poss_strea_groups))
+                        .format(poss_strea_groups))
             logger.debug("Streamline groups containing a connectivity matrix: "
-                         "{}".format(contains_connectivity))
+                        "{}".format(contains_connectivity))
 
             # Verifying groups of interest
             if volume_groups is not None:
                 missing_vol = np.setdiff1d(volume_groups, poss_volume_groups)
                 if len(missing_vol) > 0:
                     raise ValueError("Volumes {} were not found in the first "
-                                     "subject of your hdf5 file."
-                                     .format(missing_vol))
+                                    "subject of your hdf5 file."
+                                    .format(missing_vol))
                 vol, indv, indposs = np.intersect1d(
                     volume_groups, poss_volume_groups, return_indices=True)
                 self.volume_groups = list(vol)
@@ -485,8 +495,8 @@ class MultiSubjectDataset:
                 missing_str = np.setdiff1d(streamline_groups, poss_strea_groups)
                 if len(missing_str) > 0:
                     raise ValueError("Streamlines {} were not found in the "
-                                     "first subject of your hdf5 file."
-                                     .format(missing_str))
+                                    "first subject of your hdf5 file."
+                                    .format(missing_str))
                 self.streamline_groups, _, ind = np.intersect1d(
                     streamline_groups, poss_strea_groups, return_indices=True)
                 logger.info("--> Chosen streamline groups are: {}"
@@ -499,8 +509,8 @@ class MultiSubjectDataset:
 
             self.streamline_groups = list(self.streamline_groups)
             group_info = (self.volume_groups, self.nb_features,
-                          self.streamline_groups,
-                          self.streamlines_contain_connectivity)
+                        self.streamline_groups,
+                        self.streamlines_contain_connectivity)
             self.training_set.set_subset_info(*group_info, step_size, compress)
             self.validation_set.set_subset_info(*group_info, step_size, compress)
             self.testing_set.set_subset_info(*group_info, step_size, compress)

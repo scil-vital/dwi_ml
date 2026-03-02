@@ -16,7 +16,7 @@ from dwi_ml.models.main_models import (
     ModelWithPreviousDirections, ModelWithDirectionGetter,
     ModelWithNeighborhood, ModelWithOneInput)
 from dwi_ml.models.stacked_rnn import StackedRNN
-
+from dwi_ml.training.batch_loaders import DWIMLBatchLoaderOneInput
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
 
@@ -77,10 +77,12 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
     deterministic (3D vectors) or probabilistic (based on probability
     distribution parameters).
     """
-
+    
+    
     def __init__(self, experiment_name,
                  step_size: Union[float, None],
                  compress_lines: Union[float, None],
+                    
                  nb_features: int,
                  # PREVIOUS DIRS
                  nb_previous_dirs: Union[int, None],
@@ -92,6 +94,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  input_embedded_size: Union[int, None],
                  nb_cnn_filters: Optional[List[int]],
                  kernel_size: Optional[List[int]],
+                 
+
                  # RNN
                  rnn_key: str, rnn_layer_sizes: List[int],
                  use_skip_connection: bool, use_layer_normalization: bool,
@@ -103,7 +107,9 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  neighborhood_radius: Optional[int] = None,
                  neighborhood_resolution: Optional[float] = None,
                  log_level=logging.root.level,
-                 nb_points: Optional[int] = None):
+                 nb_points: Optional[int] = None,
+                 group_loader: Optional[DWIMLBatchLoaderOneInput] = None,):
+                
         """
         Params
         ------
@@ -122,7 +128,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             Whether to apply layer normalization to the forward connections.
             See [2].
         dropout : float
-            If non-zero, introduces a `Dropout` layer on the outputs of each
+            If non-zero, introduces a `Dropout` layer on the outputs of each                 num_bundles:int,
+
             RNN layer except the last layer, with given dropout probability.
         ---
         [1] https://arxiv.org/pdf/1308.0850v5.pdf
@@ -137,6 +144,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             neighborhood_radius=neighborhood_radius,
             neighborhood_resolution=neighborhood_resolution,
             # For super ModelWithInputEmbedding:
+            
             nb_features=nb_features,
             input_embedding_key=input_embedding_key,
             input_embedded_size=input_embedded_size,
@@ -153,11 +161,39 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.nb_cnn_filters = nb_cnn_filters
         self.kernel_size = kernel_size
 
-        # Right now input is always flattened (interpolation is implemented
-        # that way). For CNN, we will rearrange it ourselves.
-        self.input_size = nb_features * self.nb_neighbors
+        # bundle id (from CLI / config)
+         
+        
+        self.use_bundle_ids=group_loader.use_bundle_ids
+        if self.use_bundle_ids:
+            if group_loader.bundle_emb_dim <= 0:
+                raise ValueError("bundle_emb_dim must be > 0 when use_bundle_ids=True")
+            if group_loader.num_bundles is None:
+                raise ValueError("num_bundles must be provided when use_bundle_ids=True")
 
-        # ----------- Checks
+            self.num_bundles =  group_loader.num_bundles
+            self.bundle_emb_dim = group_loader.bundle_emb_dim
+            self.bundle_emb = torch.nn.Embedding(self.num_bundles, self.bundle_emb_dim)
+            
+
+        else:
+            self.num_bundles = 0
+            self.bundle_emb_dim = 0
+            self.bundle_emb = None
+
+        # raw size (before input embedding)
+        self.raw_input_size = nb_features * self.nb_neighbors
+
+        # size entering the RNN
+        self.input_size = self.computed_input_embedded_size
+
+        # + bundle embedding only if enabled
+        if self.use_bundle_ids:
+            self.input_size += self.bundle_emb_dim
+
+        # + previous dirs embedding (tu concatènes la sortie de prev_dirs_embedding)
+        if self.nb_previous_dirs > 0:
+            self.input_size += self.prev_dirs_embedded_size
         if dropout < 0 or dropout > 1:
             raise ValueError('The dropout rate must be between 0 and 1.')
 
@@ -168,12 +204,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.embedding_dropout = torch.nn.Dropout(self.dropout)
 
         # 3. Stacked RNN
-        if self.nb_previous_dirs > 0:
-            self.computed_input_embedded_size += self.prev_dirs_embedded_size
+    
         if len(rnn_layer_sizes) == 1:
             dropout = 0.0  # Not used in RNN. Avoiding the warning.
         self.rnn_model = StackedRNN(
-            rnn_key, self.computed_input_embedded_size, rnn_layer_sizes,
+            rnn_key, self.input_size, rnn_layer_sizes,
             use_skip_connection=use_skip_connection,
             use_layer_normalization=use_layer_normalization, dropout=dropout)
 
@@ -202,6 +237,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             'use_skip_connection': self.rnn_model.use_skip_connection,
             'use_layer_normalization': self.rnn_model.use_layer_normalization,
             'dropout': self.dropout,
+            
+            'use_bundle_ids': bool(self.use_bundle_ids),
+            'bundle_emb_dim': int(self.bundle_emb_dim),
+            'num_bundles': int(self.num_bundles),
+
         })
 
         return params
@@ -214,6 +254,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
 
     def forward(self, x: List[torch.tensor],
                 input_streamlines: List[torch.tensor] = None,
+                bundle_ids: torch.Tensor = None,
                 hidden_recurrent_states: List = None, return_hidden=False,
                 point_idx: int = None):
         """Run the model on a batch of sequences.
@@ -255,11 +296,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         # Right now input is always flattened (interpolation is implemented
         # that way). For CNN, we will rearrange it ourselves.
         # Verifying the first input
-        assert x[0].shape[-1] == self.input_size, \
-            "Not the expected input size! Should be {} (i.e. {} features for " \
-            "each of the {} neighbors), but got {} (input shape {})." \
-            .format(self.input_size, self.nb_features, self.nb_neighbors,
-                    x[0].shape[-1], x[0].shape)
+        
 
         # Making sure we can use default 'enforce_sorted=True' with packed
         # sequences.
@@ -272,6 +309,10 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             x = [x[i] for i in sorted_indices]
             if input_streamlines is not None:
                 input_streamlines = [input_streamlines[i] for i in sorted_indices]
+            # bundle_ids 
+            if bundle_ids is not None:
+                bundle_ids = torch.as_tensor(bundle_ids, device=x[0].device, dtype=torch.long).view(-1)
+                bundle_ids = bundle_ids[sorted_indices]
 
         # ==== 0. Previous dirs.
         n_prev_dirs = None
@@ -293,39 +334,40 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                 n_prev_dirs = self.embedding_dropout(n_prev_dirs)
 
         # ==== 2. Inputs embedding ====
-        x = pack_sequence(x)
-        batch_sizes = x.batch_sizes
+        # x est une list[Tensor] avant pack_sequence
+        if bundle_ids is not None:
+            b = self.bundle_emb(bundle_ids)  # [N, emb_dim]
+            b_list = [b[i].expand(x[i].shape[0], -1) for i in range(len(x))]  # [Li, emb_dim]
 
-        # Avoiding unpacking and packing back if not needed.
-        # Input + prev dir embedding required if it's not NoEmbedding.
-        if self.nb_previous_dirs > 0 or not isinstance(
-                self.input_embedding_layer, NoEmbedding):
-            x = x.data
+        # pack des inputs
+        x_packed = pack_sequence(x)
+        batch_sizes = x_packed.batch_sizes
+        x_data = x_packed.data
 
-            # Embedding. Shape of inputs: nb_pts_total * embedded_size
-            if self.input_embedding_key == 'cnn_embedding':
-                # We need to reshape flattened inputs into a neighborhood.
-                # Batch has been prepared in self.prepare_batch_one_input.
-                x = unflatten_neighborhood(
-                    x, self.neighborhood_vectors, self.neighborhood_type,
-                    self.neighborhood_radius, self.neighborhood_resolution)
+        # embedding des inputs
+        if self.input_embedding_key == 'cnn_embedding':
+            x_data = unflatten_neighborhood(...)
 
-            x = self.input_embedding_layer(x)
-            x = self.embedding_dropout(x)
+        x_data = self.input_embedding_layer(x_data)
+        x_data = self.embedding_dropout(x_data)
+        assert x[0].shape[-1] == self.raw_input_size, \
+        f"Expected raw input {self.raw_input_size}, got {x[0].shape[-1]}"
+        # pack du bundle embedding avec le même ordre/longueurs
+        if bundle_ids is not None:
+            b_packed = pack_sequence(b_list)
+            x_data = torch.cat((x_data, b_packed.data), dim=-1)
 
-            # ==== 3. Concat with previous dirs ====
-            if self.nb_previous_dirs > 0:
-                x = torch.cat((x, n_prev_dirs), dim=-1)
+        # concat prev dirs si besoin
+        if self.nb_previous_dirs > 0:
+            x_data = torch.cat((x_data, n_prev_dirs), dim=-1)
 
-            # Shaping again as packed sequence.
-            # Shape of inputs.data: nb_pts_total * embedding_size_total
-            x = PackedSequence(x, batch_sizes)
-
+        # reconstruire PackedSequence
+        x = PackedSequence(x_data, batch_sizes)
         # ==== 3. Stacked RNN (on packed sequence, returns a tensor) ====
         # rnn_output shape: nb_pts_total * last_hidden_layer_size
-        assert x.data.shape[-1] == self.rnn_model.input_size, \
+        assert x.data.shape[-1] == self.input_size, \
             "Expecting input to RNN layer to be of size {}. Got {}" \
-            .format(self.rnn_model.input_size, x.data.shape[-1])
+            .format(self.input_size, x.data.shape[-1])
         x, out_hidden_recurrent_states = self.rnn_model(
             x, hidden_recurrent_states)
 

@@ -17,6 +17,8 @@ from dwi_ml.experiment_utils.memory import (
     torch_reset_peaks_memory, log_max_allocated)
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_abstract_model import MainModelAbstract
+from dwi_ml.data.dataset.multi_subject_containers import (
+    MultiSubjectDataset, MultisubjectSubset)
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.training.batch_loaders import (
     DWIMLStreamlinesBatchLoader, DWIMLBatchLoaderOneInput)
@@ -855,8 +857,12 @@ class DWIMLTrainer:
                 # train(), which "turns on" the training mode.
                 torch_reset_peaks_memory()
                 with grad_context():
-                    # Note. Data = (target_streamlines, ids_per_subj)
-                    mean_loss, n = self.run_one_batch(data[0], data[1])
+
+                    # Note. Data = (target_streamlines, ids_per_subj,batch_bundle_id)
+                    
+                    targets, ids_per_subj, batch_bundle_id = data
+                    
+                    mean_loss, n = self.run_one_batch(targets, ids_per_subj, batch_bundle_id)
 
                     # Saving result.
                     # mean loss is a Tensor of a single value. item() converts
@@ -890,7 +896,7 @@ class DWIMLTrainer:
                     # at nb - 1.
                     pbar.update(1)
 
-                    # Explicitly close tqdm's progress bar to fix possible bugs
+                    # Explicitly close tqdm's progress bar to fix possible bugsbundle_ids
                     # when breaking the loop
                     pbar.close()
                     break
@@ -937,8 +943,10 @@ class DWIMLTrainer:
             for batch_id, data in valid_iterator:
                 # For each batch, data is obtained from our batch sampler using
                 # the train_iterator. It is a tuple:
-                # (targets, ids_per_subj)
-
+                # (targets, ids_per_subj,batch_bundle_id)
+                
+                targets, ids_per_subj, batch_bundle_ids = data
+                
                 # Showing memory information
                 logger.debug("\n\nStart of validation batch: ")
                 log_currently_allocated(
@@ -949,7 +957,7 @@ class DWIMLTrainer:
                 # ------ Forward pass + loss -------
                 torch_reset_peaks_memory()
                 with torch.no_grad():
-                    self.validate_one_batch(*data, epoch)
+                    self.validate_one_batch(targets, ids_per_subj, batch_bundle_ids)
                 log_max_allocated(
                     logger_debug=logger,
                     context="During validation (forward + compute loss)")
@@ -980,11 +988,11 @@ class DWIMLTrainer:
             monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
 
-    def validate_one_batch(self, targets, ids_per_subj, epoch):
+    def validate_one_batch(self, targets, ids_per_subj,bundle_ids):
         """
         Computes the loss(es) for the current batch and updates monitors.
         """
-        mean_local_loss, n = self.run_one_batch(targets, ids_per_subj)
+        mean_local_loss, n = self.run_one_batch(targets, ids_per_subj,bundle_ids)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 
@@ -1053,7 +1061,7 @@ class DWIMLTrainer:
             json_file.write(json.dumps(best_losses, indent=4,
                                        separators=(',', ': ')))
 
-    def run_one_batch(self, targets, ids_per_subj):
+    def run_one_batch(self, targets, ids_per_subj,batch_bundle_id=None):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -1089,12 +1097,12 @@ class DWIMLTrainer:
         # Now possibly add noise to streamlines (training / valid)
         streamlines_f = self.batch_loader.add_noise_streamlines_forward(
             streamlines_f, self.device)
-
+        batch_bundle_id = batch_bundle_id.to(self.device, non_blocking=True, dtype=torch.long)
         # Possibly computing directions twice (during forward and loss)
         # but ok, shouldn't be too heavy. Easier to deal with multiple
         # projects' requirements by sending whole streamlines rather
         # than only directions.
-        model_outputs = self.model(streamlines_f)
+        model_outputs = self.model(streamlines_f,batch_bundle_id)
         del streamlines_f
 
         logger.debug('*** Computing loss')
@@ -1178,64 +1186,34 @@ class DWIMLTrainer:
 
 class DWIMLTrainerOneInput(DWIMLTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
-
-    def run_one_batch(self, targets, ids_per_subj):
-        """
-        Run a batch of data through the model (calling its forward method)
-        and return the mean loss. If training, run the backward method too.
-
-        Will load the DWI data associated with each target here. (Data
-        interpolation has not been done yet. GPU computations are done here in
-        the main thread.)
-
-        Parameters
-        ----------
-        targets: list of torch.tensors
-            This is the output of the AbstractBatchLoader's method
-            load_batch_streamlines().
-        ids_per_subj: dict
-            The dict of streamlines ids associated with each subject from the
-            list of all targets.
-
-        Returns
-        -------
-        mean_loss : Tensor of shape (1,) ; float.
-            The mean loss of the provided batch.
-        n: int
-            Total number of points for this batch.
-        """
-        # Dataloader always works on CPU. Sending to right device.
-        # (model is already moved).
+    def run_one_batch(self, targets, ids_per_subj, batch_bundle_id=None):
+        # Targets -> device
         targets = [s.to(self.device, non_blocking=True, dtype=torch.float)
                    for s in targets]
 
-        # Getting the inputs points from the volumes.
-        # Uses the model's method, with the batch_loader's data.
-        # Possibly skipping the last point if not useful.
+        # Streamlines for forward
         streamlines_f = targets
         if isinstance(self.model, ModelWithDirectionGetter) and \
                 not self.model.direction_getter.add_eos:
-            # No EOS = We don't use the last coord because it does not have an
-            # associated target direction.
             streamlines_f = [s[:-1, :] for s in streamlines_f]
 
-        # Batch inputs is already the right length. Models don't need to
-        # discard the last point if no EOS. Avoid interpolation for no reason.
+        # Inputs from volumes
         batch_inputs = self.batch_loader.load_batch_inputs(
             streamlines_f, ids_per_subj)
 
         logger.debug('*** Computing forward propagation')
-        # todo Possibly add noise to inputs here. Not ready
-        # Now add noise to streamlines for the forward pass
-        # (batch loader will do it depending on training / valid)
+
+        # Noise on streamlines for forward
         streamlines_f = self.batch_loader.add_noise_streamlines_forward(
             streamlines_f, self.device)
-        model_outputs = self.model(batch_inputs, streamlines_f)
+        
+        # ✅ Pass bundle_ids to model (x=batch_inputs, input_streamlines=streamlines_f)
+        model_outputs = self.model(batch_inputs, bundle_ids=batch_bundle_id,
+                                   input_streamlines=streamlines_f)
         del streamlines_f
 
         logger.debug('*** Computing loss')
-        # Add noise to targets.
-        # (batch loader will do it depending on training / valid)
+
         targets = self.batch_loader.add_noise_streamlines_loss(targets,
                                                                self.device)
         mean_loss, n = self.model.compute_loss(model_outputs, targets,

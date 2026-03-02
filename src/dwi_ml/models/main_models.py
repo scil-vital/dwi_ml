@@ -210,7 +210,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
             '--normalize_prev_dirs', action='store_true',
             help="If true, normalize the previous directions (before the "
                  "embedding layer,\n if any, and before adding to the input.")
-
+        
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint

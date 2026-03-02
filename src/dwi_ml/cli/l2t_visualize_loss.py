@@ -57,9 +57,9 @@ def main():
     # 1. Load model
     logging.debug("Loading model.")
     if args.use_latest_epoch:
-        model_dir = os.path.join(args.experiment_path, 'best_model')
-    else:
         model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
+    else:
+        model_dir = os.path.join(args.experiment_path, 'best_model')
     model = Learn2TrackModel.load_model_from_params_and_state(
         model_dir, log_level=sub_loggers_level)
     model.set_context('visu')

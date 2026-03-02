@@ -105,9 +105,9 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
     # 1. Load model
     logging.debug("Loading the model")
     if args.use_latest_epoch:
-        model_dir = os.path.join(args.experiment_path, 'best_model')
-    else:
         model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
+    else:
+        model_dir = os.path.join(args.experiment_path, 'best_model')
 
     model_type = verify_which_model_in_path(model_dir)
     logging.debug("   Model's class: {}\n".format(model_type))

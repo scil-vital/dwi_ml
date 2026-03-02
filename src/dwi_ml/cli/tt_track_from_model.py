@@ -96,9 +96,9 @@ def prepare_tracker(parser, args):
 
         logging.info("Loading model.")
         if args.use_latest_epoch:
-            model_dir = os.path.join(args.experiment_path, 'best_model')
-        else:
             model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
+        else:
+            model_dir = os.path.join(args.experiment_path, 'best_model')
         model_type = verify_which_model_in_path(model_dir)
         print("Model's class: {}".format(model_type))
         cls = find_transformer_class(model_type)

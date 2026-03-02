@@ -27,8 +27,8 @@ def add_arg_existing_experiment_path(p: ArgumentParser):
                         '(Should contain a model subdir \nwith a file '
                         'parameters.json and a file best_model_state.pkl.)')
     p.add_argument('--use_latest_epoch', action='store_true',
-                   help="If true, use model at latest epoch rather than "
-                        "default (best model).")
+                   help="If true, use model at latest epoch (latest checkpoint)"
+                        "rather than default (best model).")
 
 
 def add_memory_args(p: ArgumentParser, add_lazy_options=False,

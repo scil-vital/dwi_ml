@@ -143,7 +143,6 @@ class HDF5Creator:
                  enforce_files_presence: bool = True,
                  save_intermediate: bool = False,
                  intermediate_folder: Path = None):
-        self.bundle_dicts = {}
         """
         Params step_size, nb_points and compress are mutually exclusive.
 
@@ -188,6 +187,7 @@ class HDF5Creator:
         self.nb_points = nb_points
         self.compress = compress
         self.remove_invalid = remove_invalid
+        self.bundle_dicts = {}
 
         # Optional
         self.save_intermediate = save_intermediate
@@ -400,8 +400,10 @@ class HDF5Creator:
                 logging.info("*Processing subject {}/{}: {}"
                              .format(nb_processed, nb_subjs, subj_id))
                 self._create_one_subj(subj_id, hdf_handle)
+
             # Write bundle dictionaries (one per streamline group) at the root level
             self._write_bundle_dicts(hdf_handle)
+
         logging.info("Saved dataset : {}".format(self.out_hdf_filename))
 
     def _create_one_subj(self, subj_id, hdf_handle):
@@ -579,7 +581,9 @@ class HDF5Creator:
             /bundle_dict/<group_name>/ids
             /bundle_dict/<group_name>/names
 
-        Must be called AFTER at least one subject has been processed.
+        Must be called AFTER at least one subject has been processed, because
+        if the config file contains wildcards, we need to actually process a 
+        subject to know the files.
         """
         if not hasattr(self, "bundle_dicts") or not self.bundle_dicts:
             raise RuntimeError(
@@ -677,7 +681,7 @@ class HDF5Creator:
                 logging.debug("    Including dps \"{}\" in the HDF5."
                               .format(dps_keys))
 
-            # Create or get the group
+            # # This streamline's group dps info
             dps_group = streamlines_group.require_group("data_per_streamline")
 
             # --- Always store bundle_ID (generated internally)
@@ -749,7 +753,8 @@ class HDF5Creator:
             if isinstance(dps_keys, str):
                 dps_keys = [dps_keys]
         
-        
+        # Silencing SFT's logger if our logging is in DEBUG mode, because it
+        # typically produces a lot of outputs!
         set_sft_logger_level('WARNING')
 
         # Initialize
@@ -766,8 +771,11 @@ class HDF5Creator:
             # Map bundle index to bundle name (filename without extension)
             bundle_dict[bundle_id] = Path(tractogram_file).stem
             if sft is not None:
+                # Compute euclidean lengths (rasmm space)
                 sft.to_space(Space.RASMM)
                 output_lengths.extend(length(sft.streamlines))
+
+                #Sending to common space
                 sft.to_vox()
                 sft.to_corner()
 
@@ -776,12 +784,20 @@ class HDF5Creator:
                 nb_sl = len(sft.streamlines)
                 sft.data_per_streamline["bundle_ID"] = np.full(nb_sl, bundle_id, dtype=np.int16)
 
+                # Add processed tractogram to final big tractogram
                 if final_sft is None:
                     final_sft = sft
                 else:
                     final_sft = concatenate_sft([final_sft, sft], erase_metadata=False)
-
-            
+        if self.save_intermediate:
+            output_fname = self.intermediate_folder.joinpath(
+                subj_id + '_' + group + '.trk')
+            logging.debug("      *Saving intermediate streamline group {} "
+                            "into {}.".format(group, output_fname))
+            # Note. Do not remove the str below. Does not work well
+            # with Path.
+            save_tractogram(final_sft, str(output_fname)) 
+                    
         conn_matrix = None
         conn_info = None
         if 'connectivity_matrix' in self.groups_config[group]:

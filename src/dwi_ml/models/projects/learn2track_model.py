@@ -327,7 +327,6 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             x = [x[i] for i in sorted_indices]
             if input_streamlines is not None:
                 input_streamlines = [input_streamlines[i] for i in sorted_indices]
-            
         # Handle bundle IDs.
         # During training and validation: use the provided bundle_ids.
         # During tracking: assign bundle 0 to all streamlines.
@@ -420,7 +419,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
             # Shaping again as packed sequence.
             # Shape of inputs.data: nb_pts_total * embedding_size_total
             x = PackedSequence(x, batch_sizes)
-
+            
         # ==== 3. Stacked RNN (on packed sequence, returns a tensor) ====
         # rnn_output shape: nb_pts_total * last_hidden_layer_size
         assert x.data.shape[-1] == self.rnn_model.input_size, \

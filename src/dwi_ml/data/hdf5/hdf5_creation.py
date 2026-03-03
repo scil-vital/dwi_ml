@@ -716,20 +716,31 @@ class HDF5Creator:
             sft = self._load_and_process_sft(tractogram_file, header, dps_keys_load)
             bundle_map[bundle_id] = Path(tractogram_file).stem
             if sft is not None:
+                # Compute euclidean lengths (rasmm space)
                 sft.to_space(Space.RASMM)
                 output_lengths.extend(length(sft.streamlines))
-
+                # Sending to common space
                 sft.to_vox()
                 sft.to_corner()
 
                 nb_sl = len(sft.streamlines)
                 # Generate bundle_ID
                 sft.data_per_streamline["bundle_ID"] = np.full(nb_sl, bundle_id, dtype=np.int16)
-
+                # Add processed tractogram to final big tractogram
                 if final_sft is None:
                     final_sft = sft
                 else:
                     final_sft = concatenate_sft([final_sft, sft], erase_metadata=False)
+                            
+
+        if self.save_intermediate:
+            output_fname = self.intermediate_folder.joinpath(
+                subj_id + '_' + group + '.trk')
+            logging.debug("      *Saving intermediate streamline group {} "
+                        "into {}.".format(group, output_fname))
+            # Note. Do not remove the str below. Does not work well
+            # with Path.
+            save_tractogram(final_sft, str(output_fname))
 
         conn_matrix = None
         conn_info = None

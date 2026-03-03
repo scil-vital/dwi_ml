@@ -16,7 +16,7 @@ def add_direction_getter_args(p: ArgumentParser, gaussian_fisher_args=True):
              "smooth-sphere-classification, gaussian, \ngaussian-mixture, "
              "fisher-von-mises, fisher-von-mises-mixture.}\n"
              "With sphere classification, the default sphere is "
-             "symmetric724.")
+             "symmetric724. Default: cosine-regression.")
     p.add_argument(
         '--dg_dropout', type=float, metavar='r', default=0.,
         help="Dropout ratio for the direction getter. Default: 0.")

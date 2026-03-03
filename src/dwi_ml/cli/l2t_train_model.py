@@ -85,7 +85,6 @@ def init_from_args(args, sub_loggers_level):
         # INPUTS: verifying args
         model = Learn2TrackModel(
             experiment_name=args.experiment_name,
-            group_loader=group_loader,
             step_size=args.step_size, compress_lines=args.compress_th,
             # PREVIOUS DIRS
             prev_dirs_embedding_key=args.prev_dirs_embedding_key,
@@ -108,7 +107,11 @@ def init_from_args(args, sub_loggers_level):
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
             neighborhood_resolution=args.neighborhood_resolution,
-            log_level=sub_loggers_level)
+            log_level=sub_loggers_level,
+            # Bundle options (MUST be in init for checkpoint reload)
+            use_bundle_ids=group_loader.use_bundle_ids ,
+            bundle_emb_dim=group_loader.bundle_emb_dim,
+            num_bundles=group_loader.num_bundles)
 
         logging.info("Learn2track model final parameters:" +
                      format_dict_to_str(model.params_for_checkpoint))

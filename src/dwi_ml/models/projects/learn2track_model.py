@@ -334,7 +334,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         dev = next(self.parameters()).device
 
         if self.use_bundle_ids:
-            if not self.context == 'training'or not self.context == 'validation':
+            if not self.context == 'training' and not self.context == 'validation':
                     bundle_ids = torch.zeros(len(x), device=dev, dtype=torch.long)
 
             else:

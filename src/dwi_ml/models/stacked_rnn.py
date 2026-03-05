@@ -30,7 +30,9 @@ class StackedRNN(torch.nn.Module):
 
     def __init__(self, rnn_torch_key: str, input_size: int,
                  layer_sizes: List[int], use_skip_connection: bool,
-                 use_layer_normalization: bool, dropout: float):
+                 use_layer_normalization: bool, dropout: float,
+                 predict_bundle_ids: bool = False,
+                num_bundles: int = 21):
         """
         Parameters
         ----------
@@ -89,9 +91,26 @@ class StackedRNN(torch.nn.Module):
             self.dropout_module = None
         self.relu_sublayer = torch.nn.ReLU()
 
-        # Initialize model
+        #for predict_bundle_ids
+        self.predict_bundle_ids = bool(predict_bundle_ids)
+        self.num_bundles = int(num_bundles)
+
+        # Initialize model layers (RNN + layer norm) first
         rnn_cls = keys_to_rnn_class[self.rnn_torch_key]
         last_layer_size = input_size
+        for i, layer_size in enumerate(layer_sizes):
+            ...
+            if self.use_skip_connection:
+                last_layer_size += self.input_size
+
+        # Now create the bundle head (depends on final output size)
+        if self.predict_bundle_ids:
+            if self.num_bundles <= 0:
+                raise ValueError("num_bundles must be > 0 when predict_bundle_ids=True")
+            self.bundle_head = torch.nn.Linear(self.output_size, self.num_bundles)
+        else:
+            self.bundle_head = None
+        # Initialize model
         for i, layer_size in enumerate(layer_sizes):
             # Instantiate RNN layer
             # batch_first: If True, then the input and output tensors are
@@ -262,4 +281,8 @@ class StackedRNN(torch.nn.Module):
                 logger.debug(
                     'Final skip connection: concatenating all outputs but NOT '
                     'input. Final shape is {}'.format(last_output.shape))
-        return last_output, out_hidden_states
+        
+        if self.bundle_head is None:
+            return last_output, out_hidden_states
+        else:
+            return last_output, out_hidden_states, self.bundle_head(last_output)

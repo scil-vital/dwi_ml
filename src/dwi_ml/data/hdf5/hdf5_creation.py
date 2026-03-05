@@ -62,7 +62,7 @@ def format_filelist(filenames, enforce_presence, folder=None) -> List[str]:
 def _load_and_verify_file(filename: str, group_name: str, group_affine,
                           group_res):
     """
-    Loads a 3D or 4D nifti file. If it is a 3D dataset, adds a dimension to
+    Loads a (3D or 4D) nifti file. If it is a 3D dataset, adds a dimension to
     make it 4D. Then checks that it is compatible with a given group based on
     its affine and resolution.
 
@@ -774,8 +774,7 @@ class HDF5Creator:
                 # Compute euclidean lengths (rasmm space)
                 sft.to_space(Space.RASMM)
                 output_lengths.extend(length(sft.streamlines))
-
-                #Sending to common space
+                # Sending to common space
                 sft.to_vox()
                 sft.to_corner()
 
@@ -783,21 +782,22 @@ class HDF5Creator:
                 # Generate bundle_ID
                 nb_sl = len(sft.streamlines)
                 sft.data_per_streamline["bundle_ID"] = np.full(nb_sl, bundle_id, dtype=np.int16)
-
                 # Add processed tractogram to final big tractogram
                 if final_sft is None:
                     final_sft = sft
                 else:
                     final_sft = concatenate_sft([final_sft, sft], erase_metadata=False)
+                            
+
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
                 subj_id + '_' + group + '.trk')
             logging.debug("      *Saving intermediate streamline group {} "
-                            "into {}.".format(group, output_fname))
+                        "into {}.".format(group, output_fname))
             # Note. Do not remove the str below. Does not work well
             # with Path.
-            save_tractogram(final_sft, str(output_fname)) 
-                    
+            save_tractogram(final_sft, str(output_fname))
+
         conn_matrix = None
         conn_info = None
         if 'connectivity_matrix' in self.groups_config[group]:

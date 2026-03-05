@@ -4,7 +4,7 @@ import logging
 import os
 import shutil
 from argparse import ArgumentParser
-
+import torch.nn.functional as F
 import torch
 
 from dwi_ml.experiment_utils.prints import format_dict_to_str
@@ -219,3 +219,36 @@ class MainModelAbstract(torch.nn.Module):
 
     def compute_loss(self, model_outputs, target_streamlines):
         raise NotImplementedError
+    
+
+    def compute_bundle_loss(self, bundle_logits=None, bundle_ids=None) -> torch.Tensor:
+        """
+        Compute bundle classification loss.
+
+        Parameters
+        ----------
+        bundle_logits : Tensor
+            Predicted logits per streamline.
+            Shape: [N_lines, num_bundles]
+
+        bundle_ids : Tensor
+            Ground truth bundle IDs.
+            Shape: [N_lines]
+
+        Returns
+        -------
+        loss_bundle : Tensor
+            Cross entropy loss for bundle prediction.
+        """
+        if bundle_logits is not None and bundle_ids is not None:
+            # Put at same device
+            bundle_ids = bundle_ids.to(bundle_logits.device).long()
+
+            # Cross entropy classification loss
+            loss_bundle = F.cross_entropy(bundle_logits, bundle_ids)
+            
+        else:
+            loss_bundle=0
+
+        return loss_bundle
+    

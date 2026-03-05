@@ -43,7 +43,7 @@ Can be used in a torch DataLoader. For instance:
 
 from collections import defaultdict
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple,Optional
 
 import numpy as np
 import torch
@@ -53,9 +53,8 @@ from dwi_ml.data.dataset.multi_subject_containers import (
 from dwi_ml.data.processing.streamlines.data_augmentation import (
     reverse_streamlines, split_streamlines, resample_or_compress)
 from dwi_ml.data.processing.utils import add_noise_to_tensor
-from dwi_ml.models.main_models import ModelWithOneInput, \
-    ModelWithNeighborhood, MainModelAbstract
-
+from dwi_ml.models.main_models import ModelWithOneInput, ModelWithNeighborhood, MainModelAbstract
+# MainModelOneInput
 logger = logging.getLogger('batch_loader_logger')
 
 
@@ -65,7 +64,10 @@ class DWIMLStreamlinesBatchLoader:
                  split_ratio: float = 0.,
                  noise_gaussian_size_forward: float = 0.,
                  noise_gaussian_size_loss: float = 0.,
-                 reverse_ratio: float = 0., log_level=logging.root.level):
+                 reverse_ratio: float = 0., log_level=logging.root.level,
+                 use_bundle_ids: bool = False,
+                 bundle_emb_dim: Optional[int] = None,
+                 ):
         """
         Parameters
         ----------
@@ -104,7 +106,7 @@ class DWIMLStreamlinesBatchLoader:
             the batch. You could want to reverse ALL your data and then use
             both the initial data and reversed data. But this would take twice
             the memory. If your ratio is, say, 0.5, streamlines have a 50%
-            chance to be reversed. If you train for enough epochs, high chance
+            chance to be reversed. If you train for enough epocMainModelOneInpuths, high chance
             that you will have used both directions of your streamline at least
             once. Default: 0.
             A way to absolutely ensure using both directions the same number of
@@ -116,6 +118,9 @@ class DWIMLStreamlinesBatchLoader:
         self.dataset = dataset
         self.model = model
         self.streamline_group_name = streamline_group_name
+        self.use_bundle_ids = use_bundle_ids
+        self.num_bundles =dataset.num_bundles[streamline_group_name]
+        self.bundle_emb_dim=bundle_emb_dim
 
         # Find idx of streamline group
         self.streamline_group_idx = self.dataset.streamline_groups.index(
@@ -123,7 +128,7 @@ class DWIMLStreamlinesBatchLoader:
         self.data_contains_connectivity = \
             self.dataset.streamlines_contain_connectivity[
                 self.streamline_group_idx]
-
+        
         # Set random numbers
         self.rng = rng
         self.np_rng = np.random.RandomState(self.rng)
@@ -293,6 +298,8 @@ class DWIMLStreamlinesBatchLoader:
         # the loaded, processed streamlines, not to the ids in the hdf5 file.
         final_s_ids_per_subj = defaultdict(slice)
         batch_streamlines = []
+        #bundle ids asssocied with streamline in this batch
+        batch_bundle_ids = []
         for subj, s_ids in streamline_ids_per_subj:
             logger.debug(
                 "            Data loader: Processing data preparation for "
@@ -301,15 +308,30 @@ class DWIMLStreamlinesBatchLoader:
             # No cache for the sft data. Accessing it directly.
             # Note: If this is used through the dataloader, multiprocessing
             # is used. Each process will open a handle.
-            subj_data = \
-                self.context_subset.subjs_data_list.get_subj_with_handle(subj)
+            subj_data = self.context_subset.subjs_data_list.get_subj_with_handle(subj)
             subj_sft_data = subj_data.sft_data_list[self.streamline_group_idx]
+
+            # Retrieve bundle IDs before loading streamlines
+            subj_bundle_ids = subj_sft_data.data_per_streamline["bundle_ID"][s_ids]
+            subj_bundle_ids = np.asarray(subj_bundle_ids, dtype=np.int64).reshape(-1)
 
             # Get streamlines as sft
             logger.debug("            Loading sampled streamlines...")
             sft = subj_sft_data.as_sft(s_ids)
+
+            # Attach bundle IDs to the SFT (to keep track during augmentation)
+            sft.data_per_streamline["bundle_ID"] = subj_bundle_ids
+
+            # Apply data augmentation (may duplicate or remove streamlines)
             sft = self._data_augmentation_sft(sft)
 
+            # Retrieve updated bundle IDs after augmentation
+            subj_bundle_ids = np.asarray(
+                sft.data_per_streamline["bundle_ID"], dtype=np.int64
+            ).reshape(-1)
+
+            batch_bundle_ids.extend(subj_bundle_ids.tolist())
+            
             # Remember the indices of this subject's (augmented) streamlines
             ids_start = len(batch_streamlines)
             ids_end = ids_start + len(sft)
@@ -322,11 +344,17 @@ class DWIMLStreamlinesBatchLoader:
             sft.to_vox()
             sft.to_corner()
             batch_streamlines.extend(sft.streamlines)
-
+        # Convert streamlines to torch tensors
         batch_streamlines = [torch.as_tensor(s) for s in batch_streamlines]
 
-        return batch_streamlines, final_s_ids_per_subj
+        # Convert bundle IDs if used
+        if self.use_bundle_ids and batch_bundle_ids is not None:
+            batch_bundle_ids = torch.as_tensor(batch_bundle_ids, dtype=torch.long).view(-1)
+        else:
+            batch_bundle_ids = None
 
+        return batch_streamlines, final_s_ids_per_subj, batch_bundle_ids
+        
     def load_batch_connectivity_matrices(
             self, streamline_ids_per_subj: Dict[int, slice]):
         if not self.data_contains_connectivity:
@@ -442,7 +470,6 @@ class DWIMLBatchLoaderOneInput(DWIMLStreamlinesBatchLoader):
 
         for subj, y_ids in streamline_ids_per_subj.items():
             logger.debug("            Data loader: loading input volume.")
-
             streamlines = batch_streamlines[y_ids]
 
             # Trilinear interpolation uses origin=corner, vox space, but ok

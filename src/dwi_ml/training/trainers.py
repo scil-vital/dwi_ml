@@ -17,6 +17,8 @@ from dwi_ml.experiment_utils.memory import (
     torch_reset_peaks_memory, log_max_allocated)
 from dwi_ml.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.models.main_abstract_model import MainModelAbstract
+from dwi_ml.data.dataset.multi_subject_containers import (
+    MultiSubjectDataset, MultisubjectSubset)
 from dwi_ml.models.main_models import ModelWithDirectionGetter
 from dwi_ml.training.batch_loaders import (
     DWIMLStreamlinesBatchLoader, DWIMLBatchLoaderOneInput)
@@ -855,8 +857,12 @@ class DWIMLTrainer:
                 # train(), which "turns on" the training mode.
                 torch_reset_peaks_memory()
                 with grad_context():
-                    # Note. Data = (target_streamlines, ids_per_subj)
-                    mean_loss, n = self.run_one_batch(data[0], data[1])
+
+                    # Note. Data = (target_streamlines, ids_per_subj,batch_bundle_id)
+                    
+                    targets, ids_per_subj, batch_bundle_id = data
+                    
+                    mean_loss, n = self.run_one_batch(targets, ids_per_subj, batch_bundle_id)
 
                     # Saving result.
                     # mean loss is a Tensor of a single value. item() converts
@@ -937,8 +943,10 @@ class DWIMLTrainer:
             for batch_id, data in valid_iterator:
                 # For each batch, data is obtained from our batch sampler using
                 # the train_iterator. It is a tuple:
-                # (targets, ids_per_subj)
-
+                # (targets, ids_per_subj,batch_bundle_id)
+                
+                targets, ids_per_subj, batch_bundle_ids = data
+                
                 # Showing memory information
                 logger.debug("\n\nStart of validation batch: ")
                 log_currently_allocated(
@@ -949,7 +957,7 @@ class DWIMLTrainer:
                 # ------ Forward pass + loss -------
                 torch_reset_peaks_memory()
                 with torch.no_grad():
-                    self.validate_one_batch(*data, epoch)
+                    self.validate_one_batch(targets, ids_per_subj, batch_bundle_ids)
                 log_max_allocated(
                     logger_debug=logger,
                     context="During validation (forward + compute loss)")
@@ -980,11 +988,11 @@ class DWIMLTrainer:
             monitor.end_epoch()
         self._update_comet_after_epoch('validation', epoch)
 
-    def validate_one_batch(self, targets, ids_per_subj, epoch):
+    def validate_one_batch(self, targets, ids_per_subj,bundle_ids):
         """
         Computes the loss(es) for the current batch and updates monitors.
         """
-        mean_local_loss, n = self.run_one_batch(targets, ids_per_subj)
+        mean_local_loss, n = self.run_one_batch(targets, ids_per_subj,bundle_ids)
         self.valid_local_loss_monitor.update(mean_local_loss.cpu().item(),
                                              weight=n)
 
@@ -1053,7 +1061,7 @@ class DWIMLTrainer:
             json_file.write(json.dumps(best_losses, indent=4,
                                        separators=(',', ': ')))
 
-    def run_one_batch(self, targets, ids_per_subj):
+    def run_one_batch(self, targets, ids_per_subj,batch_bundle_id=None):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -1089,12 +1097,12 @@ class DWIMLTrainer:
         # Now possibly add noise to streamlines (training / valid)
         streamlines_f = self.batch_loader.add_noise_streamlines_forward(
             streamlines_f, self.device)
-
+        batch_bundle_id = batch_bundle_id.to(self.device, non_blocking=True, dtype=torch.long)
         # Possibly computing directions twice (during forward and loss)
         # but ok, shouldn't be too heavy. Easier to deal with multiple
         # projects' requirements by sending whole streamlines rather
         # than only directions.
-        model_outputs = self.model(streamlines_f)
+        model_outputs = self.model(streamlines_f,batch_bundle_id)
         del streamlines_f
 
         logger.debug('*** Computing loss')
@@ -1178,8 +1186,7 @@ class DWIMLTrainer:
 
 class DWIMLTrainerOneInput(DWIMLTrainer):
     batch_loader: DWIMLBatchLoaderOneInput
-
-    def run_one_batch(self, targets, ids_per_subj):
+    def run_one_batch(self, targets, ids_per_subj, batch_bundle_id=None):
         """
         Run a batch of data through the model (calling its forward method)
         and return the mean loss. If training, run the backward method too.
@@ -1196,6 +1203,10 @@ class DWIMLTrainerOneInput(DWIMLTrainer):
         ids_per_subj: dict
             The dict of streamlines ids associated with each subject from the
             list of all targets.
+        batch_bundle_id:torch.Tensor or None
+            A 1D tensor containing the bundle_ID associated with each
+            streamline in the batch (same order as `targets`).
+            Returned only if `use_bundle_ids=True`. Otherwise, None.
 
         Returns
         -------
@@ -1225,20 +1236,26 @@ class DWIMLTrainerOneInput(DWIMLTrainer):
             streamlines_f, ids_per_subj)
 
         logger.debug('*** Computing forward propagation')
+
         # todo Possibly add noise to inputs here. Not ready
         # Now add noise to streamlines for the forward pass
         # (batch loader will do it depending on training / valid)
         streamlines_f = self.batch_loader.add_noise_streamlines_forward(
             streamlines_f, self.device)
-        model_outputs = self.model(batch_inputs, streamlines_f)
+        
+        
+        model_outputs,bl_per_line= self.model(batch_inputs, bundle_ids=batch_bundle_id,
+                                   input_streamlines=streamlines_f)
         del streamlines_f
 
         logger.debug('*** Computing loss')
+
         # Add noise to targets.
         # (batch loader will do it depending on training / valid)
         targets = self.batch_loader.add_noise_streamlines_loss(targets,
                                                                self.device)
-        mean_loss, n = self.model.compute_loss(model_outputs, targets,
+        mean_loss, n = self.model.compute_loss(model_outputs, targets,bundle_logits=bl_per_line,
+                                                bundle_ids=batch_bundle_id,
                                                average_results=True)
 
         return mean_loss, n

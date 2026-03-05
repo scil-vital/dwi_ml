@@ -39,7 +39,16 @@ def add_args_batch_loader(p: argparse.ArgumentParser):
         help="Percentage of streamlines to randomly reverse in each batch. "
              "[0]")
 
+    bl_g.add_argument(
+    "--use_bundle_ids",
+    action="store_true",
+    help="Use bundle ID embedding as additional model input")
 
+    p.add_argument(
+                '--bundle_emb_dim', type=int, default=8,
+                help="Dimension of the bundle ID embedding. Use 0 to disable bundle embedding."
+            )
+    
 def prepare_batch_loader(dataset, model, args, sub_loggers_level):
     # Preparing the batch loader.
     with Timer("\nPreparing batch loader...", newline=True, color='pink'):
@@ -52,7 +61,10 @@ def prepare_batch_loader(dataset, model, args, sub_loggers_level):
             noise_gaussian_size_loss=args.noise_gaussian_size_loss,
             reverse_ratio=args.reverse_ratio, split_ratio=args.split_ratio,
             # OTHER
-            rng=args.rng, log_level=sub_loggers_level)
+            rng=args.rng, log_level=sub_loggers_level,
+            #bundles ids
+            use_bundle_ids=args.use_bundle_ids,
+            bundle_emb_dim=args.bundle_emb_dim)
 
         logging.info("Loader user-defined parameters: " +
                      format_dict_to_str(batch_loader.params_for_checkpoint))

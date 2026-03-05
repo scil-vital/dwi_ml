@@ -6,7 +6,7 @@ from typing import List, Union
 import numpy as np
 import torch
 from torch import Tensor
-
+import torch.nn.functional as F
 from dwi_ml.data.dataset.multi_subject_containers import MultisubjectSubset
 from dwi_ml.data.processing.volume.interpolation import \
     interpolate_volume_in_neighborhood
@@ -210,7 +210,7 @@ class ModelWithPreviousDirections(MainModelAbstract):
             '--normalize_prev_dirs', action='store_true',
             help="If true, normalize the previous directions (before the "
                  "embedding layer,\n if any, and before adding to the input.")
-
+        
     @property
     def params_for_checkpoint(self):
         p = super().params_for_checkpoint
@@ -564,13 +564,27 @@ class ModelWithDirectionGetter(MainModelAbstract):
         dirs = self.direction_getter.get_tracking_directions(
             model_outputs, algo, eos_stopping_thresh)
         return dirs
-
+    
     def compute_loss(self, model_outputs: List[Tensor], target_streamlines,
-                     average_results=True, return_eos_probs=False):
-        return self.direction_getter.compute_loss(
+                 bundle_logits: torch.Tensor,
+                 bundle_ids: torch.Tensor,
+                 lambda_bundle=0.5,
+                    average_results=True, return_eos_probs=False):
+        """
+        Compute total loss: direction loss + bundle classification loss.
+        """
+
+        # Compute direction prediction loss
+        loss_dir,n = self.direction_getter.compute_loss(
             model_outputs, target_streamlines,
             average_results, return_eos_probs)
 
+        # Compute bundle classification loss
+        loss_bundle= self.compute_bundle_loss(bundle_logits=bundle_logits, bundle_ids=bundle_ids)
+
+        # Combine the two losses
+        return loss_dir + lambda_bundle * loss_bundle,n
+    
     def move_to(self, device):
         super().move_to(device)
         self.direction_getter.move_to(device)

@@ -108,10 +108,11 @@ def init_from_args(args, sub_loggers_level):
             neighborhood_radius=args.neighborhood_radius,
             neighborhood_resolution=args.neighborhood_resolution,
             log_level=sub_loggers_level,
-            # Bundle options (MUST be in init for checkpoint reload)
+            # Bundle options 
             use_bundle_ids=group_loader.use_bundle_ids ,
             bundle_emb_dim=group_loader.bundle_emb_dim,
-            num_bundles=group_loader.num_bundles)
+            num_bundles=group_loader.num_bundles,
+            predict_bundle_ids=args.predict_bundle_ids)
 
         logging.info("Learn2track model final parameters:" +
                      format_dict_to_str(model.params_for_checkpoint))

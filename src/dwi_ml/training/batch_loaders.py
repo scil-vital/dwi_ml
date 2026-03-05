@@ -315,7 +315,8 @@ class DWIMLStreamlinesBatchLoader:
             subj_bundle_ids = subj_sft_data.data_per_streamline["bundle_ID"][s_ids]
             subj_bundle_ids = np.asarray(subj_bundle_ids, dtype=np.int64).reshape(-1)
 
-            # Load selected streamlines
+            # Get streamlines as sft
+            logger.debug("            Loading sampled streamlines...")
             sft = subj_sft_data.as_sft(s_ids)
 
             # Attach bundle IDs to the SFT (to keep track during augmentation)

@@ -110,6 +110,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                  nb_points: Optional[int] = None,
                  # Bundle options (MUST be in init for checkpoint reload)
                  use_bundle_ids: bool = False,
+                 predict_bundle_ids: bool = False,
                  bundle_emb_dim: Optional[int] = None,
                  num_bundles: Optional[int] = None):
                 
@@ -168,6 +169,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
          
         # ---- Bundle ID options
         self.use_bundle_ids = bool(use_bundle_ids)
+        self.predict_bundle_ids=predict_bundle_ids
 
         if self.use_bundle_ids:
             if bundle_emb_dim is None:
@@ -219,7 +221,10 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         self.rnn_model = StackedRNN(
             rnn_key, self.input_size, rnn_layer_sizes,
             use_skip_connection=use_skip_connection,
-            use_layer_normalization=use_layer_normalization, dropout=dropout)
+            use_layer_normalization=use_layer_normalization, dropout=dropout,
+            predict_bundle_ids=self.predict_bundle_ids,
+            num_bundles=self.num_bundles
+            )
 
         # 4. Direction getter:
         self.instantiate_direction_getter(self.rnn_model.output_size)
@@ -334,9 +339,8 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         dev = next(self.parameters()).device
 
         if self.use_bundle_ids:
-            if not self.context == 'training' and not self.context == 'validation':
-                    bundle_ids = torch.zeros(len(x), device=dev, dtype=torch.long)
-
+            if self.context == 'tracking':
+                bundle_ids = torch.zeros(len(x), device=dev, dtype=torch.long)
             else:
                 bundle_ids = torch.as_tensor(bundle_ids, device=dev, dtype=torch.long).view(-1)
 
@@ -385,7 +389,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         
         x= pack_sequence(x)
         batch_sizes = x.batch_sizes
-        x = x.data
+        
 
         # Avoiding unpacking and packing back if not needed.
         # Input + prev dir embedding required if it's not NoEmbedding.
@@ -413,6 +417,7 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         
         # pack du bundle embedding avec le même ordre/longueurs
         if self.use_bundle_ids and bundle_ids is not None:
+            x = x.data
             b_packed = pack_sequence(b_list)
             x = torch.cat((x, b_packed.data), dim=-1)
 
@@ -425,9 +430,23 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
         assert x.data.shape[-1] == self.rnn_model.input_size, \
             "Expecting input to RNN layer to be of size {}. Got {}" \
             .format(self.rnn_model.input_size, x.data.shape[-1])
-        x, out_hidden_recurrent_states = self.rnn_model(
-            x, hidden_recurrent_states)
+        if self.predict_bundle_ids:
+            x, out_hidden_recurrent_states, bundle_logits_per_point = self.rnn_model(
+                                                x, hidden_recurrent_states)
 
+            # bundle logits par streamline = dernier point
+            bl = PackedSequence(bundle_logits_per_point, batch_sizes)
+            bl_list = faster_unpack_sequence(bl)  # list[Li, num_bundles]
+            if unsorted_indices is not None:
+                bl_list = [bl_list[i] for i in unsorted_indices]
+            bundle_logits_per_line = torch.vstack([t[-1] for t in bl_list])  # [N_lines, num_bundles]
+        else:
+            x, out_hidden_recurrent_states= self.rnn_model(
+                                                x, hidden_recurrent_states)
+            bundle_logits_per_line = None
+
+        predicted_bundle_ids = torch.argmax(bundle_logits_per_line, dim=1)
+        print(predicted_bundle_ids)
         logger.debug("*** 5. Direction getter....")
         # direction getter can't get a list of sequences.
         # output will be a tensor, but with same format as input.data.
@@ -471,9 +490,11 @@ class Learn2TrackModel(ModelWithPreviousDirections, ModelWithDirectionGetter,
                     out_hidden_recurrent_states = [
                         layer_states[:, unsorted_indices, :] for
                         layer_states in out_hidden_recurrent_states]
-            return x, out_hidden_recurrent_states
+              
+            return x, out_hidden_recurrent_states,bundle_logits_per_line
         else:
-            return x
+            
+            return x,bundle_logits_per_line
 
     def copy_prev_dir(self, dirs):
         if 'regression' in self.dg_key:

@@ -1244,7 +1244,7 @@ class DWIMLTrainerOneInput(DWIMLTrainer):
             streamlines_f, self.device)
         
         
-        model_outputs = self.model(batch_inputs, bundle_ids=batch_bundle_id,
+        model_outputs,bl_per_line= self.model(batch_inputs, bundle_ids=batch_bundle_id,
                                    input_streamlines=streamlines_f)
         del streamlines_f
 
@@ -1254,7 +1254,8 @@ class DWIMLTrainerOneInput(DWIMLTrainer):
         # (batch loader will do it depending on training / valid)
         targets = self.batch_loader.add_noise_streamlines_loss(targets,
                                                                self.device)
-        mean_loss, n = self.model.compute_loss(model_outputs, targets,
+        mean_loss, n = self.model.compute_loss(model_outputs, targets,bundle_logits=bl_per_line,
+                                                bundle_ids=batch_bundle_id,
                                                average_results=True)
 
         return mean_loss, n

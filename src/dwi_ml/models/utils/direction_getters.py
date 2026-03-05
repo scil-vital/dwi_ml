@@ -63,6 +63,13 @@ def add_direction_getter_args(p: ArgumentParser, gaussian_fisher_args=True):
              "defines the \nweight of the EOS loss: "
              "final_loss = loss + weight * eos_loss")
 
+    p.add_argument(
+            '--predict_bundle_ids',
+            action='store_true',
+            help='If set, the model will predict the bundle ID for each streamline '
+                'using an additional classification head.'
+        )
+
 
 def check_args_direction_getter(args):
     dg_args = {'dropout': args.dg_dropout,

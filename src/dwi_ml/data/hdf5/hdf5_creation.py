@@ -62,7 +62,7 @@ def format_filelist(filenames, enforce_presence, folder=None) -> List[str]:
 def _load_and_verify_file(filename: str, group_name: str, group_affine,
                           group_res):
     """
-    Loads a 3D or 4D nifti file. If it is a 3D dataset, adds a dimension to
+    Loads a (3D or 4D) nifti file. If it is a 3D dataset, adds a dimension to
     make it 4D. Then checks that it is compatible with a given group based on
     its affine and resolution.
 

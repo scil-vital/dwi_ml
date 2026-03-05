@@ -62,7 +62,7 @@ def format_filelist(filenames, enforce_presence, folder=None) -> List[str]:
 def _load_and_verify_file(filename: str, group_name: str, group_affine,
                           group_res):
     """
-    Loads a 3D or 4D nifti file. If it is a 3D dataset, adds a dimension to
+    Loads a (3D or 4D) nifti file. If it is a 3D dataset, adds a dimension to
     make it 4D. Then checks that it is compatible with a given group based on
     its affine and resolution.
 
@@ -187,6 +187,7 @@ class HDF5Creator:
         self.nb_points = nb_points
         self.compress = compress
         self.remove_invalid = remove_invalid
+        self.bundle_dicts = {}
 
         # Optional
         self.save_intermediate = save_intermediate
@@ -388,6 +389,7 @@ class HDF5Creator:
             hdf_handle.attrs['compress'] = self.compress if \
                 self.compress is not None else 'Not defined by user'
 
+            
             # Add data one subject at the time
             nb_processed = 0
             nb_subjs = len(self.all_subjs)
@@ -398,6 +400,9 @@ class HDF5Creator:
                 logging.info("*Processing subject {}/{}: {}"
                              .format(nb_processed, nb_subjs, subj_id))
                 self._create_one_subj(subj_id, hdf_handle)
+
+            # Write bundle dictionaries (one per streamline group) at the root level
+            self._write_bundle_dicts(hdf_handle)
 
         logging.info("Saved dataset : {}".format(self.out_hdf_filename))
 
@@ -566,6 +571,50 @@ class HDF5Creator:
             nib.save(standardized_img, str(output_fname))
 
         return group_data, group_affine, group_header, group_res
+    
+    
+
+    def _write_bundle_dicts(self, hdf_handle):
+        """
+        Write one bundle_dict per streamline group at the HDF5 root:
+
+            /bundle_dict/<group_name>/ids
+            /bundle_dict/<group_name>/names
+
+        Must be called AFTER at least one subject has been processed, because
+        if the config file contains wildcards, we need to actually process a 
+        subject to know the files.
+        """
+        if not hasattr(self, "bundle_dicts") or not self.bundle_dicts:
+            raise RuntimeError(
+                "bundle_dicts is empty. Make sure subjects were processed "
+                "before calling _write_bundle_dicts()."
+            )
+
+        bundle_root = hdf_handle.require_group("bundle_dict")
+        str_dtype = h5py.string_dtype(encoding="utf-8")
+
+        for group_name in self.streamline_groups:
+
+            if group_name not in self.bundle_dicts:
+                raise RuntimeError(
+                    f"bundle_dict for group '{group_name}' was never computed."
+                )
+
+            bundle_dict = self.bundle_dicts[group_name]
+            grp = bundle_root.require_group(group_name)
+
+            # Ensure consistent ordering with enumerate() logic
+            ids = np.array(sorted(bundle_dict.keys()), dtype=np.int32)
+            names = np.array([bundle_dict[i] for i in ids], dtype=str_dtype)
+
+            # Overwrite safely if rerunning
+            for key in ("ids", "names"):
+                if key in grp:
+                    del grp[key]
+
+            grp.create_dataset("ids", data=ids)
+            grp.create_dataset("names", data=names)
 
     def _create_streamline_groups(self, ref, subj_input_dir, subj_id,
                                   subj_hdf_group):
@@ -581,6 +630,7 @@ class HDF5Creator:
         In short, all the nibabel's ArraySequence attributes are saved to
         eventually recreate an SFT from the hdf5 data.
         """
+    
         for group in self.streamline_groups:
 
             # Add the streamlines data
@@ -592,10 +642,11 @@ class HDF5Creator:
                     "in the config_file. If all files are .trk, we can use "
                     "ref 'same' but if some files were .tck, we need a ref!"
                     "Hint: Create a volume group 'ref' in the config file.")
-            sft, lengths, connectivity_matrix, conn_info, dps_keys = (
+            sft, lengths, connectivity_matrix, conn_info, dps_keys,bundle_dict = (
                 self._process_one_streamline_group(
                     subj_input_dir, group, subj_id, ref))
-
+            if group not in self.bundle_dicts:
+                self.bundle_dicts[group] = bundle_dict
             streamlines_group = subj_hdf_group.create_group(group)
             streamlines_group.attrs['type'] = 'streamlines'
 
@@ -630,12 +681,33 @@ class HDF5Creator:
                 logging.debug("    Including dps \"{}\" in the HDF5."
                               .format(dps_keys))
 
-            # This streamline's group dps info
-            dps_group = streamlines_group.create_group('data_per_streamline')
-            for dps_key in dps_keys:
-                dps_group.create_dataset(
-                    dps_key, data=sft.data_per_streamline[dps_key])
+            # # This streamline's group dps info
+            dps_group = streamlines_group.require_group("data_per_streamline")
 
+            # --- Always store bundle_ID (generated internally)
+            if "bundle_ID" not in sft.data_per_streamline:
+                raise RuntimeError(f"bundle_ID missing for subj={subj_id}, group={group}")
+
+            if "bundle_ID" in dps_group:
+                del dps_group["bundle_ID"]
+            dps_group.create_dataset("bundle_ID", data=sft.data_per_streamline["bundle_ID"])
+
+            # --- Store requested DPS keys from config (must come from disk)
+            for dps_key in dps_keys:
+                if dps_key == "bundle_ID":
+                    continue  # avoid accidental duplication
+
+                if dps_key not in sft.data_per_streamline:
+                    raise KeyError(f"Missing data_per_streamline key '{dps_key}' in SFT")
+
+                if dps_key in dps_group:
+                    del dps_group[dps_key]
+
+                dps_group.create_dataset(dps_key, data=sft.data_per_streamline[dps_key])
+
+
+        
+        
             # Accessing private Dipy values, but necessary.
             # We need to deconstruct the streamlines into arrays with
             # types recognizable by the hdf5.
@@ -646,7 +718,7 @@ class HDF5Creator:
             streamlines_group.create_dataset('lengths',
                                              data=sft.streamlines._lengths)
             streamlines_group.create_dataset('euclidean_lengths', data=lengths)
-
+            
     def _process_one_streamline_group(
             self, subj_dir: Path, group: str, subj_id: str,
             header: nib.Nifti1Header):
@@ -680,7 +752,7 @@ class HDF5Creator:
             dps_keys = self.groups_config[group]['dps_keys']
             if isinstance(dps_keys, str):
                 dps_keys = [dps_keys]
-
+        
         # Silencing SFT's logger if our logging is in DEBUG mode, because it
         # typically produces a lot of outputs!
         set_sft_logger_level('WARNING')
@@ -688,33 +760,40 @@ class HDF5Creator:
         # Initialize
         final_sft = None
         output_lengths = []
+        bundle_dict = {}
 
-        tractograms = format_filelist(tractograms, self.enforce_files_presence,
-                                      folder=subj_dir)
-        for tractogram_file in tractograms:
+        tractograms = format_filelist(tractograms, self.enforce_files_presence, folder=subj_dir)
+        
+        for bundle_id, tractogram_file in enumerate(tractograms):
+            # Load without requiring bundle_ID from disk
             sft = self._load_and_process_sft(tractogram_file, header, dps_keys)
 
+            # Map bundle index to bundle name (filename without extension)
+            bundle_dict[bundle_id] = Path(tractogram_file).stem
             if sft is not None:
                 # Compute euclidean lengths (rasmm space)
                 sft.to_space(Space.RASMM)
                 output_lengths.extend(length(sft.streamlines))
-
                 # Sending to common space
                 sft.to_vox()
                 sft.to_corner()
 
+                
+                # Generate bundle_ID
+                nb_sl = len(sft.streamlines)
+                sft.data_per_streamline["bundle_ID"] = np.full(nb_sl, bundle_id, dtype=np.int16)
                 # Add processed tractogram to final big tractogram
                 if final_sft is None:
                     final_sft = sft
                 else:
-                    final_sft = concatenate_sft([final_sft, sft],
-                                                erase_metadata=False)
+                    final_sft = concatenate_sft([final_sft, sft], erase_metadata=False)
+                            
 
         if self.save_intermediate:
             output_fname = self.intermediate_folder.joinpath(
                 subj_id + '_' + group + '.trk')
             logging.debug("      *Saving intermediate streamline group {} "
-                          "into {}.".format(group, output_fname))
+                        "into {}.".format(group, output_fname))
             # Note. Do not remove the str below. Does not work well
             # with Path.
             save_tractogram(final_sft, str(output_fname))
@@ -752,7 +831,7 @@ class HDF5Creator:
             conn_matrix = np.load(conn_file)
             conn_matrix = conn_matrix > 0
 
-        return final_sft, output_lengths, conn_matrix, conn_info, dps_keys
+        return final_sft, output_lengths, conn_matrix, conn_info, dps_keys,bundle_dict
 
     def _load_and_process_sft(self, tractogram_file, header, dps_keys):
         # Check file extension
@@ -773,7 +852,7 @@ class HDF5Creator:
         # Loading tractogram and sending to wanted space
         logging.info("       - Processing tractogram {}"
                      .format(os.path.basename(tractogram_file)))
-        sft = load_tractogram(str(tractogram_file), header)
+        sft = load_tractogram(str(tractogram_file), header,bbox_valid_check=False)
 
         # Check for required dps_keys
         for dps_key in dps_keys:

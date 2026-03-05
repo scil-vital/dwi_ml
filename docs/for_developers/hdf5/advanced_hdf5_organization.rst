@@ -9,12 +9,21 @@ Here is the output format created by dwiml_create_hdf5_dataset.py and recognized
 
 .. code-block:: bash
 
+    # Main attributes
     hdf5.attrs["version"] = the database version.
     hdf5.attrs['training_subjs'] = the list of str representing the training subjects.
     hdf5.attrs['validation_subjs'] = the list of str representing the validation subjects.
     hdf5.attrs['testing_subjs'] = the list of str representing the testing subjects.
 
+    # If you have many bundles in your streamline groups (ex, 'group1'),
+    # the original file is saved as data per streamline, as indices.
+    # Use the dict below to know which index refers to which file.
+    hdf5['bundle_dict']['group1']
+
+    # For each subject:
     # hdf5.keys() are the subjects.
+
+    # General information for the subject
     hdf5['subj1'].keys() are the groups from the config_file.
     hdf5['subj1']['group1'].attrs['type'] = 'volume' or 'streamlines'.
     hdf5['subj1']['group1']['data'] is the data.
@@ -41,5 +50,12 @@ Here is the output format created by dwiml_create_hdf5_dataset.py and recognized
     hdf5['sub1']['group1']['affine']
     hdf5['sub1']['group1']['voxres']
     hdf5['sub1']['group1']['nb_features']
+
+ 
+    
+    #Bundle_ID is an integer array mapping each streamline
+    # to its originating bundle.
+    hdf5['subj1']['group1']['data_per_streamline']['bundle_ID']
+
 
 If this is not enough for you, you may investigate our file ``dwi_ml/data/hdf5/hdf5_creation.py``.

@@ -32,6 +32,8 @@ from dwi_ml.experiment_utils.prints import format_dict_to_str
 from dwi_ml.experiment_utils.timer import Timer
 from dwi_ml.io_utils import add_memory_args
 from dwi_ml.models.projects.learn2track_model import Learn2TrackModel
+from dwi_ml.training.batch_loaders import (
+    DWIMLStreamlinesBatchLoader, DWIMLBatchLoaderOneInput)
 from dwi_ml.models.projects.learn2track_utils import add_model_args
 from dwi_ml.models.utils.direction_getters import check_args_direction_getter
 from dwi_ml.training.projects.learn2track_trainer import Learn2TrackTrainer
@@ -39,6 +41,7 @@ from dwi_ml.training.utils.batch_samplers import (add_args_batch_sampler,
                                                   prepare_batch_sampler)
 from dwi_ml.training.utils.batch_loaders import (add_args_batch_loader,
                                                  prepare_batch_loader)
+from dwi_ml.models.main_models import MainModelAbstract
 from dwi_ml.training.utils.experiment import (
     add_mandatory_args_experiment_and_hdf5_path)
 from dwi_ml.training.utils.trainer import run_experiment, add_training_args, \
@@ -65,6 +68,11 @@ def init_from_args(args, sub_loggers_level):
     # Prepare the dataset
     dataset = prepare_multisubjectdataset(args, load_testing=False,
                                           log_level=sub_loggers_level)
+    # Preparing the batch
+    modelAbstract=MainModelAbstract(experiment_name=args.experiment_name, 
+                             step_size=args.step_size, 
+                             compress_lines=args.compress_th,)
+    group_loader= prepare_batch_loader(dataset, modelAbstract, args, sub_loggers_level)
 
     # Preparing the model
     # (Direction getter)
@@ -99,7 +107,12 @@ def init_from_args(args, sub_loggers_level):
             neighborhood_type=args.neighborhood_type,
             neighborhood_radius=args.neighborhood_radius,
             neighborhood_resolution=args.neighborhood_resolution,
-            log_level=sub_loggers_level)
+            log_level=sub_loggers_level,
+            # Bundle options 
+            use_bundle_ids=group_loader.use_bundle_ids ,
+            bundle_emb_dim=group_loader.bundle_emb_dim,
+            num_bundles=group_loader.num_bundles,
+            predict_bundle_ids=args.predict_bundle_ids)
 
         logging.info("Learn2track model final parameters:" +
                      format_dict_to_str(model.params_for_checkpoint))

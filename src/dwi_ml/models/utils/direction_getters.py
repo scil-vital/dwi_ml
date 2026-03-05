@@ -16,7 +16,7 @@ def add_direction_getter_args(p: ArgumentParser, gaussian_fisher_args=True):
              "smooth-sphere-classification, gaussian, \ngaussian-mixture, "
              "fisher-von-mises, fisher-von-mises-mixture.}\n"
              "With sphere classification, the default sphere is "
-             "symmetric724.")
+             "symmetric724. Default: cosine-regression.")
     p.add_argument(
         '--dg_dropout', type=float, metavar='r', default=0.,
         help="Dropout ratio for the direction getter. Default: 0.")
@@ -62,6 +62,13 @@ def add_direction_getter_args(p: ArgumentParser, gaussian_fisher_args=True):
         help="In the case of regression, Gaussian and Fisher von Mises models: "
              "defines the \nweight of the EOS loss: "
              "final_loss = loss + weight * eos_loss")
+
+    p.add_argument(
+            '--predict_bundle_ids',
+            action='store_true',
+            help='If set, the model will predict the bundle ID for each streamline '
+                'using an additional classification head.'
+        )
 
 
 def check_args_direction_getter(args):

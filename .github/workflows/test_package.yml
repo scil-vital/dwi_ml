@@ -45,7 +45,9 @@ jobs:
 
       - name: Tests
         run: |
-          pytest src/dwi_ml --cov-report term-missing:skip-covered
+          pytest src/dwi_ml --cov=src/dwi_ml \
+              --cov-report term-missing:skip-covered \
+              --cov-report xml
 
       - name: Save test results and coverage
         uses: actions/upload-artifact@v4

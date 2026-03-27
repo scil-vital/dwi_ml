@@ -154,6 +154,7 @@ def visualize_logs(logs_data: Dict[str, Dict[str, np.ndarray]],
             _plot_one_graph(axs[ax], logs_data, exp_names, graphs_logs[i],
                             scalar_map, writer, remove_outliers,
                             graphs_titles[i], xlim, graphs_ylim[i])
+            axs[ax].axhline(0)
 
         plt.tight_layout()
         if save_figs is not None:

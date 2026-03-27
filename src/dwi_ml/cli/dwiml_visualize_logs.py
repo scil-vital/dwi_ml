@@ -23,7 +23,7 @@ Finally, you can also supply operations to apply to your logs, amongst:
 >> --graph "Training minus validation" diff(log1, log2) 0 100
 ** Note that we only accept one operation per graph. The following is not
 supported:
->> --graph "Training minus validation" diff(log1, log2) log 3 0 100
+>> --graph "Training minus validation" diff(log1, log2) log3 0 100
 
 ------------------------------
 """

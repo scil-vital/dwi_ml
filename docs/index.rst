@@ -113,6 +113,8 @@ Page in this section explain more in details how the code is implemented in pyth
     - :ref:`tracking`
 
 
+.. --------------------Hidden toctree: For developers---------------
+
 .. toctree::
     :maxdepth: 3
     :caption: Explanations for developers
@@ -123,3 +125,13 @@ Page in this section explain more in details how the code is implemented in pyth
     for_developers/training/training
     for_developers/data_management/index
     for_developers/testing/tracking_objects
+
+
+.. --------------------Hidden toctree: scripts ---------------
+
+.. toctree::
+    :maxdepth: 2
+    :caption: Scripts (--help)
+    :hidden:
+
+    automatic_doc/index_automatic.rst

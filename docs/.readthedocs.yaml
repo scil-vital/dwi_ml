@@ -15,8 +15,7 @@ build:
 
   jobs:
     pre_build:
-      - export SETUPTOOLS_USE_DISTUTILS=stdlib
-      - pip install --upgrade pip
+      - pip install --upgrade pip setuptools wheel
       - pip install .
       - bash docs/build_automatic_help_docs.sh
 

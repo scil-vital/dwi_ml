@@ -58,7 +58,7 @@ def main():
         # 1) Finding the jupyter notebook
         dwi_ml_dir = dirname(dirname(__file__))
         raw_ipynb_filename = os.path.join(
-            dwi_ml_dir, 'dwi_ml/testing/projects/tt_visualize_weights.ipynb')
+            dwi_ml_dir, 'projects/Transformers/tester/tt_visualize_weights.ipynb')
         if not os.path.isfile(raw_ipynb_filename):
             raise ValueError(
                 "We could not find the jupyter notebook file. Probably a "

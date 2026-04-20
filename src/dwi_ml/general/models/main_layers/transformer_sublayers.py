@@ -29,10 +29,11 @@ def do_not_share_linear_weights(attn: MultiheadAttention, d_model):
 
     # Overriding some parameters in the self attention.
     # Ugly but.... Torch does not have a parameter to NOT share linear
-    # weights. In their code, their only NOT share weights when dimensions
+    # weights. In their code, they only NOT share weights when dimensions
     # are not the same. This is not our case. This is saved in their
     # parameter _qkv_same_embed_dim. By changing this, we change their
-    # forward call to the MultiHeadAttention in self.self_attn.
+    # forward call to the MultiHeadAttention in self.self_attn. Heavier in
+    # memory because it thinks they are not the same size.
     attn._qkv_same_embed_dim = False
     attn.q_proj_weight = Parameter(
         torch.empty((d_model, d_model), **factory_kwargs))

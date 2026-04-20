@@ -29,7 +29,14 @@ class ModifiedTransformerEncoder(TransformerEncoder):
             raise ValueError("Encoder layer should be of type {}. Got {}"
                              .format(ModifiedTransformerEncoderLayer.__name__,
                                      type(encoder_layer)))
-        super().__init__(encoder_layer, *args, **kw)
+
+        # Need to enforce enable_nested_tensor=False. This is because it thinks
+        # that the Q, K, V matrices are not the same size. Not true but see
+        # comment in the ModifiedTransformerEncoderLayer
+        # Else, we get warnings that it gets set to False automatically.
+        # Annoying.
+        super().__init__(encoder_layer, *args, **kw,
+                         enable_nested_tensor=False)
 
     def forward(self, src: Tensor, mask: Optional[Tensor] = None,
                 src_key_padding_mask: Optional[Tensor] = None,

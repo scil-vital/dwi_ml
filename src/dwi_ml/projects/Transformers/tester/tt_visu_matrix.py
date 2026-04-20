@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import logging
+
 import numpy as np
 
 from matplotlib import pyplot as plt
@@ -17,7 +19,8 @@ def show_model_view_as_imshow(
     size_x = len(tokens_x)
     size_y = len(tokens_y)
 
-    (options_main, options_range_length, explanation, rescale_name,
+    (options_cmap_attention_values, options_cmap_attention_position,
+     explanation, rescale_name,
      thresh) = get_visu_params_from_options(
         rescale_0_1, rescale_non_lin, rescale_z)
 
@@ -44,19 +47,25 @@ def show_model_view_as_imshow(
             ax_cbar_length = divider.append_axes("right", size=0.3, pad=0.55)
 
             # Plot the main image
-            im_main = axs[h].imshow(a, **options_main)
+            im_main = axs[h].imshow(a, **options_cmap_attention_values,
+                                    interpolation='None')
 
             # Bottom and right images
             _ = ax_mean_att.imshow(mean_att[None, :],
-                                   **options_main, aspect='auto')
+                                   **options_cmap_attention_values,
+                                   aspect='auto', interpolation='None')
             im_b = ax_importance.imshow(importance[None, :],
-                                        **options_range_length, aspect='auto')
+                                        **options_cmap_attention_position,
+                                        aspect='auto', interpolation='None')
             _ = ax_lookedfar.imshow(looked_far[:, None],
-                                    **options_range_length, aspect='auto')
+                                    **options_cmap_attention_position,
+                                    aspect='auto', interpolation='None')
             _ = ax_max.imshow(max_pos[:, None],
-                              **options_range_length, aspect='auto')
+                              **options_cmap_attention_position,
+                              aspect='auto', interpolation='None')
             _ = ax_nb_looked.imshow(nb_looked[:, None],
-                                    **options_range_length, aspect='auto')
+                                    **options_cmap_attention_position,
+                                    aspect='auto', interpolation='None')
 
             # Set the titles (see also suptitle below)
             if average_heads:
@@ -118,5 +127,7 @@ def show_model_view_as_imshow(
                      .format(layer_title, explanation))
 
         name = fig_prefix + layer_name + '.png'
-        print("Saving matrix : {}".format(name))
+        print("Saving matrix : {}".format(layer_name))
+        logging.info("Saved as {}".format(name))
         plt.savefig(name)
+        plt.close()

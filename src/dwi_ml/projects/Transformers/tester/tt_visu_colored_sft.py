@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from copy import deepcopy
 from typing import Tuple
 
@@ -17,7 +18,7 @@ from dwi_ml.projects.Transformers.tester.tt_visu_utils import (
 def color_sft_duplicate_lines(
         sft: StatefulTractogram, lengths, prefix_name: str,
         attentions_per_line: list, attention_names: Tuple,
-        average_heads, average_layers, group_with_max, explanation):
+        average_heads, average_layers, group_with_max, explanation_rescaling):
     """
     Saves the whole weight matrix on streamlines of all lengths.
 
@@ -101,11 +102,11 @@ def color_sft_duplicate_lines(
         else:
             whole_sft = whole_sft + tmp_sft
 
-    print("  **The initial {} streamlines were transformed into {} "
+    print("**The initial {} streamlines were transformed into {} "
           "streamlines of \n"
-          "     variable lengths. Color for streamline i of length N is the "
-          "attention's value \n"
-          "     at each point when deciding the next direction at point N."
+          "variable lengths. Color for streamline i of length N is the "
+          "attention's \n"
+          "value at each point when deciding the next direction at point N."
           .format(len(sft), len(whole_sft.streamlines)))
     del sft
     del tmp_sft
@@ -126,17 +127,18 @@ def color_sft_duplicate_lines(
         # Not using a fixed vmax, vmin. Uses the bundle's data.
         # Easier to view.
         colored_sft, cbar_fig = _color_sft_from_dpp(
-            colored_sft, key, prepare_fig=True, title=explanation)
+            colored_sft, key, prepare_fig=True, title=explanation_rescaling)
 
         filename_prefix = prefix_name + '_colored_multi_length_' + key
         filename_trk = filename_prefix + '.trk'
         filename_cbar = filename_prefix + '_cbar.png'
-        print("Saving {} with dpp: {}"
-              .format(filename_trk, list(colored_sft.data_per_point.keys())))
+        logging.info("Saving {} with dpp: {}"
+                     .format(filename_trk,
+                             list(colored_sft.data_per_point.keys())))
 
         save_tractogram(colored_sft, filename_trk, bbox_valid_check=False)
         plt.savefig(filename_cbar)
-
+        plt.close()
 
 def color_sft_x_y_projections(
         sft: StatefulTractogram, prefix_name: str,
@@ -155,18 +157,28 @@ def color_sft_x_y_projections(
         - max_pos
         - nb_looked
     """
-    (options_main, options_range_length, explanation_part2,
-     rescale_name, thresh) = get_visu_params_from_options(
+    (options_cmap_attention_values, options_cmap_attention_position,
+     explanation_part2, rescale_name, thresh) = get_visu_params_from_options(
         rescale_0_1, rescale_non_lin, rescale_z)
 
     explanation += '\n' + explanation_part2
+
+    print("\n\n" + explanation_part2)
 
     # Supposing the same nb layers / head for each type of attention.
     nb_layers = len(attentions_per_line[0][0])
     nb_heads = attentions_per_line[0][0][0].shape[0]
 
-    for i, att_type in enumerate(attentions_per_line):
+    # Looping on attentions. Ex: Decoder, encoder, cross.
+    print("\nProcessing...")
+    for i, attentions in enumerate(attentions_per_line):
+        print("Attention: ", attention_names[i])
+
+        # Looping on layer
         for layer in range(nb_layers):
+            print("   Layer: ", layer)
+
+            # Prefix
             if average_layers:
                 if group_with_max:
                     layer_prefix = '_maxL'
@@ -174,7 +186,10 @@ def color_sft_x_y_projections(
                     layer_prefix = '_meanL'
             else:
                 layer_prefix = 'l{}'.format(layer)
+
+            # Loop on head
             for head in range(nb_heads):
+                print("       Head: ", head)
                 if average_heads:
                     if group_with_max:
                         head_suffix = '_maxH'
@@ -189,7 +204,7 @@ def color_sft_x_y_projections(
                 all_maxp = []
                 all_nb_looked = []
                 for s in range(len(sft.streamlines)):
-                    a = att_type[s][layer][head, :, :]
+                    a = attentions[s][layer][head, :, :]
                     a, mean_att, nb_usage, looked_far, max_p, nb_looked = \
                         prepare_projections_from_options(
                             a, rescale_0_1, rescale_non_lin, rescale_z)
@@ -203,37 +218,32 @@ def color_sft_x_y_projections(
                 filename_prefix = prefix_name + attention_names[i] + \
                     layer_prefix + head_suffix
 
-                # Mean att: not fixing the vmin, vmax.
-                name = 'x_mean_att'
-                sft.data_per_point[name] = all_mean_att
-                _color_sft_from_dpp(sft, name, **options_range_length)
-                filename_trk = filename_prefix + '_' + name + '.trk'
-                print("Saving {} with dpp {}"
-                      .format(filename_trk, list(sft.data_per_point.keys())))
-                save_tractogram(sft, filename_trk, bbox_valid_check=False)
-                del sft.data_per_point[name]
-                del sft.data_per_point['color']
-
-                # Others: Range is 0 - 1 (where 1 = 100% of streamline length)
+                # Saving various attentions
+                # Range is 0 - 1 (where 1 = 100% of streamline length)
                 # Not saving the colorbar.
-                names = ('x_nb_usage',
+                names = ('x_mean_att', 'x_importance',
                          'y_looked_far', 'y_max_pos', 'y_nb_looked')
-                data = (all_nb_usage,
+                data = (all_mean_att, all_nb_usage,
                         all_looked_far, all_maxp, all_nb_looked)
-                for name, vectors in zip(names, data):
+                options = (options_cmap_attention_values,
+                           options_cmap_attention_position,
+                           options_cmap_attention_position,
+                           options_cmap_attention_position,
+                           options_cmap_attention_position)
+                for name, vectors, options_cmap in zip(names, data, options):
                     sft.data_per_point[name] = vectors
-                    _color_sft_from_dpp(sft, name, **options_range_length)
+                    _color_sft_from_dpp(sft, name, **options_cmap)
                     filename_trk = filename_prefix + '_' + name + '.trk'
-                    print("Saving {} with dpp {}"
-                          .format(filename_trk,
-                                  list(sft.data_per_point.keys())))
+                    logging.info("Saving {} with dpp {}"
+                                 .format(filename_trk,
+                                         list(sft.data_per_point.keys())))
                     save_tractogram(sft, filename_trk, bbox_valid_check=False)
                     del sft.data_per_point[name]
                     del sft.data_per_point['color']
 
 
 def _color_sft_from_dpp(sft, key, cmap='viridis', vmin=None, vmax=None,
-                        prepare_fig: bool = False, title=None, **kw):
+                        prepare_fig: bool = False, title=None):
     cmap = get_lookup_table(cmap)
     tmp = [np.squeeze(sft.data_per_point[key][s]) for s in range(len(sft))]
     data = np.hstack(tmp)

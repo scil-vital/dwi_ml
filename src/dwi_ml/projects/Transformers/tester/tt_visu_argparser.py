@@ -1,22 +1,24 @@
 # -*- coding: utf-8 -*-
 
 """
-TT weights visualisation choices.
+TT weights vizualisation choices.
+
+** Example output names below are for the encoder. The same outputs are named
+decoder_ or cross_ for other attention types.
+
+ ** Currently, options bertviz and as_matrices use only the first
+ streamline in the data. Then, a file _single_streamline.trk is saved.
 
 Output options. Choose any number (at least one).
-     ** Example output names below are for the encoder. The same outputs
-     are named decoder_ or cross_ for other attention types.
-     ** See the --prefix option. Below are listed the output suffixes. Suffixes
-     with * include layer and head information.
-     ** Currently, options bertviz and as_matrices use only the first
-     streamline in the data. Then, a file _single_streamline.trk is saved.
 
     1) 'as_matrices': Shows attention as matrices.
        - Outputs: _matrix_encoder.png
        - N.B. If bertviz is also chosen, matrices will show in the html file.
+
     2) 'bertviz': Shows attention using bertviz head_view visualisation.
        - Outputs: _bertviz.html, _bertviz.ipynb, _bertviz.config
-       - Will create a html file that can be viewed (see --out_dir)
+       - The main output is the html file.
+
     3) 'color_multi_length': Saves a colored tractogram. Streamlines are
        duplicated at all lengths. Color of the streamline of length n is the
        weight of each point when getting the next direction at point n. This is
@@ -25,6 +27,7 @@ Output options. Choose any number (at least one).
        a specific point.
        - Outputs: _encoder_colored_multi_length_*.trk,
                   _encoder_colored_multi_length_cbar.png
+
     4) 'color_x_y_summary': Saves two colored tractogram:
        - Projection on x: This is a measure of the importance of each
        point on the streamline.
@@ -44,6 +47,7 @@ Output options. Choose any number (at least one).
              1 = looked very far.
        - The projection technique depends on the chosen rescaling options.
                   _encoder_colored_looked_far*.trk
+
     5) 'bertviz_locally': Run the bertviz without using jupyter.
        (Debugging purposes. Output will not show, but html stuff will print
        in the terminal.)
@@ -141,14 +145,10 @@ def build_argparser_transformer_visu():
     gg = g.add_mutually_exclusive_group()
     gg.add_argument('--group_heads', action='store_true',
                     help="If true, average all heads (per layer, per "
-                         "attention type).\n"
-                         "To regroup using maximum instead, use "
-                         "--group_with_max")
+                         "attention type).")
     gg.add_argument('--group_all', action='store_true',
                     help="If true, average all heads in all layers (per "
-                         "attention type).\n"
-                         "To regroup using maximum instead, use "
-                         "--group_with_max")
+                         "attention type).")
     g.add_argument('--group_with_max', action='store_true',
                    help="Default grouping option is to average heads. Use "
                         "this option to group \nhead using their maximal "

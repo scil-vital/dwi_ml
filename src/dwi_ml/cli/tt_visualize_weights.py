@@ -68,12 +68,14 @@ def main():
         # 2) Verify that output dir exists but not the html output files.
         args = get_out_dir_and_create(args)
 
-        out_html_filename = args.out_prefix + 'tt_bertviz.html'
-        out_html_file = os.path.join(args.out_dir, out_html_filename)
+        bertviz_out = os.path.join(args.out_dir, 'bertviz')
+        out_html_filename = os.path.join(
+            bertviz_out, args.out_prefix + 'tt_bertviz.html')
+        out_html_file = os.path.join(bertviz_out, out_html_filename)
         out_ipynb_file = os.path.join(
-            args.out_dir, args.out_prefix + 'tt_bertviz.ipynb')
+            bertviz_out, args.out_prefix + 'tt_bertviz.ipynb')
         out_config_file = os.path.join(
-            args.out_dir, args.out_prefix + 'tt_bertviz.config')
+            bertviz_out, args.out_prefix + 'tt_bertviz.config')
         assert_outputs_exist(parser, args,
                              [out_html_file, out_ipynb_file, out_config_file])
 

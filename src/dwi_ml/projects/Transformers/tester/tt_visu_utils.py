@@ -210,17 +210,22 @@ def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
     """
     Defines options for prefix names, colormaps, vmin, vmax, explanation text,
     etc.
+
+    Returns
+    -------
+    options_imshow: dict
+        Useful for our plt showing.
+
+    options_cmap: dict
+        Useful for the preparation of colormaps.
     """
-    vmin_main, vmax_main, cmap_main = (0, 1, 'turbo')
-    vmin_pos, vmax_pos, cmap_pos = (0, 1, 'CMRmap')
+    vmin_main, vmax_main = (0, 1)
     if rescale_0_1:
         rescale_name = 'rescale_0_1'
     elif rescale_non_lin:
         rescale_name = 'rescale_non_lin'
-        # cmap_main = 'coolwarm'
     elif rescale_z:
         rescale_name = 'rescale_z'
-        #  Range: We could limit it to help view better. Ex: ±3 std.
         vmin_main = -3
         vmax_main = 3
     else:
@@ -228,6 +233,7 @@ def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
 
     thresh = THRESH_IMPORTANT[rescale_name]
     explanation = (
+        'Mean_attention: Simply the average attention at ??\n'
         'Importance: Number of times that this point was very important '
         '(>{:.2f}).\n'
         "Looked far: Mean index of the important points (>{:.2f}) to decide "
@@ -236,17 +242,16 @@ def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
         "Nb_looked: Number of points of important attention."
         .format(thresh, thresh))
 
-    options_main = {'interpolation': 'None',
-                    'cmap': cmap_main,
-                    'vmin': vmin_main,
-                    'vmax': vmax_main}
+    options_cmap_rescaled_att = {'cmap': 'turbo',
+                                 'vmin': vmin_main,
+                                 'vmax': vmax_main}
 
-    options_position = {'interpolation': 'None',
-                        'cmap': cmap_pos,
-                        'vmin': vmin_pos,
-                        'vmax': vmax_pos}
+    options_cmap_position_of_attention = {'cmap': 'CMRmap',
+                                          'vmin': 0,
+                                          'vmax': 1}
 
-    return options_main, options_position, explanation, rescale_name, thresh
+    return (options_cmap_rescaled_att, options_cmap_position_of_attention,
+            explanation, rescale_name, thresh)
 
 
 def prepare_projections_from_options(a, rescale_0_1, rescale_non_lin,
@@ -305,8 +310,25 @@ def get_config_filename():
 def get_out_dir_and_create(args):
     # Define out_dir as experiment_path/visu_weights if not defined.
     # Create it if it does not exist.
+
+    # If ran through the jupyter notebook, ran twice. So we need to kepp
+    # all the "if does not exist"
     if args.out_dir is None:
         args.out_dir = os.path.join(args.experiment_path, 'visu_weights')
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
+
+    def create_if_not_exist(path):
+        if not os.path.exists(path):
+            os.mkdir(path)
+
+    if args.as_matrices:
+        create_if_not_exist(os.path.join(args.out_dir, 'as_matrices'))
+    if args.bertviz:
+        create_if_not_exist(os.path.join(args.out_dir, 'bertviz'))
+    if args.color_multi_length:
+        create_if_not_exist(os.path.join(args.out_dir, 'color_multi_length'))
+    if args.color_x_y_summary:
+        create_if_not_exist(os.path.join(args.out_dir, 'color_x_y_summary'))
+
     return args

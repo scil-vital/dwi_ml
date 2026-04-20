@@ -62,7 +62,7 @@ def tt_visualize_weights_main(args, parser):
     # Whole filenames depend on rescaling options and grouping option.
     # Using the prefix to find any output.
     args = get_out_dir_and_create(args)
-    prefix_total = os.path.join(args.out_dir, args.out_prefix)
+    prefix_total = os.path.join(args.out_dir, '*', args.out_prefix)
     out_files = glob.glob(prefix_total + '*colored*.trk') + \
         glob.glob(prefix_total + '*.png')
 
@@ -93,7 +93,7 @@ def tt_visualize_weights_main(args, parser):
 
     # ------------ Now show all
     _visu_encoder_decoder(
-        weights, sft, model, average_heads, average_layers, args, prefix_total)
+        weights, sft, model, average_heads, average_layers, args)
 
     if args.show_now:
         print("Showing matplotlib figures now. Everything is done, you can "
@@ -159,7 +159,7 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
 
 def _visu_encoder_decoder(
         weights: Tuple, sft: StatefulTractogram, model,
-        average_heads: bool, average_layers: bool, args, prefix_name: str):
+        average_heads: bool, average_layers: bool, args):
     """
     Parameters
     ----------
@@ -177,8 +177,6 @@ def _visu_encoder_decoder(
     average_layers: bool,
         Argparser's default = False. Must be False if average_head is False.
     args: Namespace
-    prefix_name: str
-        Includes the output path.
     """
     if len(weights) == 3:
         has_decoder = True
@@ -195,9 +193,17 @@ def _visu_encoder_decoder(
 
     # 2. Arrange the weights
     weights = list(weights)
-    explanation = None
+    print(
+        "\n\n-------------- Found the following architecture: --------------")
+    print("Number of layers: {}".format(len(weights[0])))
+    print("Number of heads: {}".format(weights[0][0].shape[1]))
+    print("Display options: Average heads: {}. Average layers: {}"
+          .format(average_heads, average_layers))
+
+    print("\n================ Rescaling the attention with option ==============")
+    explanation_rescale = None
     for i in range(len(weights)):
-        weights[i], explanation = reshape_unpad_rescale_attention(
+        weights[i], explanation_rescale = reshape_unpad_rescale_attention(
             weights[i], average_heads, average_layers, args.group_with_max,
             lengths, args.rescale_0_1, args.rescale_z, args.rescale_non_lin)
 
@@ -206,24 +212,30 @@ def _visu_encoder_decoder(
     else:
         attention_names = ('encoder',)
 
+    print(explanation_rescale)
+
+    print("\n\n================ Visu on the whole tractogram ==============")
+
     if args.color_multi_length:
         print(
-            "\n-------------- Preparing the colors for each length of "
+            "\n\n-------------- Preparing the colors for each length of "
             "each streamline --------------")
+        prefix_name = os.path.join(args.out_dir, 'color_multi_length', args.out_prefix)
         color_sft_duplicate_lines(sft, lengths, prefix_name, weights,
                                   attention_names, average_heads,
                                   average_layers, args.group_with_max,
-                                  explanation)
+                                  explanation_rescale)
 
     if args.color_x_y_summary:
         print(
-            "\n-------------- Preparing the colors summary (nb_usage, "
+            "\n\n-------------- Preparing the colors summary (nb_usage, "
             "where looked, etc) for each streamline --------------")
+        prefix_name = os.path.join(args.out_dir, 'color_x_y_summary', args.out_prefix)
         color_sft_x_y_projections(
             sft, prefix_name, weights, attention_names,
             average_heads, average_layers, args.group_with_max,
             args.rescale_0_1, args.rescale_non_lin, args.rescale_z,
-            explanation)
+            explanation_rescale)
 
     if args.bertviz or args.as_matrices:
         if args.color_multi_length or args.color_x_y_summary:
@@ -235,9 +247,11 @@ def _visu_encoder_decoder(
             sft = sft[[line_id]]
         # Else we already chose one streamline before running the whole model.
 
-        name = prefix_name + '_single_streamline.trk'
-        print("Saving the single line used for matrices, for debugging "
-              "purposes, as ", name)
+        print("\n\n================ Visu on a single streamline ============== \n"
+              "Saving the single line used for matrices / bertviz, for debugging "
+              "purposes.\n")
+        name = os.path.join(args.out_dir, args.out_prefix) + '_single_streamline.trk'
+        logging.info("Saved as {}".format(name))
         save_tractogram(sft, name, bbox_valid_check=False)
 
         this_seq_len = lengths[0]
@@ -261,8 +275,10 @@ def _visu_encoder_decoder(
             print(
                 "\n\n-------------- Preparing the attention as a matrix for "
                 "one streamline --------------")
+            prefix_name = os.path.join(args.out_dir, 'as_matrices', args.out_prefix)
             for i in range(len(weights)):
                 print("Matrix for ", attention_names[i])
+
                 show_model_view_as_imshow(
                     weights[i], prefix_name + '_matrix_' + attention_names[i],
                     *weights_token[i], args.rescale_0_1, args.rescale_z,
@@ -279,10 +295,19 @@ def _visu_encoder_decoder(
                               for att in weights[i]]
 
             if has_decoder:
+                print(
+                    "\n\n---- Head view: ----")
                 encoder_decoder_show_head_view(
                     *weights, encoder_tokens, decoder_tokens)
+
+                print(
+                    "\n\n---- Model view: ----")
                 encoder_decoder_show_model_view(
                     *weights, encoder_tokens, decoder_tokens)
             else:
+                print(
+                    "\n\n---- Head view: ----")
                 encoder_show_head_view(*weights, encoder_tokens)
+                print(
+                    "\n\n---- Model view: ----")
                 encoder_show_model_view(*weights, encoder_tokens)

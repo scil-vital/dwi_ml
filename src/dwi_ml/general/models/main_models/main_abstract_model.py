@@ -187,6 +187,7 @@ class MainModelAbstract(torch.nn.Module):
         logger.debug("Loading model from saved parameters:" +
                      format_dict_to_str(params))
         params.update(log_level=log_level)
+        print("Loading a model:", cls.__name__)
         model = cls(**params)
 
         model_state = cls._load_state(model_dir)

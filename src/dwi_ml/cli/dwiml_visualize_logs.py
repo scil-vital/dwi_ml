@@ -8,19 +8,28 @@ default, all logs are shown in a separate graph, up to 3 graphs per figure.
 
 The number of graphs per figure can be modified with --nb_plots_per_fig.
 
+Specifying which logs
+---------------------
 You may also specify the logs you want to plot. Use the option --graph, with
-the graph's title and the name(s) of the logs to add to one graph. This option
-can be used many times. Ex:
+the graph's title and the name(s) of the logs to add to one graph. Ex:
 >> --graph "Training loss" train_loss_monitor_per_epoch
->> --graph "Some plot" log1 --graph "Two plots" log2 log3
+>> --graph "Two plots" log2 log3
 
+You may use many times the option --graph.
+
+Specifying y-axis limits
+------------------------
 Optionally, you can add the 2-valued ylims for each graph. These value will
 supersede the given --ylim, if any.
 >> --graph "Some plot" log1 0 100
 
+Operations on logs
+------------------
 Finally, you can also supply operations to apply to your logs, amongst:
 ['diff', 'sum']. Ex:
 >> --graph "Training minus validation" diff(log1, log2) 0 100
+>> --graph "Value1 plus value2" sum(log1, log2) 0 100
+
 ** Note that we only accept one operation per graph. The following is not
 supported:
 >> --graph "Training minus validation" diff(log1, log2) log3 0 100
@@ -62,7 +71,8 @@ def _build_arg_parser():
 
     g = p.add_argument_group("Figure options")
     g.add_argument("--graph", action='append', nargs='+', dest='graphs',
-                   help="See description above for usage.")
+                   help="See description above for usage."
+                        "If not set, will plot all logs in current directory.")
     g.add_argument("--nb_plots_per_fig", type=int, default=3, metavar='n',
                    help="Number of (rows) of plot per figure. Default: 3.")
     g.add_argument('--xlim', type=int, metavar='epoch_max',
@@ -86,7 +96,18 @@ def _build_arg_parser():
 
 
 def _parse_graphs_arg(parser, args):
-    """Parse args.graphs"""
+    """
+    Parse args.graphs. Possible options:
+    --graph title log_name ylim1 ylim2
+    --graph title diff(log1, log2) ylim1 ylim2
+
+    Returns
+    -------
+    graphs_titles: list
+    graphs_logs: list
+    graphs_ylims: list
+    graph_operations: list
+    """
     if args.graphs is None:
         return None, None, None, None
     else:
@@ -121,7 +142,7 @@ def _parse_graphs_arg(parser, args):
                 _ylims = None
 
             # Verify if user gave an operation (diff or sum)
-            _logs, operation = __parse_log_operations(parser, _logs)
+            _logs, operation = _parse_graphs_arg_operations(parser, _logs)
 
             # Remove .npy to log names if added by user.
             for i, log in enumerate(_logs):
@@ -141,7 +162,11 @@ def _parse_graphs_arg(parser, args):
         return graphs_titles, graphs_logs, graphs_ylims, graph_operations
 
 
-def __parse_log_operations(parser, graph):
+def _parse_graphs_arg_operations(parser, graph):
+    """
+    Used when parsing option args.graphs. Checking if the operation uses
+    diff or sum.
+    """
     if len(graph) == 1:
         _graph = graph[0]
         if _graph[0:5] == 'diff(':
@@ -171,7 +196,7 @@ def __parse_log_operations(parser, graph):
 
 def _load_all_logs(parser, args, logs_path, previous_graphs):
     """
-    Load all logs in an experiment's dir (no option --graph was supplied)
+    Load all logs in an experiment's dir (if no option --graph was supplied)
     """
     logging.debug("Loading all logs for that experiment.")
     files_to_load = list(logs_path.glob('*.npy'))
@@ -203,7 +228,8 @@ def _load_all_logs(parser, args, logs_path, previous_graphs):
 def _load_chosen_logs(parser, args, logs_path, parsed_graphs,
                       graph_operations):
     """
-    Load only logs specified through --graph
+    Load only logs specified through if option --graph was given.
+    (args.graphs is already parsed)
     """
     logging.debug("Loading only chosen logs for that experiment")
     this_exp_dict = {}
@@ -275,7 +301,9 @@ def main():
     pil_logger = logging.getLogger('PIL')
     pil_logger.setLevel('WARNING')
 
+    # ---------------
     # Verifications
+    # ---------------
     if not (args.save_figures or args.show_now):
         parser.error("This script will plot nothing. Choose either --show_now "
                      "or --save_figures.")
@@ -291,9 +319,12 @@ def main():
             # Prefix given, but directory does not exist.
             parser.error("Output dir for figures does not exist.")
 
-    # Loop on all experiments
+    # ---------------
+    # Loop on all experiments to load all logs
+    # ---------------
     loaded_logs = {}  # dict of dicts
     for i, exp_path in enumerate(args.experiments):
+
         # Verifications for this experiment
         if not pathlib.Path(exp_path).exists():
             raise ValueError("Experiment folder does not exist: {}"
@@ -314,7 +345,9 @@ def main():
                                               graphs_logs, graphs_operation)
         loaded_logs[exp_name] = this_exp_dict
 
+    # ---------------
     # Formatting the final graphs choice.
+    # ---------------
     if args.graphs is None:
         graphs_titles = graphs_logs
         graphs_logs = [[log] for log in graphs_logs]
@@ -330,6 +363,9 @@ def main():
         graphs_ylims = [args.ylims if ylim is None else ylim
                         for ylim in graphs_ylims]
 
+    # ---------------
+    # MAIN CALL: Plotting everything
+    # ---------------
     _args = (loaded_logs, graphs_titles, graphs_logs, graphs_ylims,
              args.nb_plots_per_fig)
     kwargs = {'xlim': args.xlim,

@@ -71,7 +71,7 @@ def _plot_one_graph(ax, logs, exp_names, chosen_log_keys, scalar_map,
             style = log_styles[i % nb_styles]
             ax.plot([], [], label='{}: {}'.format(log_key, style))
 
-    ax.set_title(title)
+    ax.set_title(title, fontsize=20)
     ax.legend()
     if xlim is not None:
         ax.set_xlim([0, xlim])

@@ -113,6 +113,13 @@ def build_argparser_transformer_visu():
         '--out_dir', metavar='d',
         help="Output directory where to save the output files.\n"
              "Default: experiment_path/visu_weights")
+    g.add_argument(
+        '--cmap', default='jet',
+        help='A colormap choice recognized by matplotlib.\n'
+             'Suggestions: - viridis: from blue to yellow\n'
+             '             - jet: from blue to yellow to red\n'
+             '             - gnuplot2: from black to yellow\n'
+             '             - CMRmap: idem')
 
     # --------------
     # Options
@@ -158,14 +165,12 @@ def build_argparser_transformer_visu():
                         "(max of the rank use usefullness).")
 
     g = p.add_argument_group("Matrices options")
-    g.add_argument('--show_now', action='store_true',
-                   help="If set, shows the matrices on screen. Else, only "
-                        "saves them.")
     g.add_argument('--resample_plots', type=int, metavar='nb',
                    dest='resample_nb',
-                   help="Streamlines will be sampled (nb points) as decided "
-                        "by the model. \nHowever, attention shown as a matrix "
-                        "can be resampled.")
+                   help="Streamlines themselves will be sampled (nb points)\n"
+                        "as decided by the model's hyperparameters.\n"
+                        "However, attention shown as a matrix can be resampled "
+                        "afterwards.")
 
     g = add_memory_args(p)
     g.add_argument('--batch_size', type=int, metavar='n',

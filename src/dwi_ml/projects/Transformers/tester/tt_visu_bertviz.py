@@ -5,7 +5,7 @@ from bertviz import model_view, head_view
 
 # Currently, with our quite long sequences compared to their example, this
 # is a bit ugly.
-SHOW_MODEL_VIEW = False
+SHOW_MODEL_VIEW = True
 
 
 def print_head_view_help():

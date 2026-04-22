@@ -39,19 +39,23 @@ def tt_visualize_weights_main(args, parser):
     loads the models, runs it to get the attention, and calls the right visu
     method.
     """
+    logging.getLogger().setLevel(level=args.verbose)
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib.colorbar').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+
+
     # ------ Finalize parser verification
-    if not (args.as_matrices or args.bertviz or args.colored_multi_length or
-            args.colored_x_y_summary or args.bertviz_locally):
+    if not (args.as_matrices or args.bertviz or args.color_multi_length or
+            args.color_x_y_summary or args.bertviz_locally):
         parser.error("Expecting at least one visualisation option.")
 
     if args.resample_nb is not None and \
             not (args.as_matrices or args.bertviz or args.bertviz_locally):
         logging.warning("We only resample attention when visualizing matrices "
-                        "or bertviz. Not required with current visualization "
-                        "options. Ignoring.")
-
-    average_heads = args.group_heads or args.group_all
-    average_layers = args.group_all
+                        "or bertviz. Option --resample_plots not required "
+                        "with current visualization options. Ignoring.")
 
     # -------- Verify inputs and outputs
     assert_inputs_exist(parser, [args.hdf5_file, args.in_sft])
@@ -67,16 +71,6 @@ def tt_visualize_weights_main(args, parser):
         glob.glob(prefix_total + '*.png')
 
     assert_outputs_exist(parser, args, out_files)
-    if args.overwrite and len(out_files) > 0:
-        # logging.warning("Removing these files from a previous run: {}"
-        #                 .format(out_files))
-        for f in out_files:
-            if os.path.isfile(f):
-                os.remove(f)
-
-    sub_logger_level = 'WARNING'
-    logging.getLogger().setLevel(level=args.verbose)
-
     if args.use_gpu:
         if torch.cuda.is_available():
             logging.debug("We will be using GPU!")
@@ -87,23 +81,47 @@ def tt_visualize_weights_main(args, parser):
     else:
         device = torch.device('cpu')
 
-    # ------------ Ok. Loading and formatting attention.
+    # Verify now that suggested cmap exists
+    _ = plt.get_cmap(args.cmap)
+
+    # ------------ Ok. Loading and running transformer on batches
+    logging.debug("All inputs look ok. Running the Transformer!")
     sft, model, weights = _run_transformer_get_weights(
-        parser, args, sub_logger_level, device)
+        parser, args, sub_logger_level='WARNING', device=device)
+    logging.debug("Done! Preparing visualization of the weights!")
 
     # ------------ Now show all
+    average_heads = args.group_heads or args.group_all
+    average_layers = args.group_all
     _visu_encoder_decoder(
         weights, sft, model, average_heads, average_layers, args)
 
-    if args.show_now:
-        print("Showing matplotlib figures now. Everything is done, you can "
-              "close figures manually or enter ctrl + c safely.")
-        plt.show()
-
 
 def _run_transformer_get_weights(parser, args, sub_logger_level, device):
-    # 1. Load model
-    logging.debug("Loading the model")
+    """
+    Runs the transformer model on the input tractogram.
+
+    Parameters
+    ----------
+    parser: ArgParser
+    args: Namespace
+        Contains the main parameters for this function: experiment path and 
+        input tractogram, in particular.
+    sub_logger_level: str
+    device: torch.device
+
+    Returns
+    -------
+    sft: StatefulTractogram
+        The tractogram, formatted as required by the model (ex, resampling) and
+        by options in args (ex, reverse streamlines).
+    model: AbstractTransformerModel
+        The loaded model
+    weights: Tuple[list]
+        The attention weights
+    """
+    # 1. Load the model
+    logging.info("Loading the model")
     if args.use_latest_epoch:
         model_dir = os.path.join(args.experiment_path, 'checkpoint/model')
     else:
@@ -116,7 +134,7 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
         model_dir, log_level=sub_logger_level)
 
     # 2. Load SFT
-    logging.info("Loading tractogram. Note that space comptability "
+    logging.info("Loading then tractogram. Note that space compatibility "
                  "with training data will NOT be verified.")
     args.bbox_check = False
     sft = load_tractogram_with_reference(parser, args, args.in_sft)
@@ -128,11 +146,9 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
     if len(sft) > 1 and not (
             args.color_multi_length or args.color_x_y_summary):
         # Taking only one streamline
-        line_id = 0
-        logging.info("    Picking THE FIRST streamline ONLY to show with "
-                     "bertviz / show as matrices: #{} / {}."
-                     .format(line_id, len(sft)))
-        sft = sft[[line_id]]
+        logging.warning("Picking THE FIRST streamline ONLY to show with "
+                       "bertviz / show as matrices")
+        sft = sft[[0]]
 
     if args.reverse_lines:
         sft.streamlines = [np.flip(line, axis=0) for line in sft.streamlines]
@@ -177,6 +193,10 @@ def _visu_encoder_decoder(
     average_layers: bool,
         Argparser's default = False. Must be False if average_head is False.
     args: Namespace
+
+    Returns
+    -------
+    (nothing. Saves outputs on disk)
     """
     if len(weights) == 3:
         has_decoder = True
@@ -186,7 +206,7 @@ def _visu_encoder_decoder(
     # 1. Prepare the streamlines
     has_eos = model.direction_getter.add_eos
     if not has_eos:
-        logging.warning("No EOS in model. Will ignore the last point per "
+        logging.warning("No EOS in model. We will ignore the last point per "
                         "streamline")
         sft.streamlines = [s[:-1, :] for s in sft.streamlines]
     lengths = [len(s) for s in sft.streamlines]
@@ -200,31 +220,31 @@ def _visu_encoder_decoder(
     print("Display options: Average heads: {}. Average layers: {}"
           .format(average_heads, average_layers))
 
-    print("\n================ Rescaling the attention with option ==============")
+    print("\n============== Rescaling the attention with option ==============")
     explanation_rescale = None
     for i in range(len(weights)):
         weights[i], explanation_rescale = reshape_unpad_rescale_attention(
             weights[i], average_heads, average_layers, args.group_with_max,
             lengths, args.rescale_0_1, args.rescale_z, args.rescale_non_lin)
+    print(explanation_rescale)
+
+    print("\n\n================ Visu on the whole tractogram ==============")
 
     if has_decoder:
         attention_names = ('encoder', 'decoder', 'cross')
     else:
         attention_names = ('encoder',)
 
-    print(explanation_rescale)
-
-    print("\n\n================ Visu on the whole tractogram ==============")
-
     if args.color_multi_length:
         print(
             "\n\n-------------- Preparing the colors for each length of "
             "each streamline --------------")
-        prefix_name = os.path.join(args.out_dir, 'color_multi_length', args.out_prefix)
+        prefix_name = os.path.join(args.out_dir, 'color_multi_length', 
+                                   args.out_prefix)
         color_sft_duplicate_lines(sft, lengths, prefix_name, weights,
                                   attention_names, average_heads,
                                   average_layers, args.group_with_max,
-                                  explanation_rescale)
+                                  explanation_rescale, args.cmap)
 
     if args.color_x_y_summary:
         print(
@@ -235,17 +255,18 @@ def _visu_encoder_decoder(
             sft, prefix_name, weights, attention_names,
             average_heads, average_layers, args.group_with_max,
             args.rescale_0_1, args.rescale_non_lin, args.rescale_z,
-            explanation_rescale)
+            explanation_rescale, args.cmap)
 
     if args.bertviz or args.as_matrices:
+        # If only those options selected, we already chose one streamline before
+        # running the whole model to make it faster. Else, everything on the 
+        # full tractogram is already done, we can continue with only one 
+        # streamline.
         if args.color_multi_length or args.color_x_y_summary:
             # Taking only one streamline. Was not done yet.
-            line_id = 0
             logging.info("    Picking THE FIRST streamline ONLY to show with "
-                         "bertviz / show as matrices: #{} / {}."
-                         .format(line_id, len(sft)))
-            sft = sft[[line_id]]
-        # Else we already chose one streamline before running the whole model.
+                         "bertviz / show as matrices")
+            sft = sft[[0]]
 
         print("\n\n================ Visu on a single streamline ============== \n"
               "Saving the single line used for matrices / bertviz, for debugging "
@@ -283,7 +304,7 @@ def _visu_encoder_decoder(
                     weights[i], prefix_name + '_matrix_' + attention_names[i],
                     *weights_token[i], args.rescale_0_1, args.rescale_z,
                     args.rescale_non_lin, average_heads, average_layers,
-                    args.group_with_max)
+                    args.group_with_max, args.cmap)
 
         if args.bertviz or args.bertviz_locally:
             print(

@@ -5,6 +5,7 @@ from typing import List
 
 import numpy as np
 from scipy.ndimage import zoom
+from sklearn.utils.sparsefuncs import min_max_axis
 from tqdm import tqdm
 
 from scilpy import get_home as get_scilpy_folder
@@ -52,8 +53,6 @@ def reshape_unpad_rescale_attention(
                        [nheads, length, length]
         Where nheads=1 if average_heads.
     """
-    logging.info("Arranging attention based on visualisation options "
-                 "(rescaling, averaging, etc.)")
     explanation = ''
 
     # 1. To numpy. Possibly average heads.
@@ -66,35 +65,44 @@ def reshape_unpad_rescale_attention(
 
         # Averaging heads (but keeping 4D).
         if average_heads and not group_with_max:
+            logging.debug("Averaging heads on layer {}".format(layer))
             attention_per_layer[layer] = np.mean(attention_per_layer[layer],
                                                  axis=1, keepdims=True)
 
     # Possibly average layers (but keeping as list)
     if average_layers and not group_with_max:
+        logging.debug("Averaging layers.")
         attention_per_layer = [np.mean(attention_per_layer, axis=0)]
         nb_layers = 1
         explanation += "Attention of each layer were then averaged.\n"
 
-    # 2. Rearrange attention into one list per line, unpadded, rescaled.
+    # Preparing explanations...
     if rescale_0_1:
+        logging.debug("Preparing to rescale! (0-1)")
         explanation += ("For each streamline, attention at each point (each "
                         "row of the matrix) \nhas been "
                         "rescaled between 0-1: X = X / max(row)")
     elif rescale_z:
+        logging.debug("Preparing to rescale! (z-score)")
         explanation += ("For each streamline, attention at each point (each "
                         "row of the matrix) \nhas been "
                         "rescaled to a z-score: X = (X-mu) / std")
     elif rescale_non_lin:
+        logging.debug("Preparing to rescale! (non-linear option)")
         explanation += ("For each streamline, attention at each point (each "
                         "row of the matrix) \nhas been "
                         "rescaled so that 0.5 is an average point.")
+
+    # 2. Rearrange attention into one list per line, unpadded, rescaled.
+    # Must do it line by line to unpad correctly.
     attention_per_line = []
+    print("Unpadding each line (and rescaling if asked):")
     for line in tqdm(range(len(lengths)), total=len(lengths),
-                     desc="Rearranging, unpadding, rescaling (if asked)",
                      maxinterval=3):
         attention_per_line.append([None] * nb_layers)
         for layer in range(nb_layers):
-            # 1. Taking one streamline, unpadding.
+
+            # 1. Taking the right streamline, unpadding.
             line_att = attention_per_layer[layer][line, :, :, :]
             line_att = line_att[:, 0:lengths[line], 0:lengths[line]]
 
@@ -145,7 +153,7 @@ def reshape_unpad_rescale_attention(
                 line_att = tmp1 * where_below + tmp2 * where_above
 
             if average_heads and group_with_max:
-                explanation += "We then the maximal value through heads.\n"
+                explanation += "We then kept the maximal value through heads.\n"
                 line_att = np.max(line_att, axis=0, keepdims=True)
 
             attention_per_line[-1][layer] = line_att
@@ -154,6 +162,9 @@ def reshape_unpad_rescale_attention(
             explanation += "We then kept the maximal value trough layers."
             attention_per_line[-1] = [np.max(attention_per_line[-1], axis=0)]
 
+    if explanation == '':
+        explanation = ("No change done! Attention is exactly as produced by "
+                       "the Transformer!")
     logging.info(explanation)
     return attention_per_line, explanation
 
@@ -206,47 +217,57 @@ def prepare_encoder_tokens(this_seq_len, step_size, add_eos: bool):
     return encoder_tokens
 
 
-def get_visu_params_from_options(rescale_0_1, rescale_non_lin, rescale_z):
-    """
-    Defines options for prefix names, colormaps, vmin, vmax, explanation text,
-    etc.
-    """
-    vmin_main, vmax_main, cmap_main = (0, 1, 'turbo')
-    vmin_pos, vmax_pos, cmap_pos = (0, 1, 'CMRmap')
+def get_rescale_name(rescale_0_1, rescale_non_lin, rescale_z):
     if rescale_0_1:
         rescale_name = 'rescale_0_1'
     elif rescale_non_lin:
         rescale_name = 'rescale_non_lin'
-        # cmap_main = 'coolwarm'
     elif rescale_z:
         rescale_name = 'rescale_z'
-        #  Range: We could limit it to help view better. Ex: ±3 std.
-        vmin_main = -3
-        vmax_main = 3
     else:
         rescale_name = 'None'
+    return rescale_name
 
+
+def get_explanation_projections(rescale_name):
     thresh = THRESH_IMPORTANT[rescale_name]
     explanation = (
-        'Importance: Number of times that this point was very important '
-        '(>{:.2f}).\n'
+        'Mean_attention: The average attention at that point when tracking in general\n'
+        'Importance: Number of times that this point was very important (i.e. >{:.2f}).\n'
         "Looked far: Mean index of the important points (>{:.2f}) to decide "
-        "the next direction. 0 = current point. 100%% = very far behind.\n"
+        "the next direction. 0 = current point. 100\% = very far behind.\n"
         "Max_pos: Index of the point of maximal attention.\n"
         "Nb_looked: Number of points of important attention."
         .format(thresh, thresh))
+    return explanation
 
-    options_main = {'interpolation': 'None',
-                    'cmap': cmap_main,
-                    'vmin': vmin_main,
-                    'vmax': vmax_main}
 
-    options_position = {'interpolation': 'None',
-                        'cmap': cmap_pos,
-                        'vmin': vmin_pos,
-                        'vmax': vmax_pos}
+def get_min_max_from_options(rescale_name):
+    """
+    Defines options for prefix names, colormaps, vmin, vmax, explanation text,
+    etc.
 
-    return options_main, options_position, explanation, rescale_name, thresh
+    Returns
+    -------
+    options_imshow: dict
+        Useful for our plt showing.
+
+    options_cmap: dict
+        Useful for the preparation of colormaps.
+    """
+    vmin_main, vmax_main = (0, 1)
+    if rescale_name == 'rescale_z':
+        vmin_main = -3
+        vmax_main = 3
+
+    min_max_rescaled_att = {'vmin': vmin_main,
+                            'vmax': vmax_main}
+
+    # Currently, always 0-1
+    min_max1_position = {'vmin': 0,
+                         'vmax': 1}
+
+    return min_max_rescaled_att, min_max1_position
 
 
 def prepare_projections_from_options(a, rescale_0_1, rescale_non_lin,
@@ -305,8 +326,25 @@ def get_config_filename():
 def get_out_dir_and_create(args):
     # Define out_dir as experiment_path/visu_weights if not defined.
     # Create it if it does not exist.
+
+    # If ran through the jupyter notebook, ran twice. So we need to kepp
+    # all the "if does not exist"
     if args.out_dir is None:
         args.out_dir = os.path.join(args.experiment_path, 'visu_weights')
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
+
+    def create_if_not_exist(path):
+        if not os.path.exists(path):
+            os.mkdir(path)
+
+    if args.as_matrices:
+        create_if_not_exist(os.path.join(args.out_dir, 'as_matrices'))
+    if args.bertviz:
+        create_if_not_exist(os.path.join(args.out_dir, 'bertviz'))
+    if args.color_multi_length:
+        create_if_not_exist(os.path.join(args.out_dir, 'color_multi_length'))
+    if args.color_x_y_summary:
+        create_if_not_exist(os.path.join(args.out_dir, 'color_x_y_summary'))
+
     return args

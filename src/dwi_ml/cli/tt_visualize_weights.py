@@ -58,7 +58,7 @@ def main():
         # 1) Finding the jupyter notebook
         dwi_ml_dir = dirname(dirname(__file__))
         raw_ipynb_filename = os.path.join(
-            dwi_ml_dir, 'dwi_ml/testing/projects/tt_visualize_weights.ipynb')
+            dwi_ml_dir, 'projects/Transformers/tester/tt_visualize_weights.ipynb')
         if not os.path.isfile(raw_ipynb_filename):
             raise ValueError(
                 "We could not find the jupyter notebook file. Probably a "
@@ -68,12 +68,14 @@ def main():
         # 2) Verify that output dir exists but not the html output files.
         args = get_out_dir_and_create(args)
 
-        out_html_filename = args.out_prefix + 'tt_bertviz.html'
-        out_html_file = os.path.join(args.out_dir, out_html_filename)
+        bertviz_out = os.path.join(args.out_dir, 'bertviz')
+        out_html_filename = os.path.join(
+            bertviz_out, args.out_prefix + 'tt_bertviz.html')
+        out_html_file = os.path.join(bertviz_out, out_html_filename)
         out_ipynb_file = os.path.join(
-            args.out_dir, args.out_prefix + 'tt_bertviz.ipynb')
+            bertviz_out, args.out_prefix + 'tt_bertviz.ipynb')
         out_config_file = os.path.join(
-            args.out_dir, args.out_prefix + 'tt_bertviz.config')
+            bertviz_out, args.out_prefix + 'tt_bertviz.config')
         assert_outputs_exist(parser, args,
                              [out_html_file, out_ipynb_file, out_config_file])
 

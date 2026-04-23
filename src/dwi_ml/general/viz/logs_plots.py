@@ -71,7 +71,7 @@ def _plot_one_graph(ax, logs, exp_names, chosen_log_keys, scalar_map,
             style = log_styles[i % nb_styles]
             ax.plot([], [], label='{}: {}'.format(log_key, style))
 
-    ax.set_title(title)
+    ax.set_title(title, fontsize=20)
     ax.legend()
     if xlim is not None:
         ax.set_xlim([0, xlim])
@@ -154,6 +154,7 @@ def visualize_logs(logs_data: Dict[str, Dict[str, np.ndarray]],
             _plot_one_graph(axs[ax], logs_data, exp_names, graphs_logs[i],
                             scalar_map, writer, remove_outliers,
                             graphs_titles[i], xlim, graphs_ylim[i])
+            axs[ax].axhline(0)
 
         plt.tight_layout()
         if save_figs is not None:

@@ -5,7 +5,7 @@ from bertviz import model_view, head_view
 
 # Currently, with our quite long sequences compared to their example, this
 # is a bit ugly.
-SHOW_MODEL_VIEW = False
+SHOW_MODEL_VIEW = True
 
 
 def print_head_view_help():
@@ -17,7 +17,7 @@ def print_head_view_help():
     print(" -- Single-click on any of the colored tiles to toggle selection "
           "of the corresponding attention head.")
     print(" -- Click on the Layer drop-down to change the model layer "
-          "(zero-indexed).")
+          "(zero-indexed).\n\n")
 
 
 def print_model_view_help():
@@ -102,3 +102,6 @@ def encoder_show_model_view(encoder_attention, tokens):
             tmp_e = [encoder_attention[i][:, head, :, :][:, None, :, :]
                      for i in range(nb_layers)]
             model_view(encoder_attention=tmp_e, encoder_tokens=tokens)
+    else:
+        print("Option not ready, sorry")
+

@@ -100,7 +100,6 @@ def show_model_view_as_imshow(
                 plt.setp(ax.get_yticklabels(), visible=False)
 
             # Colorbar
-            print("????", np.max(head_att))
             fig.colorbar(im_main, cax=ax_cbar_main)
 
         if average_layers:

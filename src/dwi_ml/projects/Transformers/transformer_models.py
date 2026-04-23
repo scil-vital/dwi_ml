@@ -552,16 +552,10 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
             dropout=self.dropout_rate, activation=self.activation,
             batch_first=True, norm_first=self.norm_first)
 
-        # Receiving weird warning: enable_nested_tensor is True,
-        # but self.use_nested_tensor is False because encoder_layer.norm_first
-        # was True.
-        enable_nested = False if self.norm_first else True
-
         # Note about norm: this is a final normalization step. Not linked to
         # the normalization decided with self.norm_first.
         self.modified_torch_transformer = ModifiedTransformerEncoder(
-            main_layer_encoder, self.n_layers_e, norm=None,
-            enable_nested_tensor=enable_nested)
+            main_layer_encoder, self.n_layers_e, norm=None)
 
     @property
     def d_model(self):
@@ -771,16 +765,10 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
             activation=self.activation, batch_first=True,
             norm_first=self.norm_first)
 
-        # Receiving weird warning: enable_nested_tensor is True,
-        # but self.use_nested_tensor is False because encoder_layer.norm_first
-        # was True.
-        enable_nested = False if self.norm_first else True
-
         # Note about norm: this is a final normalization step. Not linked to
         # the normalization decided with self.norm_first.
         encoder = ModifiedTransformerEncoder(
-            encoder_layer, self.n_layers_e, norm=None,
-            enable_nested_tensor=enable_nested)
+            encoder_layer, self.n_layers_e, norm=None)
 
         # Decoder
         decoder_layer = ModifiedTransformerDecoderLayer(

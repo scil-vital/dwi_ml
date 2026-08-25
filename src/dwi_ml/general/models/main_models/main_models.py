@@ -586,7 +586,7 @@ class ModelWithDirectionGetter(MainModelAbstract):
         else:
             new_batch = [a.to(device) for a in new_batch]
 
-        # 2. Concat
+        # 2. Extend previous list
         if all_outputs is None:
             return new_batch
         else:

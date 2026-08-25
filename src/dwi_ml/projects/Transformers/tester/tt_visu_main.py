@@ -85,10 +85,10 @@ def tt_visualize_weights_main(args, parser):
     _ = plt.get_cmap(args.cmap)
 
     # ------------ Ok. Loading and running transformer on batches
-    logging.debug("All inputs look ok. Running the Transformer!")
+    logging.info("All inputs look ok. Preparing the Transformer!")
     sft, model, weights = _run_transformer_get_weights(
         parser, args, sub_logger_level='WARNING', device=device)
-    logging.debug("Done! Preparing visualization of the weights!")
+    logging.info("Done! Preparing visualization of the weights!")
 
     # ------------ Now show all
     average_heads = args.group_heads or args.group_all
@@ -134,7 +134,7 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
         model_dir, log_level=sub_logger_level)
 
     # 2. Load SFT
-    logging.info("Loading then tractogram. Note that space compatibility "
+    logging.info("Loading the tractogram. Note that space compatibility "
                  "with training data will NOT be verified.")
     args.bbox_check = False
     sft = load_tractogram_with_reference(parser, args, args.in_sft)
@@ -154,14 +154,14 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
         sft.streamlines = [np.flip(line, axis=0) for line in sft.streamlines]
 
     # 4. Load the rest of the data through the hdf5 (input_group and so on)
-    logging.debug("Loading the input data from the hdf5...")
+    logging.info("Loading the input data from the hdf5...")
     tester = TesterOneInput(
         model=model, hdf5_file=args.hdf5_file, subj_id=args.subj_id,
         subset_name=args.subset, volume_group=args.input_group,
         batch_size=args.batch_size, device=device)
 
     # 5. Run the transformer.
-    logging.debug("Running the model to get the weights...")
+    logging.info("Running the model to get the weights...")
     model.set_context('visu_weights')
     sft, outputs, _, _, _, _, _ = tester.run_model_on_sft(
         sft, compute_loss=False)

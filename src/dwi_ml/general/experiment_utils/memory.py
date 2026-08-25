@@ -57,7 +57,7 @@ def log_gpu_general_info(logger_info=None, context: str = None):
             logger_info.info(msg)
 
 
-def log_currently_allocated(logger_debug=None, context: str = None):
+def log_gpu_currently_allocated(logger_debug=None, context: str = None):
     """
     Prints currently allocated GPU memory.
 
@@ -88,7 +88,8 @@ def log_currently_allocated(logger_debug=None, context: str = None):
         else:
             logger_debug.debug(msg)
 
-def log_max_allocated(logger_debug=None, context: str = None):
+
+def log_gpu_max_allocated(logger_debug=None, context: str = None):
     if torch.cuda.is_available():
         msg = ("GPU: {}\n"
                "  - max memory: {:>6.3f}GB"
@@ -98,6 +99,39 @@ def log_max_allocated(logger_debug=None, context: str = None):
             print(msg)
         else:
             logger_debug.debug(msg)
+
+def log_currently_used_cpu(logger_debug=None, context: str = "", no_print=False):
+    """
+    Prints CPU memory currently used by this Python process and
+    by the whole system.
+    """
+    import psutil
+    import os
+
+    process = psutil.Process(os.getpid())
+    process_memory = process.memory_info().rss / BYTES_IN_GB
+
+    system_memory = psutil.virtual_memory()
+
+    msg = ("CPU MEMORY: {}\n"
+           "  - Process RSS: {:>6.3f} GB\n"
+           "  - System used: {:>6.3f} GB / {:>6.3f} GB ({:>5.1f}%)\n"
+           "  - System available: {:>6.3f} GB"
+           .format(context,
+                   process_memory,
+                   system_memory.used / BYTES_IN_GB,
+                   system_memory.total / BYTES_IN_GB,
+                   system_memory.percent,
+                   system_memory.available / BYTES_IN_GB))
+
+    if not no_print:
+        if logger_debug is None:
+            print(msg)
+        else:
+            logger_debug.debug(msg)
+
+    return system_memory.used, system_memory.percent
+
 
 def log_gpu_per_tensor(logger_debug=None, context: str = None):
     """

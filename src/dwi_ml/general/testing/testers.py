@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import time
 
 import numpy as np
 import torch
@@ -7,9 +8,12 @@ from tqdm import tqdm
 
 from dwi_ml.general.data.processing.streamlines.data_augmentation import \
     resample_or_compress
+from dwi_ml.general.experiment_utils.memory import log_currently_used_cpu
+from dwi_ml.general.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.general.models.main_models.main_models import (
     ModelWithOneInput, ModelWithDirectionGetter)
 from dwi_ml.general.testing.utils import prepare_dataset_one_subj
+from dwi_ml.projects.Transformers.transformer_models import AbstractTransformerModel, merge_all_batches_weights
 
 logger = logging.getLogger('tester_logger')
 
@@ -131,45 +135,56 @@ class TesterWithDirectionGetter:
         # Run all batches
         batch_start = 0
         batch_end = batch_size
-        with torch.no_grad():
-            for _ in tqdm(range(nb_batches), desc="Batches", total=nb_batches):
-                # Seems to help.... We need to discover why
-                # log_gpu_memory_usage()
-                torch.cuda.empty_cache()
+        with torch.inference_mode():
+            with tqdm_logging_redirect(range(nb_batches),
+                                       desc="Batches", total=nb_batches,
+                                       loggers=[logging.root],
+                                       tqdm_class=tqdm) as pbar:
+                for _ in pbar:
+                    timer = time.time()
+                    # Seems to help.... We need to discover why
+                    # But we did debug the CPU: nothing else increasing in size than
+                    # the content of outputs. Good.
+                    torch.cuda.empty_cache()
 
-                # 1. Prepare batch. Same process as in trainer, but no option
-                # to add noise.
-                streamlines = [
-                    torch.as_tensor(s, dtype=torch.float32, device=self.device)
-                    for s in sft.streamlines[batch_start:batch_end]]
-                if not self.model.direction_getter.add_eos:
-                    # We don't use the last coord because it does not have an
-                    # associated target direction.
-                    streamlines_f = [s[:-1, :] for s in streamlines]
-                else:
-                    streamlines_f = streamlines
-                inputs = self._prepare_inputs(streamlines_f)
+                    # 1. Prepare batch. Same process as in trainer, but no option
+                    # to add noise.
+                    streamlines = [
+                        torch.as_tensor(s, dtype=torch.float32, device=self.device)
+                        for s in sft.streamlines[batch_start:batch_end]]
+                    if not self.model.direction_getter.add_eos:
+                        # We don't use the last coord because it does not have an
+                        # associated target direction.
+                        streamlines_f = [s[:-1, :] for s in streamlines]
+                    else:
+                        streamlines_f = streamlines
+                    inputs = self._prepare_inputs(streamlines_f)
 
-                # 2. Run forward
-                batch_out = self.model(inputs, streamlines_f)
-                outputs = self.model.merge_batches_outputs(outputs, batch_out,
-                                                           device='cpu')
+                    # 2. Run forward
+                    batch_out = self.model(inputs, streamlines_f)
+                    outputs = self.model.merge_batches_outputs(outputs, batch_out,
+                                                               device='cpu')
 
-                # 3. Compute loss: not averaged = one tensor of losses per
-                # streamline.
-                if compute_loss:
-                    tmp_losses, n, tmp_eos_probs = self.model.compute_loss(
-                        batch_out, streamlines, average_results=False,
-                        return_eos_probs=True)
-                    losses.extend([loss.cpu().numpy() for loss in tmp_losses])
-                    if tmp_eos_probs is not None:
-                        eos_probs.extend([eos_loss.cpu().numpy()
-                                          for eos_loss in tmp_eos_probs])
+                    # 3. Compute loss: not averaged = one tensor of losses per
+                    # streamline.
+                    if compute_loss:
+                        tmp_losses, n, tmp_eos_probs = self.model.compute_loss(
+                            batch_out, streamlines, average_results=False,
+                            return_eos_probs=True)
+                        losses.extend([loss.cpu().numpy() for loss in tmp_losses])
+                        if tmp_eos_probs is not None:
+                            eos_probs.extend([eos_loss.cpu().numpy()
+                                              for eos_loss in tmp_eos_probs])
 
-                # Prepare next batch
-                batch_start = batch_end
-                batch_end = min(batch_start + batch_size, len(sft))
+                    # Prepare next batch
+                    batch_start = batch_end
+                    batch_end = min(batch_start + batch_size, len(sft))
 
+                    _, memory = log_currently_used_cpu(no_print=True)
+                    logging.debug("--- Batch time: {} secs. CPU now: {:>5.1f}%"
+                                  .format(int(time.time() - timer), memory))
+
+        # Arranging the losses
         if compute_loss:
             mean_per_line = np.asarray([np.mean(loss) for loss in losses])
             # \u00B1 is the plus or minus sign.
@@ -210,6 +225,15 @@ class TesterWithDirectionGetter:
                       u"{:.4f} \u00B1 {:.4f}. Range: [{:.4f} - {:.4f}]"
                       .format(len(tmp), np.mean(tmp), np.std(tmp),
                               np.min(tmp), np.max(tmp)))
+
+        # If the output contains Transformer weights, need to merge the final weights. Did not
+        # do it during the loop to avoid multiple concatenation calls.
+        if isinstance(self.model, AbstractTransformerModel) and self.model.context == 'visu_weights':
+            # outputs is actually (outputs, weights)
+            logging.info("Merging weights...")
+            weights = merge_all_batches_weights(outputs[1])
+            assert weights[0][0].size(0) == nb_streamlines # Weights, attention 0, layer 0.
+            outputs = (outputs[0], weights)
 
         return (sft, outputs, losses, mean_per_line,
                 eos_probs, eos_errors, mean_per_line_eos)

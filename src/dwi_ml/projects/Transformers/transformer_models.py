@@ -77,28 +77,52 @@ def pad_and_stack_batch(data: List[torch.Tensor], pad_first: bool,
 
     return torch.stack(data)
 
+def extend_new_batch_one_type_weights(old_weights: list, new_weights: list, device):
+    """
+    Not concatenating now to avoid lengthy process in loops on batches. Use function
+    merge_all_batches_weights to concatenate everything when processed.
 
-def merge_one_weight_type(weights, new_weights, device):
-    # Weight is a list per layer of tensors of shape
-    # nb_streamlines, nb_heads, batch_max_len, batch_max_len
-    new_weights = [layer_weight.to(device) for layer_weight in new_weights]
-    new_max_len = new_weights[0].shape[2]
+    Parameters
+    ----------
+    old_weights: list[list[Tensor]]
+        A list for each layer, of list of batch results
+    new_weights: list[Tensor]
+        A list for each layer, of tensors of the attention for that layer.
+    """
+    for layer_old_weights, layer_new_weights in zip(old_weights, new_weights):
+        layer_old_weights.append(layer_new_weights.to(device=device))
+    return old_weights
 
-    if weights is None:
-        return new_weights
+def merge_all_batches_weights(all_weights):
+    # all_weights is a tuple with each type of attention.
+    if len(all_weights) == 1:
+        return (_merge_all_batches_weights(all_weights[0]), )
     else:
-        old_max_len = weights[0].shape[2]
+        return (_merge_all_batches_weights(all_weights[0]),
+                _merge_all_batches_weights(all_weights[1]),
+                _merge_all_batches_weights(all_weights[2]))
 
-        # Padding if necessary. We could pad to max_len, but probably
-        # heavy for no reason.
-        pad_w = max(0, new_max_len - old_max_len)
-        pad_n = max(0, old_max_len - new_max_len)
-        weights = [torch.cat((
-            pad(w, (0, pad_w, 0, pad_w)),
-            pad(n, (0, pad_n, 0, pad_n))),
-            dim=0) for w, n in zip(weights, new_weights)]
+def _merge_all_batches_weights(att_weights):
+    # After looping on batches, att_weights is a list with one list per layer.
+    # For each layer, we have one tensor per batch. We need to concatenate them all.
+    # In each case, tensors are of shape
+    # [nb_streamlines, nb_heads, batch_max_len, batch_max_len]
 
-        return weights
+    # Using the first layer to find the batch_len
+    batch_lengths = [x.shape[2] for x in att_weights[0]]
+    max_len = max(batch_lengths)
+    for layer_i in range(len(att_weights)):
+        # Padding
+        for batch_j in range(len(att_weights[layer_i])):
+            pad_diff = max_len - batch_lengths[batch_j]
+            if pad_diff > 0:
+                att_weights[layer_i][batch_j] = pad(att_weights[layer_i][batch_j],
+                                                    (0, pad_diff, 0, pad_diff))
+
+        # Merging
+        att_weights[layer_i] = torch.cat(att_weights[layer_i], dim=0)
+
+    return att_weights
 
 
 class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
@@ -516,6 +540,17 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         return inputs
 
     def merge_batches_outputs(self, all_outputs, new_batch, device=None):
+        """
+        NOTE: In the context of visualizing weights, the outputs are actually
+        (real_outputs, weights)
+
+        The real outputs are lists of tensors. Simply extending the list.
+        The weight are actually one big matrix. Could concatenate but when looping on
+        batches, this makes the process increasing long, as it needs to create a new
+        tensor everytime. We will simply extend too, but user needs to merge batches
+        correctly when the loop is done. See merge_all_batches_weights, at the top of
+        this file.
+        """
         if self.context == 'visu_weights':
             new_outputs, new_weights = new_batch
 
@@ -597,9 +632,10 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
 
     def merge_batches_weights(self, weights, new_weights, device):
         # Weights is a single attention tensor (encoder): a tuple of 1.
+        # The value is a list of tensors for each layer.
         if weights is None:
-            weights = (None,)
-        return (merge_one_weight_type(weights[0], new_weights[0], device), )
+            return ([[layer.to(device=device)] for layer in new_weights[0]], )
+        return (extend_new_batch_one_type_weights(weights[0], new_weights[0], device), )
 
 
 class AbstractTransformerModelWithTarget(AbstractTransformerModel):
@@ -838,10 +874,13 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
 
     def merge_batches_weights(self, weights, new_weights, device):
         if weights is None:
-            weights = (None, None, None)
-        return (merge_one_weight_type(weights[0], new_weights[0], device),
-                merge_one_weight_type(weights[1], new_weights[1], device),
-                merge_one_weight_type(weights[1], new_weights[1], device))
+            return ([[layer.to(device=device)] for layer in new_weights[0]], 
+                    [[layer.to(device=device)] for layer in new_weights[1]],
+                    [[layer.to(device=device)] for layer in new_weights[2]])
+
+        return (extend_new_batch_one_type_weights(weights[0], new_weights[0], device),
+                extend_new_batch_one_type_weights(weights[1], new_weights[1], device),
+                extend_new_batch_one_type_weights(weights[2], new_weights[2], device))
 
 
 class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
@@ -919,9 +958,10 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
 
     def merge_batches_weights(self, weights, new_weights, device):
         # Weights is a single attention tensor (encoder): a tuple of 1.
+        # The value is a list of tensors for each layer.
         if weights is None:
-            weights = (None,)
-        return (merge_one_weight_type(weights[0], new_weights[0], device), )
+            return ([[layer.to(device=device)] for layer in new_weights[0]], )
+        return (extend_new_batch_one_type_weights(weights[0], new_weights[0], device), )
 
 
 def find_transformer_class(model_type: str):

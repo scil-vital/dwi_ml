@@ -20,8 +20,8 @@ THRESH_IMPORTANT = {
 
 
 def reshape_unpad_rescale_attention(
-        attention_per_layer, average_heads: bool, average_layers,
-        group_with_max, lengths, rescale_0_1, rescale_z, rescale_non_lin):
+        attention_per_layer, lengths, rescale_0_1,
+        rescale_z, rescale_non_lin):
     """
     Get the weights as a list per layer. Transforms to a list per streamline.
     Allows unpadding.
@@ -33,9 +33,6 @@ def reshape_unpad_rescale_attention(
     attention_per_layer: List[Tensor]
         A list: nb_layers x
                    [nb_streamlines, nheads, batch_max_len, batch_max_len]
-    average_heads: bool
-    average_layers: bool,
-    group_with_max: bool
     lengths: List[int]
         Unpadded lengths of the streamlines.
     rescale_0_1: bool,
@@ -54,27 +51,7 @@ def reshape_unpad_rescale_attention(
         Where nheads=1 if average_heads.
     """
     explanation = ''
-
-    # 1. To numpy. Possibly average heads.
-    if average_heads and not group_with_max:
-        explanation += "Attentions heads on each layer have been averaged.\n"
     nb_layers = len(attention_per_layer)
-    for layer in range(nb_layers):
-        # To numpy arrays
-        attention_per_layer[layer] = attention_per_layer[layer].cpu().numpy()
-
-        # Averaging heads (but keeping 4D).
-        if average_heads and not group_with_max:
-            logging.debug("Averaging heads on layer {}".format(layer))
-            attention_per_layer[layer] = np.mean(attention_per_layer[layer],
-                                                 axis=1, keepdims=True)
-
-    # Possibly average layers (but keeping as list)
-    if average_layers and not group_with_max:
-        logging.debug("Averaging layers.")
-        attention_per_layer = [np.mean(attention_per_layer, axis=0)]
-        nb_layers = 1
-        explanation += "Attention of each layer were then averaged.\n"
 
     # Preparing explanations...
     if rescale_0_1:
@@ -152,15 +129,7 @@ def reshape_unpad_rescale_attention(
 
                 line_att = tmp1 * where_below + tmp2 * where_above
 
-            if average_heads and group_with_max:
-                explanation += "We then kept the maximal value through heads.\n"
-                line_att = np.max(line_att, axis=0, keepdims=True)
-
             attention_per_line[-1][layer] = line_att
-
-        if average_layers and group_with_max:
-            explanation += "We then kept the maximal value trough layers."
-            attention_per_line[-1] = [np.max(attention_per_line[-1], axis=0)]
 
     if explanation == '':
         explanation = ("No change done! Attention is exactly as produced by "

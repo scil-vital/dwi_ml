@@ -80,7 +80,7 @@ class TesterWithDirectionGetter:
     def _volume_groups(self):
         return None
 
-    def run_model_on_sft(self, sft, compute_loss=False):
+    def run_model_on_sft(self, sft, compute_loss=False, other_params={}):
         """
         Equivalent of one validation pass.
 
@@ -92,6 +92,8 @@ class TesterWithDirectionGetter:
             If True, compute the loss per streamline.
             (If False, the method returns the outputs after a forward pass
             only.)
+        other_params: dict
+            Other params to pass in the forward call of the model.
 
         Returns
         -------
@@ -161,7 +163,7 @@ class TesterWithDirectionGetter:
                     inputs = self._prepare_inputs(streamlines_f)
 
                     # 2. Run forward
-                    batch_out = self.model(inputs, streamlines_f)
+                    batch_out = self.model(inputs, streamlines_f, **other_params)
                     outputs = self.model.merge_batches_outputs(outputs, batch_out,
                                                                device='cpu')
 
@@ -232,7 +234,7 @@ class TesterWithDirectionGetter:
             # outputs is actually (outputs, weights)
             logging.info("Merging weights...")
             weights = merge_all_batches_weights(outputs[1])
-            assert weights[0][0].size(0) == nb_streamlines # Weights, attention 0, layer 0.
+            assert weights[0][0].shape[0] == nb_streamlines # Weights, attention 0, layer 0.
             outputs = (outputs[0], weights)
 
         return (sft, outputs, losses, mean_per_line,

@@ -19,7 +19,8 @@ from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import assert_inputs_exist, assert_outputs_exist
 
 from dwi_ml.general.io_utils import verify_which_model_in_path
-from dwi_ml.projects.Transformers.transformer_models import find_transformer_class
+from dwi_ml.projects.Transformers.transformer_models import find_transformer_class, TransformerSrcOnlyModel, \
+    TransformerSrcAndTgtModel
 from dwi_ml.projects.Transformers.tester.tt_visu_bertviz import (
     encoder_decoder_show_head_view, encoder_decoder_show_model_view,
     encoder_show_model_view, encoder_show_head_view)
@@ -86,18 +87,34 @@ def tt_visualize_weights_main(args, parser):
 
     # ------------ Ok. Loading and running transformer on batches
     logging.info("All inputs look ok. Preparing the Transformer!")
-    sft, model, weights = _run_transformer_get_weights(
-        parser, args, sub_logger_level='WARNING', device=device)
-    logging.info("Done! Preparing visualization of the weights!")
-
-    # ------------ Now show all
     average_heads = args.group_heads or args.group_all
     average_layers = args.group_all
-    _visu_encoder_decoder(
-        weights, sft, model, average_heads, average_layers, args)
+    sft, model, weights = _run_transformer_get_weights(
+        parser, args, sub_logger_level='WARNING', device=device,
+        average_heads=average_heads, average_layers=average_layers)
+    logging.info("Done! Preparing visualization of the weights!")
+    if average_heads:
+        logging.info("Heads were averaged! Mean will show as head 0. "
+                     "There were actually {} heads in the real model!"
+                     .format(model.nheads))
+    if average_layers:
+        if (isinstance(model, TransformerSrcOnlyModel) or
+                isinstance(model, TransformerSrcAndTgtModel)):
+            logging.info("Layers were averaged! Mean will show as layer 0. "
+                         "There were actually {} layers in the real model!"
+                         .format(model.n_layers_e))
+        else:
+            logging.info("Layers were averaged! Mean will show as layer 0. "
+                         "There were actually {} layers in the encoder and {}"
+                         "in the decoder!"
+                         .format(model.n_layers_e, model.n_layers_d))
+
+    # ------------ Now show all
+    _visu_encoder_decoder(weights, sft, model, args)
 
 
-def _run_transformer_get_weights(parser, args, sub_logger_level, device):
+def _run_transformer_get_weights(parser, args, sub_logger_level, device,
+                                 average_heads, average_layers):
     """
     Runs the transformer model on the input tractogram.
 
@@ -109,6 +126,8 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
         input tractogram, in particular.
     sub_logger_level: str
     device: torch.device
+    average_heads: bool
+    average_layers: bool
 
     Returns
     -------
@@ -163,8 +182,10 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
     # 5. Run the transformer.
     logging.info("Running the model to get the weights...")
     model.set_context('visu_weights')
+    params = {'average_heads': average_heads,
+              'average_layers': average_layers}
     sft, outputs, _, _, _, _, _ = tester.run_model_on_sft(
-        sft, compute_loss=False)
+        sft, compute_loss=False, other_params=params)
 
     # Resulting weights is a tuple of one list per attention type.
     # Each list is: one tensor per layer.
@@ -174,8 +195,7 @@ def _run_transformer_get_weights(parser, args, sub_logger_level, device):
 
 
 def _visu_encoder_decoder(
-        weights: Tuple, sft: StatefulTractogram, model,
-        average_heads: bool, average_layers: bool, args):
+        weights: Tuple, sft: StatefulTractogram, model, args):
     """
     Parameters
     ----------
@@ -188,10 +208,6 @@ def _visu_encoder_decoder(
         The tractogram.
     model: AbstractTransformerModel
         The model.
-    average_heads: bool
-        Argparser's default = False
-    average_layers: bool,
-        Argparser's default = False. Must be False if average_head is False.
     args: Namespace
 
     Returns
@@ -217,15 +233,12 @@ def _visu_encoder_decoder(
         "\n\n-------------- Found the following architecture: --------------")
     print("Number of layers: {}".format(len(weights[0])))
     print("Number of heads: {}".format(weights[0][0].shape[1]))
-    print("Display options: Average heads: {}. Average layers: {}"
-          .format(average_heads, average_layers))
 
     print("\n============== Rescaling the attention with option ==============")
     explanation_rescale = None
     for i in range(len(weights)):
         weights[i], explanation_rescale = reshape_unpad_rescale_attention(
-            weights[i], average_heads, average_layers, args.group_with_max,
-            lengths, args.rescale_0_1, args.rescale_z, args.rescale_non_lin)
+            weights[i], lengths, args.rescale_0_1, args.rescale_z, args.rescale_non_lin)
     print(explanation_rescale)
 
     print("\n\n================ Visu on the whole tractogram ==============")
@@ -242,9 +255,8 @@ def _visu_encoder_decoder(
         prefix_name = os.path.join(args.out_dir, 'color_multi_length', 
                                    args.out_prefix)
         color_sft_duplicate_lines(sft, lengths, prefix_name, weights,
-                                  attention_names, average_heads,
-                                  average_layers, args.group_with_max,
-                                  explanation_rescale, args.cmap)
+                                  attention_names, explanation_rescale,
+                                  args.cmap)
 
     if args.color_x_y_summary:
         print(
@@ -253,7 +265,6 @@ def _visu_encoder_decoder(
         prefix_name = os.path.join(args.out_dir, 'color_x_y_summary', args.out_prefix)
         color_sft_x_y_projections(
             sft, prefix_name, weights, attention_names,
-            average_heads, average_layers, args.group_with_max,
             args.rescale_0_1, args.rescale_non_lin, args.rescale_z,
             explanation_rescale, args.cmap)
 
@@ -303,8 +314,7 @@ def _visu_encoder_decoder(
                 show_model_view_as_imshow(
                     weights[i], prefix_name + '_matrix_' + attention_names[i],
                     *weights_token[i], args.rescale_0_1, args.rescale_z,
-                    args.rescale_non_lin, average_heads, average_layers,
-                    args.group_with_max, args.cmap)
+                    args.rescale_non_lin, args.cmap)
 
         if args.bertviz or args.bertviz_locally:
             print(

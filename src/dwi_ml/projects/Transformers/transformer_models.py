@@ -77,7 +77,7 @@ def pad_and_stack_batch(data: List[torch.Tensor], pad_first: bool,
 
     return torch.stack(data)
 
-def extend_new_batch_one_type_weights(old_weights: list, new_weights: list, device):
+def extend_new_batch_one_type_weights(old_weights: list, new_weights: list):
     """
     Not concatenating now to avoid lengthy process in loops on batches. Use function
     merge_all_batches_weights to concatenate everything when processed.
@@ -90,7 +90,7 @@ def extend_new_batch_one_type_weights(old_weights: list, new_weights: list, devi
         A list for each layer, of tensors of the attention for that layer.
     """
     for layer_old_weights, layer_new_weights in zip(old_weights, new_weights):
-        layer_old_weights.append(layer_new_weights.to(device=device))
+        layer_old_weights.append(layer_new_weights)
     return old_weights
 
 def merge_all_batches_weights(all_weights):
@@ -116,11 +116,12 @@ def _merge_all_batches_weights(att_weights):
         for batch_j in range(len(att_weights[layer_i])):
             pad_diff = max_len - batch_lengths[batch_j]
             if pad_diff > 0:
-                att_weights[layer_i][batch_j] = pad(att_weights[layer_i][batch_j],
-                                                    (0, pad_diff, 0, pad_diff))
+                att_weights[layer_i][batch_j] = np.pad(
+                    att_weights[layer_i][batch_j],
+                    ((0, 0), (0, 0), (0, pad_diff), (0, pad_diff)))
 
         # Merging
-        att_weights[layer_i] = torch.cat(att_weights[layer_i], dim=0)
+        att_weights[layer_i] = np.concatenate(att_weights[layer_i], axis=0)
 
     return att_weights
 
@@ -369,7 +370,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         return mask_future, mask_padding
 
     def forward(self, inputs: List[torch.tensor],
-                input_streamlines: List[torch.tensor] = None):
+                input_streamlines: List[torch.tensor] = None,
+                average_heads=False, average_layers=False):
         """
         Params
         ------
@@ -387,16 +389,22 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
             adequately masked to hide future positions. The last direction is
             not used.
             - As target during training. The whole sequence is used.
+        average_heads: bool
+            If weights are returned, average heads together.
+        average_layers: bool
+            If weights are returned, average layers together. Assumes that
+            heads are also averaged.
 
         Returns
         -------
-        output: Tensor,
+        output: Tensor
             Batch output, formatted differently based on context:
                 - During training/visu:
                     [total nb points all streamlines, out size]
                 - During tracking: [nb streamlines * 1, out size]
-        weights: Tuple
-            If context is 'visu': The weights (depending on the child model)
+        weights: Tuple[List[np.ndarray], ...]
+            If context is 'visu': The weights. For each type of attention, a list per
+            layer of numpy arrays.
         """
         if self.context is None:
             raise ValueError("Please set context before usage.")
@@ -404,6 +412,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         return_weights = False
         if self.context == 'visu_weights':
             return_weights = True
+            if average_layers:
+                assert average_heads, "Can't average layers without averaging heads."
 
         # ----------- Checks
         if input_streamlines is not None:
@@ -508,12 +518,40 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
                 outputs = list(torch.split(outputs, list(input_lengths)))
 
         if return_weights:
-            # Padding weights to max length, else we won't be able to stack
-            # outputs. This way, all weights are a list, per layer, of
-            # tensors of shape [nb_streamlines, nb_heads, max_len, max_len]
-            return outputs, weights
-
+            # Possibly averaging heads and layers
+            # Note. On large tractograms, weights represent n_heads x nb_layers matrices
+            # for each streamline, and it is really heavy in memory! Averaging now is
+            # important, even if it means that it is repeated on each batch.
+            return outputs, self._return_weights(weights, average_heads, average_layers)
         return outputs
+
+    def _return_weights(self, weights, average_heads, average_layers):
+        # Use _return_weights_one_attention on each attention
+        raise NotImplementedError
+
+    def _return_weights_one_attention(self, attention_weights,
+                                      average_heads, average_layers):
+        """
+        Each attention is a list for each layer of tensors of shape
+        [nb_streamlines, nheads, batch_max_len, batch_max_len]
+        """
+        for layer in range(self.n_layers_e):
+            # To numpy arrays
+            attention_weights[layer] = attention_weights[layer].cpu().numpy()
+
+            # Averaging heads (but keeping 4D).
+            if average_heads:
+                logging.debug("Averaging heads on layer {}".format(layer))
+                attention_weights[layer] = np.mean(attention_weights[layer],
+                                                     axis=1, keepdims=True)
+
+        # Possibly average layers (but keeping as list)
+        if average_layers:
+            logging.debug("Averaging layers.")
+            attention_weights = [np.mean(attention_weights, axis=0)]
+
+        return attention_weights
+
 
     def _prepare_data(self, inputs, input_streamlines):
         raise NotImplementedError
@@ -561,15 +599,14 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
 
             new_outputs = super().merge_batches_outputs(outputs, new_outputs,
                                                         device)
-            new_weights = self.merge_batches_weights(weights, new_weights,
-                                                     device)
+            new_weights = self.merge_batches_weights(weights, new_weights)
             return new_outputs, new_weights
 
         else:
             # No weights.
             return super().merge_batches_outputs(all_outputs, new_batch)
 
-    def merge_batches_weights(self, weights, new_weights, device):
+    def merge_batches_weights(self, weights, new_weights):
         raise NotImplementedError
 
 
@@ -630,12 +667,16 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
 
         return outputs, (sa_weights,)
 
-    def merge_batches_weights(self, weights, new_weights, device):
+    def _return_weights(self, weights, average_heads, average_layers):
+        return (self._return_weights_one_attention(weights[0], average_heads, average_layers),)
+
+    def merge_batches_weights(self, weights, new_weights):
         # Weights is a single attention tensor (encoder): a tuple of 1.
         # The value is a list of tensors for each layer.
         if weights is None:
-            return ([[layer.to(device=device)] for layer in new_weights[0]], )
-        return (extend_new_batch_one_type_weights(weights[0], new_weights[0], device), )
+            # Starting a list of batchs per layer
+            return ([[layer] for layer in new_weights[0]], )
+        return (extend_new_batch_one_type_weights(weights[0], new_weights[0]), )
 
 
 class AbstractTransformerModelWithTarget(AbstractTransformerModel):
@@ -872,15 +913,21 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
                 return_weights=return_weights)
         return outputs, (sa_weights_encoder, sa_weights_decoder, mha_weights)
 
-    def merge_batches_weights(self, weights, new_weights, device):
-        if weights is None:
-            return ([[layer.to(device=device)] for layer in new_weights[0]], 
-                    [[layer.to(device=device)] for layer in new_weights[1]],
-                    [[layer.to(device=device)] for layer in new_weights[2]])
+    def _return_weights(self, weights, average_heads, average_layers):
+        return (self._return_weights_one_attention(weights[0], average_heads, average_layers),
+                self._return_weights_one_attention(weights[1], average_heads, average_layers),
+                self._return_weights_one_attention(weights[2], average_heads, average_layers))
 
-        return (extend_new_batch_one_type_weights(weights[0], new_weights[0], device),
-                extend_new_batch_one_type_weights(weights[1], new_weights[1], device),
-                extend_new_batch_one_type_weights(weights[2], new_weights[2], device))
+    def merge_batches_weights(self, weights, new_weights):
+        if weights is None:
+            # Starting a list of batchs per layer
+            return ([[layer] for layer in new_weights[0]],
+                    [[layer] for layer in new_weights[1]],
+                    [[layer] for layer in new_weights[2]])
+
+        return (extend_new_batch_one_type_weights(weights[0], new_weights[0]),
+                extend_new_batch_one_type_weights(weights[1], new_weights[1]),
+                extend_new_batch_one_type_weights(weights[2], new_weights[2]))
 
 
 class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
@@ -956,12 +1003,16 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
 
         return outputs, (sa_weights,)
 
-    def merge_batches_weights(self, weights, new_weights, device):
+    def _return_weights(self, weights, average_heads, average_layers):
+        return (self._return_weights_one_attention(weights[0], average_heads, average_layers),)
+
+    def merge_batches_weights(self, weights, new_weights):
         # Weights is a single attention tensor (encoder): a tuple of 1.
         # The value is a list of tensors for each layer.
         if weights is None:
-            return ([[layer.to(device=device)] for layer in new_weights[0]], )
-        return (extend_new_batch_one_type_weights(weights[0], new_weights[0], device), )
+            # Starting a list of batchs per layer
+            return ([[layer] for layer in new_weights[0]], )
+        return (extend_new_batch_one_type_weights(weights[0], new_weights[0]), )
 
 
 def find_transformer_class(model_type: str):

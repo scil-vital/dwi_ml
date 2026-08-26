@@ -9,6 +9,7 @@ from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
 
 from scilpy.viz.color import get_lookup_table
+from tqdm import tqdm
 
 from dwi_ml.projects.Transformers.tester.tt_visu_utils import (
     get_min_max_from_options,
@@ -68,7 +69,9 @@ def color_sft_duplicate_lines(
     # (Anyways at point 0: Always looking at point 0 only)
     remaining_streamlines = sft.streamlines
     whole_sft = None
-    for current_point in range(2, max(lengths) + 1):
+    for current_point in tqdm(range(2, max(lengths) + 1),
+                              desc="Lines of length",
+                              bar_format="{n} | {l_bar}{bar}|"):
 
         for i, att_type in enumerate(attentions_per_line):
             # Removing shorter streamlines from each type of attention
@@ -126,12 +129,6 @@ def color_sft_duplicate_lines(
     del sft
     del tmp_sft
 
-    # Currently, when limiting length to see the growth, smallest line stay
-    # visible above the others. Tried to flip order in memory, but it does not
-    # fix the view in MI-Brain. I don't know which internal order MI-Brain
-    # uses.
-    # order = np.flip(np.arange(len(whole_sft)))
-    # whole_sft = deepcopy(whole_sft[order])
     dpp_keys = list(whole_sft.data_per_point.keys())
     for key in dpp_keys:
         # Keep only current key

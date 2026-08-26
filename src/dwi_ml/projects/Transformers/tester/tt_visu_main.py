@@ -234,7 +234,7 @@ def _visu_encoder_decoder(
     print("Number of layers: {}".format(len(weights[0])))
     print("Number of heads: {}".format(weights[0][0].shape[1]))
 
-    print("\n============== Rescaling the attention with option ==============")
+    print("\n============== Rescaling the attention with chosen options ==============")
     explanation_rescale = None
     for i in range(len(weights)):
         weights[i], explanation_rescale = reshape_unpad_rescale_attention(

@@ -61,6 +61,7 @@ dwiml_divide_volume_into_blocs = "dwi_ml.cli.dwiml_divide_volume_into_blocs:main
 dwiml_hdf5_extract_data = "dwi_ml.cli.dwiml_hdf5_extract_data:main"
 dwiml_hdf5_print_architecture = "dwi_ml.cli.dwiml_hdf5_print_architecture:main"
 dwiml_print_hdf5_architecture = "dwi_ml.cli.dwiml_print_hdf5_architecture:main"
+dwiml_print_total_time = "dwi_ml.cli.dwiml_print_total_time:main"
 dwiml_send_value_to_comet_from_log = "dwi_ml.cli.dwiml_send_value_to_comet_from_log:main"
 dwiml_send_value_to_comet_manually = "dwi_ml.cli.dwiml_send_value_to_comet_manually:main"
 dwiml_visualize_logs_correlation = "dwi_ml.cli.dwiml_visualize_logs_correlation:main"

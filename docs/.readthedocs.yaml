@@ -15,7 +15,8 @@ build:
 
   jobs:
     pre_build:
-      - pip install --upgrade pip setuptools wheel
+      - pip install --upgrade pip wheel
+      - pip install "setuptools<74"
       - pip install .
       - bash docs/build_automatic_help_docs.sh
 

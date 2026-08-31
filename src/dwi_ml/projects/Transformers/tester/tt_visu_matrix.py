@@ -14,8 +14,7 @@ from dwi_ml.projects.Transformers.tester.tt_visu_utils import (
 
 def show_model_view_as_imshow(
         attention_one_line, fig_prefix, tokens_x, tokens_y,
-        rescale_0_1, rescale_z, rescale_non_lin,
-        average_heads, average_layers, group_with_max, cmap):
+        rescale_0_1, rescale_z, rescale_non_lin, cmap):
     nb_layers = len(attention_one_line)
     rescale_name = get_rescale_name(rescale_0_1, rescale_non_lin, rescale_z)
     explanation = get_explanation_projections(rescale_name)
@@ -66,18 +65,8 @@ def show_model_view_as_imshow(
                                     aspect='auto', interpolation='None')
 
             # Set the titles (see also suptitle below)
-            if average_heads:
-                if group_with_max:
-                    axs[h].set_title("Max of ({}) heads"
-                                     .format(rescale_name))
-                    head_suffix = "_maxOfHeads"
-                else:
-                    axs[h].set_title("Average of heads, {}"
-                                     .format(rescale_name))
-                    head_suffix = "_meanHead"
-            else:
-                axs[h].set_title("Head {}".format(h))
-                head_suffix = "_allHeads"
+            axs[h].set_title("Head {}".format(h))
+            head_suffix = "_allHeads"
 
             # Titles proj X
             ax_mean_att.set_ylabel("Mean", rotation=0, labelpad=25)
@@ -102,16 +91,8 @@ def show_model_view_as_imshow(
             # Colorbar
             fig.colorbar(im_main, cax=ax_cbar_main)
 
-        if average_layers:
-            if group_with_max:
-                layer_title = "Max of layers"
-                layer_name = "_{}_maxOfLayers".format(rescale_name)
-            else:
-                layer_title = "Average of layers, rescaled"
-                layer_name = '_meanLayer_{}'.format(rescale_name)
-        else:
-            layer_title = i
-            layer_name = '_layer{}_{}'.format(i, rescale_name)
+        layer_title = i
+        layer_name = '_layer{}_{}'.format(i, rescale_name)
 
         plt.suptitle("Layer: {}\n{}"
                      .format(layer_title, explanation))

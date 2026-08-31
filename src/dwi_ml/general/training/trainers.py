@@ -13,8 +13,8 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
 from dwi_ml.general.experiment_utils.memory import (
-    log_gpu_per_tensor, log_currently_allocated, log_gpu_general_info,
-    torch_reset_peaks_memory, log_max_allocated)
+    log_gpu_per_tensor, log_gpu_currently_allocated, log_gpu_general_info,
+    torch_reset_peaks_memory, log_gpu_max_allocated)
 from dwi_ml.general.experiment_utils.tqdm_logging import tqdm_logging_redirect
 from dwi_ml.general.models.main_models.main_abstract_model import MainModelAbstract
 from dwi_ml.general.models.main_models.main_models import ModelWithDirectionGetter
@@ -676,7 +676,7 @@ class DWIMLTrainer:
 
             logger.info("\n\n******* STARTING : Epoch {} (i.e. #{}) *******"
                         .format(epoch, epoch + 1))
-            log_currently_allocated(
+            log_gpu_currently_allocated(
                 logger_debug=logger, context="Starting a new epoch")
             log_gpu_per_tensor(
                 logger_debug=logger, context="Starting a new epoch")
@@ -696,10 +696,10 @@ class DWIMLTrainer:
             logger.info("*** TRAINING")
             self.train_one_epoch(epoch)
 
-            log_currently_allocated(logger_debug=logger,
-                                    context="Between train and validate")
+            log_gpu_currently_allocated(logger_debug=logger,
+                                        context="Between train and validate")
             self.batch_loader.dataset.training_set.empty_cache_now()
-            log_currently_allocated(
+            log_gpu_currently_allocated(
                 logger_debug=logger,
                 context="Between train and validate (after emptying cache)")
 
@@ -708,10 +708,10 @@ class DWIMLTrainer:
                 logger.info("*** VALIDATION")
                 self.validate_one_epoch(epoch)
 
-                log_currently_allocated(logger_debug=logger,
-                                        context="After validation")
+                log_gpu_currently_allocated(logger_debug=logger,
+                                            context="After validation")
                 self.batch_loader.context_subset.empty_cache_now()
-                log_currently_allocated(
+                log_gpu_currently_allocated(
                     logger_debug=logger,
                     context="After validation (after emptying cache)")
 
@@ -844,7 +844,7 @@ class DWIMLTrainer:
 
                 # Showing current memory:
                 logger.debug("\n\nStart of training batch: ")
-                log_currently_allocated(
+                log_gpu_currently_allocated(
                     logger_debug=logger,
                     context="At the beginning of a training batch")
                 log_gpu_per_tensor(logger_debug=logger)
@@ -863,7 +863,7 @@ class DWIMLTrainer:
                     self.train_loss_monitor.update(mean_loss.cpu().item(),
                                                    weight=n)
 
-                log_max_allocated(
+                log_gpu_max_allocated(
                     logger_debug=logger,
                     context="During training (forward + compute loss)")
 
@@ -871,7 +871,7 @@ class DWIMLTrainer:
                 torch_reset_peaks_memory()
                 unclipped_grad_norm, grad_norm = self.back_propagation(
                     mean_loss)
-                log_max_allocated(
+                log_gpu_max_allocated(
                     logger_debug=logger,
                     context="During training (backpropagation)")
 
@@ -940,7 +940,7 @@ class DWIMLTrainer:
 
                 # Showing memory information
                 logger.debug("\n\nStart of validation batch: ")
-                log_currently_allocated(
+                log_gpu_currently_allocated(
                     logger_debug=logger,
                     context="At the beginning of a validation batch")
                 log_gpu_per_tensor(logger)
@@ -949,7 +949,7 @@ class DWIMLTrainer:
                 torch_reset_peaks_memory()
                 with torch.no_grad():
                     self.validate_one_batch(*data, epoch)
-                log_max_allocated(
+                log_gpu_max_allocated(
                     logger_debug=logger,
                     context="During validation (forward + compute loss)")
 

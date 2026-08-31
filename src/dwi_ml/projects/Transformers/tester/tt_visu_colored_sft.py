@@ -9,6 +9,7 @@ from dipy.io.stateful_tractogram import StatefulTractogram
 from dipy.io.streamline import save_tractogram
 
 from scilpy.viz.color import get_lookup_table
+from tqdm import tqdm
 
 from dwi_ml.projects.Transformers.tester.tt_visu_utils import (
     get_min_max_from_options,
@@ -19,7 +20,6 @@ from dwi_ml.projects.Transformers.tester.tt_visu_utils import (
 def color_sft_duplicate_lines(
         sft: StatefulTractogram, lengths, prefix_name: str,
         attentions_per_line: list, attention_names: Tuple,
-        average_heads: bool, average_layers: bool, group_with_max: bool, 
         explanation_rescaling: str, cmap: str):
     """
     Saves the whole weight matrix on streamlines of all lengths.
@@ -36,12 +36,6 @@ def color_sft_duplicate_lines(
         The attention weights
     attention_names: Tuple[str]
         The attention names, ex, encoder, decoder, cross
-    average_heads: bool
-        If True, we will average heads
-    average_layers: bool
-        If True, we will average layers. average_heads must also be true.
-    group_with_max: bool
-        If True, we will do a max-pooling rather than an average.
     explanation_rescaling: str
         Text coming from our rescaling function. Will be used to add in the 
         plot titles.
@@ -75,7 +69,9 @@ def color_sft_duplicate_lines(
     # (Anyways at point 0: Always looking at point 0 only)
     remaining_streamlines = sft.streamlines
     whole_sft = None
-    for current_point in range(2, max(lengths) + 1):
+    for current_point in tqdm(range(2, max(lengths) + 1),
+                              desc="Lines of length",
+                              bar_format="{n} | {l_bar}{bar}|"):
 
         for i, att_type in enumerate(attentions_per_line):
             # Removing shorter streamlines from each type of attention
@@ -101,23 +97,11 @@ def color_sft_duplicate_lines(
 
             # Looping on layers. If average: layer 0 is actually the average
             for layer in range(nb_layers):
-                if average_layers:
-                    if group_with_max:
-                        layer_suffix = '_maxL'
-                    else:
-                        layer_suffix = '_meanL'
-                else:
-                    layer_suffix = 'l{}'.format(layer)
+                layer_suffix = 'l{}'.format(layer)
 
                 # Looping on heads! If average: head 0 is actually the average
                 for head in range(nb_heads):
-                    if average_heads:
-                        if group_with_max:
-                            head_suffix = '_maxH'
-                        else:
-                            head_suffix = '_meanH'
-                    else:
-                        head_suffix = '_h{}'.format(head)
+                    head_suffix = '_h{}'.format(head)
 
                     # Taking the right line of the matrix, up to the current
                     # point(i.e. before the diagonal)
@@ -145,12 +129,6 @@ def color_sft_duplicate_lines(
     del sft
     del tmp_sft
 
-    # Currently, when limiting length to see the growth, smallest line stay
-    # visible above the others. Tried to flip order in memory, but it does not
-    # fix the view in MI-Brain. I don't know which internal order MI-Brain
-    # uses.
-    # order = np.flip(np.arange(len(whole_sft)))
-    # whole_sft = deepcopy(whole_sft[order])
     dpp_keys = list(whole_sft.data_per_point.keys())
     for key in dpp_keys:
         # Keep only current key
@@ -179,7 +157,6 @@ def color_sft_duplicate_lines(
 def color_sft_x_y_projections(
         sft: StatefulTractogram, prefix_name: str,
         attentions_per_line: list, attention_names: Tuple,
-        average_heads, average_layers, group_with_max,
         rescale_0_1, rescale_non_lin, rescale_z, explanation, cmap):
     """
     Saves one tractogram per "projection":
@@ -200,12 +177,6 @@ def color_sft_x_y_projections(
         Contains the output directory + prefix
     attentions_per_line: list
     attention_names: Tuple
-    average_heads: bool
-        Only used to format the title
-    average_layers: bool
-        Only used to format the title
-    group_with_max: bool
-        Only used to format the title
     rescale_0_1: bool
         Used to choose best colorbar options
     rescale_non_lin: bool
@@ -240,24 +211,12 @@ def color_sft_x_y_projections(
             print("   Layer: ", layer)
 
             # Prefix
-            if average_layers:
-                if group_with_max:
-                    layer_prefix = '_maxL'
-                else:
-                    layer_prefix = '_meanL'
-            else:
-                layer_prefix = 'l{}'.format(layer)
+            layer_prefix = 'l{}'.format(layer)
 
             # Loop on head
             for head in range(nb_heads):
                 print("       Head: ", head)
-                if average_heads:
-                    if group_with_max:
-                        head_suffix = '_maxH'
-                    else:
-                        head_suffix = '_meanH'
-                else:
-                    head_suffix = '_h{}'.format(head)
+                head_suffix = '_h{}'.format(head)
 
                 all_nb_usage = []
                 all_mean_att = []

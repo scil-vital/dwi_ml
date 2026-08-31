@@ -156,13 +156,6 @@ def build_argparser_transformer_visu():
     gg.add_argument('--group_all', action='store_true',
                     help="If true, average all heads in all layers (per "
                          "attention type).")
-    g.add_argument('--group_with_max', action='store_true',
-                   help="Default grouping option is to average heads. Use "
-                        "this option to group \nhead using their maximal "
-                        "values.\n"
-                        "NOTE: Average is done BEFORE rescaling (averaging "
-                        "the raw weight),\nand max is done AFTER rescaling "
-                        "(max of the rank use usefullness).")
 
     g = p.add_argument_group("Matrices options")
     g.add_argument('--resample_plots', type=int, metavar='nb',

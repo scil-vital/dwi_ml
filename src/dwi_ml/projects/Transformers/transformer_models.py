@@ -537,7 +537,7 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         """
         for layer in range(self.n_layers_e):
             # To numpy arrays
-            attention_weights[layer] = attention_weights[layer].cpu().numpy()
+            attention_weights[layer] = attention_weights[layer].cpu().detach().numpy()
 
             # Averaging heads (but keeping 4D).
             if average_heads:

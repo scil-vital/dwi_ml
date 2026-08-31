@@ -723,6 +723,10 @@ class HDF5Creator:
         conn_info = None
         if 'connectivity_matrix' in self.groups_config[group]:
             logging.info("         Now preparing connectivity matrix")
+            file = self.groups_config[group]['connectivity_matrix']
+            assert isinstance(file, str), (
+                "The connectivity matrix should be a single filename. Got"
+                "a {}: {}".format(type(file), file))
             if not ("connectivity_nb_blocs" in self.groups_config[group] or
                     "connectivity_labels" in self.groups_config[group]):
                 raise ValueError(

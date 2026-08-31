@@ -15,14 +15,15 @@ Organization of the testing data:
 │        ├── dwi
 │        │     └── fa.nii.gz
 │        ├── example_bundle
-│        │     └── Fornix.trk
+│        │     ├── Fornix.trk
+│        │     └── Fornix_connectivity_matrix_bloc6.trk
 │        └── masks
 │              └── wm.nii.gz
 └── hdf5_file.hdf5
 
 """
-# Values corresponding to the testing data, as of Oct 30, 23.
-# Created from Emmanuelle's preprocessed WithReversed data.
+# Values corresponding to the testing data, as of Aug 08, 26.
+# Created from data offered in (Renauld et al, 2023)
 
 TEST_EXPECTED_VOLUME_GROUPS = ['input', 'wm_mask']
 TEST_EXPECTED_STREAMLINE_GROUPS = ['streamlines']

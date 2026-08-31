@@ -54,7 +54,14 @@ def add_training_args(p: argparse.ArgumentParser,
     if add_a_tracking_validation_phase:
         training_group.add_argument(
             '--add_a_tracking_validation_phase', action='store_true',
-            help="If set, a generation validation phase (GV) will be added.")
+            help="If set, a generation validation phase (GV) will be added.\n"
+                 "A few more metrics will be saved during validation, such as \n"
+                 "the FP:TP rate (if a target connectivity matrix is available \n"
+                 "for your subjects) and the mean distance to the target streamline's\n"
+                 "endpoint.\n"
+                 "The FP:TP rate becomes the new criteria for choosing the best epoch.\n"
+                 "If connectivity matrices are not available, the GV phase is computed\n"
+                 "but not used to track the best epoch.")
         training_group.add_argument(
             '--tracking_phase_frequency', type=int, default=1, metavar='N',
             help="The GV phase can be computed at every epoch (default), or "

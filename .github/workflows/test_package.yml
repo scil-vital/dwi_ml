@@ -29,10 +29,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -40,12 +40,16 @@ jobs:
         run: |
           export SETUPTOOLS_USE_DISTUTILS=stdlib
           pip install --upgrade pip
-          pip install pytest
+          pip install pytest pytest-cov
           pip install -e .
 
       - name: Tests
         run: |
-          pytest src/dwi_ml --cov-report term-missing:skip-covered
+          mkdir -p .test_reports
+          pytest src/dwi_ml \
+            --cov=src/dwi_ml \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=xml:.test_reports/coverage.xml
 
       - name: Save test results and coverage
         uses: actions/upload-artifact@v4
@@ -76,7 +80,7 @@ jobs:
         uses: codecov/codecov-action@v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: .test_reports/*
+          files: .test_reports/coverage.xml
           disable_search: true
           slug: scil-vital/dwi_ml
           name: dwi_ml-tests-${{ github.run_id }}-${{ github.run_attempt }}

@@ -416,18 +416,19 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
                 assert average_heads, "Can't average layers without averaging heads."
 
         # ----------- Checks
+        # Remember lengths to unpad outputs later.
+        # (except during tracking, we only keep the last output, but still
+        # verifying if any length exceeds the max allowed).
+        input_lengths = np.asarray([len(i) for i in inputs])
+
         if input_streamlines is not None:
             # If streamlines are necessary (depending on child class):
             # In all cases, len(each input) == len(each streamline).
             # Correct interpolation and management of points should be done
             # before.
-            assert np.all([len(i) == len(s) for i, s in
-                           zip(inputs, input_streamlines)])
-
-        # Remember lengths to unpad outputs later.
-        # (except during tracking, we only keep the last output, but still
-        # verifying if any length exceeds the max allowed).
-        input_lengths = np.asarray([len(i) for i in inputs])
+            streamline_lengths = np.asarray([len(i) for i in input_streamlines])
+            assert np.array_equal(input_lengths, streamline_lengths)
+            del streamline_lengths
 
         if np.any(input_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
@@ -451,11 +452,12 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         # See many discussions in forums, such as
         # https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/26
 
-        # 1. Embedding + position encoding.
-        # Run embedding on padded data. Necessary to make the model
-        # adapt for the positional encoding.
+        # Data is either only the input or (inputs, targets) with targets
+        # being input_streamlines + SOS + EOS
         data = self._prepare_data(inputs, input_streamlines)
-        data = self._run_embeddings(data, use_padding, batch_max_len)
+
+        # 1. Embedding + position encoding.
+        data = self._run_embeddings(data, use_padding, batch_max_len, input_lengths)
         data = self._run_position_encoding(data)
 
         # 2. Main transformer
@@ -556,7 +558,8 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
     def _prepare_data(self, inputs, input_streamlines):
         raise NotImplementedError
 
-    def _run_embeddings(self, data, use_padding, batch_max_len):
+    def _run_embeddings(self, data, use_padding: bool, batch_max_len: int,
+                        lengths: list):
         raise NotImplementedError
 
     def _run_position_encoding(self, data):
@@ -565,16 +568,20 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
     def _run_main_layer_forward(self, data, masks, return_weights):
         raise NotImplementedError
 
-    def _run_input_embedding(self, inputs, use_padding, batch_max_len):
-        # toDo: Test faster:
-        #   1) stack (2D), embed, unstack, pad_and_stack (3D)
-        #   2) loop on streamline to embed, pad_and_stack
-        #   3) pad_and_stack, then embed (but we might embed many zeros that
-        #      will be masked in attention anyway)
-
-        # Inputs
+    def _run_input_embedding(self, inputs, use_padding, batch_max_len, lengths):
         inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
         inputs = self.input_embedding_layer(inputs)
+
+        # Note. Version above runs the embedding on some zeros. They will be
+        # masked in the attention anyway and won't contribute to the training.
+        # But can be heavy for no reason if we have a lot of padding (streamlines
+        # with very variable lengths). Tested this instead but in my case, it was
+        # not faster:
+        # inputs = torch.vstack(inputs)
+        # inputs = self.input_embedding_layer(inputs)
+        # inputs = torch.split(inputs, list(lengths), dim=0)
+        # inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
+
         return inputs
 
     def merge_batches_outputs(self, all_outputs, new_batch, device=None):
@@ -649,8 +656,8 @@ class TransformerSrcOnlyModel(AbstractTransformerModel):
         # Nothing to do. Ignoring targets.
         return inputs
 
-    def _run_embeddings(self, inputs, use_padding, batch_max_len):
-        return self._run_input_embedding(inputs, use_padding, batch_max_len)
+    def _run_embeddings(self, inputs, use_padding, batch_max_len, lengths):
+        return self._run_input_embedding(inputs, use_padding, batch_max_len, lengths)
 
     def _run_position_encoding(self, inputs):
         inputs = self.position_encoding_layer(inputs)
@@ -763,7 +770,7 @@ class AbstractTransformerModelWithTarget(AbstractTransformerModel):
 
         return inputs, targets
 
-    def _run_embeddings(self, data, use_padding, batch_max_len):
+    def _run_embeddings(self, data, use_padding, batch_max_len, lengths):
         raise NotImplementedError
 
     def _run_position_encoding(self, data):
@@ -874,9 +881,9 @@ class OriginalTransformerModel(AbstractTransformerModelWithTarget):
         p['n_layers_d'] = self.n_layers_d
         return p
 
-    def _run_embeddings(self, data, use_padding, batch_max_len):
+    def _run_embeddings(self, data, use_padding, batch_max_len, lengths):
         # input, targets = data
-        inputs = self._run_input_embedding(data[0], use_padding, batch_max_len)
+        inputs = self._run_input_embedding(data[0], use_padding, batch_max_len, lengths)
         targets = self._run_target_embedding(data[1], use_padding,
                                              batch_max_len)
         return inputs, targets
@@ -979,9 +986,9 @@ class TransformerSrcAndTgtModel(AbstractTransformerModelWithTarget):
         p = super().params_for_checkpoint
         return p
 
-    def _run_embeddings(self, data, use_padding, batch_max_len):
+    def _run_embeddings(self, data, use_padding, batch_max_len, lengths):
         # inputs, targets = data
-        inputs = self._run_input_embedding(data[0], use_padding, batch_max_len)
+        inputs = self._run_input_embedding(data[0], use_padding, batch_max_len, lengths)
         targets = self._run_target_embedding(data[1], use_padding,
                                              batch_max_len)
         inputs = torch.cat((inputs, targets), dim=-1)

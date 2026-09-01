@@ -6,9 +6,11 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from dwi_ml.general.experiment_utils.memory import log_gpu_max_allocated
 from dwi_ml.general.tracking.tracking_mask import TrackingMask
 
 logger = logging.getLogger('tracker_logger')
+logger.propagate = False
 
 
 def propagate_multiple_lines(
@@ -115,7 +117,7 @@ def propagate_multiple_lines(
             all_lines_completed = True
 
     assert not np.any([line is None for line in final_lines])
-
+    log_gpu_max_allocated(logger)
     return final_lines
 
 

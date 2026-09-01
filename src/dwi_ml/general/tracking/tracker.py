@@ -178,7 +178,7 @@ class DWIMLAbstractTracker:
         # -------- Context
         # Uses torch's module eval(), which "turns off" the training mode.
         self.model.eval()
-        self.grad_context = torch.no_grad()
+        self.grad_context = torch.inference_mode()
         self.model.set_context('tracking')
 
         # Nb points
@@ -395,7 +395,10 @@ class DWIMLAbstractTracker:
         seed_count = 0
         lines = []
         seeds = []
-        with tqdm_logging_redirect(total=self.nbr_seeds, ncols=100) as pbar:
+        with tqdm_logging_redirect(total=self.nbr_seeds, ncols=100,
+                                   loggers=[logging.getLogger('tracker_logger'),
+                                            logging.root]
+                                   ) as pbar:
             while seed_count < self.nbr_seeds:
                 nb_next_seeds = self.simultaneous_tracking
                 if seed_count + nb_next_seeds > self.nbr_seeds:
@@ -450,7 +453,7 @@ class DWIMLAbstractTracker:
         return clean_lines, clean_seeds
 
     def _propagate_multiple_lines(self, lines: List[Tensor]):
-        with torch.no_grad():
+        with self.grad_context:
             return propagate_multiple_lines(
                 lines, self.update_memory_after_removing_lines,
                 self.get_next_dirs, self.theta, self.step_size,

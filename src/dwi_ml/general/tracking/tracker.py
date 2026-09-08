@@ -532,6 +532,7 @@ class DWIMLAbstractTracker:
         idx: List
             List of rejected indices
         """
+        
         # 1) Rejecting streamlines of length 1 (= the seed only). The backward
         # would produce the same result. Overwrite if your model can change
         # results when called twice at the same point.

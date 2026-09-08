@@ -554,15 +554,19 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         raise NotImplementedError
 
     def _run_input_embedding(self, inputs, use_padding, batch_max_len):
-        # toDo: Test faster:
-        #   1) stack (2D), embed, unstack, pad_and_stack (3D)
-        #   2) loop on streamline to embed, pad_and_stack
-        #   3) pad_and_stack, then embed (but we might embed many zeros that
-        #      will be masked in attention anyway)
-
         # Inputs
         inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
         inputs = self.input_embedding_layer(inputs)
+
+        # Note. This code runs the embedding on some zeros. They will be
+        # masked in the attention anyway and won't contribute to the training.
+        # But can be heavy for no reason if we have a lot of padding (streamlines
+        # with very variable lengths). Tested this instead, but in my case, it was
+        # not faster:
+        # inputs = torch.vstack(inputs)
+        # inputs = self.input_embedding_layer(inputs)
+        # inputs = torch.split(inputs, list(lengths), dim=0)
+        # inputs = pad_and_stack_batch(inputs, use_padding, batch_max_len)
         return inputs
 
     def merge_batches_outputs(self, all_outputs, new_batch, device=None):

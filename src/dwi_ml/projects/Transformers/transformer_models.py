@@ -34,16 +34,6 @@ from dwi_ml.general.models.main_layers.transformers_from_torch import (
 # to keep the hidden state in-between?
 logger = logging.getLogger('model_logger')  # Same logger as Super.
 
-# Trying to help with memory.
-# When running out of memory, the error message is:
-# torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate XX (GPU 0;
-# X total capacity; X already allocated; X free; X reserved in total by Torch)
-# If reserved memory is >> allocated memory try setting max_split_size_mb to
-# avoid fragmentation. Value to which to limit is unclear.
-# Tested, does not seem to improve much.
-# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
-CLEAR_CACHE = False
-
 
 def forward_padding(data: torch.Tensor, expected_length):
     return pad(data, (0, 0, 0, expected_length - len(data)))
@@ -436,8 +426,6 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         # ----------- Padding params
         use_padding = not np.all(input_lengths == input_lengths[0])
         batch_max_len = np.max(input_lengths)
-        if CLEAR_CACHE:
-            torch.torch.cuda.empty_cache()
 
         # ----------- Prepare masks
         masks = self._prepare_masks(input_lengths, use_padding, batch_max_len)

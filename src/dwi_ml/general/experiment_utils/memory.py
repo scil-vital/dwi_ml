@@ -14,7 +14,7 @@ def torch_reset_peaks_memory():
         torch.cuda.reset_peak_memory_stats()
 
 
-def log_gpu_general_info(logger_info=None, context: str = None):
+def log_gpu_general_info(logger_info=None, context: str = ""):
     """
     Prints general info. Available GPU, used by other processes, etc.
     Intended to be used at the start of the experiment.
@@ -57,7 +57,7 @@ def log_gpu_general_info(logger_info=None, context: str = None):
             logger_info.info(msg)
 
 
-def log_gpu_currently_allocated(logger_debug=None, context: str = None):
+def log_gpu_currently_allocated(logger_debug=None, context: str = ""):
     """
     Prints currently allocated GPU memory.
 
@@ -89,7 +89,7 @@ def log_gpu_currently_allocated(logger_debug=None, context: str = None):
             logger_debug.debug(msg)
 
 
-def log_gpu_max_allocated(logger_debug=None, context: str = None):
+def log_gpu_max_allocated(logger_debug=None, context: str = ""):
     if torch.cuda.is_available():
         msg = ("GPU: {}\n"
                "  - max memory: {:>6.3f}GB"
@@ -133,7 +133,7 @@ def log_currently_used_cpu(logger_debug=None, context: str = "", no_print=False)
     return system_memory.used, system_memory.percent
 
 
-def log_gpu_per_tensor(logger_debug=None, context: str = None):
+def log_gpu_per_tensor(logger_debug=None, context: str = ""):
     """
     Prints currently alive Tensors and Variables
     This is extensive and intended for debugging.

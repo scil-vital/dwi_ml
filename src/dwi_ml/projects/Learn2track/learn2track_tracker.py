@@ -2,6 +2,7 @@
 import logging
 
 import numpy as np
+import torch
 
 from dwi_ml.projects.Learn2track.learn2track_model import Learn2TrackModel
 from dwi_ml.general.tracking.tracker import DWIMLTrackerOneInput
@@ -61,7 +62,7 @@ class RecurrentTracker(DWIMLTrackerOneInput):
         # nb_streamlines x tensor[nb_points, nb_features]
 
         # No hidden state given = running model on all points.
-        with self.grad_context:
+        with torch.inference_mode():
             _, self.hidden_recurrent_states = self.model(
                 all_inputs, tmp_lines, return_hidden=True, point_idx=None)
 
@@ -72,10 +73,9 @@ class RecurrentTracker(DWIMLTrackerOneInput):
 
     def _call_model_forward(self, inputs, lines):
         # For RNN, we need to send the hidden state too.
-        with self.grad_context:
-            model_outputs, self.hidden_recurrent_states = self.model(
-                inputs, lines, self.hidden_recurrent_states,
-                return_hidden=True, point_idx=-1)
+        model_outputs, self.hidden_recurrent_states = self.model(
+            inputs, lines, self.hidden_recurrent_states,
+            return_hidden=True, point_idx=-1)
 
         return model_outputs
 

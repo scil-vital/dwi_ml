@@ -178,7 +178,6 @@ class DWIMLAbstractTracker:
         # -------- Context
         # Uses torch's module eval(), which "turns off" the training mode.
         self.model.eval()
-        self.grad_context = torch.no_grad()
         self.model.set_context('tracking')
 
         # Nb points
@@ -452,7 +451,7 @@ class DWIMLAbstractTracker:
         return clean_lines, clean_seeds
 
     def _propagate_multiple_lines(self, lines: List[Tensor]):
-        with torch.no_grad():
+        with torch.inference_mode():
             return propagate_multiple_lines(
                 lines, self.update_memory_after_removing_lines,
                 self.get_next_dirs, self.theta, self.step_size,
@@ -496,8 +495,7 @@ class DWIMLAbstractTracker:
         raise NotImplementedError
 
     def _call_model_forward(self, inputs, lines):
-        with self.grad_context:
-            model_outputs = self.model(inputs, lines)
+        model_outputs = self.model(inputs, lines)
         return model_outputs
 
     def update_memory_after_removing_lines(self, can_continue: np.ndarray,

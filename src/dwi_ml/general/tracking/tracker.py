@@ -395,7 +395,9 @@ class DWIMLAbstractTracker:
         seed_count = 0
         lines = []
         seeds = []
-        with tqdm_logging_redirect(total=self.nbr_seeds, ncols=100) as pbar:
+        with tqdm_logging_redirect(total=self.nbr_seeds,
+                                   loggers=[logging.root],
+                                   ncols=100) as pbar:
             while seed_count < self.nbr_seeds:
                 nb_next_seeds = self.simultaneous_tracking
                 if seed_count + nb_next_seeds > self.nbr_seeds:

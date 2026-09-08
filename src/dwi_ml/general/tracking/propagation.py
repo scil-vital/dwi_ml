@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+
+"""
+About this file:
+
+The propagation is separated from the tracker, because this function can
+also be used by the trainer, inside the Generation-Validation [GV] phase.
+"""
 import logging
 from typing import Callable, List
 
@@ -6,6 +13,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from dwi_ml.general.experiment_utils.memory import log_gpu_max_allocated
 from dwi_ml.general.tracking.tracking_mask import TrackingMask
 
 logger = logging.getLogger('tracker_logger')
@@ -40,6 +48,11 @@ def propagate_multiple_lines(
     max_nbr_pts: int
     append_last_point: bool
     normalize_directions: bool
+
+    Returns
+    -------
+    final_lines: List[Tensor]
+        The completed streamlines.
     """
     nb_streamlines = len(lines)
 
@@ -114,7 +127,7 @@ def propagate_multiple_lines(
         else:
             all_lines_completed = True
 
-    assert not np.any([line is None for line in final_lines])
+    log_gpu_max_allocated(logger)
 
     return final_lines
 

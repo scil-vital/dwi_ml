@@ -23,16 +23,12 @@ from dwi_ml.general.models.main_layers.transformers_from_torch import (
     ModifiedTransformerEncoder, ModifiedTransformerEncoderLayer,
     ModifiedTransformerDecoder, ModifiedTransformerDecoderLayer)
 
-# Our model needs to be autoregressive, to allow inference / generation at
-# tracking time.
-# => During training, we hide the future; both in the input and in the target
-# sequences.
-
-# About the tracking process
-# At each new step, the whole sequence is processed again (ran in the model).
-# We only keep the last output. This is not very efficient... Is there a way
-# to keep the hidden state in-between?
 logger = logging.getLogger('model_logger')  # Same logger as Super.
+
+# For developers. If this is set to true, a few assert(...) calls
+# are made along the way to make sure the code is not broken.
+# (ex, that input lengths fit streamline lengths, and so on).
+DEBUG=False
 
 
 def forward_padding(data: torch.Tensor, expected_length):
@@ -244,9 +240,10 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         self.dropout = Dropout(self.dropout_rate)
 
         # 1. x embedding layer
-        assert self.computed_input_embedded_size > 3, \
-            "Current computation of the positional encoding required data " \
-            "of size > 3, but got {}".format(self.computed_input_embedded_size)
+        if DEBUG:
+            assert self.computed_input_embedded_size > 3, \
+                "Current computation of the positional encoding required data " \
+                "of size > 3, but got {}".format(self.computed_input_embedded_size)
 
         # 2. positional encoding layer
         cls_p = keys_to_positional_encodings[self.positional_encoding_key]
@@ -406,18 +403,18 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
                 assert average_heads, "Can't average layers without averaging heads."
 
         # ----------- Checks
-        if input_streamlines is not None:
-            # If streamlines are necessary (depending on child class):
-            # In all cases, len(each input) == len(each streamline).
-            # Correct interpolation and management of points should be done
-            # before.
-            assert np.all([len(i) == len(s) for i, s in
-                           zip(inputs, input_streamlines)])
-
         # Remember lengths to unpad outputs later.
         # (except during tracking, we only keep the last output, but still
         # verifying if any length exceeds the max allowed).
         input_lengths = np.asarray([len(i) for i in inputs])
+
+        if input_streamlines is not None and DEBUG:
+            # If streamlines are necessary (depending on child class):
+            # In all cases, len(each input) == len(each streamline).
+            # Correct interpolation and management of points should be done
+            # before.
+            streamline_lengths = np.asarray([len(i) for i in input_streamlines])
+            assert np.array_equal(input_lengths, streamline_lengths)
 
         if np.any(input_lengths > self.max_len):
             raise ValueError("Some streamlines were longer than accepted max "
@@ -439,10 +436,13 @@ class AbstractTransformerModel(ModelWithNeighborhood, ModelWithDirectionGetter,
         # See many discussions in forums, such as
         # https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/26
 
+        # Data is either only the input or (inputs, targets) with targets
+        # being input_streamlines + SOS + EOS
+        data = self._prepare_data(inputs, input_streamlines)
+
         # 1. Embedding + position encoding.
         # Run embedding on padded data. Necessary to make the model
         # adapt for the positional encoding.
-        data = self._prepare_data(inputs, input_streamlines)
         data = self._run_embeddings(data, use_padding, batch_max_len)
         data = self._run_position_encoding(data)
 
